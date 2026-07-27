@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import "./App.css"
 import {
   ResponsiveContainer,
@@ -204,7 +204,7 @@ const DEFAULT_SETTINGS = {
   totalExams: 10,
   startDate: null,
   endDate: null,
-  projectName: "Study Manifest",
+  projectName: "Time tracker",
   projectIcon: "Train",
   dailyGoals: { 0: 60, 1: 90, 2: 90, 3: 90, 4: 90, 5: 90, 6: 60 }, // minutes, keyed by getDay()
 }
@@ -215,7 +215,9 @@ function makeProject(overrides = {}) {
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
     slots: DEFAULT_SLOTS,
     categories: DEFAULT_CATEGORIES,
-    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment}] }, lessons: number, exam: boolean }
+    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment}] }, lessons: number, exam: boolean, comment?: string }
+    weekNotes: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> comment string
+    monthNotes: {}, // key: 'YYYY-MM' -> comment string
     ...overrides,
   }
 }
@@ -228,6 +230,8 @@ function normalizeProject(p) {
     categories:
       p.categories && p.categories.length ? p.categories : DEFAULT_CATEGORIES,
     days: p.days || {},
+    weekNotes: p.weekNotes || {},
+    monthNotes: p.monthNotes || {},
   }
 }
 
@@ -311,6 +315,9 @@ const fmtHours = (minutes) => {
   const h = Math.round((minutes / 60) * 10) / 10
   return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
 }
+// Same rounding as fmtHours, but always keeps one decimal (e.g. "2.0h"), for
+// spots where a fixed-width "Xm / Y.Zh" pairing reads better than dropping .0.
+const fmtHoursFixed1 = (minutes) => `${(minutes / 60).toFixed(1)}h`
 
 // Minutes -> hours value for charts, kept at full precision for stacking/summing.
 const toHours = (minutes) => minutes / 60
@@ -349,7 +356,9 @@ function dayBreakdown(dayEntry, slots) {
 
 function buildTooltip(dayEntry, slots, categories) {
   const { bySlot, byCategory, total } = dayBreakdown(dayEntry, slots)
-  if (!dayEntry || total === 0) return "No study logged"
+  if (!dayEntry || total === 0) {
+    return dayEntry?.comment ? `No study logged\n—\n${dayEntry.comment}` : "No study logged"
+  }
   const lines = [`Total: ${total}m`]
   slots.forEach((s) => {
     if (bySlot[s.id] > 0) lines.push(`${s.label}: ${bySlot[s.id]}m`)
@@ -360,6 +369,7 @@ function buildTooltip(dayEntry, slots, categories) {
   })
   if (dayEntry.lessons) lines.push(`Lessons: ${dayEntry.lessons}`)
   if (dayEntry.exam) lines.push("Exam passed")
+  if (dayEntry.comment) lines.push("—", dayEntry.comment)
   return lines.join("\n")
 }
 
@@ -391,6 +401,54 @@ const segBtnStyle = (active) =>
 
 /* Segmented control wrapper: pass items [{id,label}], active id, onChange.
    Used everywhere so all "inner tab" rows share one visual style. */
+// Styled replacement for the native title="" tooltip. Wrap any small element
+// (button, badge, icon) with it; shows a small dark bubble on hover/focus.
+function Tip({ text, children, multiline = false, side = "top" }) {
+  if (!text) return children
+  const posClasses =
+    side === "bottom"
+      ? "top-full mt-1.5"
+      : side === "left"
+        ? "right-full top-1/2 -translate-y-1/2 mr-1.5"
+        : "bottom-full mb-1.5"
+  const alignClasses = side === "left" ? "" : "left-1/2 -translate-x-1/2"
+  return (
+    <span className="relative inline-flex group/tip">
+      {children}
+      <span
+        role="tooltip"
+        className={`pointer-events-none absolute ${posClasses} ${alignClasses} z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 group-focus-within/tip:opacity-100 group-focus-within/tip:scale-100 transition-all duration-150 shadow-lg ${
+          multiline ? "whitespace-pre-line max-w-[220px] text-left" : "whitespace-nowrap"
+        }`}
+      >
+        {text}
+      </span>
+    </span>
+  )
+}
+
+// Textarea that grows with its content up to a max height, then scrolls —
+// used anywhere a note/comment can get long (day entries, slot/category descriptions).
+function AutoTextarea({ value, onChange, maxHeight = 160, className = "", ...rest }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+  }, [value, maxHeight])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      style={{ maxHeight }}
+      className={`${className} overflow-y-auto resize-none`}
+      {...rest}
+    />
+  )
+}
+
 function SegmentedControl({ items, activeId, onChange, size = "sm" }) {
   return (
     <div className="inline-flex rounded-xl border border-[#1E2A33]/20 overflow-hidden bg-white">
@@ -679,6 +737,9 @@ export default function StudyTrackerApp() {
   const [view, setView] = useState("log") // 'log' | 'analytics'
   const [logGranularity, setLogGranularity] = useState("month")
   const [logCursor, setLogCursor] = useState(new Date())
+  const [analyticsPreset, setAnalyticsPreset] = useState("30")
+  const [analyticsCustomStart, setAnalyticsCustomStart] = useState(toKey(addDays(new Date(), -30)))
+  const [analyticsCustomEnd, setAnalyticsCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
   const [showSetup, setShowSetup] = useState(false)
 
@@ -771,6 +832,11 @@ export default function StudyTrackerApp() {
     })
   }
 
+  const updateWeekNote = (weekKey, text) =>
+    updateProject({ weekNotes: { ...(project.weekNotes || {}), [weekKey]: text } })
+  const updateMonthNote = (monthKey, text) =>
+    updateProject({ monthNotes: { ...(project.monthNotes || {}), [monthKey]: text } })
+
   const switchProject = (id) => persist({ ...data, activeProjectId: id })
 
   const addProject = () => {
@@ -844,9 +910,19 @@ export default function StudyTrackerApp() {
             setCursor={setLogCursor}
             onNavigateDay={goToDay}
             onEditDay={setEditingKey}
+            onUpdateWeekNote={updateWeekNote}
+            onUpdateMonthNote={updateMonthNote}
           />
         ) : (
-          <AnalyticsView data={project} />
+          <AnalyticsView
+            data={project}
+            preset={analyticsPreset}
+            setPreset={setAnalyticsPreset}
+            customStart={analyticsCustomStart}
+            setCustomStart={setAnalyticsCustomStart}
+            customEnd={analyticsCustomEnd}
+            setCustomEnd={setAnalyticsCustomEnd}
+          />
         )}
       </main>
 
@@ -943,13 +1019,14 @@ function TopBar({
             <Settings2 size={13} /> Setup
           </button>
           {cloudEnabled && session && (
-            <button
-              onClick={onSignOut}
-              title={session.user.email}
-              className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
-            >
-              <LogOut size={13} />
-            </button>
+            <Tip text={session.user.email}>
+              <button
+                onClick={onSignOut}
+                className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
+              >
+                <LogOut size={13} />
+              </button>
+            </Tip>
           )}
         </div>
       </div>
@@ -1149,18 +1226,15 @@ function ProjectsTab({ projects, activeProjectId, onSwitch, onAdd, onDelete }) {
                     Active
                   </span>
                 )}
-                <button
-                  disabled={projects.length <= 1}
-                  onClick={() => setConfirmDeleteId(p.id)}
-                  className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
-                  title={
-                    projects.length <= 1
-                      ? "At least one project is required"
-                      : "Delete project"
-                  }
-                >
-                  <Trash2 size={14} />
-                </button>
+                <Tip text={projects.length <= 1 ? "At least one project is required" : "Delete project"}>
+                  <button
+                    disabled={projects.length <= 1}
+                    onClick={() => setConfirmDeleteId(p.id)}
+                    className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </Tip>
               </div>
             )}
           </div>
@@ -1408,81 +1482,93 @@ function EditableList({ items, onChange, noun, warningNote }) {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <button
-                  onClick={() =>
-                    setOpenPickerId(openPickerId === item.id ? null : item.id)
-                  }
-                  style={{ borderColor: item.color, color: item.color }}
-                  className={`${btnBase} w-8 h-8 rounded-xl flex items-center justify-center border-2 hover:opacity-75 shrink-0`}
-                >
-                  <RenderIcon name={item.iconName} size={15} />
-                </button>
-                {openPickerId === item.id && (
-                  <div className="absolute z-30 top-10 left-0 bg-white border border-[#1E2A33]/15 rounded-xl shadow-lg p-2.5 w-56">
-                    <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
-                      Icon
-                    </p>
-                    <div className="grid grid-cols-6 gap-1 mb-3">
-                      {ICON_LIBRARY.map((opt) => (
-                        <button
-                          key={opt.name}
-                          onClick={() =>
-                            updateItem(item.id, { iconName: opt.name })
-                          }
-                          className={`${btnBase} p-1.5 rounded-md hover:bg-[#1E2A33]/10 flex items-center justify-center ${
-                            item.iconName === opt.name
-                              ? "bg-[#1E2A33]/10 ring-1 ring-[#1E2A33]/30"
-                              : ""
-                          }`}
-                        >
-                          <RenderIcon name={opt.name} size={14} />
-                        </button>
-                      ))}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    onClick={() =>
+                      setOpenPickerId(openPickerId === item.id ? null : item.id)
+                    }
+                    style={{ borderColor: item.color, color: item.color }}
+                    className={`${btnBase} w-8 h-8 rounded-xl flex items-center justify-center border-2 hover:opacity-75 shrink-0`}
+                  >
+                    <RenderIcon name={item.iconName} size={15} />
+                  </button>
+                  {openPickerId === item.id && (
+                    <div className="absolute z-30 top-10 left-0 bg-white border border-[#1E2A33]/15 rounded-xl shadow-lg p-2.5 w-56">
+                      <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
+                        Icon
+                      </p>
+                      <div className="grid grid-cols-6 gap-1 mb-3">
+                        {ICON_LIBRARY.map((opt) => (
+                          <button
+                            key={opt.name}
+                            onClick={() =>
+                              updateItem(item.id, { iconName: opt.name })
+                            }
+                            className={`${btnBase} p-1.5 rounded-md hover:bg-[#1E2A33]/10 flex items-center justify-center ${
+                              item.iconName === opt.name
+                                ? "bg-[#1E2A33]/10 ring-1 ring-[#1E2A33]/30"
+                                : ""
+                            }`}
+                          >
+                            <RenderIcon name={opt.name} size={14} />
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
+                        Color
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {PALETTE.map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => updateItem(item.id, { color: c })}
+                            style={{
+                              backgroundColor: c,
+                              outline:
+                                item.color === c ? "2px solid #1E2A33" : "none",
+                              outlineOffset: "1px",
+                            }}
+                            className={`${btnBase} w-5 h-5 rounded-full hover:scale-110`}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setOpenPickerId(null)}
+                        className={`${btnBase} mt-3 text-[9px] uppercase tracking-widest text-[#1E2A33]/40 hover:text-[#1E2A33]`}
+                      >
+                        Done
+                      </button>
                     </div>
-                    <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
-                      Color
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PALETTE.map((c) => (
-                        <button
-                          key={c}
-                          onClick={() => updateItem(item.id, { color: c })}
-                          style={{
-                            backgroundColor: c,
-                            outline:
-                              item.color === c ? "2px solid #1E2A33" : "none",
-                            outlineOffset: "1px",
-                          }}
-                          className={`${btnBase} w-5 h-5 rounded-full hover:scale-110`}
-                        />
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => setOpenPickerId(null)}
-                      className={`${btnBase} mt-3 text-[9px] uppercase tracking-widest text-[#1E2A33]/40 hover:text-[#1E2A33]`}
-                    >
-                      Done
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+                <input
+                  value={item.label}
+                  onChange={(e) => updateItem(item.id, { label: e.target.value })}
+                  className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono"
+                />
+                <Tip text={items.length <= 1 ? "At least one is required" : "Remove"}>
+                  <button
+                    disabled={items.length <= 1}
+                    onClick={() => setConfirmDeleteId(item.id)}
+                    className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </Tip>
               </div>
-              <input
-                value={item.label}
-                onChange={(e) => updateItem(item.id, { label: e.target.value })}
-                className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono"
-              />
-              <button
-                disabled={items.length <= 1}
-                onClick={() => setConfirmDeleteId(item.id)}
-                className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
-                title={
-                  items.length <= 1 ? "At least one is required" : "Remove"
-                }
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="flex items-start gap-1.5 pl-1">
+                <MessageSquare size={12} className="text-[#1E2A33]/25 shrink-0 mt-1.5" />
+                <AutoTextarea
+                  value={item.description || ""}
+                  onChange={(e) => updateItem(item.id, { description: e.target.value })}
+                  placeholder={`What counts as this ${noun}? (optional)`}
+                  rows={1}
+                  maxHeight={100}
+                  className="flex-1 border border-[#1E2A33]/10 rounded-lg px-2 py-1 text-[10px] font-mono bg-[#F4F5F7]/50"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -1563,6 +1649,38 @@ function rangeLabel(cursor, granularity) {
   return ""
 }
 
+// Inline, auto-saving note for a whole day/week/month — mount with a
+// `key` tied to the period (e.g. weekKey) so it resets its local buffer
+// when the person navigates to a different period.
+function NoteCard({ label, icon: Icon, value, onSave }) {
+  const [text, setText] = useState(value || "")
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (text !== (value || "")) onSave(text)
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text])
+  return (
+    <div className={`${CARD} p-4 mb-4`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon size={12} className="text-[#1E2A33]/40" />
+        <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+          {label}
+        </span>
+      </div>
+      <AutoTextarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Add a note for this period (optional)"
+        rows={1}
+        maxHeight={160}
+        className="w-full border border-[#1E2A33]/10 rounded-lg px-2 py-1.5 text-xs font-mono bg-[#F4F5F7]/40"
+      />
+    </div>
+  )
+}
+
 function LogView({
   data,
   granularity,
@@ -1571,9 +1689,13 @@ function LogView({
   setCursor,
   onNavigateDay,
   onEditDay,
+  onUpdateWeekNote,
+  onUpdateMonthNote,
 }) {
-  const { slots, categories, days, settings } = data
+  const { slots, categories, days, settings, weekNotes = {}, monthNotes = {} } = data
   const todayKey = toKey(new Date())
+  const weekKey = toKey(startOfWeek(cursor))
+  const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`
 
   const headerStats = useMemo(() => {
     if (granularity === "week")
@@ -1626,6 +1748,25 @@ function LogView({
         )}
       </div>
 
+      {granularity === "week" && (
+        <NoteCard
+          key={weekKey}
+          label="Week notes"
+          icon={MessageSquare}
+          value={weekNotes[weekKey]}
+          onSave={(text) => onUpdateWeekNote(weekKey, text)}
+        />
+      )}
+      {granularity === "month" && (
+        <NoteCard
+          key={monthKey}
+          label="Month notes"
+          icon={MessageSquare}
+          value={monthNotes[monthKey]}
+          onSave={(text) => onUpdateMonthNote(monthKey, text)}
+        />
+      )}
+
       {granularity === "month" && (
         <MonthGrid
           cursor={cursor}
@@ -1670,6 +1811,7 @@ function LogView({
           days={days}
           slots={slots}
           categories={categories}
+          settings={settings}
           todayKey={todayKey}
           onSelectDay={onNavigateDay}
           showMonths
@@ -1682,6 +1824,7 @@ function LogView({
           days={days}
           slots={slots}
           categories={categories}
+          settings={settings}
           todayKey={todayKey}
           onSelectDay={onNavigateDay}
           showMonths
@@ -1759,6 +1902,7 @@ function MonthGrid({
   for (let i = 0; i < cells.length; i += 7) weekRows.push(cells.slice(i, i + 7))
 
   const gridCols = { gridTemplateColumns: "64px repeat(7, minmax(0, 1fr))" }
+  const startDate = settings.startDate ? fromKey(settings.startDate) : null
 
   return (
     <div>
@@ -1794,6 +1938,7 @@ function MonthGrid({
                     goal={goalForDate(settings, date)}
                     isToday={toKey(date) === todayKey}
                     isFuture={date > new Date()}
+                    isBeforeStart={startDate ? date < startDate : false}
                     onNavigate={() => onNavigateDay(toKey(date))}
                     onEdit={() => onEditDay(toKey(date))}
                   />
@@ -1838,9 +1983,18 @@ function CompactDayCell({
   goal,
   isToday,
   isFuture,
+  isBeforeStart,
   onNavigate,
   onEdit,
 }) {
+  if (isBeforeStart) {
+    return (
+      <div className="rounded-2xl border border-[#1E2A33]/8 bg-[#1E2A33]/[0.025] h-28 flex items-start p-2">
+        <span className="font-mono text-xs text-[#1E2A33]/20">{date.getDate()}</span>
+      </div>
+    )
+  }
+
   const { bySlot, total } = dayBreakdown(entry, slots)
   const tooltip = buildTooltip(entry, slots, categories)
   const metGoal = goal > 0 && total >= goal
@@ -1851,34 +2005,41 @@ function CompactDayCell({
       tabIndex={0}
       onClick={onNavigate}
       onKeyDown={(e) => e.key === "Enter" && onNavigate()}
-      title={tooltip}
-      className={`${btnBase} group relative text-left rounded-2xl border p-2 h-28 flex flex-col justify-between bg-white hover:shadow-md cursor-pointer ${
+      className={`${btnBase} group/cell group relative text-left rounded-2xl border p-2 h-28 flex flex-col justify-between bg-white hover:shadow-md cursor-pointer ${
         isToday ? "border-2" : "border-[#1E2A33]/15 hover:border-[#1E2A33]/30"
       } ${isFuture ? "opacity-50" : ""}`}
       style={isToday ? { borderColor: ACCENT } : undefined}
     >
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/cell:opacity-100 group-hover/cell:scale-100 transition-all duration-150 shadow-lg whitespace-pre-line max-w-[220px] text-left"
+      >
+        {tooltip}
+      </span>
       <div className="flex items-start justify-between">
         <span className="font-mono text-xs">{date.getDate()}</span>
         <div className="flex items-center gap-1">
           {entry?.exam && (
-            <span
-              title="Exam passed"
-              className="flex items-center justify-center w-4 h-4 rounded-full"
-              style={{ backgroundColor: EXAM_COLOR }}
-            >
-              <Award size={10} className="text-white" />
-            </span>
+            <Tip text="Exam passed">
+              <span
+                className="flex items-center justify-center w-4 h-4 rounded-full"
+                style={{ backgroundColor: EXAM_COLOR }}
+              >
+                <Award size={10} className="text-white" />
+              </span>
+            </Tip>
           )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit()
-            }}
-            className={`${btnBase} opacity-0 group-hover:opacity-100 p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
-            title="Edit this day"
-          >
-            <PenLine size={11} />
-          </button>
+          <Tip text="Edit this day">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+              className={`${btnBase} opacity-0 group-hover:opacity-100 p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <PenLine size={11} />
+            </button>
+          </Tip>
         </div>
       </div>
 
@@ -1915,7 +2076,9 @@ function CompactDayCell({
           )}
         </span>
         {entry?.lessons > 0 && (
-          <span title="Lessons studied today">{entry.lessons}L</span>
+          <Tip text="Lessons studied today">
+            <span>{entry.lessons}L</span>
+          </Tip>
         )}
       </div>
     </div>
@@ -2002,6 +2165,7 @@ function FullCardGrid({
   onEditDay,
   big,
 }) {
+  const startDate = settings.startDate ? fromKey(settings.startDate) : null
   return (
     <div
       className={
@@ -2019,6 +2183,7 @@ function FullCardGrid({
           categories={categories}
           goal={goalForDate(settings, date)}
           isToday={toKey(date) === todayKey}
+          isBeforeStart={startDate ? date < startDate : false}
           onNavigate={() => onNavigateDay(toKey(date))}
           onEdit={() => onEditDay(toKey(date))}
           big={big}
@@ -2035,10 +2200,26 @@ function FullDayCard({
   categories,
   goal,
   isToday,
+  isBeforeStart,
   onNavigate,
   onEdit,
   big,
 }) {
+  if (isBeforeStart) {
+    return (
+      <div
+        className={`rounded-2xl border border-[#1E2A33]/8 bg-[#1E2A33]/[0.025] p-3 flex flex-col gap-1 ${big ? "max-w-md" : ""}`}
+      >
+        <div className="font-mono text-sm font-bold text-[#1E2A33]/25">
+          {date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}
+        </div>
+        <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/20">
+          Before course start
+        </div>
+      </div>
+    )
+  }
+
   const { total } = dayBreakdown(entry, slots)
   const metGoal = goal > 0 && total >= goal
   // Both week and day cards open the editor directly on click — there's no further
@@ -2081,12 +2262,11 @@ function FullDayCard({
             </span>
           )}
           {entry?.lessons > 0 && (
-            <span
-              title="Lessons studied today"
-              className="text-[9px] uppercase tracking-wide font-mono bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full"
-            >
-              {entry.lessons}L
-            </span>
+            <Tip text="Lessons studied today">
+              <span className="text-[9px] uppercase tracking-wide font-mono bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full">
+                {entry.lessons}L
+              </span>
+            </Tip>
           )}
         </div>
       </div>
@@ -2116,6 +2296,13 @@ function FullDayCard({
           cells={entry?.cells || {}}
         />
       )}
+
+      {entry?.comment && (
+        <div className="flex items-start gap-1.5 pt-2 border-t border-[#1E2A33]/10">
+          <MessageSquare size={11} className="text-[#1E2A33]/30 shrink-0 mt-0.5" />
+          <p className="text-[10px] font-mono text-[#1E2A33]/60 whitespace-pre-wrap">{entry.comment}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -2144,11 +2331,13 @@ function Heatmap({
   days,
   slots,
   categories,
+  settings,
   todayKey,
   onSelectDay,
   showMonths,
 }) {
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
+  const startDate = settings?.startDate ? fromKey(settings.startDate) : null
 
   const maxTotal = useMemo(() => {
     let max = 0
@@ -2202,6 +2391,18 @@ function Heatmap({
               )}
               {week.map((date, di) => {
                 if (!date) return <div key={di} className="w-10 h-10" />
+                if (startDate && date < startDate) {
+                  return (
+                    <div
+                      key={di}
+                      className="w-10 h-10 rounded-lg bg-[#1E2A33]/[0.03] flex items-center justify-center shrink-0"
+                    >
+                      <span className="text-[8px] font-mono leading-none text-[#1E2A33]/15">
+                        {date.getDate()}
+                      </span>
+                    </div>
+                  )
+                }
                 const key = toKey(date)
                 const entry = days[key]
                 const { total } = dayBreakdown(entry, slots)
@@ -2212,14 +2413,19 @@ function Heatmap({
                   <button
                     key={di}
                     onClick={() => onSelectDay(key)}
-                    title={`${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories)}`}
                     style={{
                       backgroundColor: HEAT_SCALE[level],
                       outline: isToday ? `2px solid ${ACCENT}` : "none",
                       outlineOffset: "1px",
                     }}
-                    className={`${btnBase} w-10 h-10 rounded-lg hover:scale-105 flex flex-col items-center justify-center shrink-0`}
+                    className={`${btnBase} group/tip relative w-10 h-10 rounded-lg hover:scale-105 flex flex-col items-center justify-center shrink-0`}
                   >
+                    <span
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 transition-all duration-150 shadow-lg whitespace-pre-line max-w-[220px] text-left"
+                    >
+                      {`${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories)}`}
+                    </span>
                     <span
                       className={`text-[8px] font-mono leading-none ${darkText ? "text-[#1E2A33]/40" : "text-white/70"}`}
                     >
@@ -2283,6 +2489,7 @@ function DayEditor({
   const cells = dayEntry?.cells || {}
   const lessons = dayEntry?.lessons || 0
   const exam = dayEntry?.exam || false
+  const dayComment = dayEntry?.comment || ""
   const onBackdropClick = useModalDismiss(onClose)
 
   const addEntry = (slotId) => {
@@ -2364,9 +2571,17 @@ function DayEditor({
                     <span className="font-mono text-xs uppercase tracking-wide font-bold">
                       {slot.label}
                     </span>
+                    <Tip text="Add entry">
+                      <button
+                        onClick={() => addEntry(slot.id)}
+                        className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </Tip>
                   </div>
                   <span className="font-mono text-xs text-[#1E2A33]/50">
-                    {slotTotal}m
+                    {slotTotal}m / {fmtHoursFixed1(slotTotal)}
                   </span>
                 </div>
 
@@ -2401,7 +2616,7 @@ function DayEditor({
                                 category: e.target.value,
                               })
                             }
-                            className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono bg-white"
+                            className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono bg-white w-full max-w-3/3"
                           >
                             {options.map((c) => (
                               <option key={c.id} value={c.id}>
@@ -2435,7 +2650,7 @@ function DayEditor({
                             size={12}
                             className="text-[#1E2A33]/30 shrink-0 mt-1.5"
                           />
-                          <textarea
+                          <AutoTextarea
                             value={entry.comment || ""}
                             onChange={(e) =>
                               updateEntry(slot.id, entry.id, {
@@ -2444,7 +2659,8 @@ function DayEditor({
                             }
                             placeholder="Note (optional) — shown on the day and week view"
                             rows={2}
-                            className="flex-1 border border-[#1E2A33]/15 rounded-xl px-2 py-1.5 text-[11px] font-mono bg-[#F4F5F7]/40 resize-none"
+                            maxHeight={220}
+                            className="flex-1 border border-[#1E2A33]/15 rounded-xl px-2 py-1.5 text-[11px] font-mono bg-[#F4F5F7]/40"
                           />
                         </div>
                       </div>
@@ -2487,6 +2703,23 @@ function DayEditor({
               </span>
             </label>
           </div>
+
+          <div className={`${CARD} p-4`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <MessageSquare size={12} className="text-[#1E2A33]/40" />
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                Day notes
+              </span>
+            </div>
+            <AutoTextarea
+              value={dayComment}
+              onChange={(e) => onChange({ comment: e.target.value })}
+              placeholder="Add a note for the whole day (optional)"
+              rows={2}
+              maxHeight={200}
+              className="w-full border border-[#1E2A33]/15 rounded-xl px-2 py-1.5 text-xs font-mono bg-[#F4F5F7]/40"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -2505,13 +2738,8 @@ const RANGE_PRESETS = [
   { id: "custom", label: "Custom" },
 ]
 
-function AnalyticsView({ data }) {
+function AnalyticsView({ data, preset, setPreset, customStart, setCustomStart, customEnd, setCustomEnd }) {
   const { slots, categories, days, settings } = data
-  const [preset, setPreset] = useState("30")
-  const [customStart, setCustomStart] = useState(
-    toKey(addDays(new Date(), -30)),
-  )
-  const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [dailyMode, setDailyMode] = useState("slot") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weekdayMode, setWeekdayMode] = useState("hours") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weeklyMode, setWeeklyMode] = useState("effectiveness") // 'effectiveness' | 'slot' | 'category' | 'lessons'
