@@ -722,13 +722,11 @@ export default function StudyTrackerApp() {
       setData(next)
       try {
         if (canUseCloud) {
-          await cloudClient
-            .from("study_data")
-            .upsert({
-              user_id: session.user.id,
-              data: next,
-              updated_at: new Date().toISOString(),
-            })
+          await cloudClient.from("study_data").upsert({
+            user_id: session.user.id,
+            data: next,
+            updated_at: new Date().toISOString(),
+          })
         } else {
           await window.storage.set(STORAGE_KEY, JSON.stringify(next), false)
         }
@@ -2516,12 +2514,16 @@ function AnalyticsView({ data }) {
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [dailyMode, setDailyMode] = useState("slot") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weekdayMode, setWeekdayMode] = useState("hours") // 'slot' | 'category' | 'hours' | 'lessons'
+  const [weeklyMode, setWeeklyMode] = useState("effectiveness") // 'effectiveness' | 'slot' | 'category' | 'lessons'
+  const [monthlyMode, setMonthlyMode] = useState("effectiveness") // 'effectiveness' | 'slot' | 'category' | 'lessons'
 
   const dailyToggle = useSeriesToggle()
   const pieToggle = useSeriesToggle()
   const effToggle = useSeriesToggle()
   const trendToggle = useSeriesToggle()
   const weekdayToggle = useSeriesToggle()
+  const weeklyToggle = useSeriesToggle()
+  const monthlyToggle = useSeriesToggle()
 
   const dayKeysSorted = useMemo(() => Object.keys(days).sort(), [days])
 
@@ -2641,6 +2643,55 @@ function AnalyticsView({ data }) {
       avgDaysPerExam,
     }
   }, [dayKeysSorted, days, settings, slots])
+
+  // Best/worst day, week, and month — all-time, based on hours studied.
+  // Only counts periods with at least some study logged (an untouched day
+  // isn't a "worst day", it's just an empty day, already tracked above).
+  const remarkable = useMemo(() => {
+    const dayVals = dayKeysSorted
+      .map((k) => ({ key: k, hours: dayBreakdown(days[k], slots).total / 60 }))
+      .filter((d) => d.hours > 0)
+
+    const weekMap = new Map()
+    const monthMap = new Map()
+    dayKeysSorted.forEach((k) => {
+      const { total } = dayBreakdown(days[k], slots)
+      if (total <= 0) return
+      const d = fromKey(k)
+      const wk = toKey(startOfWeek(d))
+      const mk = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+      weekMap.set(wk, (weekMap.get(wk) || 0) + total / 60)
+      monthMap.set(mk, (monthMap.get(mk) || 0) + total / 60)
+    })
+    const weekVals = [...weekMap.entries()].map(([key, hours]) => ({
+      key,
+      hours,
+    }))
+    const monthVals = [...monthMap.entries()].map(([key, hours]) => ({
+      key,
+      hours,
+    }))
+
+    const pick = (arr, dir) =>
+      arr.length
+        ? arr.reduce(
+            (best, cur) =>
+              (dir === "max" ? cur.hours > best.hours : cur.hours < best.hours)
+                ? cur
+                : best,
+            arr[0],
+          )
+        : null
+
+    return {
+      bestDay: pick(dayVals, "max"),
+      worstDay: pick(dayVals, "min"),
+      bestWeek: pick(weekVals, "max"),
+      worstWeek: pick(weekVals, "min"),
+      bestMonth: pick(monthVals, "max"),
+      worstMonth: pick(monthVals, "min"),
+    }
+  }, [dayKeysSorted, days, slots])
 
   const dailyTotals = useMemo(
     () =>
@@ -2774,24 +2825,108 @@ function AnalyticsView({ data }) {
     })
   }, [weeklyBuckets, days, slots])
 
-  const weeklyOverall = useMemo(() => {
+  const weeklySeries =
+    weeklyMode === "slot" ? slots : weeklyMode === "category" ? categories : []
+
+  const weeklyModeData = useMemo(() => {
     return weeklyBuckets.map(([wk, keys]) => {
-      let minutes = 0
-      let lessons = 0
-      keys.forEach((k) => {
-        const entry = days[k]
-        const { total } = dayBreakdown(entry, slots)
-        minutes += total
-        lessons += Number(entry.lessons) || 0
-      })
-      const hours = minutes / 60
-      return {
-        week: fmtShort(wk),
-        lessonsPerHour: hours > 0 ? Number((lessons / hours).toFixed(2)) : 0,
-        minutes,
+      const row = { week: fmtShort(wk) }
+      if (weeklyMode === "slot" || weeklyMode === "category") {
+        const list = weeklyMode === "slot" ? slots : categories
+        const sums = {}
+        list.forEach((s) => (sums[s.id] = 0))
+        keys.forEach((k) => {
+          const { bySlot, byCategory } = dayBreakdown(days[k], slots)
+          list.forEach(
+            (s) =>
+              (sums[s.id] +=
+                weeklyMode === "slot" ? bySlot[s.id] : byCategory[s.id] || 0),
+          )
+        })
+        list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
+      } else if (weeklyMode === "lessons") {
+        row.lessons = keys.reduce(
+          (sum, k) => sum + (Number(days[k].lessons) || 0),
+          0,
+        )
+      } else {
+        let minutes = 0
+        let lessons = 0
+        keys.forEach((k) => {
+          const { total } = dayBreakdown(days[k], slots)
+          minutes += total
+          lessons += Number(days[k].lessons) || 0
+        })
+        const hours = minutes / 60
+        row.lessonsPerHour =
+          hours > 0 ? Number((lessons / hours).toFixed(2)) : 0
       }
+      return row
     })
-  }, [weeklyBuckets, days, slots])
+  }, [weeklyBuckets, days, slots, categories, weeklyMode])
+
+  const monthlyBuckets = useMemo(() => {
+    const map = new Map()
+    rangedKeys.forEach((k) => {
+      const d = fromKey(k)
+      const mk = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+      if (!map.has(mk)) map.set(mk, [])
+      map.get(mk).push(k)
+    })
+    return [...map.entries()].sort((a, b) => (a[0] > b[0] ? 1 : -1))
+  }, [rangedKeys])
+
+  const fmtMonthLabel = (mk) => {
+    const [y, m] = mk.split("-").map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, {
+      month: "short",
+      year: "2-digit",
+    })
+  }
+
+  const monthlySeries =
+    monthlyMode === "slot"
+      ? slots
+      : monthlyMode === "category"
+        ? categories
+        : []
+
+  const monthlyModeData = useMemo(() => {
+    return monthlyBuckets.map(([mk, keys]) => {
+      const row = { month: fmtMonthLabel(mk) }
+      if (monthlyMode === "slot" || monthlyMode === "category") {
+        const list = monthlyMode === "slot" ? slots : categories
+        const sums = {}
+        list.forEach((s) => (sums[s.id] = 0))
+        keys.forEach((k) => {
+          const { bySlot, byCategory } = dayBreakdown(days[k], slots)
+          list.forEach(
+            (s) =>
+              (sums[s.id] +=
+                monthlyMode === "slot" ? bySlot[s.id] : byCategory[s.id] || 0),
+          )
+        })
+        list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
+      } else if (monthlyMode === "lessons") {
+        row.lessons = keys.reduce(
+          (sum, k) => sum + (Number(days[k].lessons) || 0),
+          0,
+        )
+      } else {
+        let minutes = 0
+        let lessons = 0
+        keys.forEach((k) => {
+          const { total } = dayBreakdown(days[k], slots)
+          minutes += total
+          lessons += Number(days[k].lessons) || 0
+        })
+        const hours = minutes / 60
+        row.lessonsPerHour =
+          hours > 0 ? Number((lessons / hours).toFixed(2)) : 0
+      }
+      return row
+    })
+  }, [monthlyBuckets, days, slots, categories, monthlyMode])
 
   // Weekday effectiveness — compares the same weekday (Mon, Tue, …) across the
   // different weeks in range. In Slot/Category mode we instead show the hours
@@ -2866,6 +3001,8 @@ function AnalyticsView({ data }) {
 
       <AveragesStats overall={overall} />
 
+      <RemarkableStats remarkable={remarkable} />
+
       <PrognosisCard overall={overall} />
 
       <ChartCard
@@ -2917,7 +3054,9 @@ function AnalyticsView({ data }) {
                 stroke={ACCENT}
                 fill={ACCENT}
                 fillOpacity={0.25}
+                strokeWidth={2}
                 name="Hours studied"
+                dot={{ r: 3 }}
               />
             ) : dailyMode === "lessons" ? (
               <Area
@@ -2926,7 +3065,9 @@ function AnalyticsView({ data }) {
                 stroke={GOAL_MET_COLOR}
                 fill={GOAL_MET_COLOR}
                 fillOpacity={0.25}
+                strokeWidth={2}
                 name="Lessons"
+                dot={{ r: 3 }}
               />
             ) : (
               // NOTE: recharts inspects its direct children by type — wrapping these in a
@@ -2970,81 +3111,177 @@ function AnalyticsView({ data }) {
       </ChartCard>
 
       <ChartCard
-        title="Days per exam"
-        subtitle="Calendar days needed to reach each exam, all-time"
-      >
-        {examsGapData.length === 0 ? (
-          <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
-            No exams passed yet — this fills in as you mark exam days in the
-            log.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={examsGapData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-              <XAxis
-                dataKey="exam"
-                tick={{ fontSize: 10, fontFamily: "monospace" }}
-              />
-              <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
-              <Tooltip
-                contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-                formatter={(value, _name, props) => [
-                  `${value} days`,
-                  `Passed ${props.payload.date}`,
-                ]}
-              />
-              {overall.avgDaysPerExam != null && (
-                <ReferenceLine
-                  y={overall.avgDaysPerExam}
-                  stroke={ACCENT}
-                  strokeDasharray="4 4"
-                  label={{
-                    value: `avg ${overall.avgDaysPerExam.toFixed(0)}d`,
-                    fontSize: 10,
-                    fill: ACCENT,
-                    position: "right",
-                  }}
-                />
-              )}
-              <Area
-                type="monotone"
-                dataKey="days"
-                stroke={ACCENT}
-                fill={ACCENT}
-                fillOpacity={0.28}
-                strokeWidth={2}
-                name="Days needed"
-                dot={{ r: 4, fill: ACCENT, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </ChartCard>
-
-      <ChartCard
         title="Weekly effectiveness"
-        subtitle="Overall lessons/hour, aggregated per week"
+        subtitle={
+          weeklyMode === "effectiveness"
+            ? "Overall lessons/hour, aggregated per week"
+            : weeklyMode === "lessons"
+              ? "Lessons completed per week"
+              : `Hours per week, split by ${weeklyMode}`
+        }
+        action={
+          <SegmentedControl
+            items={[
+              { id: "effectiveness", label: "Effectiveness" },
+              { id: "slot", label: "Slots" },
+              { id: "category", label: "Categories" },
+              { id: "lessons", label: "Lessons" },
+            ]}
+            activeId={weeklyMode}
+            onChange={setWeeklyMode}
+          />
+        }
       >
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={weeklyOverall}>
+          <AreaChart data={weeklyModeData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
             <XAxis
               dataKey="week"
               tick={{ fontSize: 10, fontFamily: "monospace" }}
             />
-            <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
-            <Tooltip contentStyle={{ fontSize: 12, fontFamily: "monospace" }} />
-            <Line
-              type="monotone"
-              dataKey="lessonsPerHour"
-              stroke="#1E2A33"
-              strokeWidth={2}
-              name="Lessons / hour"
-              dot={{ r: 3 }}
+            <YAxis
+              tick={{ fontSize: 10, fontFamily: "monospace" }}
+              tickFormatter={
+                weeklyMode === "slot" || weeklyMode === "category"
+                  ? fmtAxisHours
+                  : undefined
+              }
             />
-          </LineChart>
+            <Tooltip
+              contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
+              formatter={(value, name) =>
+                weeklyMode === "slot" || weeklyMode === "category"
+                  ? [fmtHoursChart(value), name]
+                  : weeklyMode === "lessons"
+                    ? [`${value}`, name]
+                    : [`${value} l/h`, name]
+              }
+            />
+            {weeklyMode === "slot" || weeklyMode === "category" ? (
+              weeklySeries
+                .filter((s) => !weeklyToggle.hidden.has(s.id))
+                .map((s) => (
+                  <Area
+                    key={s.id}
+                    type="monotone"
+                    dataKey={s.id}
+                    stackId="a"
+                    stroke={s.color}
+                    fill={s.color}
+                    fillOpacity={0.55}
+                    name={s.label}
+                  />
+                ))
+            ) : (
+              <Area
+                type="monotone"
+                dataKey={
+                  weeklyMode === "lessons" ? "lessons" : "lessonsPerHour"
+                }
+                stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                fillOpacity={0.15}
+                strokeWidth={2}
+                name={weeklyMode === "lessons" ? "Lessons" : "Lessons / hour"}
+                dot={{ r: 3 }}
+              />
+            )}
+          </AreaChart>
         </ResponsiveContainer>
+        {(weeklyMode === "slot" || weeklyMode === "category") && (
+          <ToggleChips
+            items={weeklySeries}
+            hidden={weeklyToggle.hidden}
+            onToggle={weeklyToggle.toggle}
+          />
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title="Monthly effectiveness"
+        subtitle={
+          monthlyMode === "effectiveness"
+            ? "Overall lessons/hour, aggregated per month"
+            : monthlyMode === "lessons"
+              ? "Lessons completed per month"
+              : `Hours per month, split by ${monthlyMode}`
+        }
+        action={
+          <SegmentedControl
+            items={[
+              { id: "effectiveness", label: "Effectiveness" },
+              { id: "slot", label: "Slots" },
+              { id: "category", label: "Categories" },
+              { id: "lessons", label: "Lessons" },
+            ]}
+            activeId={monthlyMode}
+            onChange={setMonthlyMode}
+          />
+        }
+      >
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={monthlyModeData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+            <XAxis
+              dataKey="month"
+              tick={{ fontSize: 10, fontFamily: "monospace" }}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fontFamily: "monospace" }}
+              tickFormatter={
+                monthlyMode === "slot" || monthlyMode === "category"
+                  ? fmtAxisHours
+                  : undefined
+              }
+            />
+            <Tooltip
+              contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
+              formatter={(value, name) =>
+                monthlyMode === "slot" || monthlyMode === "category"
+                  ? [fmtHoursChart(value), name]
+                  : monthlyMode === "lessons"
+                    ? [`${value}`, name]
+                    : [`${value} l/h`, name]
+              }
+            />
+            {monthlyMode === "slot" || monthlyMode === "category" ? (
+              monthlySeries
+                .filter((s) => !monthlyToggle.hidden.has(s.id))
+                .map((s) => (
+                  <Area
+                    key={s.id}
+                    type="monotone"
+                    dataKey={s.id}
+                    stackId="a"
+                    stroke={s.color}
+                    fill={s.color}
+                    fillOpacity={0.55}
+                    name={s.label}
+                  />
+                ))
+            ) : (
+              <Area
+                type="monotone"
+                dataKey={
+                  monthlyMode === "lessons" ? "lessons" : "lessonsPerHour"
+                }
+                stroke={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                fillOpacity={0.15}
+                strokeWidth={2}
+                name={monthlyMode === "lessons" ? "Lessons" : "Lessons / hour"}
+                dot={{ r: 3 }}
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+        {(monthlyMode === "slot" || monthlyMode === "category") && (
+          <ToggleChips
+            items={monthlySeries}
+            hidden={monthlyToggle.hidden}
+            onToggle={monthlyToggle.toggle}
+          />
+        )}
       </ChartCard>
 
       <ChartCard
@@ -3125,6 +3362,59 @@ function AnalyticsView({ data }) {
           hidden={weekdayToggle.hidden}
           onToggle={weekdayToggle.toggle}
         />
+      </ChartCard>
+
+      <ChartCard
+        title="Days per exam"
+        subtitle="Calendar days needed to reach each exam, all-time"
+      >
+        {examsGapData.length === 0 ? (
+          <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
+            No exams passed yet — this fills in as you mark exam days in the
+            log.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={examsGapData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+              <XAxis
+                dataKey="exam"
+                tick={{ fontSize: 10, fontFamily: "monospace" }}
+              />
+              <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
+                formatter={(value, _name, props) => [
+                  `${value} days`,
+                  `Passed ${props.payload.date}`,
+                ]}
+              />
+              {overall.avgDaysPerExam != null && (
+                <ReferenceLine
+                  y={overall.avgDaysPerExam}
+                  stroke={ACCENT}
+                  strokeDasharray="4 4"
+                  label={{
+                    value: `avg ${overall.avgDaysPerExam.toFixed(0)}d`,
+                    fontSize: 10,
+                    fill: ACCENT,
+                    position: "right",
+                  }}
+                />
+              )}
+              <Area
+                type="monotone"
+                dataKey="days"
+                stroke={ACCENT}
+                fill={ACCENT}
+                fillOpacity={0.28}
+                strokeWidth={2}
+                name="Days needed"
+                dot={{ r: 4, fill: ACCENT, strokeWidth: 0 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </ChartCard>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -3333,10 +3623,7 @@ function OverviewStats({ overall }) {
                 <span
                   className={`flex items-center justify-center w-6 h-6 rounded-full ${"bg-[#1E2A33]/5"}`}
                 >
-                  <Icon
-                    size={12}
-                    className={"text-[#1E2A33]/40"}
-                  />
+                  <Icon size={12} className={"text-[#1E2A33]/40"} />
                 </span>
               </div>
               <div className="flex items-baseline gap-1.5">
@@ -3427,70 +3714,184 @@ function PrognosisCard({ overall }) {
   const hasEnough =
     overall.avgMinutesPerLesson && overall.avgLessonsPerActiveDay
 
+  const items = hasEnough
+    ? [
+        {
+          label: "Lessons remaining",
+          value: overall.lessonsRemaining,
+          icon: ListChecks,
+        },
+        {
+          label: "Est. time remaining",
+          value: overall.estRemainingMinutes
+            ? `${(overall.estRemainingMinutes / 60).toFixed(1)}h`
+            : "—",
+          icon: Clock,
+        },
+        {
+          label: "Est. time to finish",
+          value:
+            overall.estRemainingCalendarDays != null
+              ? `${(overall.estRemainingCalendarDays / 30.44).toFixed(1)} mo (${overall.estRemainingCalendarDays}d)`
+              : "—",
+          icon: CalendarDays,
+        },
+        {
+          label: "Est. finish date",
+          value: overall.estFinishDate
+            ? overall.estFinishDate.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "—",
+          icon: Flag,
+        },
+      ]
+    : []
+
   return (
-    <div className="bg-[#1E2A33] text-[#F4F5F7] rounded-2xl p-5 shadow-sm">
-      <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm mb-1">
+    <div>
+      <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm mb-1 text-[#1E2A33]">
         Forecast
       </h3>
-      <p className="text-[11px] font-mono text-[#F4F5F7]/50 mb-4 uppercase tracking-widest">
+      <p className="text-[11px] font-mono text-[#1E2A33]/40 mb-3 uppercase tracking-widest">
         Based on pace so far, all-time
       </p>
 
       {!hasEnough ? (
-        <p className="text-sm font-mono text-[#F4F5F7]/70">
+        <div className={`${CARD} p-4 text-sm font-mono text-[#1E2A33]/60`}>
           Log a few more study days with lessons completed to unlock a forecast.
-        </p>
+        </div>
       ) : overall.lessonsRemaining === 0 ? (
-        <p className="text-sm font-mono">
+        <div className={`${CARD} p-4 text-sm font-mono text-[#1E2A33]`}>
           Course complete — all {overall.totalLessons} lessons logged. 🎉
-        </p>
+        </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <ForecastStat
-            label="Lessons remaining"
-            value={overall.lessonsRemaining}
-          />
-          <ForecastStat
-            label="Est. time remaining"
-            value={
-              overall.estRemainingMinutes
-                ? `${(overall.estRemainingMinutes / 60).toFixed(1)}h`
-                : "—"
-            }
-          />
-          <ForecastStat
-            label="Est. time to finish"
-            value={
-              overall.estRemainingCalendarDays != null
-                ? `${(overall.estRemainingCalendarDays / 30.44).toFixed(1)} months (${overall.estRemainingCalendarDays}d)`
-                : "—"
-            }
-          />
-          <ForecastStat
-            label="Est. finish date"
-            value={
-              overall.estFinishDate
-                ? overall.estFinishDate.toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : "—"
-            }
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {items.map((it) => {
+            const Icon = it.icon
+            return (
+              <div key={it.label} className={`${CARD} p-4`}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                    {it.label}
+                  </span>
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#1E2A33]/5">
+                    <Icon size={12} className="text-[#1E2A33]/40" />
+                  </span>
+                </div>
+                <span className="font-mono text-xl font-bold">{it.value}</span>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-function ForecastStat({ label, value }) {
+function RemarkableStats({ remarkable }) {
+  const fmtWeek = (k) => `Week of ${fmtDateLong(k)}`
+  const fmtMonth = (k) => {
+    const [y, m] = k.split("-").map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    })
+  }
+
+  const items = [
+    {
+      label: "Best day",
+      data: remarkable.bestDay,
+      fmt: fmtDateLong,
+      tone: "good",
+      icon: Sun,
+    },
+    {
+      label: "Best week",
+      data: remarkable.bestWeek,
+      fmt: fmtWeek,
+      tone: "good",
+      icon: TrendingUp,
+    },
+    {
+      label: "Best month",
+      data: remarkable.bestMonth,
+      fmt: fmtMonth,
+      tone: "good",
+      icon: Star,
+    },
+    {
+      label: "Worst day",
+      data: remarkable.worstDay,
+      fmt: fmtDateLong,
+      tone: "bad",
+      icon: Cloud,
+    },
+    {
+      label: "Worst week",
+      data: remarkable.worstWeek,
+      fmt: fmtWeek,
+      tone: "bad",
+      icon: AlertCircle,
+    },
+    {
+      label: "Worst month",
+      data: remarkable.worstMonth,
+      fmt: fmtMonth,
+      tone: "bad",
+      icon: Flag,
+    },
+  ]
+
   return (
     <div>
-      <div className="text-[10px] font-mono uppercase tracking-widest text-[#F4F5F7]/50 mb-1">
-        {label}
+      <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm mb-1 text-[#1E2A33]">
+        Remarkable
+      </h3>
+      <p className="text-[11px] font-mono text-[#1E2A33]/40 mb-3 uppercase tracking-widest">
+        Best &amp; worst, all-time, in hours
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {items.map((it) => {
+          const Icon = it.icon
+          const color = it.tone === "good" ? GOAL_MET_COLOR : EXAM_COLOR
+          return (
+            <div key={it.label} className={`${CARD} p-4`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                  {it.label}
+                </span>
+                <span
+                  className="flex items-center justify-center w-6 h-6 rounded-full"
+                  style={{ backgroundColor: `${color}1A` }}
+                >
+                  <Icon size={12} style={{ color }} />
+                </span>
+              </div>
+              {it.data ? (
+                <>
+                  <span
+                    className="font-mono text-xl font-bold"
+                    style={{ color }}
+                  >
+                    {fmtHoursChart(it.data.hours)}
+                  </span>
+                  <div className="text-[10px] font-mono text-[#1E2A33]/40 mt-1">
+                    {it.fmt(it.data.key)}
+                  </div>
+                </>
+              ) : (
+                <span className="font-mono text-xl font-bold text-[#1E2A33]/25">
+                  —
+                </span>
+              )}
+            </div>
+          )
+        })}
       </div>
-      <div className="font-mono text-xl font-bold">{value}</div>
     </div>
   )
 }
