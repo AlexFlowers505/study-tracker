@@ -133,7 +133,6 @@ const PALETTE = [
 const ACCENT = "#2F5FBF" // bluish active-state accent
 const EXAM_COLOR = "#C1595B"
 const GOAL_MET_COLOR = "#2F9E8F"
-const HEAT_SCALE = ["#E7ECF3", "#BBD0EA", "#7FA8DA", "#4E7FC0", "#2957B0"]
 const CARD = "bg-white rounded-2xl p-4"
 
 /* ---------------------------------------------------------------
@@ -203,6 +202,8 @@ const STORAGE_KEY = "study-tracker-data"
 const DEFAULT_SETTINGS = {
   totalLessons: 100,
   totalExams: 10,
+  lessonsEnabled: true,
+  examsEnabled: true,
   startDate: null,
   endDate: null,
   projectName: "Time tracker",
@@ -364,7 +365,9 @@ function dayBreakdown(dayEntry, slots) {
   return { bySlot, byCategory, total }
 }
 
-function buildTooltip(dayEntry, slots, categories) {
+function buildTooltip(dayEntry, slots, categories, settings) {
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+  const examsEnabled = settings?.examsEnabled !== false
   const { bySlot, byCategory, total } = dayBreakdown(dayEntry, slots)
   if (!dayEntry || total === 0) {
     return dayEntry?.comment
@@ -379,8 +382,8 @@ function buildTooltip(dayEntry, slots, categories) {
   categories.forEach((c) => {
     if (byCategory[c.id]) lines.push(`${c.label}: ${byCategory[c.id]}m`)
   })
-  if (dayEntry.lessons) lines.push(`Lessons: ${dayEntry.lessons}`)
-  if (dayEntry.exam) lines.push("Exam passed")
+  if (lessonsEnabled && dayEntry.lessons) lines.push(`Lessons: ${dayEntry.lessons}`)
+  if (examsEnabled && dayEntry.exam) lines.push("Exam passed")
   if (dayEntry.comment) lines.push("—", dayEntry.comment)
   return lines.join("\n")
 }
@@ -626,7 +629,38 @@ function AuthScreen({ client, error }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
+  const [resendBusy, setResendBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+
+  // Confirmation-link target — without this, Supabase falls back to the
+  // project's configured Site URL, which for most projects is still the
+  // default http://localhost:3000. Note this origin also has to be present
+  // in the project's Auth > URL Configuration > Redirect URLs allow-list in
+  // the Supabase dashboard, or Supabase will reject it and fall back anyway.
+  const emailRedirectTo = window.location.origin
+
+  const resendConfirmation = async () => {
+    if (!client) return
+    if (!email) {
+      setMsg("Enter your email above, then tap resend.")
+      return
+    }
+    setResendBusy(true)
+    setMsg(null)
+    try {
+      const { error } = await client.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo },
+      })
+      if (error) throw error
+      setMsg("Confirmation email sent — check your inbox.")
+    } catch (err) {
+      setMsg(err.message || "Couldn't resend the email.")
+    } finally {
+      setResendBusy(false)
+    }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -641,38 +675,48 @@ function AuthScreen({ client, error }) {
         })
         if (error) throw error
       } else {
-        // Pass the actual page origin as the confirmation-link target — without
-        // this, Supabase falls back to the project's configured Site URL, which
-        // for most projects is still the default http://localhost:3000.
-        const emailRedirectTo = window.location.origin
         const { data, error } = await client.auth.signUp({
           email,
           password,
           options: { emailRedirectTo },
         })
-        if (error) throw error
-        // If the email is already registered but not yet confirmed, Supabase's
-        // signUp silently no-ops (empty `identities`) instead of erroring or
-        // resending — so clicking "Create account" again looked like nothing
-        // happened. Detect that case and explicitly resend the confirmation email.
+        // Depending on Supabase's project settings, signing up again with an
+        // email that's already registered but not yet confirmed either (a)
+        // throws an "already registered" error, or (b) succeeds silently with
+        // an empty `identities` array — either way, that's not a new account,
+        // it's someone who needs a fresh confirmation email (e.g. because an
+        // earlier one had a bad link). Treat both the same: explicitly resend.
+        const alreadyRegisteredError =
+          error && /already registered|already exists/i.test(error.message || "")
         const alreadyPendingConfirmation =
+          !error &&
           data?.user &&
           Array.isArray(data.user.identities) &&
           data.user.identities.length === 0
-        if (alreadyPendingConfirmation) {
+        if (alreadyRegisteredError || alreadyPendingConfirmation) {
           const { error: resendError } = await client.auth.resend({
             type: "signup",
             email,
             options: { emailRedirectTo },
           })
           if (resendError) throw resendError
+          setMsg(
+            "This email is already registered but not confirmed yet — we've sent a fresh confirmation email.",
+          )
+          return
         }
+        if (error) throw error
         setMsg(
           "Account created — check your inbox to confirm your email, then sign in.",
         )
       }
     } catch (err) {
-      setMsg(err.message || "Something went wrong.")
+      const notConfirmed = /email not confirmed/i.test(err.message || "")
+      setMsg(
+        notConfirmed
+          ? "Your email isn't confirmed yet — use \"Didn't get the email? Resend it\" below."
+          : err.message || "Something went wrong.",
+      )
     } finally {
       setBusy(false)
     }
@@ -757,6 +801,14 @@ function AuthScreen({ client, error }) {
           {mode === "signin"
             ? "Need an account? Sign up"
             : "Already have an account? Sign in"}
+        </button>
+
+        <button
+          onClick={resendConfirmation}
+          disabled={resendBusy}
+          className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] disabled:opacity-50`}
+        >
+          {resendBusy ? "Sending…" : "Didn't get the email? Resend it"}
         </button>
       </div>
     </div>
@@ -1010,7 +1062,7 @@ export default function StudyTrackerApp() {
           slots={project.slots}
           categories={project.categories}
           onClose={() => setShowSetup(false)}
-          onSaveCourse={updateSettings}
+          onSaveSettings={updateSettings}
           onUpdateSlots={updateSlots}
           onUpdateCategories={updateCategories}
           projects={data.projects}
@@ -1102,7 +1154,7 @@ function TopBar({
 }
 
 /* ---------------------------------------------------------------
-   Setup Modal (course / slots / categories)
+   Setup Modal (project details / slots / categories)
 --------------------------------------------------------------- */
 
 function SetupModal({
@@ -1110,7 +1162,7 @@ function SetupModal({
   slots,
   categories,
   onClose,
-  onSaveCourse,
+  onSaveSettings,
   onUpdateSlots,
   onUpdateCategories,
   projects,
@@ -1119,7 +1171,7 @@ function SetupModal({
   onAddProject,
   onDeleteProject,
 }) {
-  const [tab, setTab] = useState("course")
+  const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
 
   return (
@@ -1151,7 +1203,7 @@ function SetupModal({
           className="flex border-b border-[#1E2A33]/10 shrink-0"
         >
           {[
-            { id: "course", label: "Course" },
+            { id: "details", label: "Project details" },
             { id: "slots", label: "Study slots" },
             { id: "categories", label: "Categories" },
             { id: "projects", label: "Projects" },
@@ -1180,8 +1232,8 @@ function SetupModal({
           style={{ backgroundColor: "#ffffff" }}
           className="p-5 overflow-y-auto rounded-b-xl"
         >
-          {tab === "course" && (
-            <CourseTab settings={settings} onSave={onSaveCourse} />
+          {tab === "details" && (
+            <ProjectDetailsTab settings={settings} onSave={onSaveSettings} />
           )}
           {tab === "slots" && (
             <EditableList
@@ -1227,7 +1279,7 @@ function ProjectsTab({ projects, activeProjectId, onSwitch, onAdd, onDelete }) {
   return (
     <div className="space-y-2 font-mono text-sm">
       <p className="text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
-        Switch between separate courses, each with its own slots, categories and
+        Switch between separate projects, each with its own slots, categories and
         log.
       </p>
       {projects.map((p) => {
@@ -1323,7 +1375,7 @@ function ProjectsTab({ projects, activeProjectId, onSwitch, onAdd, onDelete }) {
   )
 }
 
-function CourseTab({ settings, onSave }) {
+function ProjectDetailsTab({ settings, onSave }) {
   const [projectName, setProjectName] = useState(
     settings.projectName ?? "Time Tracker",
   )
@@ -1332,6 +1384,12 @@ function CourseTab({ settings, onSave }) {
   )
   const [totalLessons, setTotalLessons] = useState(settings.totalLessons ?? 100)
   const [totalExams, setTotalExams] = useState(settings.totalExams ?? 10)
+  const [lessonsEnabled, setLessonsEnabled] = useState(
+    settings.lessonsEnabled !== false,
+  )
+  const [examsEnabled, setExamsEnabled] = useState(
+    settings.examsEnabled !== false,
+  )
   const [startDate, setStartDate] = useState(
     settings.startDate || toKey(new Date()),
   )
@@ -1349,6 +1407,8 @@ function CourseTab({ settings, onSave }) {
           projectIcon,
           totalLessons,
           totalExams,
+          lessonsEnabled,
+          examsEnabled,
           startDate,
           endDate: endDate || null,
           dailyGoals,
@@ -1362,6 +1422,8 @@ function CourseTab({ settings, onSave }) {
     projectIcon,
     totalLessons,
     totalExams,
+    lessonsEnabled,
+    examsEnabled,
     startDate,
     endDate,
     dailyGoals,
@@ -1425,24 +1487,50 @@ function CourseTab({ settings, onSave }) {
         </div>
       </div>
 
-      <Field label="Total lessons in course">
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+            Total lessons in project
+          </span>
+          <Tip text="Include lessons log and analytics">
+            <SwitchToggle
+              checked={lessonsEnabled}
+              onChange={setLessonsEnabled}
+              label="Include lessons log and analytics"
+            />
+          </Tip>
+        </div>
         <input
           type="number"
           min={1}
           value={totalLessons}
+          disabled={!lessonsEnabled}
           onChange={(e) => setTotalLessons(Number(e.target.value))}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2"
+          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
         />
-      </Field>
-      <Field label="Total exams in course">
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+            Total exams in project
+          </span>
+          <Tip text="Include exams log and analytics">
+            <SwitchToggle
+              checked={examsEnabled}
+              onChange={setExamsEnabled}
+              label="Include exams log and analytics"
+            />
+          </Tip>
+        </div>
         <input
           type="number"
           min={0}
           value={totalExams}
+          disabled={!examsEnabled}
           onChange={(e) => setTotalExams(Number(e.target.value))}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2"
+          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
         />
-      </Field>
+      </div>
       <Field label="Project start date">
         <input
           type="date"
@@ -1501,6 +1589,28 @@ function Field({ label, children }) {
       </span>
       {children}
     </label>
+  )
+}
+
+// Small switch-style toggle, used for turning optional features (lessons,
+// exams) on/off. Wrap with <Tip> for a hover explanation.
+function SwitchToggle({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      style={{ backgroundColor: checked ? ACCENT : "#1E2A3325" }}
+      className={`${btnBase} relative inline-flex items-center w-8 h-[18px] rounded-full shrink-0`}
+    >
+      <span
+        className={`inline-block w-3.5 h-3.5 bg-white rounded-full shadow transform transition-transform duration-150 ${
+          checked ? "translate-x-[15px]" : "translate-x-[2px]"
+        }`}
+      />
+    </button>
   )
 }
 
@@ -1800,6 +1910,16 @@ function LogView({
     return null
   }, [granularity, cursor, days, slots, settings])
 
+  const monthPast =
+    granularity === "month" &&
+    toKey(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)) < todayKey
+  const monthGoalOutcome =
+    monthPast && !monthIgnore[monthKey] && headerStats?.goal > 0
+      ? headerStats.total >= headerStats.goal
+        ? "met"
+        : "missed"
+      : null
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1836,6 +1956,23 @@ function LogView({
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
             {rangeLabel(cursor, granularity)}
           </h2>
+          {monthGoalOutcome && (
+            <Tip
+              text={
+                monthGoalOutcome === "met"
+                  ? "Monthly goal met"
+                  : "Monthly goal missed"
+              }
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full inline-block"
+                style={{
+                  backgroundColor:
+                    monthGoalOutcome === "met" ? GOAL_MET_COLOR : EXAM_COLOR,
+                }}
+              />
+            </Tip>
+          )}
           {headerStats && (
             <span className="text-xs font-mono text-[#1E2A33]/50">
               {headerStats.total > 0 ? fmtHours(headerStats.total) : "0h"}{" "}
@@ -2059,12 +2196,16 @@ function MonthGrid({
           const weekKey = firstDate ? toKey(startOfWeek(firstDate)) : null
           const weekIgnored =
             monthIgnored || (weekKey ? !!weekIgnore[weekKey] : false)
+          const weekPast = firstDate
+            ? toKey(addDays(startOfWeek(firstDate), 6)) < todayKey
+            : false
           return (
             <div key={ri} className="grid gap-2" style={gridCols}>
               <WeekSummaryCell
                 total={wTotal}
                 goal={wGoal}
                 ignored={weekIgnored}
+                isPast={weekPast}
               />
               {row.map((date, di) => {
                 if (!date) return <div key={di} />
@@ -2096,16 +2237,27 @@ function MonthGrid({
 }
 
 // Non-interactive summary shown to the left of each week row in month view.
-function WeekSummaryCell({ total, goal, ignored }) {
+function WeekSummaryCell({ total, goal, ignored, isPast }) {
   const met = !ignored && goal > 0 && total >= goal
+  const goalOutcome =
+    !ignored && isPast && goal > 0 ? (total >= goal ? "met" : "missed") : null
   return (
     <Tip text={ignored ? "Ignored in statistics" : undefined}>
       <div
         className={`rounded-2xl border h-28 flex flex-col items-center justify-center px-1 text-center ${
           ignored
             ? "bg-[#1E2A33]/[0.06] border-[#1E2A33]/10 grayscale opacity-60"
-            : "bg-[#1E2A33]/[0.04] border-[#1E2A33]/10 border-dashed"
+            : goalOutcome
+              ? "border-[#1E2A33]/10"
+              : "bg-[#1E2A33]/[0.04] border-[#1E2A33]/10 border-dashed"
         }`}
+        style={
+          goalOutcome === "met"
+            ? { backgroundColor: `${GOAL_MET_COLOR}17` }
+            : goalOutcome === "missed"
+              ? { backgroundColor: `${EXAM_COLOR}17` }
+              : undefined
+        }
       >
         <span className="text-[8px] font-mono uppercase tracking-widest text-[#1E2A33]/35 mb-1 flex items-center gap-1">
           Week {ignored && <EyeOff size={9} />}
@@ -2154,6 +2306,8 @@ function CompactDayCell({
     ? `${buildTooltip(entry, slots, categories)}\n\nIgnored in statistics`
     : buildTooltip(entry, slots, categories)
   const metGoal = !ignored && goal > 0 && total >= goal
+  const isPast = !ignored && !isToday && !isFuture && goal > 0
+  const goalOutcome = isPast ? (total >= goal ? "met" : "missed") : null
 
   return (
     <div
@@ -2162,11 +2316,23 @@ function CompactDayCell({
       onClick={onNavigate}
       onKeyDown={(e) => e.key === "Enter" && onNavigate()}
       className={`${btnBase} group/cell group relative text-left rounded-2xl border p-2 h-28 flex flex-col justify-between hover:shadow-md cursor-pointer ${
-        ignored ? "bg-[#1E2A33]/[0.04] grayscale opacity-60" : "bg-white"
+        ignored
+          ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
+          : goalOutcome
+            ? ""
+            : "bg-white"
       } ${
         isToday ? "border-2" : "border-[#1E2A33]/15 hover:border-[#1E2A33]/30"
       } ${isFuture ? "opacity-50" : ""}`}
-      style={isToday ? { borderColor: ACCENT } : undefined}
+      style={{
+        ...(isToday ? { borderColor: ACCENT } : {}),
+        ...(goalOutcome === "met"
+          ? { backgroundColor: `${GOAL_MET_COLOR}17` }
+          : {}),
+        ...(goalOutcome === "missed"
+          ? { backgroundColor: `${EXAM_COLOR}17` }
+          : {}),
+      }}
     >
       <span
         role="tooltip"
@@ -2349,6 +2515,7 @@ function FullCardGrid({
             categories={categories}
             goal={goalForDate(settings, date)}
             isToday={toKey(date) === todayKey}
+            isFuture={date > new Date()}
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             onNavigate={() => onNavigateDay(toKey(date))}
@@ -2368,6 +2535,7 @@ function FullDayCard({
   categories,
   goal,
   isToday,
+  isFuture,
   isBeforeStart,
   ignored,
   onNavigate,
@@ -2394,6 +2562,8 @@ function FullDayCard({
 
   const { total } = dayBreakdown(entry, slots)
   const metGoal = !ignored && goal > 0 && total >= goal
+  const isPast = !ignored && !isToday && !isFuture && goal > 0
+  const goalOutcome = isPast ? (total >= goal ? "met" : "missed") : null
   // Both week and day cards open the editor directly on click — there's no further
   // drill-down level below them, so the whole block doubles as the edit button.
   const handleClick = onEdit
@@ -2405,11 +2575,23 @@ function FullDayCard({
       onClick={handleClick}
       onKeyDown={(e) => e.key === "Enter" && handleClick()}
       className={`${btnBase} group text-left w-full rounded-2xl border p-3 hover:shadow-md flex flex-col gap-3 cursor-pointer ${
-        ignored ? "bg-[#1E2A33]/[0.04] grayscale opacity-60" : "bg-white"
+        ignored
+          ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
+          : goalOutcome
+            ? ""
+            : "bg-white"
       } ${
         isToday ? "border-2" : "border-[#1E2A33]/15 hover:border-[#1E2A33]/30"
       }`}
-      style={isToday ? { borderColor: ACCENT } : undefined}
+      style={{
+        ...(isToday ? { borderColor: ACCENT } : {}),
+        ...(goalOutcome === "met"
+          ? { backgroundColor: `${GOAL_MET_COLOR}17` }
+          : {}),
+        ...(goalOutcome === "missed"
+          ? { backgroundColor: `${EXAM_COLOR}17` }
+          : {}),
+      }}
     >
       <div className="flex items-center justify-between">
         <div>
@@ -2525,26 +2707,17 @@ function Heatmap({
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
   const startDate = settings?.startDate ? fromKey(settings.startDate) : null
 
-  const maxTotal = useMemo(() => {
-    let max = 0
-    weeks.forEach((w) =>
-      w.forEach((d) => {
-        if (!d) return
-        const { total } = dayBreakdown(days[toKey(d)], slots)
-        if (total > max) max = total
-      }),
-    )
-    return max || 1
-  }, [weeks, days, slots])
-
-  const heatLevel = (total) => {
-    if (total <= 0) return 0
-    const r = total / maxTotal
-    if (r < 0.25) return 1
-    if (r < 0.5) return 2
-    if (r < 0.75) return 3
-    return 4
+  // Cell color now reflects whether the daily goal was met (not how much was
+  // studied relative to other days) — only meaningful for days that have
+  // actually concluded and that have a goal set.
+  const dayGoalOutcome = (date, entry, total) => {
+    if (entry?.ignore) return null
+    if (date > new Date() || toKey(date) === todayKey) return null
+    const goal = goalForDate(settings, date)
+    if (goal <= 0) return null
+    return total >= goal ? "met" : "missed"
   }
+  const NEUTRAL_CELL = "#E7ECF3"
 
   let lastMonth = null
 
@@ -2593,14 +2766,19 @@ function Heatmap({
                 const entry = days[key]
                 const { total } = dayBreakdown(entry, slots)
                 const isToday = key === todayKey
-                const level = heatLevel(total)
-                const darkText = level < 3
+                const goalOutcome = dayGoalOutcome(date, entry, total)
+                const cellColor =
+                  goalOutcome === "met"
+                    ? `${GOAL_MET_COLOR}30`
+                    : goalOutcome === "missed"
+                      ? `${EXAM_COLOR}30`
+                      : NEUTRAL_CELL
                 return (
                   <button
                     key={di}
                     onClick={() => onSelectDay(key)}
                     style={{
-                      backgroundColor: HEAT_SCALE[level],
+                      backgroundColor: cellColor,
                       outline: isToday ? `2px solid ${ACCENT}` : "none",
                       outlineOffset: "1px",
                     }}
@@ -2612,15 +2790,11 @@ function Heatmap({
                     >
                       {`${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories)}`}
                     </span>
-                    <span
-                      className={`text-[8px] font-mono leading-none ${darkText ? "text-[#1E2A33]/40" : "text-white/70"}`}
-                    >
+                    <span className="text-[8px] font-mono leading-none text-[#1E2A33]/40">
                       {date.getDate()}
                     </span>
                     {total > 0 && (
-                      <span
-                        className={`text-[9px] font-mono font-bold leading-none mt-0.5 ${darkText ? "text-[#1E2A33]/80" : "text-white"}`}
-                      >
+                      <span className="text-[9px] font-mono font-bold leading-none mt-0.5 text-[#1E2A33]/80">
                         {fmtHours(total)}
                       </span>
                     )}
@@ -2631,16 +2805,28 @@ function Heatmap({
           )
         })}
       </div>
-      <div className="flex items-center gap-1.5 mt-3 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
-        <span>Less</span>
-        {HEAT_SCALE.map((c) => (
+      <div className="flex items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+        <span className="flex items-center gap-1.5">
           <span
-            key={c}
             className="w-3 h-3 rounded-[3px]"
-            style={{ backgroundColor: c }}
+            style={{ backgroundColor: `${GOAL_MET_COLOR}30` }}
           />
-        ))}
-        <span>More</span>
+          Goal met
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-3 h-3 rounded-[3px]"
+            style={{ backgroundColor: `${EXAM_COLOR}30` }}
+          />
+          Goal missed
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-3 h-3 rounded-[3px]"
+            style={{ backgroundColor: NEUTRAL_CELL }}
+          />
+          No goal / not yet due
+        </span>
       </div>
     </div>
   )
@@ -3118,9 +3304,9 @@ function AnalyticsView({
     })
   }, [dayKeysSorted, rangeStart, rangeEnd])
 
-  // Course-wide totals & forecast — deliberately NOT scoped to the chosen
+  // Project-wide totals & forecast — deliberately NOT scoped to the chosen
   // period, since "lessons done", "exams passed" and the forecast are only
-  // meaningful against the course's total lesson/exam counts. Shown in the
+  // meaningful against the project's total lesson/exam counts. Shown in the
   // separate "Overall stats" section.
   const overallAllTime = useMemo(() => {
     const start = settings.startDate
@@ -3217,6 +3403,7 @@ function AnalyticsView({
           date: fmtShort(k),
           total: toHours(total),
           lessons: Number(entry.lessons) || 0,
+          goal: toHours(goalForDate(settings, fromKey(k))),
         }
         if (dailyMode === "slot") {
           slots.forEach((s) => (row[s.id] = toHours(bySlot[s.id])))
@@ -3227,25 +3414,25 @@ function AnalyticsView({
         }
         return row
       }),
-    [rangedKeys, days, slots, categories, dailyMode],
+    [rangedKeys, days, slots, categories, dailyMode, settings],
   )
   const dailySeries =
     dailyMode === "slot" ? slots : dailyMode === "category" ? categories : []
 
   // Days needed per exam — all-time (not range-filtered), since exam milestones
-  // are a whole-course concept rather than something bound to the analytics range.
+  // are a whole-project concept rather than something bound to the analytics range.
   const examsGapData = useMemo(() => {
-    const courseStart = settings.startDate
+    const projectStart = settings.startDate
       ? fromKey(settings.startDate)
       : dayKeysSorted[0]
         ? fromKey(dayKeysSorted[0])
         : null
-    if (!courseStart) return []
+    if (!projectStart) return []
     let prevDayNum = 0
     return dayKeysSorted
       .filter((k) => days[k]?.exam)
       .map((k, i) => {
-        const dayNum = daysBetween(courseStart, fromKey(k)) + 1
+        const dayNum = daysBetween(projectStart, fromKey(k)) + 1
         const gap = Math.max(dayNum - prevDayNum, 1)
         prevDayNum = dayNum
         return { exam: `Exam ${i + 1}`, date: fmtShort(k), dayNum, days: gap }
@@ -3371,10 +3558,19 @@ function AnalyticsView({
           minutes += total
         })
         row.hours = Number((minutes / 60).toFixed(2))
+        // Target hours for the whole week (Mon–Sun), from the per-weekday
+        // goals set in Setup — independent of which days actually have
+        // logged entries, since it's a target, not an actual.
+        let goalMinutes = 0
+        const weekStart = fromKey(wk)
+        for (let i = 0; i < 7; i++) {
+          goalMinutes += goalForDate(settings, addDays(weekStart, i))
+        }
+        row.goal = Number((goalMinutes / 60).toFixed(2))
       }
       return row
     })
-  }, [weeklyBuckets, days, slots, categories, weeklyMode])
+  }, [weeklyBuckets, days, slots, categories, weeklyMode, settings])
 
   const monthlyBuckets = useMemo(() => {
     const map = new Map()
@@ -3430,10 +3626,20 @@ function AnalyticsView({
           minutes += total
         })
         row.hours = Number((minutes / 60).toFixed(2))
+        // Target hours for the whole calendar month, from the per-weekday
+        // goals set in Setup — independent of which days actually have
+        // logged entries, since it's a target, not an actual.
+        const [y, m] = mk.split("-").map(Number)
+        const daysInMonth = new Date(y, m, 0).getDate()
+        let goalMinutes = 0
+        for (let d = 1; d <= daysInMonth; d++) {
+          goalMinutes += goalForDate(settings, new Date(y, m - 1, d))
+        }
+        row.goal = Number((goalMinutes / 60).toFixed(2))
       }
       return row
     })
-  }, [monthlyBuckets, days, slots, categories, monthlyMode])
+  }, [monthlyBuckets, days, slots, categories, monthlyMode, settings])
 
   // Weekday effectiveness — compares the same weekday (Mon, Tue, …) across the
   // different weeks in range. In Slot/Category mode we instead show the hours
@@ -3488,10 +3694,13 @@ function AnalyticsView({
             row[`w${idx}`] = toHours(total)
           }
         })
+        if (weekdayMode === "hours") {
+          row.goal = toHours(Number(settings.dailyGoals?.[wd]) || 0)
+        }
       }
       return row
     })
-  }, [rangedKeys, weeklyBuckets, days, slots, categories, weekdayMode])
+  }, [rangedKeys, weeklyBuckets, days, slots, categories, weekdayMode, settings])
 
   return (
     <div className="space-y-8">
@@ -3555,16 +3764,29 @@ function AnalyticsView({
               }
             />
             {dailyMode === "hours" ? (
-              <Area
-                type="monotone"
-                dataKey="total"
-                stroke={ACCENT}
-                fill={ACCENT}
-                fillOpacity={0.25}
-                strokeWidth={2}
-                name="Hours studied"
-                dot={{ r: 3 }}
-              />
+              [
+                <Area
+                  key="total"
+                  type="monotone"
+                  dataKey="total"
+                  stroke={ACCENT}
+                  fill={ACCENT}
+                  fillOpacity={0.25}
+                  strokeWidth={2}
+                  name="Hours studied"
+                  dot={{ r: 3 }}
+                />,
+                <Line
+                  key="goal-line"
+                  type="monotone"
+                  dataKey="goal"
+                  stroke="#1E2A33"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 3"
+                  dot={false}
+                  name="Goal"
+                />,
+              ]
             ) : dailyMode === "lessons" ? (
               <Area
                 type="monotone"
@@ -3687,6 +3909,17 @@ function AnalyticsView({
                   />
                 ),
               )}
+            {weekdayMode === "hours" && (
+              <Line
+                type="monotone"
+                dataKey="goal"
+                stroke="#1E2A33"
+                strokeWidth={1.5}
+                strokeDasharray="6 3"
+                dot={false}
+                name="Goal"
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
         <ToggleChips
@@ -3760,16 +3993,31 @@ function AnalyticsView({
                   />
                 ))
             ) : (
-              <Area
-                type="monotone"
-                dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
-                stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                fillOpacity={0.15}
-                strokeWidth={2}
-                name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
-                dot={{ r: 3 }}
-              />
+              [
+                <Area
+                  key="value"
+                  type="monotone"
+                  dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
+                  stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                  fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                  name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
+                  dot={{ r: 3 }}
+                />,
+                weeklyMode === "hours" && (
+                  <Line
+                    key="goal-line"
+                    type="monotone"
+                    dataKey="goal"
+                    stroke="#1E2A33"
+                    strokeWidth={1.5}
+                    strokeDasharray="6 3"
+                    dot={false}
+                    name="Goal"
+                  />
+                ),
+              ]
             )}
           </AreaChart>
         </ResponsiveContainer>
@@ -4106,7 +4354,7 @@ function AveragesStats({ period }) {
   )
 }
 
-// Course-wide totals & forecast — visually distinct (tinted) and placed above
+// Project-wide totals & forecast — visually distinct (tinted) and placed above
 // the period-scoped Stats section, to make clear it does NOT change with the
 // selected analytics period.
 function OverallStatsSection({ overall }) {
@@ -4199,7 +4447,7 @@ function OverallStatsSection({ overall }) {
         </h3>
       </div>
       <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
-        Course totals &amp; forecast — independent of the chosen period
+        Project totals &amp; forecast — independent of the chosen period
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -4238,7 +4486,7 @@ function OverallStatsSection({ overall }) {
       )}
       {hasEnough && overall.lessonsRemaining === 0 && (
         <p className="mt-3 text-sm font-mono text-[#1E2A33]">
-          Course complete — all {overall.totalLessons} lessons logged. 🎉
+          Project complete — all {overall.totalLessons} lessons logged. 🎉
         </p>
       )}
     </div>
