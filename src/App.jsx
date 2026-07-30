@@ -73,6 +73,7 @@ import {
   Compass,
   Gauge,
   EyeOff,
+  MoreVertical,
 } from "lucide-react"
 
 /* ---------------------------------------------------------------
@@ -462,6 +463,9 @@ const TIP_GAP = 6
 // viewport edge. Exact measurement would need a second render pass; being a few
 // pixels off-centre near the screen edge is a better trade than that.
 const TIP_HALF_WIDTH = 110
+// Below this distance from the top of the viewport there is no room for a
+// bubble above the trigger, so it flips underneath.
+const TIP_FLIP_THRESHOLD = 44
 
 function TipBubble({ box, text, multiline, side }) {
   const centerX = box.left + box.width / 2
@@ -482,11 +486,20 @@ function TipBubble({ box, text, multiline, side }) {
             left: box.left - TIP_GAP,
             transform: "translate(-100%, -50%)",
           }
-        : {
-            top: box.top - TIP_GAP,
-            left: clampedX,
-            transform: "translate(-50%, -100%)",
-          }
+        : // Default is above the trigger, but a trigger near the top of the
+          // viewport (the sign-out button in the header) would push the bubble
+          // off-screen, so it flips below instead.
+          box.top < TIP_FLIP_THRESHOLD
+          ? {
+              top: box.bottom + TIP_GAP,
+              left: clampedX,
+              transform: "translateX(-50%)",
+            }
+          : {
+              top: box.top - TIP_GAP,
+              left: clampedX,
+              transform: "translate(-50%, -100%)",
+            }
 
   return (
     <span
@@ -917,6 +930,115 @@ function DateRangeField({ start, end, onChange, openOnMount = false }) {
   )
 }
 
+/* ---------------------------------------------------------------
+   Anchored menu — a trigger button and a small panel of options.
+
+   Portalled to <body> like the tooltips and date fields, so a scroll
+   container or a modal can't clip it.
+--------------------------------------------------------------- */
+
+const MENU_WIDTH = 220
+
+function PopoverMenu({ label, icon: Icon = MoreVertical, children }) {
+  const triggerRef = useRef(null)
+  const panelRef = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [box, setBox] = useState(null)
+
+  useEffect(() => {
+    if (!open) return
+    const reposition = () => {
+      if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
+    }
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    const onPointerDown = (e) => {
+      if (triggerRef.current?.contains(e.target)) return
+      if (panelRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    document.addEventListener("mousedown", onPointerDown)
+    window.addEventListener("resize", reposition)
+    window.addEventListener("scroll", reposition, true)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.removeEventListener("mousedown", onPointerDown)
+      window.removeEventListener("resize", reposition)
+      window.removeEventListener("scroll", reposition, true)
+    }
+  }, [open])
+
+  const toggle = () => {
+    if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
+    setOpen((v) => !v)
+  }
+
+  return (
+    <>
+      <Tip text={open ? undefined : label}>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={toggle}
+          className={`${btnBase} p-1.5 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5 ${
+            open ? "bg-[#1E2A33]/5 text-[#1E2A33]" : ""
+          }`}
+        >
+          <Icon size={16} />
+        </button>
+      </Tip>
+      {open &&
+        box &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={{
+              position: "fixed",
+              top: box.bottom + 6,
+              // Right-aligned to the trigger, which lives at the right edge of
+              // its row; clamped so it can't slip off a narrow screen.
+              left: Math.max(
+                Math.min(box.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+                8,
+              ),
+              width: MENU_WIDTH,
+            }}
+            className="z-[110] rounded-2xl bg-white shadow-2xl p-1.5"
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+function MenuToggle({ label, icon: Icon, checked, onChange, hint }) {
+  return (
+    <label className="flex items-start gap-2 px-2.5 py-2 rounded-xl cursor-pointer hover:bg-[#1E2A33]/5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-3.5 h-3.5 accent-[#1E2A33]/60 mt-[2px] shrink-0"
+      />
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-[#1E2A33]/80">
+          {Icon && <Icon size={12} className="text-[#1E2A33]/45 shrink-0" />}
+          {label}
+        </span>
+        {hint && (
+          <span className="block text-[10px] font-mono text-[#1E2A33]/40 mt-0.5">
+            {hint}
+          </span>
+        )}
+      </span>
+    </label>
+  )
+}
+
 // The white stat block — one label, one big figure, an optional smaller
 // suffix. Shared by the analytics sections and the log's period summaries so
 // the two tabs read as the same thing.
@@ -1236,6 +1358,7 @@ export default function StudyTrackerApp() {
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
   const [showSetup, setShowSetup] = useState(false)
+  const [showOverall, setShowOverall] = useState(false)
 
   const canUseCloud = cloudEnabled && cloudClient && session
 
@@ -1429,6 +1552,11 @@ export default function StudyTrackerApp() {
     [period, logCursor, customStart, customEnd, allTimeStart],
   )
 
+  const overallAllTime = useMemo(
+    () => computeOverallAllTime(project),
+    [project],
+  )
+
   if (!authReady || (cloudEnabled && authReady && !session)) {
     if (!authReady) {
       return (
@@ -1472,28 +1600,53 @@ export default function StudyTrackerApp() {
           setCustomStart={setCustomStart}
           customEnd={customEnd}
           setCustomEnd={setCustomEnd}
+          showOverall={showOverall}
+          onToggleOverall={() => setShowOverall((v) => !v)}
         />
 
-        <LogView
-          data={project}
-          period={period}
-          range={range}
-          cursor={logCursor}
-          onNavigateDay={goToDay}
-          onEditDay={setEditingKey}
-          onUpdateDayNote={(key, text) => updateDay(key, { comment: text })}
-          onUpdateWeekNote={updateWeekNote}
-          onUpdateMonthNote={updateMonthNote}
-          onUpdateWeekIgnore={updateWeekIgnore}
-          onUpdateMonthIgnore={updateMonthIgnore}
-        />
+        <div className="flex items-start gap-6">
+          <div className="flex-1 min-w-0">
+            <LogView
+              data={project}
+              period={period}
+              range={range}
+              cursor={logCursor}
+              onNavigateDay={goToDay}
+              onEditDay={setEditingKey}
+              onUpdateDayNote={(key, text) =>
+                updateDay(key, { comment: text })
+              }
+              onUpdateWeekNote={updateWeekNote}
+              onUpdateMonthNote={updateMonthNote}
+              onUpdateWeekIgnore={updateWeekIgnore}
+              onUpdateMonthIgnore={updateMonthIgnore}
+            />
 
-        <div className="mt-10">
-          <AnalyticsView
-            data={project}
-            rangeStart={range.start}
-            rangeEnd={range.end}
-          />
+            <div className="mt-10">
+              <AnalyticsView
+                data={project}
+                rangeStart={range.start}
+                rangeEnd={range.end}
+                overallAllTime={overallAllTime}
+                showOverallInline={!showOverall}
+              />
+            </div>
+          </div>
+
+          {/* Sidebar: a third of the content width, sticky below the period
+              bar. Hidden below lg — at that width a third of the column is
+              too narrow to be worth the space it takes from the log. */}
+          {showOverall && (
+            <aside className="hidden lg:block w-1/3 shrink-0 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
+              <OverallStatsSection
+                overall={overallAllTime}
+                lessonsEnabled={project.settings.lessonsEnabled !== false}
+                examsEnabled={project.settings.examsEnabled !== false}
+                onClose={() => setShowOverall(false)}
+                compact
+              />
+            </aside>
+          )}
         </div>
       </main>
 
@@ -1587,7 +1740,7 @@ function TopBar({
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenSetup}
-            className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
+            className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5`}
           >
             <Settings2 size={13} /> Setup
           </button>
@@ -1595,7 +1748,7 @@ function TopBar({
             <Tip text={session.user.email}>
               <button
                 onClick={onSignOut}
-                className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
+                className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5`}
               >
                 <LogOut size={13} />
               </button>
@@ -2396,6 +2549,8 @@ function PeriodBar({
   setCustomStart,
   customEnd,
   setCustomEnd,
+  showOverall,
+  onToggleOverall,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -2430,6 +2585,22 @@ function PeriodBar({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Project-wide totals are independent of the period, so they live
+              behind a toggle rather than taking permanent space. */}
+          <Tip
+            text={showOverall ? "Hide overall stats" : "Show overall stats"}
+          >
+            <button
+              onClick={onToggleOverall}
+              className={`${btnBase} hidden lg:flex p-2 rounded-full ${
+                showOverall
+                  ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
+                  : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+              }`}
+            >
+              <Rocket size={16} />
+            </button>
+          </Tip>
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip
@@ -2457,7 +2628,7 @@ function PeriodBar({
             </button>
           </Tip>
           {/* The period reads as the label of the two arrows around it. */}
-          <span className="px-2 font-sans font-extrabold uppercase tracking-tight text-xs text-center min-w-[9rem] truncate">
+          <span className="px-1.5 font-sans font-extrabold uppercase tracking-tight text-xs text-center min-w-[5.5rem] truncate">
             {rangeLabel(period, cursor, range)}
           </span>
           <Tip text={navigable ? undefined : "This period sets its own dates"}>
@@ -2575,6 +2746,13 @@ function LogView({
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {periodIgnored && (
+            <Tip
+              text={`This ${granularity} is excluded from every statistic`}
+            >
+              <EyeOff size={14} className="text-[#1E2A33]/45" />
+            </Tip>
+          )}
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
             {rangeLabel(period, cursor, range)}
           </h2>
@@ -2605,27 +2783,22 @@ function LogView({
             </span>
           )}
         </div>
-        {granularity === "week" && (
-          <label className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!weekIgnore[weekKey]}
-              onChange={(e) => onUpdateWeekIgnore(weekKey, e.target.checked)}
-              className="w-3.5 h-3.5 accent-[#1E2A33]/60"
+        {/* Only weeks and months carry an ignore flag, so the menu appears
+            only where there is something in it. */}
+        {(granularity === "week" || granularity === "month") && (
+          <PopoverMenu label={`${granularity} settings`}>
+            <MenuToggle
+              label="Ignore in statistics"
+              icon={EyeOff}
+              hint="Every figure on this page skips it"
+              checked={periodIgnored}
+              onChange={(next) =>
+                granularity === "week"
+                  ? onUpdateWeekIgnore(weekKey, next)
+                  : onUpdateMonthIgnore(monthKey, next)
+              }
             />
-            Ignore in statistics
-          </label>
-        )}
-        {granularity === "month" && (
-          <label className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!monthIgnore[monthKey]}
-              onChange={(e) => onUpdateMonthIgnore(monthKey, e.target.checked)}
-              className="w-3.5 h-3.5 accent-[#1E2A33]/60"
-            />
-            Ignore in statistics
-          </label>
+          </PopoverMenu>
         )}
       </div>
 
@@ -3021,16 +3194,20 @@ function MonthGrid({
           ? toKey(addDays(startOfWeek(firstDate), 6)) < todayKey
           : false
         return (
-          <div key={ri} className="rounded-xl overflow-hidden bg-white">
+          <div key={ri}>
             <WeekSummaryStrip
               total={wTotal}
               goal={wGoal}
               ignored={weekIgnored}
               isPast={weekPast}
             />
-            <div className="grid grid-cols-7 gap-px bg-[#1E2A33]/10">
+            {/* Phone: one rounded block, days separated by hairline seams —
+                there is no width to spare for per-cell gaps. Desktop: real
+                gaps and each day rounded on its own. */}
+            <div className="grid grid-cols-7 gap-px sm:gap-2 rounded-xl overflow-hidden sm:overflow-visible sm:rounded-none bg-[#1E2A33]/10 sm:bg-transparent">
               {row.map((date, di) => {
-                if (!date) return <div key={di} className="bg-white" />
+                if (!date)
+                  return <div key={di} className="bg-white sm:bg-transparent" />
                 const entry = days[toKey(date)]
                 const dayIgnored = weekIgnored || !!entry?.ignore
                 return (
@@ -3059,23 +3236,18 @@ function MonthGrid({
   )
 }
 
-// Full-width summary strip above each week row.
+// Caption above each week row. No fill of its own — the goal outcome reads as
+// a dot beside the hours, which leaves the rounded corners to the block of
+// days below where they belong.
 function WeekSummaryStrip({ total, goal, ignored, isPast }) {
   const met = !ignored && goal > 0 && total >= goal
   const goalOutcome =
     !ignored && isPast && goal > 0 ? (total >= goal ? "met" : "missed") : null
   return (
     <div
-      className={`flex items-center gap-2 px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${
+      className={`flex items-center gap-2 px-1 pb-1 text-[9px] font-mono uppercase tracking-widest ${
         ignored ? "opacity-60" : ""
-      } ${goalOutcome ? "" : "bg-[#1E2A33]/[0.05]"}`}
-      style={
-        goalOutcome === "met"
-          ? { backgroundColor: `${GOAL_MET_COLOR}1F` }
-          : goalOutcome === "missed"
-            ? { backgroundColor: `${EXAM_COLOR}1F` }
-            : undefined
-      }
+      }`}
     >
       <span className="text-[#1E2A33]/45 flex items-center gap-1 shrink-0">
         Week {ignored && <EyeOff size={9} />}
@@ -3089,6 +3261,19 @@ function WeekSummaryStrip({ total, goal, ignored, isPast }) {
       </span>
       {goal > 0 && (
         <span className="text-[#1E2A33]/40 shrink-0">of {fmtHours(goal)}</span>
+      )}
+      {goalOutcome && (
+        <Tip
+          text={goalOutcome === "met" ? "Weekly goal met" : "Weekly goal missed"}
+        >
+          <span
+            className="w-2 h-2 rounded-full inline-block shrink-0"
+            style={{
+              backgroundColor:
+                goalOutcome === "met" ? GOAL_MET_COLOR : EXAM_COLOR,
+            }}
+          />
+        </Tip>
       )}
     </div>
   )
@@ -3135,7 +3320,7 @@ function CompactDayCell({
         tabIndex={0}
         onClick={onEdit}
         onKeyDown={(e) => e.key === "Enter" && onEdit()}
-        className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between hover:brightness-95 cursor-pointer ${
+        className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between sm:rounded-xl hover:brightness-95 sm:hover:shadow-md cursor-pointer ${
           ignored
             ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
             : goalOutcome
@@ -3316,7 +3501,9 @@ function FullCardGrid({
       className={
         big
           ? "w-full"
-          : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3"
+          : // Capped at five across: a seven-column row leaves each day too
+            // narrow for its entries, so the last two wrap onto a second row.
+            "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3"
       }
     >
       {dates.map((date) => {
@@ -4265,9 +4452,34 @@ function computeOverviewStats(
   }
 }
 
+// Project-wide totals & forecast — deliberately NOT scoped to the chosen
+// period, since "lessons done", "exams passed" and the forecast are only
+// meaningful against the project's total lesson/exam counts. Computed at the
+// app level because the "Overall stats" panel can be pulled out of this view
+// into the sidebar.
+function computeOverallAllTime(project) {
+  const { days, slots, settings, weekIgnore = {}, monthIgnore = {} } = project
+  const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
+  const keys = Object.keys(days)
+    .sort()
+    .filter((k) => !isIgnored(k, days[k]))
+  const start = settings.startDate
+    ? fromKey(settings.startDate)
+    : keys[0]
+      ? fromKey(keys[0])
+      : new Date()
+  const today = new Date()
+  const cutoff =
+    settings.endDate && fromKey(settings.endDate) < today
+      ? fromKey(settings.endDate)
+      : today
+  return computeOverviewStats(keys, days, slots, settings, start, cutoff)
+}
+
 // Bounds come in from the shared period bar — analytics no longer owns a
-// range picker of its own.
-function AnalyticsView({ data, rangeStart, rangeEnd }) {
+// range picker of its own. `overall` is passed in rather than computed here
+// because the panel that shows it can live in the sidebar instead.
+function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime, showOverallInline }) {
   const {
     slots,
     categories,
@@ -4338,31 +4550,6 @@ function AnalyticsView({ data, rangeStart, rangeEnd }) {
       return d >= s && d <= e
     })
   }, [dayKeysSorted, rangeStart, rangeEnd])
-
-  // Project-wide totals & forecast — deliberately NOT scoped to the chosen
-  // period, since "lessons done", "exams passed" and the forecast are only
-  // meaningful against the project's total lesson/exam counts. Shown in the
-  // separate "Overall stats" section.
-  const overallAllTime = useMemo(() => {
-    const start = settings.startDate
-      ? fromKey(settings.startDate)
-      : dayKeysSorted[0]
-        ? fromKey(dayKeysSorted[0])
-        : new Date()
-    const today = new Date()
-    const cutoff =
-      settings.endDate && fromKey(settings.endDate) < today
-        ? fromKey(settings.endDate)
-        : today
-    return computeOverviewStats(
-      dayKeysSorted,
-      days,
-      slots,
-      settings,
-      start,
-      cutoff,
-    )
-  }, [dayKeysSorted, days, settings, slots])
 
   // Everything else (Stats, Averages, Remarkable) is scoped to the chosen
   // analytics period, same as the charts below.
@@ -4739,11 +4926,14 @@ function AnalyticsView({ data, rangeStart, rangeEnd }) {
 
   return (
     <div className="space-y-8">
-      <OverallStatsSection
-        overall={overallAllTime}
-        lessonsEnabled={lessonsEnabled}
-        examsEnabled={examsEnabled}
-      />
+      {/* Skipped while the sidebar is showing it, so it never appears twice. */}
+      {showOverallInline && (
+        <OverallStatsSection
+          overall={overallAllTime}
+          lessonsEnabled={lessonsEnabled}
+          examsEnabled={examsEnabled}
+        />
+      )}
 
       <OverviewStats
         period={periodStats}
@@ -5370,7 +5560,15 @@ function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
 // Project-wide totals & forecast — visually distinct (tinted) and placed above
 // the period-scoped Stats section, to make clear it does NOT change with the
 // selected analytics period.
-function OverallStatsSection({ overall, lessonsEnabled, examsEnabled }) {
+// `onClose` turns it into the dismissable sidebar panel; without it the block
+// renders inline as before. `compact` is the narrow-column tile layout.
+function OverallStatsSection({
+  overall,
+  lessonsEnabled,
+  examsEnabled,
+  onClose,
+  compact = false,
+}) {
   const tint = "#C98A2E"
   const lessonPct =
     overall.totalLessons > 0
@@ -5452,20 +5650,36 @@ function OverallStatsSection({ overall, lessonsEnabled, examsEnabled }) {
     >
       <div className="flex items-center gap-2 mb-1">
         <span
-          className="flex items-center justify-center w-6 h-6 rounded-full"
+          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
           style={{ backgroundColor: `${tint}30` }}
         >
           <Rocket size={13} style={{ color: tint }} />
         </span>
-        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33]">
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
           Overall stats
         </h3>
+        {onClose && (
+          <Tip text="Hide overall stats">
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <X size={16} />
+            </button>
+          </Tip>
+        )}
       </div>
       <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
         Project totals &amp; forecast — independent of the chosen period
       </p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div
+        className={
+          compact
+            ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
+            : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+        }
+      >
         {items.map((it) => {
           const Icon = it.icon
           return (
