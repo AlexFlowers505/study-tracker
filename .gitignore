@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Claude Code: shared project config is committed (CLAUDE.md,
+# .claude/settings.json); per-machine overrides are not.
+.claude/settings.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
