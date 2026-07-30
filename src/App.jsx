@@ -59,6 +59,7 @@ import {
   PenLine,
   ClipboardList,
   CalendarDays,
+  CalendarCheck,
   ArrowUpRight,
   TrendingUp,
   Award,
@@ -147,9 +148,6 @@ const FIELD_BASE =
 const FIELD_ON_WHITE = `${FIELD_BASE} w-full rounded-xl bg-[#F4F5F7] px-2.5 py-2 text-xs`
 const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-[11px]`
 const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-white border border-[#1E2A33]/15 px-2 py-1.5 text-xs`
-// The period-note field sits quietly on its card until you reach for it: same
-// white as the card, with the fill only appearing on hover/focus.
-const FIELD_QUIET = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-xs transition-colors hover:bg-[#1E2A33]/[0.035] focus:bg-[#1E2A33]/[0.035]`
 
 /* ---------------------------------------------------------------
    Constants / defaults
@@ -1469,6 +1467,7 @@ export default function StudyTrackerApp() {
           setPeriod={setPeriod}
           cursor={logCursor}
           setCursor={setLogCursor}
+          range={range}
           customStart={customStart}
           setCustomStart={setCustomStart}
           customEnd={customEnd}
@@ -1560,8 +1559,10 @@ function TopBar({
   session,
   onSignOut,
 }) {
+  // Scrolls away with the page — the period bar below is the thing worth
+  // keeping within reach, and it carries its own period label.
   return (
-    <header className="sticky top-0 z-20 bg-[#F4F5F7]/95 backdrop-blur border-b border-[#1E2A33]/10">
+    <header className="bg-[#F4F5F7] border-b border-[#1E2A33]/10">
       <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center shrink-0">
@@ -2355,107 +2356,120 @@ function rangeLabel(period, cursor, range) {
   return `${fmtRangeEdge(range.start)} – ${fmtRangeEdge(range.end, true)}`
 }
 
-// Selector, custom bounds and cursor navigation for the whole page.
+// Pill-style period picker: one rounded trough holding rounded pills, the
+// active one filled. Distinct from SegmentedControl (still used for the chart
+// mode switches) because this one is the page's primary control.
+function PeriodPills({ period, setPeriod }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full bg-white p-1 shadow-sm">
+      {PERIODS.map((p) => {
+        const active = p.id === period
+        return (
+          <button
+            key={p.id}
+            onClick={() => setPeriod(p.id)}
+            className={`${btnBase} rounded-full px-3 py-1.5 text-[11px] font-mono whitespace-nowrap ${
+              active
+                ? "text-white"
+                : "text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+            }`}
+            style={active ? { backgroundColor: ACCENT } : undefined}
+          >
+            {p.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Selector, custom bounds and cursor navigation for the whole page. Sticks to
+// the very top now that the project header scrolls away, and carries the
+// current period's label so you never have to scroll up to see where you are.
 function PeriodBar({
   period,
   setPeriod,
   cursor,
   setCursor,
+  range,
   customStart,
   setCustomStart,
   customEnd,
   setCustomEnd,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
-  const navBtn = `${btnBase} rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35 disabled:opacity-35 disabled:hover:bg-white disabled:hover:border-[#1E2A33]/20 disabled:cursor-not-allowed`
+  const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
   const visible = useRevealOnScrollUp()
-
-  // Stick directly under the top bar. Measured rather than hardcoded because
-  // the header's height changes with the project name wrapping.
-  const [topOffset, setTopOffset] = useState(0)
-  useEffect(() => {
-    const measure = () => {
-      const header = document.querySelector("header")
-      setTopOffset(header ? header.offsetHeight : 0)
-    }
-    const raf = requestAnimationFrame(measure)
-    window.addEventListener("resize", measure)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener("resize", measure)
-    }
-  }, [])
 
   return (
     <div
-      style={{ top: topOffset }}
-      className={`sticky z-10 -mx-4 mb-4 px-4 py-3 bg-[#F4F5F7]/95 backdrop-blur flex flex-wrap items-center justify-between gap-3 transition-transform duration-200 ease-out ${
-        // Hidden, it slides up behind the (opaque, higher z-index) top bar.
-        visible ? "translate-y-0" : "-translate-y-[150%]"
+      className={`sticky top-0 z-10 -mx-4 mb-4 px-4 py-3 bg-[#F4F5F7]/95 backdrop-blur transition-transform duration-200 ease-out ${
+        visible ? "translate-y-0" : "-translate-y-[130%]"
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2 max-w-full">
-        {/* Seven periods need ~384px. Narrower than that the control would be
-            clipped by its own overflow-hidden rather than wrap, so let it
-            scroll sideways and keep every label readable. */}
-        <div className="max-w-full overflow-x-auto whitespace-nowrap">
-          <SegmentedControl
-            items={PERIODS}
-            activeId={period}
-            onChange={setPeriod}
-          />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex flex-wrap items-center gap-2 max-w-full">
+          {/* Seven pills overflow a phone; let the strip scroll sideways
+              rather than clip or wrap. */}
+          <div className="max-w-full overflow-x-auto whitespace-nowrap">
+            <PeriodPills period={period} setPeriod={setPeriod} />
+          </div>
+          {period === "custom" && (
+            // Mounted only while Custom is selected, so opening on mount is the
+            // same thing as opening the moment Custom is clicked.
+            <DateRangeField
+              start={customStart}
+              end={customEnd}
+              openOnMount
+              onChange={(from, to) => {
+                setCustomStart(from)
+                setCustomEnd(to)
+              }}
+            />
+          )}
         </div>
-        {period === "custom" && (
-          // Mounted only while Custom is selected, so opening on mount is the
-          // same thing as opening the moment Custom is clicked.
-          <DateRangeField
-            start={customStart}
-            end={customEnd}
-            openOnMount
-            onChange={(from, to) => {
-              setCustomStart(from)
-              setCustomEnd(to)
-            }}
-          />
-        )}
-      </div>
 
-      <div className="flex items-center gap-2">
-        <Tip text={navigable ? undefined : "This period sets its own dates"}>
-          <button
-            disabled={!navigable}
-            onClick={() => setCursor(stepCursor(cursor, period, -1))}
-            className={`${navBtn} p-2`}
+        <div className="flex items-center gap-1.5">
+          {/* Jumping to "now" is a shortcut, not a step through the timeline —
+              it sits outside the back/forward pair and carries no chrome. */}
+          <Tip
+            text={
+              navigable ? "Jump to the current period" : "Jump to this week"
+            }
           >
-            <ChevronLeft size={16} />
-          </button>
-        </Tip>
-        <Tip
-          text={
-            navigable ? undefined : "Jump to this week"
-          }
-        >
-          <button
-            // From all-time or custom there is no cursor to reset, so "today"
-            // means: show me the current week.
-            onClick={() => {
-              if (!navigable) setPeriod("week")
-              setCursor(new Date())
-            }}
-            className={`${navBtn} px-3 py-2 text-[10px] font-mono uppercase tracking-widest`}
-          >
-            Today
-          </button>
-        </Tip>
-        <Tip text={navigable ? undefined : "This period sets its own dates"}>
-          <button
-            disabled={!navigable}
-            onClick={() => setCursor(stepCursor(cursor, period, 1))}
-            className={`${navBtn} p-2`}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </Tip>
+            <button
+              onClick={() => {
+                if (!navigable) setPeriod("week")
+                setCursor(new Date())
+              }}
+              className={`${btnBase} p-2 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+            >
+              <CalendarCheck size={16} />
+            </button>
+          </Tip>
+          <Tip text={navigable ? undefined : "This period sets its own dates"}>
+            <button
+              disabled={!navigable}
+              onClick={() => setCursor(stepCursor(cursor, period, -1))}
+              className={`${navBtn} p-2`}
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </Tip>
+          {/* The period reads as the label of the two arrows around it. */}
+          <span className="px-2 font-sans font-extrabold uppercase tracking-tight text-xs text-center min-w-[9rem] truncate">
+            {rangeLabel(period, cursor, range)}
+          </span>
+          <Tip text={navigable ? undefined : "This period sets its own dates"}>
+            <button
+              disabled={!navigable}
+              onClick={() => setCursor(stepCursor(cursor, period, 1))}
+              className={`${navBtn} p-2`}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </Tip>
+        </div>
       </div>
     </div>
   )
@@ -2473,21 +2487,19 @@ function NoteCard({ label, icon: Icon, value, onSave }) {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
+  // Deliberately not a card: it reads as one more muted line of period
+  // metadata, the same weight as "10.3h studied · goal 19.5h", and grows only
+  // when there's something written in it.
   return (
-    <div className={`${CARD} mb-4`}>
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon size={12} className="text-[#1E2A33]/40" />
-        <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
-          {label}
-        </span>
-      </div>
+    <div className="flex items-start gap-1.5 mb-4">
+      <Icon size={12} className="text-[#1E2A33]/30 shrink-0 mt-[3px]" />
       <AutoTextarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Add a note for this period (optional)"
+        placeholder={label}
         rows={1}
         maxHeight={160}
-        className={FIELD_QUIET}
+        className="flex-1 bg-transparent border-0 p-0 text-xs font-mono text-[#1E2A33]/50 placeholder:text-[#1E2A33]/30 focus:outline-none focus:text-[#1E2A33]/80"
       />
     </div>
   )
@@ -2521,7 +2533,6 @@ function LogView({
   const dayKey = toKey(cursor)
   const weekKey = toKey(startOfWeek(cursor))
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`
-  const lessonsEnabled = settings?.lessonsEnabled !== false
 
   const visibleDates = useMemo(
     () => datesInRange(range.start, range.end),
@@ -2562,7 +2573,7 @@ function LogView({
 
   return (
     <div>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
             {rangeLabel(period, cursor, range)}
@@ -2643,15 +2654,6 @@ function LogView({
           icon={MessageSquare}
           value={monthNotes[monthKey]}
           onSave={(text) => onUpdateMonthNote(monthKey, text)}
-        />
-      )}
-
-      {lessonsEnabled && (
-        <PeriodLessons
-          dates={visibleDates}
-          days={days}
-          granularity={granularity}
-          isIgnored={isIgnored}
         />
       )}
 
@@ -2798,31 +2800,95 @@ function elapsedDayCount(dates, days, isIgnored) {
   return Math.max(counted.length, 1)
 }
 
-function TotalsRow({ row, total, divisor }) {
-  const share = total > 0 ? (row.minutes / total) * 100 : 0
+// Part-of-whole, so a donut: the ring shows the split at a glance and the
+// hole carries the total, which the bar version had nowhere to put. The
+// legend beside it does the work an axis would — every entry pairs a swatch
+// with its name, hours and share, so identity never rests on colour alone and
+// the small slices stay readable instead of vanishing into slivers.
+function TotalsDonut({ rows, total, divisor }) {
+  const data = useMemo(
+    () =>
+      rows.map((r) => ({
+        id: r.id,
+        label: r.label,
+        color: r.color,
+        hours: toHours(r.minutes),
+        minutes: r.minutes,
+        share: total > 0 ? (r.minutes / total) * 100 : 0,
+      })),
+    [rows, total],
+  )
+
+  if (!data.length) {
+    return (
+      <p className="text-[10px] font-mono text-[#1E2A33]/40 py-6 text-center">
+        Nothing logged in this period.
+      </p>
+    )
+  }
+
   return (
-    <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-mono">
-        <RenderIcon name={row.iconName} size={10} style={{ color: row.color }} />
-        <span className="text-[#1E2A33]/70 truncate">{row.label}</span>
-        <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
-        <span className="font-bold" style={{ color: row.color }}>
-          {fmtHours(row.minutes)}
-        </span>
-        {divisor > 1 && (
-          <span className="text-[#1E2A33]/40">
-            · {fmtHoursFixed1(row.minutes / divisor)}/d
+    // Side by side only once the card is genuinely wide; in the two-column
+    // grid the legend would otherwise get ~180px and chop the longer category
+    // names down to nothing.
+    <div className="flex flex-col lg:flex-row items-center gap-4">
+      <div className="relative shrink-0" style={{ width: 150, height: 150 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="minutes"
+              nameKey="label"
+              innerRadius={48}
+              outerRadius={72}
+              paddingAngle={2}
+              stroke="#fff"
+              strokeWidth={2}
+              isAnimationActive={false}
+            >
+              {data.map((d) => (
+                <Cell key={d.id} fill={d.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{ fontSize: 11, fontFamily: "monospace" }}
+              formatter={(value, name) => [
+                `${fmtHours(value)}${
+                  divisor > 1 ? ` · ${fmtHoursFixed1(value / divisor)}/day` : ""
+                } · ${total > 0 ? Math.round((value / total) * 100) : 0}%`,
+                name,
+              ]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="font-mono text-base font-extrabold">
+            {fmtHours(total)}
           </span>
-        )}
-        <span className="text-[#1E2A33]/40 tabular-nums w-8 text-right">
-          {Math.round(share)}%
-        </span>
+          <span className="text-[8px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+            total
+          </span>
+        </div>
       </div>
-      <div className="mt-1 h-1 rounded-full bg-[#1E2A33]/5 overflow-hidden">
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${share}%`, backgroundColor: row.color }}
-        />
+
+      <div className="flex-1 min-w-0 w-full space-y-1">
+        {data.map((d) => (
+          <div
+            key={d.id}
+            className="flex items-center gap-1.5 text-[10px] font-mono"
+          >
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: d.color }}
+            />
+            <span className="text-[#1E2A33]/70 truncate">{d.label}</span>
+            <span className="flex-1 border-b border-dotted border-[#1E2A33]/15 min-w-[8px]" />
+            <span className="font-bold shrink-0">{fmtHours(d.minutes)}</span>
+            <span className="text-[#1E2A33]/40 tabular-nums w-8 text-right shrink-0">
+              {Math.round(d.share)}%
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -2841,121 +2907,38 @@ function PeriodTotals({ dates, days, slots, categories, isIgnored }) {
     [dates, days, isIgnored],
   )
 
-  return (
-    <div className={`${CARD} mb-4`}>
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <Tip
-          multiline
-          text={`Time logged in this period, split by slot and by category.${
-            divisor > 1
-              ? `\n\nThe "/d" figures are per-day averages over the ${divisor} elapsed days in this period — days still in the future are not counted.`
-              : ""
-          }`}
-        >
-          <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 border-b border-dotted border-[#1E2A33]/25">
-            Where the time went
-          </span>
-        </Tip>
-        <span className="text-[10px] font-mono text-[#1E2A33]/50">
-          {fmtHours(total)} total
-          {divisor > 1 && <> · {fmtHoursFixed1(total / divisor)}/day</>}
-        </span>
+  const perDay =
+    divisor > 1 ? ` · ${fmtHoursFixed1(total / divisor)}/day` : ""
+
+  if (total === 0) {
+    return (
+      <div className={`${CARD} mb-4 text-[10px] font-mono text-[#1E2A33]/40`}>
+        No study logged in this period.
       </div>
-      {total === 0 ? (
-        <div className="text-[10px] font-mono text-[#1E2A33]/40">
-          No study logged in this period.
-        </div>
-      ) : (
-        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-          <div>
-            <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40 mb-2">
-              By slot
-            </div>
-            <div className="space-y-2">
-              {slotRows.map((row) => (
-                <TotalsRow
-                  key={row.id}
-                  row={row}
-                  total={total}
-                  divisor={divisor}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40 mb-2">
-              By category
-            </div>
-            <div className="space-y-2">
-              {categoryRows.map((row) => (
-                <TotalsRow
-                  key={row.id}
-                  row={row}
-                  total={total}
-                  divisor={divisor}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+    )
+  }
 
-// Lessons completed over the visible period, in the same white tiles analytics
-// uses. Week and month only: the day view already prints the day's count on
-// its own card, and a "per week" average over a 90-day or year heatmap belongs
-// in the Analytics tab, which already has it.
-function PeriodLessons({ dates, days, granularity, isIgnored }) {
-  const { lessons, divisor } = useMemo(
-    () => ({
-      lessons: dates.reduce((sum, d) => {
-        const key = toKey(d)
-        if (isIgnored(key, days[key])) return sum
-        return sum + (Number(days[key]?.lessons) || 0)
-      }, 0),
-      divisor: elapsedDayCount(dates, days, isIgnored),
-    }),
-    [dates, days, isIgnored],
-  )
-
-  if (granularity !== "week" && granularity !== "month") return null
-
-  const perDay = lessons / divisor
-  const items = [
-    {
-      label: granularity === "week" ? "Lessons this week" : "Lessons this month",
-      value: lessons,
-      sub: `over ${divisor}d`,
-      icon: BookOpen,
-    },
-    granularity === "month" && {
-      label: "Avg lessons / week",
-      value: (perDay * 7).toFixed(2),
-      icon: CalendarDays,
-    },
-    {
-      label: "Avg lessons / day",
-      value: perDay.toFixed(2),
-      icon: TrendingUp,
-    },
-  ].filter(Boolean)
-
+  // Two separate cards side by side, the same shape the analytics charts use
+  // further down the page — one card holding two charts read as a single
+  // muddled figure.
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-      {items.map((it) => (
-        <StatTile
-          key={it.label}
-          label={it.label}
-          value={it.value}
-          sub={it.sub}
-          icon={it.icon}
-        />
-      ))}
+    <div className="grid md:grid-cols-2 gap-4 mb-4">
+      <ChartCard
+        title="Time by slot"
+        subtitle={`When the ${fmtHours(total)}${perDay} went`}
+      >
+        <TotalsDonut rows={slotRows} total={total} divisor={divisor} />
+      </ChartCard>
+      <ChartCard
+        title="Time by category"
+        subtitle={`What the ${fmtHours(total)}${perDay} went on`}
+      >
+        <TotalsDonut rows={categoryRows} total={total} divisor={divisor} />
+      </ChartCard>
     </div>
   )
 }
+
 
 // Sums logged time and daily goals across a list of dates — used for the
 // week/month header totals and the month view's per-week summary column.
@@ -3004,46 +2987,50 @@ function MonthGrid({
   const weekRows = []
   for (let i = 0; i < cells.length; i += 7) weekRows.push(cells.slice(i, i + 7))
 
-  const gridCols = { gridTemplateColumns: "64px repeat(7, minmax(0, 1fr))" }
   const startDate = settings.startDate ? fromKey(settings.startDate) : null
 
+  // Each week is its own rounded block — summary strip on top, its seven days
+  // below — with breathing room between the weeks. The gaps sit *between*
+  // weeks rather than around every cell: a per-cell gap plus inner padding on
+  // all four sides is what left no room for seven columns on a phone, while
+  // one gap per week costs almost nothing. Inside a week the days are still
+  // separated by hairline seams (a 1px grid gap showing the tint through).
   return (
-    <div>
-      <div
-        className="grid gap-2 mb-2 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 text-center"
-        style={gridCols}
-      >
-        <div />
+    <div className="space-y-2">
+      <div className="grid grid-cols-7 rounded-xl bg-[#1E2A33]/[0.04] text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/45 text-center">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-          <div key={d}>{d}</div>
+          <div key={d} className="py-1.5">
+            <span className="sm:hidden">{d[0]}</span>
+            <span className="hidden sm:inline">{d}</span>
+          </div>
         ))}
       </div>
-      <div className="space-y-2">
-        {weekRows.map((row, ri) => {
-          const { total: wTotal, goal: wGoal } = rangeStats(
-            row.filter(Boolean),
-            days,
-            slots,
-            settings,
-            makeIsIgnored(weekIgnore, monthIgnore),
-          )
-          const firstDate = row.find(Boolean)
-          const weekKey = firstDate ? toKey(startOfWeek(firstDate)) : null
-          const weekIgnored =
-            monthIgnored || (weekKey ? !!weekIgnore[weekKey] : false)
-          const weekPast = firstDate
-            ? toKey(addDays(startOfWeek(firstDate), 6)) < todayKey
-            : false
-          return (
-            <div key={ri} className="grid gap-2" style={gridCols}>
-              <WeekSummaryCell
-                total={wTotal}
-                goal={wGoal}
-                ignored={weekIgnored}
-                isPast={weekPast}
-              />
+      {weekRows.map((row, ri) => {
+        const { total: wTotal, goal: wGoal } = rangeStats(
+          row.filter(Boolean),
+          days,
+          slots,
+          settings,
+          makeIsIgnored(weekIgnore, monthIgnore),
+        )
+        const firstDate = row.find(Boolean)
+        const weekKey = firstDate ? toKey(startOfWeek(firstDate)) : null
+        const weekIgnored =
+          monthIgnored || (weekKey ? !!weekIgnore[weekKey] : false)
+        const weekPast = firstDate
+          ? toKey(addDays(startOfWeek(firstDate), 6)) < todayKey
+          : false
+        return (
+          <div key={ri} className="rounded-xl overflow-hidden bg-white">
+            <WeekSummaryStrip
+              total={wTotal}
+              goal={wGoal}
+              ignored={weekIgnored}
+              isPast={weekPast}
+            />
+            <div className="grid grid-cols-7 gap-px bg-[#1E2A33]/10">
               {row.map((date, di) => {
-                if (!date) return <div key={di} />
+                if (!date) return <div key={di} className="bg-white" />
                 const entry = days[toKey(date)]
                 const dayIgnored = weekIgnored || !!entry?.ignore
                 return (
@@ -3065,52 +3052,45 @@ function MonthGrid({
                 )
               })}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// Non-interactive summary shown to the left of each week row in month view.
-function WeekSummaryCell({ total, goal, ignored, isPast }) {
+// Full-width summary strip above each week row.
+function WeekSummaryStrip({ total, goal, ignored, isPast }) {
   const met = !ignored && goal > 0 && total >= goal
   const goalOutcome =
     !ignored && isPast && goal > 0 ? (total >= goal ? "met" : "missed") : null
   return (
-    <Tip text={ignored ? "Ignored in statistics" : undefined}>
-      <div
-        className={`rounded-2xl h-28 w-full flex flex-col items-center justify-center px-1 text-center ${
-          ignored
-            ? "bg-[#1E2A33]/[0.06] grayscale opacity-60"
-            : goalOutcome
-              ? ""
-              : "bg-[#1E2A33]/[0.06]"
-        }`}
-        style={
-          goalOutcome === "met"
-            ? { backgroundColor: `${GOAL_MET_COLOR}17` }
-            : goalOutcome === "missed"
-              ? { backgroundColor: `${EXAM_COLOR}17` }
-              : undefined
-        }
+    <div
+      className={`flex items-center gap-2 px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${
+        ignored ? "opacity-60" : ""
+      } ${goalOutcome ? "" : "bg-[#1E2A33]/[0.05]"}`}
+      style={
+        goalOutcome === "met"
+          ? { backgroundColor: `${GOAL_MET_COLOR}1F` }
+          : goalOutcome === "missed"
+            ? { backgroundColor: `${EXAM_COLOR}1F` }
+            : undefined
+      }
+    >
+      <span className="text-[#1E2A33]/45 flex items-center gap-1 shrink-0">
+        Week {ignored && <EyeOff size={9} />}
+      </span>
+      <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
+      <span
+        className="font-bold shrink-0"
+        style={met ? { color: GOAL_MET_COLOR } : undefined}
       >
-        <span className="text-[8px] font-mono uppercase tracking-widest text-[#1E2A33]/35 mb-1 flex items-center gap-1">
-          Week {ignored && <EyeOff size={9} />}
-        </span>
-        <span
-          className="text-xs font-mono font-bold"
-          style={met ? { color: GOAL_MET_COLOR } : undefined}
-        >
-          {total > 0 ? fmtHours(total) : "—"}
-        </span>
-        {goal > 0 && (
-          <span className="text-[8px] font-mono text-[#1E2A33]/35 mt-0.5">
-            of {fmtHours(goal)}
-          </span>
-        )}
-      </div>
-    </Tip>
+        {total > 0 ? fmtHours(total) : "—"}
+      </span>
+      {goal > 0 && (
+        <span className="text-[#1E2A33]/40 shrink-0">of {fmtHours(goal)}</span>
+      )}
+    </div>
   )
 }
 
@@ -3130,8 +3110,8 @@ function CompactDayCell({
 }) {
   if (isBeforeStart) {
     return (
-      <div className="rounded-2xl bg-[#1E2A33]/[0.04] h-28 flex items-start p-2">
-        <span className="font-mono text-xs text-[#1E2A33]/25">
+      <div className="bg-[#1E2A33]/[0.04] h-16 sm:h-28 flex items-start p-1 sm:p-2">
+        <span className="font-mono text-[10px] sm:text-xs text-[#1E2A33]/25">
           {date.getDate()}
         </span>
       </div>
@@ -3155,7 +3135,7 @@ function CompactDayCell({
         tabIndex={0}
         onClick={onEdit}
         onKeyDown={(e) => e.key === "Enter" && onEdit()}
-        className={`${btnBase} text-left w-full rounded-2xl p-2 h-28 flex flex-col justify-between hover:shadow-md cursor-pointer ${
+        className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between hover:brightness-95 cursor-pointer ${
           ignored
             ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
             : goalOutcome
@@ -3193,6 +3173,9 @@ function CompactDayCell({
         </div>
       </div>
 
+      {/* Per-slot minutes need more room than a phone column has; on small
+          screens the slots collapse to coloured dots and the hours below
+          carry the number. */}
       <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
         {slots.map((s) =>
           bySlot[s.id] > 0 ? (
@@ -3205,7 +3188,7 @@ function CompactDayCell({
                 className="w-1 h-1 rounded-full"
                 style={{ backgroundColor: s.color }}
               />
-              {bySlot[s.id]}
+              <span className="hidden sm:inline">{bySlot[s.id]}</span>
             </span>
           ) : null,
         )}
@@ -3214,18 +3197,23 @@ function CompactDayCell({
         )}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] font-mono text-[#1E2A33]/70">
+      <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono text-[#1E2A33]/70">
         <span
+          className="truncate"
           style={
             metGoal ? { color: GOAL_MET_COLOR, fontWeight: 700 } : undefined
           }
         >
           {total > 0 ? fmtHours(total) : ""}
           {goal > 0 && (
-            <span className="text-[#1E2A33]/30">/{fmtHours(goal)}</span>
+            <span className="hidden sm:inline text-[#1E2A33]/30">
+              /{fmtHours(goal)}
+            </span>
           )}
         </span>
-        {entry?.lessons > 0 && lessonsEnabled && <span>{entry.lessons}L</span>}
+        {entry?.lessons > 0 && lessonsEnabled && (
+          <span className="shrink-0">{entry.lessons}L</span>
+        )}
       </div>
       </div>
     </Tip>
@@ -4757,7 +4745,11 @@ function AnalyticsView({ data, rangeStart, rangeEnd }) {
         examsEnabled={examsEnabled}
       />
 
-      <OverviewStats period={periodStats} />
+      <OverviewStats
+        period={periodStats}
+        lessonsEnabled={lessonsEnabled}
+        examsEnabled={examsEnabled}
+      />
 
       <AveragesStats
         period={periodStats}
@@ -5244,18 +5236,33 @@ function AnalyticsView({ data, rangeStart, rangeEnd }) {
   )
 }
 
-function OverviewStats({ period }) {
+function OverviewStats({ period, lessonsEnabled, examsEnabled }) {
   const hours = (period.totalMinutes / 60).toFixed(1)
 
+  // Lessons and exams for the chosen period live here rather than above the
+  // log: this section is already "the numbers for the selected period", and it
+  // covers every period — day, week, month, 3 months, year, all time, custom —
+  // instead of only week and month. The per-week/per-day rates are next door in
+  // Averages.
   const stats = [
     { label: "Hours studied", value: hours, icon: Clock },
+    lessonsEnabled && {
+      label: "Lessons completed",
+      value: period.lessonsDone,
+      icon: BookOpen,
+    },
+    examsEnabled && {
+      label: "Exams passed",
+      value: period.examsDone,
+      icon: Award,
+    },
     {
       label: "Days since start",
       value: fmtDaysWithMonths(period.daysSinceStart),
       icon: CalendarDays,
     },
     { label: "Empty days", value: period.emptyDays, icon: AlertCircle },
-  ]
+  ].filter(Boolean)
 
   return (
     <div>
