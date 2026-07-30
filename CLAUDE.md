@@ -33,6 +33,8 @@ and persistence. Plain JS with JSX — no TypeScript.
 - `src/App-old.jsx` — snapshot of an earlier version. Not imported anywhere.
   Never edit it; useful only for comparison.
 - `src/App.css` — effectively empty. All styling is Tailwind utilities inline.
+- `documentation.md` — longer prose reference for the same app. Useful
+  background; this file stays the short operational version.
 - `README.md` is the untouched Vite template. Don't treat it as documentation.
 
 ## Data model

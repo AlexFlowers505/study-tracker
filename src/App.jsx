@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
+import { DayPicker } from "react-day-picker"
+import "react-day-picker/style.css"
 import "./App.css"
 import {
   ResponsiveContainer,
@@ -56,6 +59,7 @@ import {
   PenLine,
   ClipboardList,
   CalendarDays,
+  ArrowUpRight,
   TrendingUp,
   Award,
   AlertCircle,
@@ -134,6 +138,18 @@ const ACCENT = "#2F5FBF" // bluish active-state accent
 const EXAM_COLOR = "#C1595B"
 const GOAL_MET_COLOR = "#2F9E8F"
 const CARD = "bg-white rounded-2xl p-4"
+// Fields are filled, not outlined: on a white card they take the page tint, on
+// a tinted row they go white. That contrast step is what reads as "editable",
+// so the border is redundant. Selects and number inputs keep a hairline
+// (FIELD_BOXED) — they're small enough that fill alone reads as a label.
+const FIELD_BASE =
+  "font-mono placeholder:text-[#1E2A33]/30 focus:outline-none focus:ring-2 focus:ring-[#1E2A33]/10"
+const FIELD_ON_WHITE = `${FIELD_BASE} w-full rounded-xl bg-[#F4F5F7] px-2.5 py-2 text-xs`
+const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-[11px]`
+const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-white border border-[#1E2A33]/15 px-2 py-1.5 text-xs`
+// The period-note field sits quietly on its card until you reach for it: same
+// white as the card, with the fill only appearing on hover/focus.
+const FIELD_QUIET = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-xs transition-colors hover:bg-[#1E2A33]/[0.035] focus:bg-[#1E2A33]/[0.035]`
 
 /* ---------------------------------------------------------------
    Constants / defaults
@@ -198,6 +214,10 @@ const WEEKDAY_LABELS = {
 }
 
 const STORAGE_KEY = "study-tracker-data"
+// How long to wait for edits to stop before shipping the blob. Every save
+// rewrites the whole project, so typing a note used to mean one upsert per
+// keystroke.
+const SAVE_DEBOUNCE_MS = 1000
 
 const DEFAULT_SETTINGS = {
   totalLessons: 100,
@@ -332,14 +352,29 @@ const fmtHoursChart = (hoursValue) => {
   const h = Math.round(hoursValue * 100) / 100
   return Number.isInteger(h) ? `${h}h` : `${h.toFixed(2)}h`
 }
-// Same rounding, no unit suffix — used for compact axis ticks.
-const fmtAxisHours = (hoursValue) => {
-  const h = Math.round(hoursValue * 100) / 100
-  return Number.isInteger(h) ? `${h}` : h.toFixed(2)
-}
+// Axis ticks stay whole hours — "2" and "3" rather than "2.55". Paired with
+// allowDecimals={false} on the axis so recharts picks integer ticks in the
+// first place; this is the belt-and-braces for any fractional tick that still
+// slips through (e.g. a tiny domain where 0/1 are the only integers).
+const fmtAxisHours = (hoursValue) => `${Math.round(hoursValue)}`
 
 const goalForDate = (settings, date) =>
   Number(settings?.dailyGoals?.[date.getDay()]) || 0
+
+// A day is out of the statistics if it, its week, or its month carries the
+// "ignore in statistics" flag. Everything that reports a number — the period
+// header, the log's breakdowns, the analytics — goes through this one
+// predicate, so the two halves of the page can't drift apart on what counts.
+function makeIsIgnored(weekIgnore = {}, monthIgnore = {}) {
+  return (key, entry) => {
+    if (entry?.ignore) return true
+    const d = fromKey(key)
+    if (weekIgnore[toKey(startOfWeek(d))]) return true
+    return !!monthIgnore[`${d.getFullYear()}-${pad(d.getMonth() + 1)}`]
+  }
+}
+
+const NEVER_IGNORED = () => false
 
 // Day count -> "60d (2.0 months)" label, used anywhere a raw elapsed-day
 // figure benefits from a more intuitive months-scale readout alongside it.
@@ -418,28 +453,108 @@ const segBtnStyle = (active) =>
    Used everywhere so all "inner tab" rows share one visual style. */
 // Styled replacement for the native title="" tooltip. Wrap any small element
 // (button, badge, icon) with it; shows a small dark bubble on hover/focus.
-function Tip({ text, children, multiline = false, side = "top" }) {
-  if (!text) return children
-  const posClasses =
+//
+// The bubble is portalled to <body> and positioned with fixed coordinates taken
+// from the trigger. An absolutely positioned bubble living inside the trigger
+// gets clipped by any ancestor that scrolls or hides its overflow — the modal
+// shell, the modal body, the month grid — which is why the top-row buttons in
+// the day editor used to show half a tooltip.
+const TIP_GAP = 6
+// Rough half-width of the bubble, only used to keep it from running off the
+// viewport edge. Exact measurement would need a second render pass; being a few
+// pixels off-centre near the screen edge is a better trade than that.
+const TIP_HALF_WIDTH = 110
+
+function TipBubble({ box, text, multiline, side }) {
+  const centerX = box.left + box.width / 2
+  const clampedX = Math.min(
+    Math.max(centerX, TIP_HALF_WIDTH + 8),
+    Math.max(window.innerWidth - TIP_HALF_WIDTH - 8, TIP_HALF_WIDTH + 8),
+  )
+  const placement =
     side === "bottom"
-      ? "top-full mt-1.5"
+      ? {
+          top: box.bottom + TIP_GAP,
+          left: clampedX,
+          transform: "translateX(-50%)",
+        }
       : side === "left"
-        ? "right-full top-1/2 -translate-y-1/2 mr-1.5"
-        : "bottom-full mb-1.5"
-  const alignClasses = side === "left" ? "" : "left-1/2 -translate-x-1/2"
+        ? {
+            top: box.top + box.height / 2,
+            left: box.left - TIP_GAP,
+            transform: "translate(-100%, -50%)",
+          }
+        : {
+            top: box.top - TIP_GAP,
+            left: clampedX,
+            transform: "translate(-50%, -100%)",
+          }
+
   return (
-    <span className="relative inline-flex group/tip">
+    <span
+      role="tooltip"
+      style={{ position: "fixed", ...placement }}
+      className={`pointer-events-none z-[100] rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
+        multiline
+          ? "whitespace-pre-line max-w-[220px] text-left"
+          : "whitespace-nowrap"
+      }`}
+    >
+      {text}
+    </span>
+  )
+}
+
+function Tip({
+  text,
+  children,
+  multiline = false,
+  side = "top",
+  className = "",
+}) {
+  const triggerRef = useRef(null)
+  const [box, setBox] = useState(null)
+
+  // Fixed coordinates go stale the moment anything scrolls, so drop the bubble
+  // instead of letting it float away from its trigger.
+  useEffect(() => {
+    if (!box) return
+    const hide = () => setBox(null)
+    window.addEventListener("scroll", hide, true)
+    window.addEventListener("resize", hide)
+    return () => {
+      window.removeEventListener("scroll", hide, true)
+      window.removeEventListener("resize", hide)
+    }
+  }, [box])
+
+  if (!text) return children
+
+  const show = () => {
+    if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
+  }
+  const hide = () => setBox(null)
+
+  return (
+    <span
+      ref={triggerRef}
+      className={`inline-flex ${className}`}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
       {children}
-      <span
-        role="tooltip"
-        className={`pointer-events-none absolute ${posClasses} ${alignClasses} z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 group-focus-within/tip:opacity-100 group-focus-within/tip:scale-100 transition-all duration-150 shadow-lg ${
-          multiline
-            ? "whitespace-pre-line max-w-[220px] text-left"
-            : "whitespace-nowrap"
-        }`}
-      >
-        {text}
-      </span>
+      {box &&
+        createPortal(
+          <TipBubble
+            box={box}
+            text={text}
+            multiline={multiline}
+            side={side}
+          />,
+          document.body,
+        )}
     </span>
   )
 }
@@ -539,6 +654,291 @@ function ToggleChips({ items, hidden, onToggle }) {
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------
+   Date field — a trigger button plus a react-day-picker popover.
+
+   Replaces <input type="date">, whose calendar belongs to the browser: it
+   starts weeks on Sunday regardless of this app's Monday-first convention,
+   can't be themed, and looks different on every platform. The panel is
+   portalled to <body> for the same reason tooltips are — these fields open
+   inside the setup modal and inside the sticky period bar, both of which
+   would otherwise clip it.
+--------------------------------------------------------------- */
+
+// These have to sit on the calendar's own root: react-day-picker's stylesheet
+// re-declares them in its `.rdp-root` rule, so the same variables set on a
+// parent element lose and the calendar stays at its 44px default. The font
+// size goes here too — the library's own sizes are keywords (`large`,
+// `smaller`) relative to the root, so shrinking the root scales the lot.
+const DAY_PICKER_FONT_SIZE = "12px"
+
+const DAY_PICKER_STYLE = {
+  "--rdp-accent-color": ACCENT,
+  "--rdp-accent-background-color": `${ACCENT}1A`,
+  "--rdp-today-color": ACCENT,
+  "--rdp-day-height": "30px",
+  "--rdp-day-width": "30px",
+  "--rdp-day_button-height": "28px",
+  "--rdp-day_button-width": "28px",
+  "--rdp-nav-height": "26px",
+  "--rdp-nav_button-height": "26px",
+  "--rdp-nav_button-width": "26px",
+  "--rdp-weekday-padding": "4px 0",
+  fontSize: DAY_PICKER_FONT_SIZE,
+}
+
+// Two spots size themselves with absolute keywords (`font-size: large`), so
+// they ignore the root entirely however small it gets. Inline styles are the
+// only thing that outranks them.
+const DAY_PICKER_PART_STYLES = {
+  caption_label: { fontSize: "13px", fontWeight: 600 },
+}
+
+// Same story for the selected day — `.rdp-selected` is a modifier, not a part,
+// so it needs the modifier channel. Only the size is overridden; the library's
+// bold weight is what marks the selection.
+const DAY_PICKER_MODIFIER_STYLES = {
+  selected: { fontSize: DAY_PICKER_FONT_SIZE },
+}
+
+// Panel width is only used to keep the popover inside the viewport; the panel
+// itself sizes to the calendar so the grid can never overhang its padding.
+const DATE_PANEL_MAX_WIDTH = 260
+
+// Shared open/position/dismiss behaviour for the date popovers.
+function useDatePopover(openInitially = false) {
+  const triggerRef = useRef(null)
+  const panelRef = useRef(null)
+  const [open, setOpen] = useState(openInitially)
+  const [box, setBox] = useState(null)
+
+  const measure = useCallback(() => {
+    if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
+  }, [])
+
+  // Opening on mount still needs a measurement pass once the trigger is laid
+  // out, hence the frame delay.
+  useEffect(() => {
+    if (!openInitially) return
+    const raf = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(raf)
+  }, [openInitially, measure])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    const onPointerDown = (e) => {
+      if (triggerRef.current?.contains(e.target)) return
+      if (panelRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    document.addEventListener("mousedown", onPointerDown)
+    window.addEventListener("resize", measure)
+    window.addEventListener("scroll", measure, true)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.removeEventListener("mousedown", onPointerDown)
+      window.removeEventListener("resize", measure)
+      window.removeEventListener("scroll", measure, true)
+    }
+  }, [open, measure])
+
+  const toggle = () => {
+    measure()
+    setOpen((v) => !v)
+  }
+
+  // Below the trigger by default; above it when the viewport runs out, so the
+  // panel is never half off-screen.
+  let panelStyle = null
+  if (box) {
+    const spaceBelow = window.innerHeight - box.bottom
+    const dropUp = spaceBelow < 320 && box.top > spaceBelow
+    panelStyle = {
+      position: "fixed",
+      left: Math.min(
+        box.left,
+        Math.max(window.innerWidth - DATE_PANEL_MAX_WIDTH - 8, 8),
+      ),
+      ...(dropUp
+        ? { top: box.top - 6, transform: "translateY(-100%)" }
+        : { top: box.bottom + 6 }),
+    }
+  }
+
+  return { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle }
+}
+
+const DATE_PANEL_CLASS =
+  "z-[110] w-max rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
+
+function DateField({
+  value,
+  onChange,
+  placeholder = "Pick a date",
+  clearable = false,
+  className = "",
+}) {
+  const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
+    useDatePopover()
+  const selected = value ? fromKey(value) : undefined
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        className={`${FIELD_BOXED} ${className} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+      >
+        <CalendarDays size={13} className="text-[#1E2A33]/40 shrink-0" />
+        <span className={value ? "" : "text-[#1E2A33]/35"}>
+          {value ? fmtShort(value) : placeholder}
+        </span>
+      </button>
+      {open &&
+        box &&
+        createPortal(
+          <div ref={panelRef} style={panelStyle} className={DATE_PANEL_CLASS}>
+            <DayPicker
+              mode="single"
+              weekStartsOn={1}
+              showOutsideDays
+              selected={selected}
+              defaultMonth={selected}
+              style={DAY_PICKER_STYLE}
+              styles={DAY_PICKER_PART_STYLES}
+              modifiersStyles={DAY_PICKER_MODIFIER_STYLES}
+              onSelect={(d) => {
+                if (!d) return
+                onChange(toKey(d))
+                setOpen(false)
+              }}
+            />
+            {clearable && value && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("")
+                  setOpen(false)
+                }}
+                className={`${btnBase} w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+              >
+                Clear date
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+// Both ends of a custom period in one calendar: click a start, click an end.
+// Two separate single-date fields made you open two popovers and hold the
+// other end in your head. The trigger doubles as the readout of what's
+// currently selected.
+function DateRangeField({ start, end, onChange, openOnMount = false }) {
+  const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
+    useDatePopover(openOnMount)
+  // Left to itself, react-day-picker grows or trims the existing range
+  // depending on where you click, which is hard to predict when a range is
+  // already set. Driving the clicks ourselves keeps one rule: first click
+  // starts a new range, second click ends it.
+  const [pendingFrom, setPendingFrom] = useState(null)
+
+  // Escape or an outside click can leave a half-made selection behind, so the
+  // slate is wiped on the way in rather than on the way out.
+  const openPicker = () => {
+    setPendingFrom(null)
+    toggle()
+  }
+
+  const selected = {
+    from: start ? fromKey(start) : undefined,
+    to: end ? fromKey(end) : undefined,
+  }
+
+  const handleDayClick = (day) => {
+    if (!pendingFrom) {
+      setPendingFrom(day)
+      onChange(toKey(day), toKey(day))
+      return
+    }
+    const [from, to] = pendingFrom <= day ? [pendingFrom, day] : [day, pendingFrom]
+    onChange(toKey(from), toKey(to))
+    setPendingFrom(null)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={openPicker}
+        className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+      >
+        <CalendarDays size={13} className="text-[#1E2A33]/40 shrink-0" />
+        <span>
+          {start ? fmtShort(start) : "Start"}
+          <span className="text-[#1E2A33]/35"> – </span>
+          {end ? fmtShort(end) : "End"}
+        </span>
+      </button>
+      {open &&
+        box &&
+        createPortal(
+          <div ref={panelRef} style={panelStyle} className={DATE_PANEL_CLASS}>
+            <DayPicker
+              mode="range"
+              weekStartsOn={1}
+              showOutsideDays
+              selected={selected}
+              defaultMonth={selected.from}
+              style={DAY_PICKER_STYLE}
+              styles={DAY_PICKER_PART_STYLES}
+              modifiersStyles={DAY_PICKER_MODIFIER_STYLES}
+              onSelect={() => {}}
+              onDayClick={handleDayClick}
+            />
+            <p className="px-2 pb-1 pt-0.5 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
+              {pendingFrom ? "Now pick the end" : "Click a start, then an end"}
+            </p>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+// The white stat block — one label, one big figure, an optional smaller
+// suffix. Shared by the analytics sections and the log's period summaries so
+// the two tabs read as the same thing.
+function StatTile({ label, value, sub, icon: Icon }) {
+  return (
+    <div className={`${CARD} p-4`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+          {label}
+        </span>
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#1E2A33]/5">
+          <Icon size={12} className="text-[#1E2A33]/40" />
+        </span>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="font-mono text-xl font-bold">{value}</span>
+        {sub && (
+          <span className="text-[10px] font-mono text-[#1E2A33]/40">{sub}</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -830,16 +1230,12 @@ export default function StudyTrackerApp() {
 
   const [data, setData] = useState(DEFAULT_DATA) // { activeProjectId, projects: [...] }
   const [loaded, setLoaded] = useState(false)
-  const [view, setView] = useState("log") // 'log' | 'analytics'
-  const [logGranularity, setLogGranularity] = useState("month")
+  // One period drives the whole page: the log grid at the top and the
+  // analytics below it always describe the same stretch of days.
+  const [period, setPeriod] = useState("month")
   const [logCursor, setLogCursor] = useState(new Date())
-  const [analyticsPreset, setAnalyticsPreset] = useState("30")
-  const [analyticsCustomStart, setAnalyticsCustomStart] = useState(
-    toKey(addDays(new Date(), -30)),
-  )
-  const [analyticsCustomEnd, setAnalyticsCustomEnd] = useState(
-    toKey(new Date()),
-  )
+  const [customStart, setCustomStart] = useState(toKey(addDays(new Date(), -30)))
+  const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
   const [showSetup, setShowSetup] = useState(false)
 
@@ -878,25 +1274,62 @@ export default function StudyTrackerApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady, canUseCloud])
 
-  const persist = useCallback(
-    async (next) => {
-      setData(next)
-      try {
-        if (canUseCloud) {
-          await cloudClient.from("study_data").upsert({
-            user_id: session.user.id,
-            data: next,
-            updated_at: new Date().toISOString(),
-          })
-        } else {
-          await window.storage.set(STORAGE_KEY, JSON.stringify(next), false)
-        }
-      } catch (e) {
-        console.error("Failed to save", e)
+  // Saves are coalesced: React state updates on every edit so the UI stays
+  // responsive, but the blob only goes out once edits stop. pendingRef holds
+  // the newest version not yet written.
+  const pendingRef = useRef(null)
+  const saveTimerRef = useRef(null)
+
+  const writeNow = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    const next = pendingRef.current
+    if (!next) return
+    pendingRef.current = null
+    try {
+      if (canUseCloud) {
+        await cloudClient.from("study_data").upsert({
+          user_id: session.user.id,
+          data: next,
+          updated_at: new Date().toISOString(),
+        })
+      } else {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(next), false)
       }
+    } catch (e) {
+      console.error("Failed to save", e)
+      // Requeue so the next flush retries instead of dropping the edit — unless
+      // a newer version landed while this write was in flight, which wins.
+      pendingRef.current = pendingRef.current || next
+    }
+  }, [canUseCloud, cloudClient, session])
+
+  const persist = useCallback(
+    (next) => {
+      setData(next)
+      pendingRef.current = next
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(writeNow, SAVE_DEBOUNCE_MS)
     },
-    [canUseCloud, cloudClient, session],
+    [writeNow],
   )
+
+  // A debounced write must not be lost when the tab is hidden or closed, nor
+  // when the storage target itself changes (sign-in/sign-out).
+  useEffect(() => {
+    const flushIfHidden = () => {
+      if (document.visibilityState === "hidden") writeNow()
+    }
+    document.addEventListener("visibilitychange", flushIfHidden)
+    window.addEventListener("pagehide", writeNow)
+    return () => {
+      document.removeEventListener("visibilitychange", flushIfHidden)
+      window.removeEventListener("pagehide", writeNow)
+      writeNow()
+    }
+  }, [writeNow])
 
   const project =
     data.projects.find((p) => p.id === data.activeProjectId) || data.projects[0]
@@ -980,8 +1413,23 @@ export default function StudyTrackerApp() {
 
   const goToDay = (key) => {
     setLogCursor(fromKey(key))
-    setLogGranularity("day")
+    setPeriod("day")
   }
+
+  // All-time starts at the first logged day, falling back to the project's
+  // configured start — computed here because it needs the saved data.
+  const allTimeStart = useMemo(() => {
+    const firstLogged = Object.keys(project.days).sort()[0]
+    if (firstLogged) return fromKey(firstLogged)
+    return project.settings.startDate
+      ? fromKey(project.settings.startDate)
+      : new Date()
+  }, [project.days, project.settings.startDate])
+
+  const range = useMemo(
+    () => periodRange(period, logCursor, customStart, customEnd, allTimeStart),
+    [period, logCursor, customStart, customEnd, allTimeStart],
+  )
 
   if (!authReady || (cloudEnabled && authReady && !session)) {
     if (!authReady) {
@@ -1005,8 +1453,6 @@ export default function StudyTrackerApp() {
   return (
     <div className="min-h-screen bg-[#F4F5F7] text-[#1E2A33]">
       <TopBar
-        view={view}
-        setView={setView}
         onOpenSetup={() => setShowSetup(true)}
         projectName={project.settings.projectName || "Time Tracker"}
         projectIcon={project.settings.projectIcon || "Train"}
@@ -1018,41 +1464,58 @@ export default function StudyTrackerApp() {
       />
 
       <main className="max-w-6xl mx-auto px-4 pb-24 pt-6">
-        {view === "log" ? (
-          <LogView
-            data={project}
-            granularity={logGranularity}
-            setGranularity={setLogGranularity}
-            cursor={logCursor}
-            setCursor={setLogCursor}
-            onNavigateDay={goToDay}
-            onEditDay={setEditingKey}
-            onUpdateWeekNote={updateWeekNote}
-            onUpdateMonthNote={updateMonthNote}
-            onUpdateWeekIgnore={updateWeekIgnore}
-            onUpdateMonthIgnore={updateMonthIgnore}
-          />
-        ) : (
+        <PeriodBar
+          period={period}
+          setPeriod={setPeriod}
+          cursor={logCursor}
+          setCursor={setLogCursor}
+          customStart={customStart}
+          setCustomStart={setCustomStart}
+          customEnd={customEnd}
+          setCustomEnd={setCustomEnd}
+        />
+
+        <LogView
+          data={project}
+          period={period}
+          range={range}
+          cursor={logCursor}
+          onNavigateDay={goToDay}
+          onEditDay={setEditingKey}
+          onUpdateDayNote={(key, text) => updateDay(key, { comment: text })}
+          onUpdateWeekNote={updateWeekNote}
+          onUpdateMonthNote={updateMonthNote}
+          onUpdateWeekIgnore={updateWeekIgnore}
+          onUpdateMonthIgnore={updateMonthIgnore}
+        />
+
+        <div className="mt-10">
           <AnalyticsView
             data={project}
-            preset={analyticsPreset}
-            setPreset={setAnalyticsPreset}
-            customStart={analyticsCustomStart}
-            setCustomStart={setAnalyticsCustomStart}
-            customEnd={analyticsCustomEnd}
-            setCustomEnd={setAnalyticsCustomEnd}
+            rangeStart={range.start}
+            rangeEnd={range.end}
           />
-        )}
+        </div>
       </main>
 
       {editingKey && (
-        <DayEditor
+        <DayQuickviewModal
           dateKey={editingKey}
           dayEntry={project.days[editingKey]}
           slots={project.slots}
           categories={project.categories}
+          settings={project.settings}
           onClose={() => setEditingKey(null)}
           onChange={(patch) => updateDay(editingKey, patch)}
+          onGoToDayView={(key) => {
+            goToDay(key)
+            setEditingKey(null)
+          }}
+          // In the Day view the card that opened this modal *is* the day, so
+          // there's nothing to preview and nowhere to drill down to: go
+          // straight to editing, with no "back" or "go to day view" escape
+          // hatches pointing at where we already are.
+          startInEditMode={period === "day"}
         />
       )}
 
@@ -1088,8 +1551,6 @@ const fmtDateLong = (k) =>
   })
 
 function TopBar({
-  view,
-  setView,
   onOpenSetup,
   projectName,
   projectIcon,
@@ -1123,14 +1584,6 @@ function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
-          <SegmentedControl
-            items={[
-              { id: "log", label: "Log" },
-              { id: "analytics", label: "Analytics" },
-            ]}
-            activeId={view}
-            onChange={setView}
-          />
           <button
             onClick={onOpenSetup}
             className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
@@ -1532,19 +1985,20 @@ function ProjectDetailsTab({ settings, onSave }) {
         />
       </div>
       <Field label="Project start date">
-        <input
-          type="date"
+        <DateField
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2"
+          onChange={setStartDate}
+          placeholder="Pick a start date"
+          className="w-full"
         />
       </Field>
       <Field label="Project end date (optional)">
-        <input
-          type="date"
+        <DateField
           value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2"
+          onChange={setEndDate}
+          placeholder="No end date"
+          clearable
+          className="w-full"
         />
         <p className="text-[9px] text-[#1E2A33]/40 mt-1">
           Once set, days after this date won't count as "empty days" in
@@ -1778,19 +2232,54 @@ function EditableList({ items, onChange, noun, warningNote }) {
 }
 
 /* ---------------------------------------------------------------
-   Log View (month / week / day / 90 days / year)
+   Period model — shared by the log and the analytics below it
+
+   One selector drives both halves of the page. The first five periods are
+   anchored on a moving cursor and can be stepped back and forth; "all" and
+   "custom" define their own bounds, so stepping them is meaningless.
 --------------------------------------------------------------- */
 
-const GRANULARITIES = [
+const PERIODS = [
   { id: "day", label: "Day" },
   { id: "week", label: "Week" },
   { id: "month", label: "Month" },
-  { id: "90days", label: "90 Days" },
+  { id: "90days", label: "3 Months" },
   { id: "year", label: "Year" },
+  { id: "all", label: "All time" },
+  { id: "custom", label: "Custom" },
 ]
 
-function stepCursor(cursor, granularity, dir) {
-  switch (granularity) {
+const NAVIGABLE_PERIODS = new Set(["day", "week", "month", "90days", "year"])
+
+// Show-on-scroll-up: the period bar is worth reaching for at any depth of the
+// page, but not worth permanently spending a strip of vertical space on.
+// Scrolling down tucks it away, scrolling up brings it straight back.
+function useRevealOnScrollUp(threshold = 6) {
+  const [visible, setVisible] = useState(true)
+  const lastY = useRef(0)
+
+  useEffect(() => {
+    lastY.current = window.scrollY
+    const onScroll = () => {
+      const y = window.scrollY
+      const delta = y - lastY.current
+      // Ignore jitter, and never hide it while we're still near the top —
+      // there's nothing above it to tuck under yet.
+      if (Math.abs(delta) < threshold) return
+      setVisible(delta < 0 || y < 120)
+      lastY.current = y
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [threshold])
+
+  return visible
+}
+// Too long to draw as day cards or a month grid — these render as a heatmap.
+const WIDE_PERIODS = new Set(["90days", "year", "all", "custom"])
+
+function stepCursor(cursor, period, dir) {
+  switch (period) {
     case "day":
       return addDays(cursor, dir)
     case "week":
@@ -1806,21 +2295,53 @@ function stepCursor(cursor, granularity, dir) {
   }
 }
 
-function rangeLabel(cursor, granularity) {
-  if (granularity === "month") return monthLabel(cursor)
-  if (granularity === "week") {
-    const s = startOfWeek(cursor)
-    const e = addDays(s, 6)
-    return `${s.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${e.toLocaleDateString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      },
-    )}`
+// The single source of truth for "what stretch of days are we looking at".
+// `allStart` is where an all-time range begins — the first logged day, or the
+// project start; the caller owns that because it needs the saved data.
+function periodRange(period, cursor, customStart, customEnd, allStart) {
+  const today = new Date()
+  switch (period) {
+    case "day":
+      return { start: cursor, end: cursor }
+    case "week": {
+      const s = startOfWeek(cursor)
+      return { start: s, end: addDays(s, 6) }
+    }
+    case "month": {
+      const y = cursor.getFullYear()
+      const m = cursor.getMonth()
+      return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) }
+    }
+    case "90days":
+      return { start: addDays(cursor, -89), end: cursor }
+    case "year":
+      return {
+        start: new Date(cursor.getFullYear(), 0, 1),
+        end: new Date(cursor.getFullYear(), 11, 31),
+      }
+    case "all":
+      return { start: allStart || today, end: today }
+    case "custom": {
+      const s = customStart ? fromKey(customStart) : today
+      const e = customEnd ? fromKey(customEnd) : today
+      return e < s ? { start: e, end: s } : { start: s, end: e }
+    }
+    default:
+      return { start: today, end: today }
   }
-  if (granularity === "day") {
+}
+
+const fmtRangeEdge = (d, withYear) =>
+  d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(withYear ? { year: "numeric" } : {}),
+  })
+
+function rangeLabel(period, cursor, range) {
+  if (period === "month") return monthLabel(cursor)
+  if (period === "year") return String(cursor.getFullYear())
+  if (period === "day") {
     return cursor.toLocaleDateString(undefined, {
       weekday: "long",
       month: "long",
@@ -1828,19 +2349,116 @@ function rangeLabel(cursor, granularity) {
       year: "numeric",
     })
   }
-  if (granularity === "90days") {
-    const s = addDays(cursor, -89)
-    return `${s.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${cursor.toLocaleDateString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      },
-    )}`
+  if (period === "all") {
+    return `All time · ${fmtRangeEdge(range.start, true)} – ${fmtRangeEdge(range.end, true)}`
   }
-  if (granularity === "year") return String(cursor.getFullYear())
-  return ""
+  return `${fmtRangeEdge(range.start)} – ${fmtRangeEdge(range.end, true)}`
+}
+
+// Selector, custom bounds and cursor navigation for the whole page.
+function PeriodBar({
+  period,
+  setPeriod,
+  cursor,
+  setCursor,
+  customStart,
+  setCustomStart,
+  customEnd,
+  setCustomEnd,
+}) {
+  const navigable = NAVIGABLE_PERIODS.has(period)
+  const navBtn = `${btnBase} rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35 disabled:opacity-35 disabled:hover:bg-white disabled:hover:border-[#1E2A33]/20 disabled:cursor-not-allowed`
+  const visible = useRevealOnScrollUp()
+
+  // Stick directly under the top bar. Measured rather than hardcoded because
+  // the header's height changes with the project name wrapping.
+  const [topOffset, setTopOffset] = useState(0)
+  useEffect(() => {
+    const measure = () => {
+      const header = document.querySelector("header")
+      setTopOffset(header ? header.offsetHeight : 0)
+    }
+    const raf = requestAnimationFrame(measure)
+    window.addEventListener("resize", measure)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener("resize", measure)
+    }
+  }, [])
+
+  return (
+    <div
+      style={{ top: topOffset }}
+      className={`sticky z-10 -mx-4 mb-4 px-4 py-3 bg-[#F4F5F7]/95 backdrop-blur flex flex-wrap items-center justify-between gap-3 transition-transform duration-200 ease-out ${
+        // Hidden, it slides up behind the (opaque, higher z-index) top bar.
+        visible ? "translate-y-0" : "-translate-y-[150%]"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2 max-w-full">
+        {/* Seven periods need ~384px. Narrower than that the control would be
+            clipped by its own overflow-hidden rather than wrap, so let it
+            scroll sideways and keep every label readable. */}
+        <div className="max-w-full overflow-x-auto whitespace-nowrap">
+          <SegmentedControl
+            items={PERIODS}
+            activeId={period}
+            onChange={setPeriod}
+          />
+        </div>
+        {period === "custom" && (
+          // Mounted only while Custom is selected, so opening on mount is the
+          // same thing as opening the moment Custom is clicked.
+          <DateRangeField
+            start={customStart}
+            end={customEnd}
+            openOnMount
+            onChange={(from, to) => {
+              setCustomStart(from)
+              setCustomEnd(to)
+            }}
+          />
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Tip text={navigable ? undefined : "This period sets its own dates"}>
+          <button
+            disabled={!navigable}
+            onClick={() => setCursor(stepCursor(cursor, period, -1))}
+            className={`${navBtn} p-2`}
+          >
+            <ChevronLeft size={16} />
+          </button>
+        </Tip>
+        <Tip
+          text={
+            navigable ? undefined : "Jump to this week"
+          }
+        >
+          <button
+            // From all-time or custom there is no cursor to reset, so "today"
+            // means: show me the current week.
+            onClick={() => {
+              if (!navigable) setPeriod("week")
+              setCursor(new Date())
+            }}
+            className={`${navBtn} px-3 py-2 text-[10px] font-mono uppercase tracking-widest`}
+          >
+            Today
+          </button>
+        </Tip>
+        <Tip text={navigable ? undefined : "This period sets its own dates"}>
+          <button
+            disabled={!navigable}
+            onClick={() => setCursor(stepCursor(cursor, period, 1))}
+            className={`${navBtn} p-2`}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </Tip>
+      </div>
+    </div>
+  )
 }
 
 // Inline, auto-saving note for a whole day/week/month — mount with a
@@ -1856,7 +2474,7 @@ function NoteCard({ label, icon: Icon, value, onSave }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
   return (
-    <div className={`${CARD} p-4 mb-4`}>
+    <div className={`${CARD} mb-4`}>
       <div className="flex items-center gap-1.5 mb-2">
         <Icon size={12} className="text-[#1E2A33]/40" />
         <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
@@ -1869,7 +2487,7 @@ function NoteCard({ label, icon: Icon, value, onSave }) {
         placeholder="Add a note for this period (optional)"
         rows={1}
         maxHeight={160}
-        className="w-full border border-[#1E2A33]/10 rounded-lg px-2 py-1.5 text-xs font-mono bg-[#F4F5F7]/40"
+        className={FIELD_QUIET}
       />
     </div>
   )
@@ -1877,17 +2495,18 @@ function NoteCard({ label, icon: Icon, value, onSave }) {
 
 function LogView({
   data,
-  granularity,
-  setGranularity,
+  period,
+  range,
   cursor,
-  setCursor,
   onNavigateDay,
   onEditDay,
+  onUpdateDayNote,
   onUpdateWeekNote,
   onUpdateMonthNote,
   onUpdateWeekIgnore,
   onUpdateMonthIgnore,
 }) {
+  const granularity = period
   const {
     slots,
     categories,
@@ -1899,22 +2518,43 @@ function LogView({
     monthIgnore = {},
   } = data
   const todayKey = toKey(new Date())
+  const dayKey = toKey(cursor)
   const weekKey = toKey(startOfWeek(cursor))
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+
+  const visibleDates = useMemo(
+    () => datesInRange(range.start, range.end),
+    [range.start, range.end],
+  )
+
+  const isIgnored = useMemo(
+    () => makeIsIgnored(weekIgnore, monthIgnore),
+    [weekIgnore, monthIgnore],
+  )
 
   const headerStats = useMemo(() => {
     if (granularity === "week")
-      return rangeStats(weekDates(cursor), days, slots, settings)
+      return rangeStats(weekDates(cursor), days, slots, settings, isIgnored)
     if (granularity === "month")
-      return rangeStats(monthDates(cursor), days, slots, settings)
+      return rangeStats(monthDates(cursor), days, slots, settings, isIgnored)
     return null
-  }, [granularity, cursor, days, slots, settings])
+  }, [granularity, cursor, days, slots, settings, isIgnored])
 
   const monthPast =
     granularity === "month" &&
     toKey(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)) < todayKey
-  const monthGoalOutcome =
-    monthPast && !monthIgnore[monthKey] && headerStats?.goal > 0
+  const weekPast =
+    granularity === "week" &&
+    toKey(addDays(startOfWeek(cursor), 6)) < todayKey
+  const periodIgnored =
+    granularity === "week"
+      ? !!weekIgnore[weekKey]
+      : granularity === "month"
+        ? !!monthIgnore[monthKey]
+        : false
+  const periodGoalOutcome =
+    (monthPast || weekPast) && !periodIgnored && headerStats?.goal > 0
       ? headerStats.total >= headerStats.goal
         ? "met"
         : "missed"
@@ -1922,53 +2562,24 @@ function LogView({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <SegmentedControl
-          items={GRANULARITIES}
-          activeId={granularity}
-          onChange={setGranularity}
-        />
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCursor(stepCursor(cursor, granularity, -1))}
-            className={`${btnBase} p-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={() => setCursor(new Date())}
-            className={`${btnBase} px-3 py-2 text-[10px] font-mono uppercase tracking-widest rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setCursor(stepCursor(cursor, granularity, 1))}
-            className={`${btnBase} p-2 rounded-xl border border-[#1E2A33]/20 bg-white hover:bg-[#1E2A33]/5 hover:border-[#1E2A33]/35`}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
-            {rangeLabel(cursor, granularity)}
+            {rangeLabel(period, cursor, range)}
           </h2>
-          {monthGoalOutcome && (
+          {periodGoalOutcome && (
             <Tip
               text={
-                monthGoalOutcome === "met"
-                  ? "Monthly goal met"
-                  : "Monthly goal missed"
+                periodGoalOutcome === "met"
+                  ? `${granularity === "week" ? "Weekly" : "Monthly"} goal met`
+                  : `${granularity === "week" ? "Weekly" : "Monthly"} goal missed`
               }
             >
               <span
                 className="w-2.5 h-2.5 rounded-full inline-block"
                 style={{
                   backgroundColor:
-                    monthGoalOutcome === "met" ? GOAL_MET_COLOR : EXAM_COLOR,
+                    periodGoalOutcome === "met" ? GOAL_MET_COLOR : EXAM_COLOR,
                 }}
               />
             </Tip>
@@ -2007,6 +2618,15 @@ function LogView({
         )}
       </div>
 
+      {granularity === "day" && (
+        <NoteCard
+          key={dayKey}
+          label="Day notes"
+          icon={MessageSquare}
+          value={days[dayKey]?.comment}
+          onSave={(text) => onUpdateDayNote(dayKey, text)}
+        />
+      )}
       {granularity === "week" && (
         <NoteCard
           key={weekKey}
@@ -2026,6 +2646,23 @@ function LogView({
         />
       )}
 
+      {lessonsEnabled && (
+        <PeriodLessons
+          dates={visibleDates}
+          days={days}
+          granularity={granularity}
+          isIgnored={isIgnored}
+        />
+      )}
+
+      <PeriodTotals
+        dates={visibleDates}
+        days={days}
+        slots={slots}
+        categories={categories}
+        isIgnored={isIgnored}
+      />
+
       {granularity === "month" && (
         <MonthGrid
           cursor={cursor}
@@ -2040,9 +2677,9 @@ function LogView({
           monthIgnore={monthIgnore}
         />
       )}
-      {granularity === "week" && (
+      {(granularity === "week" || granularity === "day") && (
         <FullCardGrid
-          dates={weekDates(cursor)}
+          dates={visibleDates}
           days={days}
           slots={slots}
           categories={categories}
@@ -2052,46 +2689,22 @@ function LogView({
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}
+          big={granularity === "day"}
         />
       )}
-      {granularity === "day" && (
-        <FullCardGrid
-          dates={[cursor]}
-          days={days}
-          slots={slots}
-          categories={categories}
-          settings={settings}
-          todayKey={todayKey}
-          onNavigateDay={onNavigateDay}
-          onEditDay={onEditDay}
-          weekIgnore={weekIgnore}
-          monthIgnore={monthIgnore}
-          big
-        />
-      )}
-      {granularity === "90days" && (
+      {/* Anything longer than a month — including all-time and custom — is
+          only legible as a heatmap. */}
+      {WIDE_PERIODS.has(granularity) && (
         <Heatmap
-          start={addDays(cursor, -89)}
-          end={cursor}
+          start={range.start}
+          end={range.end}
           days={days}
           slots={slots}
           categories={categories}
           settings={settings}
           todayKey={todayKey}
-          onSelectDay={onNavigateDay}
-          showMonths
-        />
-      )}
-      {granularity === "year" && (
-        <Heatmap
-          start={new Date(cursor.getFullYear(), 0, 1)}
-          end={new Date(cursor.getFullYear(), 11, 31)}
-          days={days}
-          slots={slots}
-          categories={categories}
-          settings={settings}
-          todayKey={todayKey}
-          onSelectDay={onNavigateDay}
+          onSelectDay={onEditDay}
+          isIgnored={isIgnored}
           showMonths
         />
       )}
@@ -2127,13 +2740,234 @@ function monthDates(cursor) {
   )
 }
 
+// Every date in the selected range, so a period readout aggregates over
+// exactly what the grid/heatmap below it is showing.
+function datesInRange(start, end) {
+  const count = daysBetween(start, end) + 1
+  if (count <= 0) return []
+  return Array.from({ length: count }, (_, i) => addDays(start, i))
+}
+
+// Rolls dayBreakdown up over a whole period: how much time each slot and each
+// category took in total. Ignored days are left out entirely — that's what the
+// flag promises.
+function periodBreakdown(dates, days, slots, categories, isIgnored) {
+  const bySlot = {}
+  const byCategory = {}
+  let total = 0
+  slots.forEach((s) => (bySlot[s.id] = 0))
+  dates.forEach((d) => {
+    const key = toKey(d)
+    if (isIgnored(key, days[key])) return
+    const b = dayBreakdown(days[key], slots)
+    total += b.total
+    slots.forEach((s) => (bySlot[s.id] += b.bySlot[s.id] || 0))
+    Object.entries(b.byCategory).forEach(([id, m]) => {
+      byCategory[id] = (byCategory[id] || 0) + m
+    })
+  })
+  // Configured categories in their configured order, then any id that survives
+  // only inside old entries, so the rows always add back up to the total.
+  const categoryIds = [
+    ...categories.map((c) => c.id),
+    ...Object.keys(byCategory).filter(
+      (id) => !categories.some((c) => c.id === id),
+    ),
+  ]
+  const toRow = (item, minutes) => ({ ...item, minutes })
+  return {
+    total,
+    slotRows: slots
+      .map((s) => toRow(s, bySlot[s.id] || 0))
+      .filter((r) => r.minutes > 0),
+    categoryRows: categoryIds
+      .map((id) => toRow(getById(categories, id), byCategory[id] || 0))
+      .filter((r) => r.minutes > 0),
+  }
+}
+
+// Days of a period that have actually happened and actually count. Per-day
+// averages divide by this rather than by the full length, so neither a month
+// still in progress nor a stretch of ignored days drags the figure down.
+function elapsedDayCount(dates, days, isIgnored) {
+  const todayKey = toKey(new Date())
+  const counted = dates.filter((d) => {
+    const key = toKey(d)
+    return key <= todayKey && !isIgnored(key, days[key])
+  })
+  return Math.max(counted.length, 1)
+}
+
+function TotalsRow({ row, total, divisor }) {
+  const share = total > 0 ? (row.minutes / total) * 100 : 0
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+        <RenderIcon name={row.iconName} size={10} style={{ color: row.color }} />
+        <span className="text-[#1E2A33]/70 truncate">{row.label}</span>
+        <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
+        <span className="font-bold" style={{ color: row.color }}>
+          {fmtHours(row.minutes)}
+        </span>
+        {divisor > 1 && (
+          <span className="text-[#1E2A33]/40">
+            · {fmtHoursFixed1(row.minutes / divisor)}/d
+          </span>
+        )}
+        <span className="text-[#1E2A33]/40 tabular-nums w-8 text-right">
+          {Math.round(share)}%
+        </span>
+      </div>
+      <div className="mt-1 h-1 rounded-full bg-[#1E2A33]/5 overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${share}%`, backgroundColor: row.color }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// "Where the time went" panel for the Log tab — per-slot and per-category
+// totals for whichever range is selected (day, week, month, 90 days, year),
+// each with its per-day average once the period covers more than one day.
+function PeriodTotals({ dates, days, slots, categories, isIgnored }) {
+  const { total, slotRows, categoryRows } = useMemo(
+    () => periodBreakdown(dates, days, slots, categories, isIgnored),
+    [dates, days, slots, categories, isIgnored],
+  )
+  const divisor = useMemo(
+    () => elapsedDayCount(dates, days, isIgnored),
+    [dates, days, isIgnored],
+  )
+
+  return (
+    <div className={`${CARD} mb-4`}>
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <Tip
+          multiline
+          text={`Time logged in this period, split by slot and by category.${
+            divisor > 1
+              ? `\n\nThe "/d" figures are per-day averages over the ${divisor} elapsed days in this period — days still in the future are not counted.`
+              : ""
+          }`}
+        >
+          <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 border-b border-dotted border-[#1E2A33]/25">
+            Where the time went
+          </span>
+        </Tip>
+        <span className="text-[10px] font-mono text-[#1E2A33]/50">
+          {fmtHours(total)} total
+          {divisor > 1 && <> · {fmtHoursFixed1(total / divisor)}/day</>}
+        </span>
+      </div>
+      {total === 0 ? (
+        <div className="text-[10px] font-mono text-[#1E2A33]/40">
+          No study logged in this period.
+        </div>
+      ) : (
+        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+          <div>
+            <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40 mb-2">
+              By slot
+            </div>
+            <div className="space-y-2">
+              {slotRows.map((row) => (
+                <TotalsRow
+                  key={row.id}
+                  row={row}
+                  total={total}
+                  divisor={divisor}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40 mb-2">
+              By category
+            </div>
+            <div className="space-y-2">
+              {categoryRows.map((row) => (
+                <TotalsRow
+                  key={row.id}
+                  row={row}
+                  total={total}
+                  divisor={divisor}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Lessons completed over the visible period, in the same white tiles analytics
+// uses. Week and month only: the day view already prints the day's count on
+// its own card, and a "per week" average over a 90-day or year heatmap belongs
+// in the Analytics tab, which already has it.
+function PeriodLessons({ dates, days, granularity, isIgnored }) {
+  const { lessons, divisor } = useMemo(
+    () => ({
+      lessons: dates.reduce((sum, d) => {
+        const key = toKey(d)
+        if (isIgnored(key, days[key])) return sum
+        return sum + (Number(days[key]?.lessons) || 0)
+      }, 0),
+      divisor: elapsedDayCount(dates, days, isIgnored),
+    }),
+    [dates, days, isIgnored],
+  )
+
+  if (granularity !== "week" && granularity !== "month") return null
+
+  const perDay = lessons / divisor
+  const items = [
+    {
+      label: granularity === "week" ? "Lessons this week" : "Lessons this month",
+      value: lessons,
+      sub: `over ${divisor}d`,
+      icon: BookOpen,
+    },
+    granularity === "month" && {
+      label: "Avg lessons / week",
+      value: (perDay * 7).toFixed(2),
+      icon: CalendarDays,
+    },
+    {
+      label: "Avg lessons / day",
+      value: perDay.toFixed(2),
+      icon: TrendingUp,
+    },
+  ].filter(Boolean)
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+      {items.map((it) => (
+        <StatTile
+          key={it.label}
+          label={it.label}
+          value={it.value}
+          sub={it.sub}
+          icon={it.icon}
+        />
+      ))}
+    </div>
+  )
+}
+
 // Sums logged time and daily goals across a list of dates — used for the
 // week/month header totals and the month view's per-week summary column.
-function rangeStats(dates, days, slots, settings) {
+function rangeStats(dates, days, slots, settings, isIgnored = NEVER_IGNORED) {
   let total = 0
   let goal = 0
   dates.forEach((d) => {
-    const { total: t } = dayBreakdown(days[toKey(d)], slots)
+    const key = toKey(d)
+    // An ignored day contributes neither its hours nor its goal — otherwise
+    // the period would look like it missed a target it was never held to.
+    if (isIgnored(key, days[key])) return
+    const { total: t } = dayBreakdown(days[key], slots)
     total += t
     goal += goalForDate(settings, d)
   })
@@ -2191,6 +3025,7 @@ function MonthGrid({
             days,
             slots,
             settings,
+            makeIsIgnored(weekIgnore, monthIgnore),
           )
           const firstDate = row.find(Boolean)
           const weekKey = firstDate ? toKey(startOfWeek(firstDate)) : null
@@ -2218,6 +3053,7 @@ function MonthGrid({
                     entry={entry}
                     slots={slots}
                     categories={categories}
+                    settings={settings}
                     goal={goalForDate(settings, date)}
                     isToday={toKey(date) === todayKey}
                     isFuture={date > new Date()}
@@ -2244,12 +3080,12 @@ function WeekSummaryCell({ total, goal, ignored, isPast }) {
   return (
     <Tip text={ignored ? "Ignored in statistics" : undefined}>
       <div
-        className={`rounded-2xl border h-28 flex flex-col items-center justify-center px-1 text-center ${
+        className={`rounded-2xl h-28 w-full flex flex-col items-center justify-center px-1 text-center ${
           ignored
-            ? "bg-[#1E2A33]/[0.06] border-[#1E2A33]/10 grayscale opacity-60"
+            ? "bg-[#1E2A33]/[0.06] grayscale opacity-60"
             : goalOutcome
-              ? "border-[#1E2A33]/10"
-              : "bg-[#1E2A33]/[0.04] border-[#1E2A33]/10 border-dashed"
+              ? ""
+              : "bg-[#1E2A33]/[0.06]"
         }`}
         style={
           goalOutcome === "met"
@@ -2283,6 +3119,7 @@ function CompactDayCell({
   entry,
   slots,
   categories,
+  settings,
   goal,
   isToday,
   isFuture,
@@ -2293,8 +3130,8 @@ function CompactDayCell({
 }) {
   if (isBeforeStart) {
     return (
-      <div className="rounded-2xl border border-[#1E2A33]/8 bg-[#1E2A33]/[0.025] h-28 flex items-start p-2">
-        <span className="font-mono text-xs text-[#1E2A33]/20">
+      <div className="rounded-2xl bg-[#1E2A33]/[0.04] h-28 flex items-start p-2">
+        <span className="font-mono text-xs text-[#1E2A33]/25">
           {date.getDate()}
         </span>
       </div>
@@ -2303,48 +3140,47 @@ function CompactDayCell({
 
   const { bySlot, total } = dayBreakdown(entry, slots)
   const tooltip = ignored
-    ? `${buildTooltip(entry, slots, categories)}\n\nIgnored in statistics`
-    : buildTooltip(entry, slots, categories)
+    ? `${buildTooltip(entry, slots, categories, settings)}\n\nIgnored in statistics`
+    : buildTooltip(entry, slots, categories, settings)
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+  const examsEnabled = settings?.examsEnabled !== false
   const metGoal = !ignored && goal > 0 && total >= goal
   const isPast = !ignored && !isToday && !isFuture && goal > 0
   const goalOutcome = isPast ? (total >= goal ? "met" : "missed") : null
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onNavigate}
-      onKeyDown={(e) => e.key === "Enter" && onNavigate()}
-      className={`${btnBase} group/cell group relative text-left rounded-2xl border p-2 h-28 flex flex-col justify-between hover:shadow-md cursor-pointer ${
-        ignored
-          ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
-          : goalOutcome
-            ? ""
-            : "bg-white"
-      } ${
-        isToday ? "border-2" : "border-[#1E2A33]/15 hover:border-[#1E2A33]/30"
-      } ${isFuture ? "opacity-50" : ""}`}
-      style={{
-        ...(isToday ? { borderColor: ACCENT } : {}),
-        ...(goalOutcome === "met"
-          ? { backgroundColor: `${GOAL_MET_COLOR}17` }
-          : {}),
-        ...(goalOutcome === "missed"
-          ? { backgroundColor: `${EXAM_COLOR}17` }
-          : {}),
-      }}
-    >
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/cell:opacity-100 group-hover/cell:scale-100 transition-all duration-150 shadow-lg whitespace-pre-line max-w-[220px] text-left"
+    <Tip text={tooltip} multiline className="w-full">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onEdit}
+        onKeyDown={(e) => e.key === "Enter" && onEdit()}
+        className={`${btnBase} text-left w-full rounded-2xl p-2 h-28 flex flex-col justify-between hover:shadow-md cursor-pointer ${
+          ignored
+            ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
+            : goalOutcome
+              ? ""
+              : "bg-white"
+        } ${isFuture ? "opacity-50" : ""}`}
+        style={{
+          ...(goalOutcome === "met"
+            ? { backgroundColor: `${GOAL_MET_COLOR}17` }
+            : {}),
+          ...(goalOutcome === "missed"
+            ? { backgroundColor: `${EXAM_COLOR}17` }
+            : {}),
+        }}
       >
-        {tooltip}
-      </span>
       <div className="flex items-start justify-between">
-        <span className="font-mono text-xs">{date.getDate()}</span>
+        <span
+          className={`font-mono text-xs ${isToday ? "font-extrabold" : ""}`}
+          style={isToday ? { color: ACCENT } : undefined}
+        >
+          {date.getDate()}
+        </span>
         <div className="flex items-center gap-1">
           {ignored && <EyeOff size={11} className="text-[#1E2A33]/35" />}
-          {entry?.exam && (
+          {entry?.exam && examsEnabled && (
             <Tip text="Exam passed">
               <span
                 className="flex items-center justify-center w-4 h-4 rounded-full"
@@ -2354,17 +3190,6 @@ function CompactDayCell({
               </span>
             </Tip>
           )}
-          <Tip text="Edit this day">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit()
-              }}
-              className={`${btnBase} opacity-0 group-hover:opacity-100 p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
-            >
-              <PenLine size={11} />
-            </button>
-          </Tip>
         </div>
       </div>
 
@@ -2400,23 +3225,28 @@ function CompactDayCell({
             <span className="text-[#1E2A33]/30">/{fmtHours(goal)}</span>
           )}
         </span>
-        {entry?.lessons > 0 && (
-          <Tip text="Lessons studied today">
-            <span>{entry.lessons}L</span>
-          </Tip>
-        )}
+        {entry?.lessons > 0 && lessonsEnabled && <span>{entry.lessons}L</span>}
       </div>
-    </div>
+      </div>
+    </Tip>
   )
 }
 
 /* ---- Week / Day view (full detail cards) ---- */
 
-function EntriesReadout({ slots, categories, cells }) {
+// `wide` spreads the slot groups across columns instead of stacking them —
+// used by the Day view, where the card has the full page width to play with.
+function EntriesReadout({ slots, categories, cells, wide = false }) {
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
   if (!hasAny) return null
   return (
-    <div className="space-y-2.5">
+    <div
+      className={
+        wide
+          ? "grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3"
+          : "space-y-2.5"
+      }
+    >
       {slots.map((slot) => {
         const entries = cells[slot.id] || []
         if (!entries.length) return null
@@ -2497,7 +3327,7 @@ function FullCardGrid({
     <div
       className={
         big
-          ? "max-w-md"
+          ? "w-full"
           : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3"
       }
     >
@@ -2513,6 +3343,7 @@ function FullCardGrid({
             entry={entry}
             slots={slots}
             categories={categories}
+            settings={settings}
             goal={goalForDate(settings, date)}
             isToday={toKey(date) === todayKey}
             isFuture={date > new Date()}
@@ -2533,6 +3364,7 @@ function FullDayCard({
   entry,
   slots,
   categories,
+  settings,
   goal,
   isToday,
   isFuture,
@@ -2545,7 +3377,7 @@ function FullDayCard({
   if (isBeforeStart) {
     return (
       <div
-        className={`rounded-2xl border border-[#1E2A33]/8 bg-[#1E2A33]/[0.025] p-3 flex flex-col gap-1 ${big ? "max-w-md" : ""}`}
+        className={`rounded-2xl bg-[#1E2A33]/[0.04] p-3 flex flex-col gap-1 ${big ? "w-full" : ""}`}
       >
         <div className="font-mono text-sm font-bold text-[#1E2A33]/25">
           {date.toLocaleDateString(undefined, {
@@ -2561,6 +3393,8 @@ function FullDayCard({
   }
 
   const { total } = dayBreakdown(entry, slots)
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+  const examsEnabled = settings?.examsEnabled !== false
   const metGoal = !ignored && goal > 0 && total >= goal
   const isPast = !ignored && !isToday && !isFuture && goal > 0
   const goalOutcome = isPast ? (total >= goal ? "met" : "missed") : null
@@ -2574,17 +3408,19 @@ function FullDayCard({
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={(e) => e.key === "Enter" && handleClick()}
-      className={`${btnBase} group text-left w-full rounded-2xl border p-3 hover:shadow-md flex flex-col gap-3 cursor-pointer ${
+      // No outline: white (or goal-tinted) against the page tint is what
+      // separates the card. Today is called out by colour and a badge instead
+      // of a border, so a card never has two competing emphasis signals.
+      className={`${btnBase} text-left w-full rounded-2xl hover:shadow-md flex flex-col cursor-pointer ${
+        big ? "p-5 gap-4" : "p-3 gap-3"
+      } ${
         ignored
           ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
           : goalOutcome
             ? ""
             : "bg-white"
-      } ${
-        isToday ? "border-2" : "border-[#1E2A33]/15 hover:border-[#1E2A33]/30"
       }`}
       style={{
-        ...(isToday ? { borderColor: ACCENT } : {}),
         ...(goalOutcome === "met"
           ? { backgroundColor: `${GOAL_MET_COLOR}17` }
           : {}),
@@ -2595,7 +3431,10 @@ function FullDayCard({
     >
       <div className="flex items-center justify-between">
         <div>
-          <div className="font-mono text-sm font-bold">
+          <div
+            className={`font-mono font-bold ${big ? "text-2xl" : "text-sm"}`}
+            style={isToday ? { color: ACCENT } : undefined}
+          >
             {date.toLocaleDateString(undefined, {
               weekday: "short",
               day: "numeric",
@@ -2609,6 +3448,14 @@ function FullDayCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {isToday && (
+            <span
+              className="text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: ACCENT }}
+            >
+              Today
+            </span>
+          )}
           {ignored && (
             <Tip text="Ignored in statistics">
               <span className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-[#1E2A33]/60 bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full">
@@ -2616,7 +3463,7 @@ function FullDayCard({
               </span>
             </Tip>
           )}
-          {entry?.exam && (
+          {entry?.exam && examsEnabled && (
             <span
               className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
               style={{ backgroundColor: EXAM_COLOR }}
@@ -2624,7 +3471,7 @@ function FullDayCard({
               <Award size={10} /> Exam
             </span>
           )}
-          {entry?.lessons > 0 && (
+          {entry?.lessons > 0 && lessonsEnabled && (
             <Tip text="Lessons studied today">
               <span className="text-[9px] uppercase tracking-wide font-mono bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full">
                 {entry.lessons}L
@@ -2636,20 +3483,24 @@ function FullDayCard({
 
       <div className="flex items-baseline gap-1.5">
         <span
-          className="text-lg font-mono font-extrabold"
+          className={`font-mono font-extrabold ${big ? "text-3xl" : "text-lg"}`}
           style={metGoal ? { color: GOAL_MET_COLOR } : undefined}
         >
           {total > 0 ? fmtHours(total) : "—"}
         </span>
         {goal > 0 && (
-          <span className="text-[10px] font-mono text-[#1E2A33]/35">
+          <span
+            className={`font-mono text-[#1E2A33]/35 ${big ? "text-xs" : "text-[10px]"}`}
+          >
             goal {fmtHours(goal)}
           </span>
         )}
       </div>
 
       {total === 0 ? (
-        <p className="text-[10px] font-mono text-[#1E2A33]/35">
+        <p
+          className={`font-mono text-[#1E2A33]/35 ${big ? "text-xs" : "text-[10px]"}`}
+        >
           No study logged — tap to add
         </p>
       ) : (
@@ -2657,11 +3508,12 @@ function FullDayCard({
           slots={slots}
           categories={categories}
           cells={entry?.cells || {}}
+          wide={big}
         />
       )}
 
       {entry?.comment && (
-        <div className="flex items-start gap-1.5 pt-2 border-t border-[#1E2A33]/10">
+        <div className="flex items-start gap-1.5 rounded-xl bg-[#1E2A33]/[0.04] p-2.5">
           <MessageSquare
             size={11}
             className="text-[#1E2A33]/30 shrink-0 mt-0.5"
@@ -2702,6 +3554,7 @@ function Heatmap({
   settings,
   todayKey,
   onSelectDay,
+  isIgnored = NEVER_IGNORED,
   showMonths,
 }) {
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
@@ -2718,6 +3571,12 @@ function Heatmap({
     return total >= goal ? "met" : "missed"
   }
   const NEUTRAL_CELL = "#E7ECF3"
+  // Excluded days get a hatch rather than a tint. Over a 3-month or year span
+  // there are too many cells for a subtle wash to register, and a flag set
+  // months ago and forgotten is exactly what makes the totals confusing.
+  const IGNORED_CELL = "#1E2A3314"
+  const IGNORED_HATCH =
+    "repeating-linear-gradient(45deg, transparent 0 3px, #1E2A3333 3px 6px)"
 
   let lastMonth = null
 
@@ -2766,39 +3625,56 @@ function Heatmap({
                 const entry = days[key]
                 const { total } = dayBreakdown(entry, slots)
                 const isToday = key === todayKey
-                const goalOutcome = dayGoalOutcome(date, entry, total)
-                const cellColor =
-                  goalOutcome === "met"
+                const ignored = isIgnored(key, entry)
+                const goalOutcome = ignored
+                  ? null
+                  : dayGoalOutcome(date, entry, total)
+                const cellColor = ignored
+                  ? IGNORED_CELL
+                  : goalOutcome === "met"
                     ? `${GOAL_MET_COLOR}30`
                     : goalOutcome === "missed"
                       ? `${EXAM_COLOR}30`
                       : NEUTRAL_CELL
+                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories, settings)}`
                 return (
-                  <button
+                  <Tip
                     key={di}
-                    onClick={() => onSelectDay(key)}
-                    style={{
-                      backgroundColor: cellColor,
-                      outline: isToday ? `2px solid ${ACCENT}` : "none",
-                      outlineOffset: "1px",
-                    }}
-                    className={`${btnBase} group/tip relative w-10 h-10 rounded-lg hover:scale-105 flex flex-col items-center justify-center shrink-0`}
+                    multiline
+                    text={
+                      ignored
+                        ? `${baseTip}\n\nIgnored — not counted in any statistics`
+                        : baseTip
+                    }
                   >
-                    <span
-                      role="tooltip"
-                      className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 transition-all duration-150 shadow-lg whitespace-pre-line max-w-[220px] text-left"
+                    <button
+                      onClick={() => onSelectDay(key)}
+                      style={{
+                        backgroundColor: cellColor,
+                        ...(ignored ? { backgroundImage: IGNORED_HATCH } : {}),
+                        outline: isToday ? `2px solid ${ACCENT}` : "none",
+                        outlineOffset: "1px",
+                      }}
+                      className={`${btnBase} w-10 h-10 rounded-lg hover:scale-105 flex flex-col items-center justify-center shrink-0`}
                     >
-                      {`${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories)}`}
-                    </span>
-                    <span className="text-[8px] font-mono leading-none text-[#1E2A33]/40">
-                      {date.getDate()}
-                    </span>
-                    {total > 0 && (
-                      <span className="text-[9px] font-mono font-bold leading-none mt-0.5 text-[#1E2A33]/80">
-                        {fmtHours(total)}
+                      <span
+                        className={`text-[8px] font-mono leading-none ${ignored ? "text-[#1E2A33]/30" : "text-[#1E2A33]/40"}`}
+                      >
+                        {date.getDate()}
                       </span>
-                    )}
-                  </button>
+                      {total > 0 && (
+                        <span
+                          className={`text-[9px] font-mono font-bold leading-none mt-0.5 ${
+                            ignored
+                              ? "text-[#1E2A33]/35 line-through"
+                              : "text-[#1E2A33]/80"
+                          }`}
+                        >
+                          {fmtHours(total)}
+                        </span>
+                      )}
+                    </button>
+                  </Tip>
                 )
               })}
             </div>
@@ -2827,6 +3703,16 @@ function Heatmap({
           />
           No goal / not yet due
         </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-3 h-3 rounded-[3px]"
+            style={{
+              backgroundColor: IGNORED_CELL,
+              backgroundImage: IGNORED_HATCH,
+            }}
+          />
+          Ignored — not counted
+        </span>
       </div>
     </div>
   )
@@ -2850,12 +3736,160 @@ function useModalDismiss(onClose) {
   return onBackdropClick
 }
 
-function DayEditor({
+function DayQuickviewModal({
   dateKey,
   dayEntry,
   slots,
   categories,
+  settings,
   onClose,
+  onChange,
+  onGoToDayView,
+  startInEditMode = false,
+}) {
+  const [mode, setMode] = useState(startInEditMode ? "edit" : "preview")
+  const onBackdropClick = useModalDismiss(onClose)
+  const { total } = dayBreakdown(dayEntry, slots)
+  const hasEntries = slots.some(
+    (slot) => (dayEntry?.cells?.[slot.id] || []).length > 0,
+  )
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+  const examsEnabled = settings?.examsEnabled !== false
+  const d = fromKey(dateKey)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onMouseDown={onBackdropClick}
+    >
+      <div
+        style={{ backgroundColor: "#F4F5F7" }}
+        className="w-full sm:max-w-[500px] sm:rounded-2xl shadow-2xl max-h-[90vh] h-full sm:h-auto flex flex-col overflow-hidden"
+      >
+        {mode === "edit" ? (
+          <DayEditForm
+            dateKey={dateKey}
+            dayEntry={dayEntry}
+            slots={slots}
+            categories={categories}
+            settings={settings}
+            onClose={onClose}
+            // Both of these point back to where we already are when the editor
+            // was opened straight from the Day view, so they're dropped there.
+            onBack={startInEditMode ? null : () => setMode("preview")}
+            onGoToDayView={
+              startInEditMode
+                ? null
+                : () => {
+                    onGoToDayView(dateKey)
+                    onClose()
+                  }
+            }
+            onChange={onChange}
+          />
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-5 py-4 bg-white shrink-0">
+              <div>
+                <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
+                  {d.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </h2>
+                <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                  {total} minutes logged · {fmtHours(total)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Tip text="Edit this day">
+                  <button
+                    onClick={() => setMode("edit")}
+                    className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/50 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                  >
+                    <PenLine size={17} />
+                  </button>
+                </Tip>
+                <Tip text="Go to day view">
+                  <button
+                    onClick={() => {
+                      onGoToDayView(dateKey)
+                      onClose()
+                    }}
+                    className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/50 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                  >
+                    <ArrowUpRight size={18} />
+                  </button>
+                </Tip>
+                <button
+                  onClick={onClose}
+                  className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            {/* A day with nothing logged has very little to show — the min
+                height keeps the dialog from collapsing to a sliver. */}
+            <div className="p-5 space-y-5 overflow-y-auto flex-1 sm:min-h-[300px]">
+              {!hasEntries ? (
+                <p className="text-xs font-mono text-[#1E2A33]/45">
+                  No study logged for this day.
+                </p>
+              ) : (
+                <EntriesReadout
+                  slots={slots}
+                  categories={categories}
+                  cells={dayEntry?.cells || {}}
+                />
+              )}
+              <div className={`${CARD} p-4 space-y-2 text-xs font-mono`}>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-[#1E2A33]/70">
+                  {lessonsEnabled && (
+                    <span>{dayEntry?.lessons || 0} lessons completed</span>
+                  )}
+                  {examsEnabled && (
+                    <span className="flex items-center gap-1">
+                      <Award size={13} style={{ color: EXAM_COLOR }} />
+                      {dayEntry?.exam ? "Exam passed" : "No exam passed"}
+                    </span>
+                  )}
+                  {dayEntry?.ignore && (
+                    <span className="flex items-center gap-1 text-[#1E2A33]/55">
+                      <EyeOff size={13} /> Ignored in statistics
+                    </span>
+                  )}
+                </div>
+                {dayEntry?.comment && (
+                  <div className="flex items-start gap-1.5 rounded-xl bg-[#F4F5F7] p-2.5">
+                    <MessageSquare
+                      size={12}
+                      className="text-[#1E2A33]/35 shrink-0 mt-0.5"
+                    />
+                    <p className="text-[#1E2A33]/60 whitespace-pre-wrap">
+                      {dayEntry.comment}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DayEditForm({
+  dateKey,
+  dayEntry,
+  slots,
+  categories,
+  settings,
+  onClose,
+  onBack,
+  onGoToDayView,
   onChange,
 }) {
   const cells = dayEntry?.cells || {}
@@ -2863,7 +3897,8 @@ function DayEditor({
   const exam = dayEntry?.exam || false
   const ignore = dayEntry?.ignore || false
   const dayComment = dayEntry?.comment || ""
-  const onBackdropClick = useModalDismiss(onClose)
+  const lessonsEnabled = settings?.lessonsEnabled !== false
+  const examsEnabled = settings?.examsEnabled !== false
 
   const addEntry = (slotId) => {
     const arr = cells[slotId] || []
@@ -2890,20 +3925,23 @@ function DayEditor({
   const d = fromKey(dateKey)
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onMouseDown={onBackdropClick}
-    >
-      <div
-        style={{ backgroundColor: "#F4F5F7" }}
-        className="w-full sm:max-w-[500px] sm:rounded-2xl shadow-xl border border-[#1E2A33]/10 max-h-[90vh] h-full sm:h-auto flex flex-col overflow-hidden"
-      >
-        <div
-          style={{ backgroundColor: "#F4F5F7" }}
-          className="flex items-center justify-between px-5 py-4 border-b border-[#1E2A33]/10 shrink-0"
-        >
-          <div>
-            <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
+    <>
+      {/* White header against the tinted body — the colour change separates the
+          two, so no divider rule is needed. */}
+      <div className="flex items-center justify-between px-5 py-4 bg-white shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {onBack && (
+            <Tip text="Back to preview">
+              <button
+                onClick={onBack}
+                className={`${btnBase} p-1.5 -ml-1.5 rounded-lg text-[#1E2A33]/50 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 shrink-0`}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            </Tip>
+          )}
+          <div className="min-w-0">
+            <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm truncate">
               {d.toLocaleDateString(undefined, {
                 weekday: "long",
                 month: "long",
@@ -2914,6 +3952,18 @@ function DayEditor({
               {total} minutes logged · {fmtHours(total)}
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {onGoToDayView && (
+            <Tip text="Go to day view">
+              <button
+                onClick={onGoToDayView}
+                className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33] p-1 rounded-lg hover:bg-[#1E2A33]/10`}
+              >
+                <ArrowUpRight size={18} />
+              </button>
+            </Tip>
+          )}
           <button
             onClick={onClose}
             className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
@@ -2921,8 +3971,76 @@ function DayEditor({
             <X size={20} />
           </button>
         </div>
+      </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto flex-1">
+      <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Notes come first — it's the field reached for most often, and it
+              reads as the day's headline rather than a footnote. */}
+          <div className="bg-white rounded-2xl p-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <MessageSquare size={12} className="text-[#1E2A33]/40" />
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                Day notes
+              </span>
+            </div>
+            <AutoTextarea
+              value={dayComment}
+              onChange={(e) => onChange({ comment: e.target.value })}
+              placeholder="Add a note for the whole day (optional)"
+              rows={2}
+              maxHeight={200}
+              className={FIELD_ON_WHITE}
+            />
+          </div>
+
+          {/* Lesson count, exam and the ignore flag are day-level facts like
+              the note above — they belong beside it, not buried under every
+              slot. */}
+          <div
+            className={`${CARD} flex items-center justify-between gap-4 flex-wrap`}
+          >
+            {lessonsEnabled && (
+              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
+                Lessons completed today
+                <input
+                  type="number"
+                  min={0}
+                  value={lessons}
+                  onChange={(e) =>
+                    onChange({ lessons: Number(e.target.value) })
+                  }
+                  className={`${FIELD_BOXED} w-20`}
+                />
+              </label>
+            )}
+            {examsEnabled && (
+              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={exam}
+                  onChange={(e) => onChange({ exam: e.target.checked })}
+                  className="w-4 h-4 accent-[#C1595B]"
+                />
+                <span className="flex items-center gap-1">
+                  <Award size={13} style={{ color: EXAM_COLOR }} /> Exam passed
+                  today
+                </span>
+              </label>
+            )}
+            <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ignore}
+                onChange={(e) => onChange({ ignore: e.target.checked })}
+                className="w-4 h-4 accent-[#1E2A33]/60"
+              />
+              <span className="flex items-center gap-1">
+                <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
+                statistics
+              </span>
+            </label>
+          </div>
+
           {slots.map((slot) => {
             const entries = cells[slot.id] || []
             const slotTotal = entries.reduce(
@@ -2930,10 +4048,16 @@ function DayEditor({
               0,
             )
             return (
-              <div key={slot.id} className={CARD}>
+              <div
+                key={slot.id}
+                className="bg-white rounded-2xl overflow-hidden"
+              >
+                {/* The slot's own colour, washed out, is the header. It both
+                    separates the header from the body and says which slot this
+                    is without an outline or a rule. */}
                 <div
-                  className="flex items-center justify-between px-4 py-2.5 border-b border-[#1E2A33]/10"
-                  style={{ borderLeft: `4px solid ${slot.color}` }}
+                  className="flex items-center justify-between px-4 py-2.5"
+                  style={{ backgroundColor: `${slot.color}1A` }}
                 >
                   <div className="flex items-center gap-2">
                     <RenderIcon
@@ -2953,7 +4077,7 @@ function DayEditor({
                       </button>
                     </Tip>
                   </div>
-                  <span className="font-mono text-xs text-[#1E2A33]/50">
+                  <span className="font-mono text-xs text-[#1E2A33]/55">
                     {slotTotal}m / {fmtHoursFixed1(slotTotal)}
                   </span>
                 </div>
@@ -2979,7 +4103,7 @@ function DayEditor({
                     return (
                       <div
                         key={entry.id}
-                        className="border border-[#1E2A33]/10 rounded-xl p-2 space-y-1.5"
+                        className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
                       >
                         <div className="flex items-center gap-2">
                           <select
@@ -2989,7 +4113,7 @@ function DayEditor({
                                 category: e.target.value,
                               })
                             }
-                            className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono bg-white w-full max-w-3/3"
+                            className={`${FIELD_BOXED} flex-1 w-full`}
                           >
                             {options.map((c) => (
                               <option key={c.id} value={c.id}>
@@ -3006,14 +4130,14 @@ function DayEditor({
                                 minutes: Number(e.target.value),
                               })
                             }
-                            className="w-20 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono"
+                            className={`${FIELD_BOXED} w-20`}
                           />
                           <span className="text-[10px] font-mono text-[#1E2A33]/40">
                             min
                           </span>
                           <button
                             onClick={() => removeEntry(slot.id, entry.id)}
-                            className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B]`}
+                            className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -3021,7 +4145,7 @@ function DayEditor({
                         <div className="flex items-start gap-1.5">
                           <MessageSquare
                             size={12}
-                            className="text-[#1E2A33]/30 shrink-0 mt-1.5"
+                            className="text-[#1E2A33]/30 shrink-0 mt-2"
                           />
                           <AutoTextarea
                             value={entry.comment || ""}
@@ -3033,7 +4157,7 @@ function DayEditor({
                             placeholder="Note (optional) — shown on the day and week view"
                             rows={2}
                             maxHeight={220}
-                            className="flex-1 border border-[#1E2A33]/15 rounded-xl px-2 py-1.5 text-[11px] font-mono bg-[#F4F5F7]/40"
+                            className={`${FIELD_ON_TINT} flex-1`}
                           />
                         </div>
                       </div>
@@ -3049,79 +4173,14 @@ function DayEditor({
               </div>
             )
           })}
-
-          <div
-            className={`${CARD} p-4 flex items-center justify-between gap-4 flex-wrap`}
-          >
-            <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
-              Lessons completed today
-              <input
-                type="number"
-                min={0}
-                value={lessons}
-                onChange={(e) => onChange({ lessons: Number(e.target.value) })}
-                className="w-20 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
-              <input
-                type="checkbox"
-                checked={exam}
-                onChange={(e) => onChange({ exam: e.target.checked })}
-                className="w-4 h-4 accent-[#C1595B]"
-              />
-              <span className="flex items-center gap-1">
-                <Award size={13} style={{ color: EXAM_COLOR }} /> Exam passed
-                today
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
-              <input
-                type="checkbox"
-                checked={ignore}
-                onChange={(e) => onChange({ ignore: e.target.checked })}
-                className="w-4 h-4 accent-[#1E2A33]/60"
-              />
-              <span className="flex items-center gap-1">
-                <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
-                statistics
-              </span>
-            </label>
-          </div>
-
-          <div className={`${CARD} p-4`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <MessageSquare size={12} className="text-[#1E2A33]/40" />
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
-                Day notes
-              </span>
-            </div>
-            <AutoTextarea
-              value={dayComment}
-              onChange={(e) => onChange({ comment: e.target.value })}
-              placeholder="Add a note for the whole day (optional)"
-              rows={2}
-              maxHeight={200}
-              className="w-full border border-[#1E2A33]/15 rounded-xl px-2 py-1.5 text-xs font-mono bg-[#F4F5F7]/40"
-            />
-          </div>
         </div>
-      </div>
-    </div>
+    </>
   )
 }
 
 /* ---------------------------------------------------------------
    Analytics View
 --------------------------------------------------------------- */
-
-const RANGE_PRESETS = [
-  { id: "7", label: "7 days" },
-  { id: "30", label: "30 days" },
-  { id: "90", label: "90 days" },
-  { id: "all", label: "All time" },
-  { id: "custom", label: "Custom" },
-]
 
 // Shared by the "Overall stats" (all-time) and "Stats" (period-scoped) sections —
 // takes whichever set of day keys and date bounds apply, and returns the same
@@ -3218,15 +4277,9 @@ function computeOverviewStats(
   }
 }
 
-function AnalyticsView({
-  data,
-  preset,
-  setPreset,
-  customStart,
-  setCustomStart,
-  customEnd,
-  setCustomEnd,
-}) {
+// Bounds come in from the shared period bar — analytics no longer owns a
+// range picker of its own.
+function AnalyticsView({ data, rangeStart, rangeEnd }) {
   const {
     slots,
     categories,
@@ -3236,25 +4289,34 @@ function AnalyticsView({
     monthIgnore = {},
   } = data
 
-  // A day is excluded from all statistics if it, its week, or its month has
-  // been marked "ignore in statistics" — the isDayIgnored check below is used
-  // once, up front, so every downstream stat/chart automatically respects it.
-  const isDayIgnored = useCallback(
-    (k, entry) => {
-      if (entry?.ignore) return true
-      const d = fromKey(k)
-      const wk = toKey(startOfWeek(d))
-      if (weekIgnore[wk]) return true
-      const mk = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
-      if (monthIgnore[mk]) return true
-      return false
-    },
+  // Applied once, up front, so every downstream stat and chart respects it.
+  // Same predicate the log above uses — see makeIsIgnored.
+  const isDayIgnored = useMemo(
+    () => makeIsIgnored(weekIgnore, monthIgnore),
     [weekIgnore, monthIgnore],
   )
   const [dailyMode, setDailyMode] = useState("slot") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weekdayMode, setWeekdayMode] = useState("hours") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weeklyMode, setWeeklyMode] = useState("hours") // 'hours' | 'slot' | 'category' | 'lessons'
   const [monthlyMode, setMonthlyMode] = useState("hours") // 'hours' | 'slot' | 'category' | 'lessons'
+
+  const lessonsEnabled = settings.lessonsEnabled ?? true
+  const examsEnabled = settings.examsEnabled ?? true
+
+  // If lessons tracking gets turned off while a chart is showing its Lessons
+  // mode, fall back to a mode that still has data to show.
+  useEffect(() => {
+    if (!lessonsEnabled && dailyMode === "lessons") setDailyMode("slot")
+  }, [lessonsEnabled, dailyMode])
+  useEffect(() => {
+    if (!lessonsEnabled && weekdayMode === "lessons") setWeekdayMode("hours")
+  }, [lessonsEnabled, weekdayMode])
+  useEffect(() => {
+    if (!lessonsEnabled && weeklyMode === "lessons") setWeeklyMode("hours")
+  }, [lessonsEnabled, weeklyMode])
+  useEffect(() => {
+    if (!lessonsEnabled && monthlyMode === "lessons") setMonthlyMode("hours")
+  }, [lessonsEnabled, monthlyMode])
 
   const dailyToggle = useSeriesToggle()
   const pieToggle = useSeriesToggle()
@@ -3271,21 +4333,6 @@ function AnalyticsView({
         .filter((k) => !isDayIgnored(k, days[k])),
     [days, isDayIgnored],
   )
-
-  const { rangeStart, rangeEnd } = useMemo(() => {
-    const today = new Date()
-    if (preset === "custom")
-      return { rangeStart: fromKey(customStart), rangeEnd: fromKey(customEnd) }
-    if (preset === "all") {
-      const first = dayKeysSorted[0]
-        ? fromKey(dayKeysSorted[0])
-        : settings.startDate
-          ? fromKey(settings.startDate)
-          : today
-      return { rangeStart: first, rangeEnd: today }
-    }
-    return { rangeStart: addDays(today, -Number(preset) + 1), rangeEnd: today }
-  }, [preset, customStart, customEnd, dayKeysSorted, settings.startDate])
 
   const rangedKeys = useMemo(() => {
     const s = new Date(
@@ -3704,20 +4751,19 @@ function AnalyticsView({
 
   return (
     <div className="space-y-8">
-      <RangePicker
-        preset={preset}
-        setPreset={setPreset}
-        customStart={customStart}
-        setCustomStart={setCustomStart}
-        customEnd={customEnd}
-        setCustomEnd={setCustomEnd}
+      <OverallStatsSection
+        overall={overallAllTime}
+        lessonsEnabled={lessonsEnabled}
+        examsEnabled={examsEnabled}
       />
-
-      <OverallStatsSection overall={overallAllTime} />
 
       <OverviewStats period={periodStats} />
 
-      <AveragesStats period={periodStats} />
+      <AveragesStats
+        period={periodStats}
+        lessonsEnabled={lessonsEnabled}
+        examsEnabled={examsEnabled}
+      />
 
       <RemarkableStats remarkable={remarkable} />
 
@@ -3736,7 +4782,7 @@ function AnalyticsView({
               { id: "slot", label: "Slots" },
               { id: "category", label: "Categories" },
               { id: "hours", label: "Hours" },
-              { id: "lessons", label: "Lessons" },
+              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
             ]}
             activeId={dailyMode}
             onChange={setDailyMode}
@@ -3753,7 +4799,7 @@ function AnalyticsView({
             <YAxis
               tick={{ fontSize: 10, fontFamily: "monospace" }}
               tickFormatter={dailyMode === "lessons" ? undefined : fmtAxisHours}
-              allowDecimals={dailyMode !== "lessons"}
+              allowDecimals={false}
             />
             <Tooltip
               contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
@@ -3853,7 +4899,7 @@ function AnalyticsView({
               { id: "slot", label: "Slots" },
               { id: "category", label: "Categories" },
               { id: "hours", label: "Hours" },
-              { id: "lessons", label: "Lessons" },
+              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
             ]}
             activeId={weekdayMode}
             onChange={setWeekdayMode}
@@ -3872,6 +4918,7 @@ function AnalyticsView({
               tickFormatter={
                 weekdayMode === "lessons" ? undefined : fmtAxisHours
               }
+              allowDecimals={false}
             />
             <Tooltip
               contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
@@ -3943,7 +4990,7 @@ function AnalyticsView({
               { id: "hours", label: "Hours" },
               { id: "slot", label: "Slots" },
               { id: "category", label: "Categories" },
-              { id: "lessons", label: "Lessons" },
+              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
             ]}
             activeId={weeklyMode}
             onChange={setWeeklyMode}
@@ -3966,6 +5013,7 @@ function AnalyticsView({
                   ? fmtAxisHours
                   : undefined
               }
+              allowDecimals={false}
             />
             <Tooltip
               contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
@@ -4046,7 +5094,7 @@ function AnalyticsView({
                 { id: "hours", label: "Hours" },
                 { id: "slot", label: "Slots" },
                 { id: "category", label: "Categories" },
-                { id: "lessons", label: "Lessons" },
+                ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
               ]}
               activeId={monthlyMode}
               onChange={setMonthlyMode}
@@ -4069,6 +5117,7 @@ function AnalyticsView({
                     ? fmtAxisHours
                     : undefined
                 }
+                allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
@@ -4096,16 +5145,32 @@ function AnalyticsView({
                     />
                   ))
               ) : (
-                <Area
-                  type="monotone"
-                  dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
-                  stroke={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                  fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                  name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
-                  dot={{ r: 3 }}
-                />
+                // Flat array, not a Fragment — see the note on the daily chart.
+                [
+                  <Area
+                    key="value"
+                    type="monotone"
+                    dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
+                    stroke={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                    fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
+                    dot={{ r: 3 }}
+                  />,
+                  monthlyMode === "hours" && (
+                    <Line
+                      key="goal-line"
+                      type="monotone"
+                      dataKey="goal"
+                      stroke="#1E2A33"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 3"
+                      dot={false}
+                      name="Goal"
+                    />
+                  ),
+                ]
               )}
             </AreaChart>
           </ResponsiveContainer>
@@ -4117,95 +5182,64 @@ function AnalyticsView({
             />
           )}
         </ChartCard>
-        <ChartCard
-          title="Days per exam"
-          subtitle="Calendar days needed to reach each exam, all-time"
-        >
-          {examsGapData.length === 0 ? (
-            <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
-              No exams passed yet — this fills in as you mark exam days in the
-              log.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={examsGapData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-                <XAxis
-                  dataKey="exam"
-                  tick={{ fontSize: 10, fontFamily: "monospace" }}
-                />
-                <YAxis tick={{ fontSize: 10, fontFamily: "monospace" }} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-                  formatter={(value, _name, props) => [
-                    `${value} days`,
-                    `Passed ${props.payload.date}`,
-                  ]}
-                />
-                {overallAllTime.avgDaysPerExam != null && (
-                  <ReferenceLine
-                    y={overallAllTime.avgDaysPerExam}
-                    stroke={ACCENT}
-                    strokeDasharray="4 4"
-                    label={{
-                      value: `avg ${overallAllTime.avgDaysPerExam.toFixed(0)}d`,
-                      fontSize: 10,
-                      fill: ACCENT,
-                      position: "right",
-                    }}
+        {examsEnabled && (
+          <ChartCard
+            title="Days per exam"
+            subtitle="Calendar days needed to reach each exam, all-time"
+          >
+            {examsGapData.length === 0 ? (
+              <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
+                No exams passed yet — this fills in as you mark exam days in
+                the log.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={examsGapData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                  <XAxis
+                    dataKey="exam"
+                    tick={{ fontSize: 10, fontFamily: "monospace" }}
                   />
-                )}
-                <Area
-                  type="monotone"
-                  dataKey="days"
-                  stroke={ACCENT}
-                  fill={ACCENT}
-                  fillOpacity={0.28}
-                  strokeWidth={2}
-                  name="Days needed"
-                  dot={{ r: 4, fill: ACCENT, strokeWidth: 0 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
+                  <YAxis
+                    tick={{ fontSize: 10, fontFamily: "monospace" }}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
+                    formatter={(value, _name, props) => [
+                      `${value} days`,
+                      `Passed ${props.payload.date}`,
+                    ]}
+                  />
+                  {overallAllTime.avgDaysPerExam != null && (
+                    <ReferenceLine
+                      y={overallAllTime.avgDaysPerExam}
+                      stroke={ACCENT}
+                      strokeDasharray="4 4"
+                      label={{
+                        value: `avg ${overallAllTime.avgDaysPerExam.toFixed(0)}d`,
+                        fontSize: 10,
+                        fill: ACCENT,
+                        position: "right",
+                      }}
+                    />
+                  )}
+                  <Area
+                    type="monotone"
+                    dataKey="days"
+                    stroke={ACCENT}
+                    fill={ACCENT}
+                    fillOpacity={0.28}
+                    strokeWidth={2}
+                    name="Days needed"
+                    dot={{ r: 4, fill: ACCENT, strokeWidth: 0 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+        )}
       </div>
-    </div>
-  )
-}
-
-function RangePicker({
-  preset,
-  setPreset,
-  customStart,
-  setCustomStart,
-  customEnd,
-  setCustomEnd,
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <SegmentedControl
-        items={RANGE_PRESETS}
-        activeId={preset}
-        onChange={setPreset}
-      />
-      {preset === "custom" && (
-        <div className="flex items-center gap-2 ml-2">
-          <input
-            type="date"
-            value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
-            className="border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono bg-white"
-          />
-          <span className="text-xs font-mono text-[#1E2A33]/40">to</span>
-          <input
-            type="date"
-            value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
-            className="border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono bg-white"
-          />
-        </div>
-      )}
     </div>
   )
 }
@@ -4232,41 +5266,21 @@ function OverviewStats({ period }) {
         Overview, selected period
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {stats.map((s, i) => {
-          const Icon = s.icon
-          return (
-            <div key={s.label} className={`${CARD} p-4`}>
-              <div className="flex items-center justify-between mb-3">
-                <span
-                  className={`text-[9px] font-mono uppercase tracking-widest ${"text-[#1E2A33]/50"}`}
-                >
-                  {s.label}
-                </span>
-                <span
-                  className={`flex items-center justify-center w-6 h-6 rounded-full ${"bg-[#1E2A33]/5"}`}
-                >
-                  <Icon size={12} className={"text-[#1E2A33]/40"} />
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-mono text-xl font-bold">{s.value}</span>
-                {s.sub && (
-                  <span
-                    className={`text-[10px] font-mono ${"text-[#1E2A33]/40"}`}
-                  >
-                    {s.sub}
-                  </span>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {stats.map((s) => (
+          <StatTile
+            key={s.label}
+            label={s.label}
+            value={s.value}
+            sub={s.sub}
+            icon={s.icon}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-function AveragesStats({ period }) {
+function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
   const items = [
     {
       label: "Avg hours / day",
@@ -4276,7 +5290,7 @@ function AveragesStats({ period }) {
           : "—",
       icon: Clock,
     },
-    {
+    lessonsEnabled && {
       label: "Avg hours / lesson",
       value:
         period.avgHoursPerLesson != null
@@ -4284,7 +5298,7 @@ function AveragesStats({ period }) {
           : "—",
       icon: BookOpen,
     },
-    {
+    lessonsEnabled && {
       label: "Avg lessons / day",
       value:
         period.avgLessonsPerDay != null
@@ -4292,13 +5306,13 @@ function AveragesStats({ period }) {
           : "—",
       icon: TrendingUp,
     },
-    {
+    examsEnabled && {
       label: "Avg days / exam",
       value:
         period.avgDaysPerExam != null ? Math.round(period.avgDaysPerExam) : "—",
       icon: Award,
     },
-    {
+    lessonsEnabled && {
       label: "Avg lessons / week",
       value:
         period.avgLessonsPerWeek != null
@@ -4306,7 +5320,7 @@ function AveragesStats({ period }) {
           : "—",
       icon: CalendarDays,
     },
-    {
+    lessonsEnabled && {
       label: "Avg lessons / month",
       value:
         period.avgLessonsPerMonth != null
@@ -4314,7 +5328,7 @@ function AveragesStats({ period }) {
           : "—",
       icon: ClipboardList,
     },
-    {
+    lessonsEnabled && {
       label: "Avg lessons / 3 months",
       value:
         period.avgLessonsPer3Months != null
@@ -4322,7 +5336,7 @@ function AveragesStats({ period }) {
           : "—",
       icon: Layers,
     },
-  ]
+  ].filter(Boolean)
 
   return (
     <div>
@@ -4333,22 +5347,14 @@ function AveragesStats({ period }) {
         Pace over the selected period
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-        {items.map((it) => {
-          const Icon = it.icon
-          return (
-            <div key={it.label} className={`${CARD} p-4`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
-                  {it.label}
-                </span>
-                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#1E2A33]/5">
-                  <Icon size={12} className="text-[#1E2A33]/40" />
-                </span>
-              </div>
-              <span className="font-mono text-xl font-bold">{it.value}</span>
-            </div>
-          )
-        })}
+        {items.map((it) => (
+          <StatTile
+            key={it.label}
+            label={it.label}
+            value={it.value}
+            icon={it.icon}
+          />
+        ))}
       </div>
     </div>
   )
@@ -4357,7 +5363,7 @@ function AveragesStats({ period }) {
 // Project-wide totals & forecast — visually distinct (tinted) and placed above
 // the period-scoped Stats section, to make clear it does NOT change with the
 // selected analytics period.
-function OverallStatsSection({ overall }) {
+function OverallStatsSection({ overall, lessonsEnabled, examsEnabled }) {
   const tint = "#C98A2E"
   const lessonPct =
     overall.totalLessons > 0
@@ -4376,23 +5382,25 @@ function OverallStatsSection({ overall }) {
   const hasEnough =
     overall.avgMinutesPerLesson && overall.avgLessonsPerActiveDay
 
+  if (!lessonsEnabled && !examsEnabled) return null
+
   const baseItems = [
-    {
+    lessonsEnabled && {
       label: "Lessons done",
       value: `${overall.lessonsDone}/${overall.totalLessons}`,
       sub: `${lessonPct}%`,
       icon: TrendingUp,
     },
-    {
+    examsEnabled && {
       label: "Exams passed",
       value: `${overall.examsDone}/${overall.totalExams}`,
       sub: `${examPct}%`,
       icon: Award,
     },
-  ]
+  ].filter(Boolean)
 
   const forecastItems =
-    hasEnough && overall.lessonsRemaining > 0
+    lessonsEnabled && hasEnough && overall.lessonsRemaining > 0
       ? [
           {
             label: "Lessons remaining",
@@ -4479,12 +5487,12 @@ function OverallStatsSection({ overall }) {
         })}
       </div>
 
-      {!hasEnough && (
+      {lessonsEnabled && !hasEnough && (
         <p className="mt-3 text-[11px] font-mono text-[#1E2A33]/60">
           Log a few more study days with lessons completed to unlock a forecast.
         </p>
       )}
-      {hasEnough && overall.lessonsRemaining === 0 && (
+      {lessonsEnabled && hasEnough && overall.lessonsRemaining === 0 && (
         <p className="mt-3 text-sm font-mono text-[#1E2A33]">
           Project complete — all {overall.totalLessons} lessons logged. 🎉
         </p>
