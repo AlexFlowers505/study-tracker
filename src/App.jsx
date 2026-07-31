@@ -139,7 +139,20 @@ const PALETTE = [
 const ACCENT = "#2F5FBF" // bluish active-state accent
 const EXAM_COLOR = "#C1595B"
 const GOAL_MET_COLOR = "#2F9E8F"
+const INK = "#1E2A33" // the app's near-black, used for text and washes
 const CARD = "bg-white rounded-2xl p-4"
+
+// An opaque white base with a translucent wash painted on top of it, so a
+// tinted surface looks the same whatever sits behind it. Setting the wash as
+// the background-color alone would let the parent bleed through — which is how
+// the month grid ended up showing one colour on desktop and another on a
+// phone, where the cells sit on the grid's seam colour.
+const cellSurface = (wash) => ({
+  backgroundColor: "#FFFFFF",
+  ...(wash
+    ? { backgroundImage: `linear-gradient(${wash}, ${wash})` }
+    : {}),
+})
 // Fields are filled, not outlined: on a white card they take the page tint, on
 // a tinted row they go white. That contrast step is what reads as "editable",
 // so the border is redundant. Selects and number inputs keep a hairline
@@ -1628,14 +1641,12 @@ export default function StudyTrackerApp() {
                 rangeStart={range.start}
                 rangeEnd={range.end}
                 overallAllTime={overallAllTime}
-                showOverallInline={!showOverall}
               />
             </div>
           </div>
 
           {/* Sidebar: a third of the content width, sticky below the period
-              bar. Hidden below lg — at that width a third of the column is
-              too narrow to be worth the space it takes from the log. */}
+              bar. Below lg the same content arrives as a bottom sheet. */}
           {showOverall && (
             <aside className="hidden lg:block w-1/3 shrink-0 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
               <OverallStatsSection
@@ -1643,12 +1654,28 @@ export default function StudyTrackerApp() {
                 lessonsEnabled={project.settings.lessonsEnabled !== false}
                 examsEnabled={project.settings.examsEnabled !== false}
                 onClose={() => setShowOverall(false)}
-                compact
+                variant="sidebar"
               />
             </aside>
           )}
         </div>
       </main>
+
+      {/* Phone: a bottom sheet rather than a modal. It pins to the bottom
+          edge and only claims the height it needs, so the log stays visible
+          and usable above it — a dialog would have covered the very thing
+          you're comparing the totals against. */}
+      {showOverall && (
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 max-h-[60vh] overflow-y-auto shadow-[0_-8px_24px_rgba(30,42,51,0.15)]">
+          <OverallStatsSection
+            overall={overallAllTime}
+            lessonsEnabled={project.settings.lessonsEnabled !== false}
+            examsEnabled={project.settings.examsEnabled !== false}
+            onClose={() => setShowOverall(false)}
+            variant="sheet"
+          />
+        </div>
+      )}
 
       {editingKey && (
         <DayQuickviewModal
@@ -2592,7 +2619,7 @@ function PeriodBar({
           >
             <button
               onClick={onToggleOverall}
-              className={`${btnBase} hidden lg:flex p-2 rounded-full ${
+              className={`${btnBase} p-2 rounded-full ${
                 showOverall
                   ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
                   : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
@@ -3206,8 +3233,13 @@ function MonthGrid({
                 gaps and each day rounded on its own. */}
             <div className="grid grid-cols-7 gap-px sm:gap-2 rounded-xl overflow-hidden sm:overflow-visible sm:rounded-none bg-[#1E2A33]/10 sm:bg-transparent">
               {row.map((date, di) => {
+                // Days outside the month read as absent on both layouts: on a
+                // phone they take the page colour so they sit flush with the
+                // background rather than showing as white tiles.
                 if (!date)
-                  return <div key={di} className="bg-white sm:bg-transparent" />
+                  return (
+                    <div key={di} className="bg-[#F4F5F7] sm:bg-transparent" />
+                  )
                 const entry = days[toKey(date)]
                 const dayIgnored = weekIgnored || !!entry?.ignore
                 return (
@@ -3295,7 +3327,10 @@ function CompactDayCell({
 }) {
   if (isBeforeStart) {
     return (
-      <div className="bg-[#1E2A33]/[0.04] h-16 sm:h-28 flex items-start p-1 sm:p-2">
+      <div
+        className="h-16 sm:h-28 flex items-start p-1 sm:p-2 sm:rounded-xl"
+        style={cellSurface(`${INK}0A`)}
+      >
         <span className="font-mono text-[10px] sm:text-xs text-[#1E2A33]/25">
           {date.getDate()}
         </span>
@@ -3321,20 +3356,21 @@ function CompactDayCell({
         onClick={onEdit}
         onKeyDown={(e) => e.key === "Enter" && onEdit()}
         className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between sm:rounded-xl hover:brightness-95 sm:hover:shadow-md cursor-pointer ${
-          ignored
-            ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
-            : goalOutcome
-              ? ""
-              : "bg-white"
+          ignored ? "grayscale opacity-60" : ""
         } ${isFuture ? "opacity-50" : ""}`}
-        style={{
-          ...(goalOutcome === "met"
-            ? { backgroundColor: `${GOAL_MET_COLOR}17` }
-            : {}),
-          ...(goalOutcome === "missed"
-            ? { backgroundColor: `${EXAM_COLOR}17` }
-            : {}),
-        }}
+        // The goal tint is translucent, so it needs an opaque base of its own.
+        // Without one it picked up whatever sat behind the cell — the page on
+        // desktop, the seam colour of the phone grid — and the same day came
+        // out two different shades on the two layouts.
+        style={cellSurface(
+          ignored
+            ? `${INK}0A`
+            : goalOutcome === "met"
+              ? `${GOAL_MET_COLOR}17`
+              : goalOutcome === "missed"
+                ? `${EXAM_COLOR}17`
+                : null,
+        )}
       >
       <div className="flex items-start justify-between">
         <span
@@ -4479,7 +4515,7 @@ function computeOverallAllTime(project) {
 // Bounds come in from the shared period bar — analytics no longer owns a
 // range picker of its own. `overall` is passed in rather than computed here
 // because the panel that shows it can live in the sidebar instead.
-function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime, showOverallInline }) {
+function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
   const {
     slots,
     categories,
@@ -4926,15 +4962,6 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime, showOverall
 
   return (
     <div className="space-y-8">
-      {/* Skipped while the sidebar is showing it, so it never appears twice. */}
-      {showOverallInline && (
-        <OverallStatsSection
-          overall={overallAllTime}
-          lessonsEnabled={lessonsEnabled}
-          examsEnabled={examsEnabled}
-        />
-      )}
-
       <OverviewStats
         period={periodStats}
         lessonsEnabled={lessonsEnabled}
@@ -5560,15 +5587,18 @@ function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
 // Project-wide totals & forecast — visually distinct (tinted) and placed above
 // the period-scoped Stats section, to make clear it does NOT change with the
 // selected analytics period.
-// `onClose` turns it into the dismissable sidebar panel; without it the block
-// renders inline as before. `compact` is the narrow-column tile layout.
+// Two shapes for the same numbers: `sidebar` is the narrow sticky column on
+// desktop, `sheet` is the phone's bottom drawer — denser tiles and no
+// forecast prose, because it has to earn every pixel it takes from the log
+// behind it.
 function OverallStatsSection({
   overall,
   lessonsEnabled,
   examsEnabled,
   onClose,
-  compact = false,
+  variant = "sidebar",
 }) {
+  const sheet = variant === "sheet"
   const tint = "#C98A2E"
   const lessonPct =
     overall.totalLessons > 0
@@ -5645,10 +5675,17 @@ function OverallStatsSection({
 
   return (
     <div
-      className="rounded-2xl p-4 sm:p-5 border-2"
-      style={{ backgroundColor: `${tint}14`, borderColor: `${tint}45` }}
+      className={
+        sheet
+          ? "rounded-t-2xl px-3 pt-2 pb-3 border-t-2"
+          : "rounded-2xl p-4 sm:p-5 border-2"
+      }
+      style={{
+        backgroundColor: sheet ? "#FBF6EC" : `${tint}14`,
+        borderColor: `${tint}45`,
+      }}
     >
-      <div className="flex items-center gap-2 mb-1">
+      <div className={`flex items-center gap-2 ${sheet ? "mb-2" : "mb-1"}`}>
         <span
           className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
           style={{ backgroundColor: `${tint}30` }}
@@ -5669,34 +5706,47 @@ function OverallStatsSection({
           </Tip>
         )}
       </div>
-      <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
-        Project totals &amp; forecast — independent of the chosen period
-      </p>
+      {!sheet && (
+        <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+          Project totals &amp; forecast — independent of the chosen period
+        </p>
+      )}
 
       <div
         className={
-          compact
-            ? "grid grid-cols-1 xl:grid-cols-2 gap-3"
-            : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+          sheet
+            ? "grid grid-cols-2 sm:grid-cols-3 gap-2"
+            : "grid grid-cols-1 xl:grid-cols-2 gap-3"
         }
       >
         {items.map((it) => {
           const Icon = it.icon
           return (
-            <div key={it.label} className="rounded-2xl p-4 bg-white/70">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+            <div
+              key={it.label}
+              className={`bg-white/70 ${sheet ? "rounded-xl p-2" : "rounded-2xl p-4"}`}
+            >
+              <div
+                className={`flex items-center justify-between ${sheet ? "mb-0.5" : "mb-3"}`}
+              >
+                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 truncate">
                   {it.label}
                 </span>
-                <span
-                  className="flex items-center justify-center w-6 h-6 rounded-full"
-                  style={{ backgroundColor: `${tint}20` }}
-                >
-                  <Icon size={12} style={{ color: tint }} />
-                </span>
+                {!sheet && (
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
+                    style={{ backgroundColor: `${tint}20` }}
+                  >
+                    <Icon size={12} style={{ color: tint }} />
+                  </span>
+                )}
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span className="font-mono text-xl font-bold">{it.value}</span>
+                <span
+                  className={`font-mono font-bold ${sheet ? "text-sm" : "text-xl"}`}
+                >
+                  {it.value}
+                </span>
                 {it.sub && (
                   <span className="text-[10px] font-mono text-[#1E2A33]/40">
                     {it.sub}
@@ -5708,13 +5758,15 @@ function OverallStatsSection({
         })}
       </div>
 
-      {lessonsEnabled && !hasEnough && (
+      {!sheet && lessonsEnabled && !hasEnough && (
         <p className="mt-3 text-[11px] font-mono text-[#1E2A33]/60">
           Log a few more study days with lessons completed to unlock a forecast.
         </p>
       )}
       {lessonsEnabled && hasEnough && overall.lessonsRemaining === 0 && (
-        <p className="mt-3 text-sm font-mono text-[#1E2A33]">
+        <p
+          className={`mt-3 font-mono text-[#1E2A33] ${sheet ? "text-[11px]" : "text-sm"}`}
+        >
           Project complete — all {overall.totalLessons} lessons logged. 🎉
         </p>
       )}
