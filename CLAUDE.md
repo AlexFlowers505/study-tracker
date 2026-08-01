@@ -50,20 +50,27 @@ Plain JS with JSX — no TypeScript.
 
 One page, not tabs. A single period drives everything:
 
-- `PERIODS` — day, week, month, 90days ("3 Months"), year, all, custom.
+- `PERIODS` — day, week, month, quarter ("3 Months"), year, all, custom.
+  `quarter` is a calendar quarter, not a rolling 90 days: `periodRange()` snaps
+  it to the 1st of the quarter's first month and the last day of its third.
 - `periodRange()` is the only source of truth for "which days are we showing".
   It feeds both halves of the page, so they can never disagree about the range.
 - `PeriodBar` (sticky, hides on scroll down) holds the period pills, the
   cursor navigation and the period label.
 - Below it: `LogView` (notes, donut breakdowns, day cards / month grid /
   heatmap) and then `AnalyticsView` (stat tiles and charts) for the same range.
-- "Overall stats" is project-wide, not period-scoped. It lives outside the main
-  flow entirely — a toggle in `PeriodBar` opens it as a sticky sidebar on
-  desktop and a bottom sheet on phones (`OverallStatsSection`'s `variant`).
+- Two panels open from `PeriodBar` and render between it and `LogView`, the
+  filter first because it governs the stats below it:
+  - `CountFilter` — which slots/categories count. Not period-scoped; switching
+    periods leaves it alone, so its toggle carries a dot while anything is
+    struck out, or a live filter would silently shrink every figure.
+  - `OverallStatsSection` — project-wide totals and forecast. Inline block on
+    desktop, bottom sheet on phones (its `variant`).
 
 ## Data model
 
-All state is one JSON blob:
+In memory, all state is one object — every view below `StudyTrackerApp`
+receives this and nothing else:
 
 ```js
 { activeProjectId, projects: [ { id, settings, slots, categories,
@@ -72,29 +79,54 @@ All state is one JSON blob:
 ```
 
 `days` is keyed by `'YYYY-MM-DD'` (via `toKey`), week keys are the Monday of the
-week, month keys are `'YYYY-MM'`. `makeProject`, `normalizeProject` and
-`normalizeData` document the exact shapes and handle migrating older saved data
-— extend those when adding a field, so existing users' blobs keep loading.
+week, month keys are `'YYYY-MM'`.
 
 ## Persistence
 
-Signed in: Supabase table `study_data` (`user_id`, `data` jsonb, `updated_at`),
-upserted in full. Not signed in: local fallback keyed by `STORAGE_KEY`.
+**On the server the shape is different.** Four tables, not one document:
+`projects` (settings/slots/categories as jsonb — small and always read as a
+unit), `days` keyed `(project_id, date)`, `period_notes` keyed
+`(project_id, kind, key)` where the note and its ignore flag share a row, and
+`user_prefs` for `active_project_id`. RLS on all four; days and notes inherit
+ownership from their project. See `migrations/001_normalize_schema.sql`.
 
-Every mutation goes through `persist()` — usually via `updateProject`,
-`updateSettings`, `updateDay` and friends. Never call `setData` directly for
-user data; it writes state without saving.
+`loadFromTables()` reads all four and assembles the in-memory shape above, so
+the split stops at the edge of the app. It pages at `PAGE_SIZE` because
+PostgREST caps a response at 1000 rows.
 
-`persist()` updates React state immediately but **debounces the write** by
-`SAVE_DEBOUNCE_MS` (1s), coalescing bursts — a whole blob per keystroke was the
-alternative. A pending write is flushed on `visibilitychange`, `pagehide` and
-on unmount, and re-queued if it fails. If you add a code path that must be
-durable right away, flush rather than assuming the save already happened.
+Writes are **per row, never the whole document**. `persist(next, ops)` takes
+the new state plus one or more ops — `opProject`, `opDay`, `opNote`,
+`opPrefs`, `opDeleteProject` — and each op names *which row* changed, not its
+contents. `applyWriteOp` reads the contents from the latest state at flush
+time, so repeated edits to one day collapse into a single write. Add a field
+that needs saving and you must also emit the right op; state alone won't
+persist.
 
-Known quirk: the local fallback calls `window.storage.get/set`, an API that does
-not exist in a browser (left over from the app's origin as a Claude artifact).
-The call throws, gets swallowed, and the setup modal appears. Offline mode is
-therefore non-functional — add a `localStorage` shim if it's needed.
+`persist()` updates React state immediately and debounces the write by
+`SAVE_DEBOUNCE_MS` (1s). Pending ops flush on `visibilitychange`, `pagehide`
+and unmount, and are re-queued on failure (they're idempotent upserts, so a
+replay is harmless).
+
+Three failure rules, each of which exists because it once went wrong:
+
+- **supabase-js returns errors in the payload, it does not throw.** Every call
+  must check `{ error }`. Not doing so silently dropped a day and a half of
+  edits while the app looked healthy.
+- **A failed read is not an empty account.** On a load error the app sets
+  `loadFailed`, refuses to write anything, and shows a dead-end screen. The
+  old behaviour — open the setup modal over `DEFAULT_DATA` — let its auto-save
+  overwrite the real data.
+- **A failed write must be visible.** `saveFailed` raises a banner and a retry
+  runs every `SAVE_RETRY_MS`. Never log a save failure and carry on.
+
+`study_data` is the old single-blob table. It is no longer read or written,
+and is kept only as a frozen pre-migration snapshot. Setup has an
+**Export JSON** button; suggest it before anything destructive.
+
+Known quirk: the local (signed-out) fallback calls `window.storage.get/set`, an
+API that does not exist in a browser (left over from the app's origin as a
+Claude artifact). Offline mode is therefore non-functional — add a
+`localStorage` shim if it's needed.
 
 ## Conventions
 

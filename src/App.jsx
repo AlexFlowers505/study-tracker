@@ -74,6 +74,8 @@ import {
   Gauge,
   EyeOff,
   MoreVertical,
+  Download,
+  Filter,
 } from "lucide-react"
 
 /* ---------------------------------------------------------------
@@ -140,6 +142,9 @@ const ACCENT = "#2F5FBF" // bluish active-state accent
 const EXAM_COLOR = "#C1595B"
 const GOAL_MET_COLOR = "#2F9E8F"
 const INK = "#1E2A33" // the app's near-black, used for text and washes
+// Shared by the count filter's panel and the dot on its toggle, so the badge in
+// the period bar reads as belonging to the panel it opens.
+const FILTER_TINT = "#6B7FD7"
 const CARD = "bg-white rounded-2xl p-4"
 
 // An opaque white base with a translucent wash painted on top of it, so a
@@ -230,6 +235,10 @@ const STORAGE_KEY = "study-tracker-data"
 // rewrites the whole project, so typing a note used to mean one upsert per
 // keystroke.
 const SAVE_DEBOUNCE_MS = 1000
+// How long to wait before retrying a failed write. Failures here are usually
+// transient (an expired token that the client refreshes, a blip at the
+// provider), so retrying quietly beats making the user re-enter a day.
+const SAVE_RETRY_MS = 5000
 
 const DEFAULT_SETTINGS = {
   totalLessons: 100,
@@ -652,14 +661,21 @@ function useSeriesToggle() {
   return { hidden, toggle, reset }
 }
 
-function ToggleChips({ items, hidden, onToggle }) {
+// `tipFor` turns each chip into a tooltip trigger — used by the page-level
+// filter, where it isn't obvious that a struck-through chip is clickable.
+function ToggleChips({
+  items,
+  hidden,
+  onToggle,
+  className = "justify-center mt-3",
+  tipFor,
+}) {
   return (
-    <div className="flex flex-wrap justify-center gap-1.5 mt-3">
+    <div className={`flex flex-wrap gap-1.5 ${className}`}>
       {items.map((it) => {
         const isHidden = hidden.has(it.id)
-        return (
+        const chip = (
           <button
-            key={it.id}
             onClick={() => onToggle(it.id)}
             style={{
               borderColor: it.color,
@@ -677,7 +693,110 @@ function ToggleChips({ items, hidden, onToggle }) {
             {it.label}
           </button>
         )
+        return tipFor ? (
+          <Tip key={it.id} text={tipFor(it, isHidden)}>
+            {chip}
+          </Tip>
+        ) : (
+          <React.Fragment key={it.id}>{chip}</React.Fragment>
+        )
       })}
+    </div>
+  )
+}
+
+// Page-level filter: which slots and categories count towards every figure on
+// the page. Independent of the period — switching periods leaves it alone.
+//
+// Styled as a sibling of OverallStatsSection (tinted panel, round icon badge,
+// close X) because they behave the same way: both are opened from the period
+// bar and dismissed from their own corner.
+function CountFilter({
+  slots,
+  categories,
+  hiddenSlots,
+  hiddenCategories,
+  onToggleSlot,
+  onToggleCategory,
+  onReset,
+  onClose,
+}) {
+  const hiddenCount = hiddenSlots.size + hiddenCategories.size
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-5 border-2 mb-4"
+      style={{
+        backgroundColor: `${FILTER_TINT}14`,
+        borderColor: `${FILTER_TINT}45`,
+      }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
+          style={{ backgroundColor: `${FILTER_TINT}30` }}
+        >
+          <Filter size={13} style={{ color: FILTER_TINT }} />
+        </span>
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
+          Counted in every figure
+        </h3>
+        {hiddenCount > 0 && (
+          <button
+            onClick={onReset}
+            className={`${btnBase} text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45 hover:text-[#1E2A33]`}
+          >
+            Count all again
+          </button>
+        )}
+        {onClose && (
+          <Tip text="Hide the filter">
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <X size={16} />
+            </button>
+          </Tip>
+        )}
+      </div>
+      <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+        Struck-through means left out — of the log, the stats and the charts
+      </p>
+
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
+            Slots
+          </span>
+          <ToggleChips
+            items={slots}
+            hidden={hiddenSlots}
+            onToggle={onToggleSlot}
+            className=""
+            tipFor={(it, isHidden) =>
+              isHidden
+                ? `Count "${it.label}" again`
+                : `Leave "${it.label}" out of every total`
+            }
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
+            Categories
+          </span>
+          <ToggleChips
+            items={categories}
+            hidden={hiddenCategories}
+            onToggle={onToggleCategory}
+            className=""
+            tipFor={(it, isHidden) =>
+              isHidden
+                ? `Count "${it.label}" again`
+                : `Leave "${it.label}" out of every total`
+            }
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -1349,6 +1468,196 @@ function AuthScreen({ client, error }) {
 }
 
 /* ---------------------------------------------------------------
+   Persistence — normalised tables
+
+   One row per day rather than one document per user. A day edit is an upsert
+   of that day; the rest of the history isn't touched, two tabs editing
+   different days no longer overwrite each other, and a bad write can't take
+   out five months at once.
+
+   The in-memory shape is unchanged, so every view below still receives the
+   same `{ activeProjectId, projects: [...] }` object it always did — only the
+   loading and saving either side of it are different.
+--------------------------------------------------------------- */
+
+// PostgREST caps a response at 1000 rows, so anything that grows without
+// bound has to be paged.
+const PAGE_SIZE = 1000
+
+async function fetchAllRows(makeQuery) {
+  const rows = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    rows.push(...(data || []))
+    if (!data || data.length < PAGE_SIZE) return rows
+  }
+}
+
+// RLS scopes every one of these to the signed-in user, so none of them needs
+// a user_id filter of its own.
+async function loadFromTables(client) {
+  const [projectRows, dayRows, noteRows, prefs] = await Promise.all([
+    fetchAllRows(() => client.from("projects").select("id,settings,slots,categories")),
+    fetchAllRows(() =>
+      client
+        .from("days")
+        .select("project_id,date,cells,lessons,exam,ignored,comment"),
+    ),
+    fetchAllRows(() =>
+      client.from("period_notes").select("project_id,kind,key,note,ignored"),
+    ),
+    client.from("user_prefs").select("active_project_id").maybeSingle(),
+  ])
+  if (prefs.error) throw prefs.error
+  if (!projectRows.length) return null
+
+  const byId = new Map()
+  projectRows.forEach((r) =>
+    byId.set(r.id, {
+      id: r.id,
+      settings: { ...DEFAULT_SETTINGS, ...(r.settings || {}) },
+      slots: r.slots?.length ? r.slots : DEFAULT_SLOTS,
+      categories: r.categories?.length ? r.categories : DEFAULT_CATEGORIES,
+      days: {},
+      weekNotes: {},
+      monthNotes: {},
+      weekIgnore: {},
+      monthIgnore: {},
+    }),
+  )
+
+  dayRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p) return
+    p.days[r.date] = {
+      cells: r.cells || {},
+      lessons: Number(r.lessons) || 0,
+      exam: !!r.exam,
+      ignore: !!r.ignored,
+      comment: r.comment || "",
+    }
+  })
+
+  noteRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p) return
+    const notes = r.kind === "week" ? p.weekNotes : p.monthNotes
+    const flags = r.kind === "week" ? p.weekIgnore : p.monthIgnore
+    if (r.note) notes[r.key] = r.note
+    if (r.ignored) flags[r.key] = true
+  })
+
+  const projects = [...byId.values()]
+  const activeId = prefs.data?.active_project_id
+  return {
+    activeProjectId: projects.some((p) => p.id === activeId)
+      ? activeId
+      : projects[0].id,
+    projects,
+  }
+}
+
+// Ops describe *which* row changed, never its contents — the contents are read
+// from the latest state when the queue flushes.
+const opProject = (projectId) => ({
+  key: `project:${projectId}`,
+  kind: "project",
+  projectId,
+})
+const opDay = (projectId, dateKey) => ({
+  key: `day:${projectId}:${dateKey}`,
+  kind: "day",
+  projectId,
+  dateKey,
+})
+const opNote = (projectId, noteKind, noteKey) => ({
+  key: `note:${projectId}:${noteKind}:${noteKey}`,
+  kind: "note",
+  projectId,
+  noteKind,
+  noteKey,
+})
+const opPrefs = () => ({ key: "prefs", kind: "prefs" })
+const opDeleteProject = (projectId) => ({
+  key: `deleteProject:${projectId}`,
+  kind: "deleteProject",
+  projectId,
+})
+
+async function applyWriteOp(client, userId, op, data) {
+  // supabase-js returns failures in the payload rather than throwing, so every
+  // call here has its { error } checked.
+  const run = async (query) => {
+    const { error } = await query
+    if (error) throw error
+  }
+  const stamp = new Date().toISOString()
+  const project = data.projects.find((p) => p.id === op.projectId)
+
+  switch (op.kind) {
+    case "project":
+      if (!project) return
+      return run(
+        client.from("projects").upsert({
+          id: project.id,
+          user_id: userId,
+          settings: project.settings,
+          slots: project.slots,
+          categories: project.categories,
+          updated_at: stamp,
+        }),
+      )
+    case "day": {
+      if (!project) return
+      const day = project.days[op.dateKey]
+      if (!day) return
+      return run(
+        client.from("days").upsert({
+          project_id: project.id,
+          date: op.dateKey,
+          cells: day.cells || {},
+          lessons: Number(day.lessons) || 0,
+          exam: !!day.exam,
+          ignored: !!day.ignore,
+          comment: day.comment || "",
+          updated_at: stamp,
+        }),
+      )
+    }
+    case "note": {
+      if (!project) return
+      const week = op.noteKind === "week"
+      const notes = (week ? project.weekNotes : project.monthNotes) || {}
+      const flags = (week ? project.weekIgnore : project.monthIgnore) || {}
+      return run(
+        client.from("period_notes").upsert({
+          project_id: project.id,
+          kind: op.noteKind,
+          key: op.noteKey,
+          note: notes[op.noteKey] || "",
+          ignored: !!flags[op.noteKey],
+          updated_at: stamp,
+        }),
+      )
+    }
+    case "prefs":
+      return run(
+        client.from("user_prefs").upsert({
+          user_id: userId,
+          active_project_id: data.activeProjectId,
+          updated_at: stamp,
+        }),
+      )
+    // Days and notes go with it: both cascade on the project's foreign key.
+    case "deleteProject":
+      return run(client.from("projects").delete().eq("id", op.projectId))
+    default:
+      return
+  }
+}
+
+/* ---------------------------------------------------------------
    Main App
 --------------------------------------------------------------- */
 
@@ -1371,7 +1680,27 @@ export default function StudyTrackerApp() {
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
   const [showSetup, setShowSetup] = useState(false)
+  // Set when the initial read threw. While true the app is read-only: it holds
+  // placeholder state that must never be written back over the real row.
+  const [loadFailed, setLoadFailed] = useState(false)
+  // Set when a write fails. Surfaced as a banner — silence here is what let a
+  // day and a half of edits disappear into the console.
+  const [saveFailed, setSaveFailed] = useState(false)
   const [showOverall, setShowOverall] = useState(false)
+  const [showFilter, setShowFilter] = useState(false)
+  // Which slots/categories are left out of the figures. Deliberately not tied
+  // to the period and not saved: it's a way of looking at the data, not part
+  // of it.
+  const [hiddenSlots, setHiddenSlots] = useState(() => new Set())
+  const [hiddenCategories, setHiddenCategories] = useState(() => new Set())
+
+  const toggleIn = (setter) => (id) =>
+    setter((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const canUseCloud = cloudEnabled && cloudClient && session
 
@@ -1384,14 +1713,8 @@ export default function StudyTrackerApp() {
     ;(async () => {
       try {
         if (canUseCloud) {
-          const { data: row, error } = await cloudClient
-            .from("study_data")
-            .select("data")
-            .eq("user_id", session.user.id)
-            .maybeSingle()
-          if (error) throw error
-          const normalized = normalizeData(row && row.data)
-          if (normalized) setData(normalized)
+          const assembled = await loadFromTables(cloudClient)
+          if (assembled) setData(assembled)
           else setShowSetup(true)
         } else {
           const res = await window.storage.get(STORAGE_KEY, false)
@@ -1401,7 +1724,13 @@ export default function StudyTrackerApp() {
           else setShowSetup(true)
         }
       } catch (e) {
-        setShowSetup(true)
+        // A failed read is NOT an empty account. Treating it as one is how a
+        // real project got replaced by a blank default: the setup modal opened
+        // over DEFAULT_DATA, its auto-save fired, and persist() upserted the
+        // blank blob over the row that hadn't loaded. Freeze writes instead
+        // and say so — the remote copy is the only copy.
+        console.error("Failed to load saved data", e)
+        setLoadFailed(true)
       }
       setLoaded(true)
     })()
@@ -1409,45 +1738,93 @@ export default function StudyTrackerApp() {
   }, [authReady, canUseCloud])
 
   // Saves are coalesced: React state updates on every edit so the UI stays
-  // responsive, but the blob only goes out once edits stop. pendingRef holds
-  // the newest version not yet written.
-  const pendingRef = useRef(null)
+  // responsive, but the rows only go out once edits stop. pendingRef is a map
+  // of op-key -> op, so repeated edits to one day queue a single write.
+  const pendingRef = useRef(new Map())
   const saveTimerRef = useRef(null)
+  const retryTimerRef = useRef(null)
+  const writeNowRef = useRef(null)
+  // Always the newest state, read at flush time so a queued op writes what the
+  // day looks like now rather than when it was queued.
+  const dataRef = useRef(DEFAULT_DATA)
 
   const writeNow = useCallback(async () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current)
       saveTimerRef.current = null
     }
-    const next = pendingRef.current
-    if (!next) return
-    pendingRef.current = null
+    const ops = [...pendingRef.current.values()]
+    if (!ops.length) return
+    pendingRef.current = new Map()
+    // Ops name what changed, not what it changed to, so they always write the
+    // latest state — several edits to the same day collapse into one write.
+    const snapshot = dataRef.current
     try {
       if (canUseCloud) {
-        await cloudClient.from("study_data").upsert({
-          user_id: session.user.id,
-          data: next,
-          updated_at: new Date().toISOString(),
-        })
+        for (const op of ops) {
+          await applyWriteOp(cloudClient, session.user.id, op, snapshot)
+        }
       } else {
-        await window.storage.set(STORAGE_KEY, JSON.stringify(next), false)
+        await window.storage.set(
+          STORAGE_KEY,
+          JSON.stringify(snapshot),
+          false,
+        )
       }
+      setSaveFailed(false)
     } catch (e) {
       console.error("Failed to save", e)
-      // Requeue so the next flush retries instead of dropping the edit — unless
-      // a newer version landed while this write was in flight, which wins.
-      pendingRef.current = pendingRef.current || next
+      // Put the whole batch back. Every op is an idempotent upsert derived
+      // from current state, so replaying one that already landed is harmless,
+      // and anything newer keeps its place by op key.
+      ops.forEach((op) => {
+        if (!pendingRef.current.has(op.key)) pendingRef.current.set(op.key, op)
+      })
+      setSaveFailed(true)
+      // Keep trying on our own: most causes (expired token, a blip at the
+      // provider) clear by themselves, and the user shouldn't have to notice.
+      // Called through a ref so this callback doesn't reference itself while
+      // it's still being defined.
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null
+        writeNowRef.current?.()
+      }, SAVE_RETRY_MS)
     }
   }, [canUseCloud, cloudClient, session])
 
+  useEffect(() => {
+    writeNowRef.current = writeNow
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    }
+  }, [writeNow])
+
+  // Mirrors state into a ref so a queued op can read the newest version at
+  // flush time rather than the one captured when it was queued.
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
+
+  // `ops` says which rows the change touched — one op, or several for things
+  // like adding a project (its own row plus the active-project preference).
   const persist = useCallback(
-    (next) => {
+    (next, ops) => {
       setData(next)
-      pendingRef.current = next
+      // Never write while the load is broken: the state here is placeholder
+      // data, and writing it would destroy rows we failed to read.
+      if (loadFailed) {
+        console.warn("Save skipped — saved data could not be loaded")
+        return
+      }
+      const list = Array.isArray(ops) ? ops : [ops]
+      list.forEach((op) => {
+        if (op) pendingRef.current.set(op.key, op)
+      })
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(writeNow, SAVE_DEBOUNCE_MS)
     },
-    [writeNow],
+    [writeNow, loadFailed],
   )
 
   // A debounced write must not be lost when the tab is hidden or closed, nor
@@ -1468,30 +1845,40 @@ export default function StudyTrackerApp() {
   const project =
     data.projects.find((p) => p.id === data.activeProjectId) || data.projects[0]
 
-  const updateProject = useCallback(
-    (patch) => {
-      persist({
-        ...data,
-        projects: data.projects.map((p) =>
-          p.id === project.id
-            ? {
-                ...p,
-                ...patch,
-                settings: patch.settings
-                  ? { ...p.settings, ...patch.settings }
-                  : p.settings,
-              }
-            : p,
-        ),
-      })
+  // Merges a patch into the active project and says which row it dirtied.
+  const patchProject = useCallback(
+    (patch, ops) => {
+      persist(
+        {
+          ...data,
+          projects: data.projects.map((p) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  ...patch,
+                  settings: patch.settings
+                    ? { ...p.settings, ...patch.settings }
+                    : p.settings,
+                }
+              : p,
+          ),
+        },
+        ops,
+      )
     },
     [data, project, persist],
   )
 
+  // Settings, slots and categories all live on the project row.
+  const updateProject = useCallback(
+    (patch) => patchProject(patch, opProject(project.id)),
+    [patchProject, project],
+  )
   const updateSettings = (patch) => updateProject({ settings: patch })
   const updateSlots = (slots) => updateProject({ slots })
   const updateCategories = (categories) => updateProject({ categories })
 
+  // A day edit now writes one row instead of the whole history.
   const updateDay = (key, patch) => {
     const existing = project.days[key] || {
       cells: {},
@@ -1499,29 +1886,36 @@ export default function StudyTrackerApp() {
       exam: false,
       ignore: false,
     }
-    updateProject({
-      days: { ...project.days, [key]: { ...existing, ...patch } },
-    })
+    patchProject(
+      { days: { ...project.days, [key]: { ...existing, ...patch } } },
+      opDay(project.id, key),
+    )
   }
 
+  // The note and its ignore flag share a row, so both edits target the same op.
   const updateWeekNote = (weekKey, text) =>
-    updateProject({
-      weekNotes: { ...(project.weekNotes || {}), [weekKey]: text },
-    })
+    patchProject(
+      { weekNotes: { ...(project.weekNotes || {}), [weekKey]: text } },
+      opNote(project.id, "week", weekKey),
+    )
   const updateMonthNote = (monthKey, text) =>
-    updateProject({
-      monthNotes: { ...(project.monthNotes || {}), [monthKey]: text },
-    })
+    patchProject(
+      { monthNotes: { ...(project.monthNotes || {}), [monthKey]: text } },
+      opNote(project.id, "month", monthKey),
+    )
   const updateWeekIgnore = (weekKey, ignore) =>
-    updateProject({
-      weekIgnore: { ...(project.weekIgnore || {}), [weekKey]: ignore },
-    })
+    patchProject(
+      { weekIgnore: { ...(project.weekIgnore || {}), [weekKey]: ignore } },
+      opNote(project.id, "week", weekKey),
+    )
   const updateMonthIgnore = (monthKey, ignore) =>
-    updateProject({
-      monthIgnore: { ...(project.monthIgnore || {}), [monthKey]: ignore },
-    })
+    patchProject(
+      { monthIgnore: { ...(project.monthIgnore || {}), [monthKey]: ignore } },
+      opNote(project.id, "month", monthKey),
+    )
 
-  const switchProject = (id) => persist({ ...data, activeProjectId: id })
+  const switchProject = (id) =>
+    persist({ ...data, activeProjectId: id }, opPrefs())
 
   const addProject = () => {
     const p = makeProject({
@@ -1531,23 +1925,46 @@ export default function StudyTrackerApp() {
         startDate: toKey(new Date()),
       },
     })
-    persist({ ...data, projects: [...data.projects, p], activeProjectId: p.id })
+    persist(
+      { ...data, projects: [...data.projects, p], activeProjectId: p.id },
+      [opProject(p.id), opPrefs()],
+    )
   }
 
   const deleteProject = (id) => {
     if (data.projects.length <= 1) return
     const remaining = data.projects.filter((p) => p.id !== id)
-    persist({
-      ...data,
-      projects: remaining,
-      activeProjectId:
-        data.activeProjectId === id ? remaining[0].id : data.activeProjectId,
-    })
+    persist(
+      {
+        ...data,
+        projects: remaining,
+        activeProjectId:
+          data.activeProjectId === id ? remaining[0].id : data.activeProjectId,
+      },
+      [opDeleteProject(id), opPrefs()],
+    )
   }
 
   const goToDay = (key) => {
     setLogCursor(fromKey(key))
     setPeriod("day")
+  }
+
+  // The stored copy is the only copy, so give people a way to hold one of
+  // their own. Exports the whole blob — every project, not just the open one.
+  const exportData = () => {
+    const stamp = `${toKey(new Date())}-${pad(new Date().getHours())}${pad(new Date().getMinutes())}`
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `study-tracker-${stamp}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   // All-time starts at the first logged day, falling back to the project's
@@ -1565,9 +1982,39 @@ export default function StudyTrackerApp() {
     [period, logCursor, customStart, customEnd, allTimeStart],
   )
 
+  // Everything that displays or counts gets this filtered copy; every mutation
+  // keeps using `project`, so hiding a slot never edits away its entries.
+  //
+  // Filtering the data once here rather than threading a predicate through
+  // dayBreakdown's two dozen call sites means the header total, the donuts,
+  // the day cards, the heatmap and every chart can't disagree about what
+  // counts — they are all reading the same already-filtered days.
+  const visibleProject = useMemo(() => {
+    if (!hiddenSlots.size && !hiddenCategories.size) return project
+    const slots = project.slots.filter((s) => !hiddenSlots.has(s.id))
+    const days = {}
+    Object.entries(project.days).forEach(([key, day]) => {
+      const cells = {}
+      slots.forEach((s) => {
+        const arr = day.cells?.[s.id]
+        if (!arr) return
+        cells[s.id] = hiddenCategories.size
+          ? arr.filter((e) => !hiddenCategories.has(e.category))
+          : arr
+      })
+      days[key] = { ...day, cells }
+    })
+    return {
+      ...project,
+      slots,
+      categories: project.categories.filter((c) => !hiddenCategories.has(c.id)),
+      days,
+    }
+  }, [project, hiddenSlots, hiddenCategories])
+
   const overallAllTime = useMemo(
-    () => computeOverallAllTime(project),
-    [project],
+    () => computeOverallAllTime(visibleProject),
+    [visibleProject],
   )
 
   if (!authReady || (cloudEnabled && authReady && !session)) {
@@ -1585,6 +2032,34 @@ export default function StudyTrackerApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] font-mono text-sm">
         Loading logbook…
+      </div>
+    )
+  }
+
+  // Deliberately a dead end rather than a degraded app. Rendering the
+  // placeholder data would show a blank logbook that looks like real (empty)
+  // state, and every control on it would be one debounce away from writing
+  // that blank over the saved copy.
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] p-6">
+        <div className={`${CARD} max-w-md text-center`}>
+          <h1 className="font-sans font-extrabold uppercase tracking-tight text-base mb-2">
+            Couldn't load your logbook
+          </h1>
+          <p className="text-xs font-mono text-[#1E2A33]/60 leading-relaxed mb-4">
+            The server answered, but your saved data didn't come back. Nothing
+            has been changed — saving is switched off until it loads, so the
+            stored copy stays exactly as it is.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ backgroundColor: ACCENT }}
+            className={`${btnBase} text-white text-xs font-mono uppercase tracking-widest px-4 py-2.5 rounded-xl hover:opacity-90`}
+          >
+            Try again
+          </button>
+        </div>
       </div>
     )
   }
@@ -1615,51 +2090,91 @@ export default function StudyTrackerApp() {
           setCustomEnd={setCustomEnd}
           showOverall={showOverall}
           onToggleOverall={() => setShowOverall((v) => !v)}
+          showFilter={showFilter}
+          onToggleFilter={() => setShowFilter((v) => !v)}
+          filteredOutCount={hiddenSlots.size + hiddenCategories.size}
         />
 
-        <div className="flex items-start gap-6">
-          <div className="flex-1 min-w-0">
-            <LogView
-              data={project}
-              period={period}
-              range={range}
-              cursor={logCursor}
-              onNavigateDay={goToDay}
-              onEditDay={setEditingKey}
-              onUpdateDayNote={(key, text) =>
-                updateDay(key, { comment: text })
-              }
-              onUpdateWeekNote={updateWeekNote}
-              onUpdateMonthNote={updateMonthNote}
-              onUpdateWeekIgnore={updateWeekIgnore}
-              onUpdateMonthIgnore={updateMonthIgnore}
+        {/* Above the overall stats deliberately: the filter feeds them too, so
+            it has to read as the thing governing what's below it. */}
+        {showFilter && (
+          <CountFilter
+            slots={project.slots}
+            categories={project.categories}
+            hiddenSlots={hiddenSlots}
+            hiddenCategories={hiddenCategories}
+            onToggleSlot={toggleIn(setHiddenSlots)}
+            onToggleCategory={toggleIn(setHiddenCategories)}
+            onReset={() => {
+              setHiddenSlots(new Set())
+              setHiddenCategories(new Set())
+            }}
+            onClose={() => setShowFilter(false)}
+          />
+        )}
+
+        {/* Sits between the period bar and the period's own figures, full
+            width and scrolling with the page. Below lg the same content
+            arrives as a bottom sheet instead. */}
+        {showOverall && (
+          <div className="hidden lg:block mb-4">
+            <OverallStatsSection
+              overall={overallAllTime}
+              lessonsEnabled={project.settings.lessonsEnabled !== false}
+              examsEnabled={project.settings.examsEnabled !== false}
+              onClose={() => setShowOverall(false)}
+              variant="inline"
             />
-
-            <div className="mt-10">
-              <AnalyticsView
-                data={project}
-                rangeStart={range.start}
-                rangeEnd={range.end}
-                overallAllTime={overallAllTime}
-              />
-            </div>
           </div>
+        )}
 
-          {/* Sidebar: a third of the content width, sticky below the period
-              bar. Below lg the same content arrives as a bottom sheet. */}
-          {showOverall && (
-            <aside className="hidden lg:block w-1/3 shrink-0 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
-              <OverallStatsSection
-                overall={overallAllTime}
-                lessonsEnabled={project.settings.lessonsEnabled !== false}
-                examsEnabled={project.settings.examsEnabled !== false}
-                onClose={() => setShowOverall(false)}
-                variant="sidebar"
-              />
-            </aside>
-          )}
+        <LogView
+          data={visibleProject}
+          period={period}
+          range={range}
+          cursor={logCursor}
+          onNavigateDay={goToDay}
+          onEditDay={setEditingKey}
+          onUpdateDayNote={(key, text) => updateDay(key, { comment: text })}
+          onUpdateWeekNote={updateWeekNote}
+          onUpdateMonthNote={updateMonthNote}
+          onUpdateWeekIgnore={updateWeekIgnore}
+          onUpdateMonthIgnore={updateMonthIgnore}
+        />
+
+        <div className="mt-10">
+          <AnalyticsView
+            data={visibleProject}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            overallAllTime={overallAllTime}
+          />
         </div>
       </main>
+
+      {/* Unmissable on purpose. The whole point of this app is that what you
+          typed is still there tomorrow, so a write that isn't landing has to
+          interrupt — retrying quietly in the background is not enough. */}
+      {saveFailed && (
+        <div
+          className="fixed inset-x-0 top-0 z-50 px-4 py-2.5 text-white shadow-lg"
+          style={{ backgroundColor: EXAM_COLOR }}
+        >
+          <div className="max-w-6xl mx-auto flex items-center gap-3 text-xs font-mono">
+            <AlertCircle size={16} className="shrink-0" />
+            <span className="flex-1">
+              Your changes are <strong>not being saved</strong>. Retrying — keep
+              this tab open. If it persists, sign out and back in.
+            </span>
+            <button
+              onClick={writeNow}
+              className={`${btnBase} shrink-0 rounded-full bg-white/20 hover:bg-white/30 px-3 py-1 uppercase tracking-widest text-[10px]`}
+            >
+              Retry now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Phone: a bottom sheet rather than a modal. It pins to the bottom
           edge and only claims the height it needs, so the log stays visible
@@ -1712,6 +2227,7 @@ export default function StudyTrackerApp() {
           onSwitchProject={switchProject}
           onAddProject={addProject}
           onDeleteProject={deleteProject}
+          onExport={exportData}
         />
       )}
     </div>
@@ -1804,6 +2320,7 @@ function SetupModal({
   onSwitchProject,
   onAddProject,
   onDeleteProject,
+  onExport,
 }) {
   const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
@@ -1901,6 +2418,20 @@ function SetupModal({
               onDelete={onDeleteProject}
             />
           )}
+        </div>
+
+        {/* Outside the tabs because it covers everything, not the tab you
+            happen to be on: one file with every project in it. */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-[#1E2A33]/10 shrink-0 rounded-b-xl bg-white">
+          <span className="text-[10px] font-mono text-[#1E2A33]/45">
+            Download everything as a file you keep
+          </span>
+          <button
+            onClick={onExport}
+            className={`${btnBase} shrink-0 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest px-3 py-2 rounded-full bg-[#1E2A33]/5 hover:bg-[#1E2A33]/10`}
+          >
+            <Download size={13} /> Export JSON
+          </button>
         </div>
       </div>
     </div>
@@ -2032,8 +2563,17 @@ function ProjectDetailsTab({ settings, onSave }) {
     settings.dailyGoals || DEFAULT_SETTINGS.dailyGoals,
   )
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
+  // This form auto-saves, so it must not fire on mount: merely opening the
+  // setup modal would write whatever it was seeded with. That is exactly how a
+  // blank default project got saved over a real one when the modal opened on a
+  // failed load.
+  const touched = useRef(false)
 
   useEffect(() => {
+    if (!touched.current) {
+      touched.current = true
+      return
+    }
     const t = setTimeout(
       () =>
         onSave({
@@ -2424,13 +2964,13 @@ const PERIODS = [
   { id: "day", label: "Day" },
   { id: "week", label: "Week" },
   { id: "month", label: "Month" },
-  { id: "90days", label: "3 Months" },
+  { id: "quarter", label: "3 Months" },
   { id: "year", label: "Year" },
   { id: "all", label: "All time" },
   { id: "custom", label: "Custom" },
 ]
 
-const NAVIGABLE_PERIODS = new Set(["day", "week", "month", "90days", "year"])
+const NAVIGABLE_PERIODS = new Set(["day", "week", "month", "quarter", "year"])
 
 // Show-on-scroll-up: the period bar is worth reaching for at any depth of the
 // page, but not worth permanently spending a strip of vertical space on.
@@ -2457,7 +2997,7 @@ function useRevealOnScrollUp(threshold = 6) {
   return visible
 }
 // Too long to draw as day cards or a month grid — these render as a heatmap.
-const WIDE_PERIODS = new Set(["90days", "year", "all", "custom"])
+const WIDE_PERIODS = new Set(["quarter", "year", "all", "custom"])
 
 function stepCursor(cursor, period, dir) {
   switch (period) {
@@ -2467,8 +3007,10 @@ function stepCursor(cursor, period, dir) {
       return addDays(cursor, dir * 7)
     case "month":
       return addMonths(cursor, dir)
-    case "90days":
-      return addDays(cursor, dir * 90)
+    // Steps a whole quarter, so the window stays aligned to month boundaries
+    // instead of sliding by 90 days and landing mid-month.
+    case "quarter":
+      return addMonths(cursor, dir * 3)
     case "year":
       return addYears(cursor, dir)
     default:
@@ -2493,8 +3035,16 @@ function periodRange(period, cursor, customStart, customEnd, allStart) {
       const m = cursor.getMonth()
       return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) }
     }
-    case "90days":
-      return { start: addDays(cursor, -89), end: cursor }
+    // Whole calendar months, aligned to quarters, so it behaves like Month and
+    // Year do: the block that contains the cursor, first day to last day.
+    case "quarter": {
+      const y = cursor.getFullYear()
+      const firstMonth = Math.floor(cursor.getMonth() / 3) * 3
+      return {
+        start: new Date(y, firstMonth, 1),
+        end: new Date(y, firstMonth + 3, 0),
+      }
+    }
     case "year":
       return {
         start: new Date(cursor.getFullYear(), 0, 1),
@@ -2529,6 +3079,15 @@ function rangeLabel(period, cursor, range) {
       day: "numeric",
       year: "numeric",
     })
+  }
+  // Whole months, so name the months rather than their first and last days.
+  if (period === "quarter") {
+    const month = (d, withYear) =>
+      d.toLocaleDateString(undefined, {
+        month: "short",
+        ...(withYear ? { year: "numeric" } : {}),
+      })
+    return `${month(range.start)} – ${month(range.end, true)}`
   }
   if (period === "all") {
     return `All time · ${fmtRangeEdge(range.start, true)} – ${fmtRangeEdge(range.end, true)}`
@@ -2578,6 +3137,9 @@ function PeriodBar({
   setCustomEnd,
   showOverall,
   onToggleOverall,
+  showFilter,
+  onToggleFilter,
+  filteredOutCount,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -2626,6 +3188,35 @@ function PeriodBar({
               }`}
             >
               <Rocket size={16} />
+            </button>
+          </Tip>
+          {/* The dot stays on whether the panel is open or shut: a filter you
+              can't see is the one you most need telling about, otherwise every
+              figure on the page is quietly short and nothing says why. */}
+          <Tip
+            text={
+              filteredOutCount
+                ? `${filteredOutCount} left out of every total`
+                : showFilter
+                  ? "Hide the filter"
+                  : "Filter what counts"
+            }
+          >
+            <button
+              onClick={onToggleFilter}
+              className={`${btnBase} relative p-2 rounded-full ${
+                showFilter
+                  ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
+                  : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+              }`}
+            >
+              <Filter size={16} />
+              {filteredOutCount > 0 && (
+                <span
+                  className="absolute top-1 right-1 w-2 h-2 rounded-full ring-2 ring-[#F4F5F7]"
+                  style={{ backgroundColor: FILTER_TINT }}
+                />
+              )}
             </button>
           </Tip>
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
@@ -5584,19 +6175,18 @@ function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
   )
 }
 
-// Project-wide totals & forecast — visually distinct (tinted) and placed above
-// the period-scoped Stats section, to make clear it does NOT change with the
-// selected analytics period.
-// Two shapes for the same numbers: `sidebar` is the narrow sticky column on
-// desktop, `sheet` is the phone's bottom drawer — denser tiles and no
-// forecast prose, because it has to earn every pixel it takes from the log
-// behind it.
+// Project-wide totals & forecast — tinted so it reads as separate from
+// everything else on the page, which is all period-scoped.
+//
+// Two shapes for the same numbers: `inline` is the full-width block on
+// desktop, `sheet` is the phone's bottom drawer — denser tiles and no forecast
+// prose, because it has to earn every pixel it takes from the log behind it.
 function OverallStatsSection({
   overall,
   lessonsEnabled,
   examsEnabled,
   onClose,
-  variant = "sidebar",
+  variant = "inline",
 }) {
   const sheet = variant === "sheet"
   const tint = "#C98A2E"
@@ -5716,7 +6306,7 @@ function OverallStatsSection({
         className={
           sheet
             ? "grid grid-cols-2 sm:grid-cols-3 gap-2"
-            : "grid grid-cols-1 xl:grid-cols-2 gap-3"
+            : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
         }
       >
         {items.map((it) => {
