@@ -62,13 +62,21 @@ One page, not tabs. A single period drives everything:
   cursor navigation and the period label.
 - Below it: `LogView` (notes, donut breakdowns, day cards / month grid /
   heatmap) and then `AnalyticsView` (stat tiles and charts) for the same range.
-- Two panels open from `PeriodBar` and render between it and `LogView`, the
-  filter first because it governs the stats below it:
+- Three panels open from `PeriodBar` and render between it and `LogView`, the
+  filter first because it governs everything below it:
   - `CountFilter` — which slots/categories count. Not period-scoped; switching
     periods leaves it alone, so its toggle carries a dot while anything is
     struck out, or a live filter would silently shrink every figure.
   - `OverallStatsSection` — project-wide totals and forecast. Inline block on
     desktop, bottom sheet on phones (its `variant`).
+  - `SleepSection` — only when `settings.sleepEnabled`; its toggle is absent,
+    not disabled, when the feature is off. Unlike the other two it *is*
+    period-scoped, and it reads `project.days` rather than `visibleProject`,
+    since sleep has neither slots nor categories for the filter to act on.
+    Its clock runs 18:00 → 17:00: a night spans midnight, so on a 0–23 axis
+    every night is split across both ends of the chart. The same rotation is
+    what makes its averages correct — the plain mean of 23:30 and 00:30 is
+    midday, not midnight.
 
 ## Data model
 
@@ -84,6 +92,19 @@ receives this and nothing else:
 `days` is keyed by `'YYYY-MM-DD'` (via `toKey`), week keys are the Monday of the
 week, month keys are `'YYYY-MM'`.
 
+A day holds two independent lists. `cells` is study time, keyed by slot, and
+every figure in the app comes from it via `dayBreakdown`. `sleep` is a flat
+list with no slot and no category, present only when sleep tracking is on
+(`settings.sleepEnabled`), and **nothing in `dayBreakdown`, `rangeStats` or the
+goals may ever see it** — sleep is a separate axis, not study time.
+
+Study entries and sleep entries share a shape: optional `start`/`end` as
+`"HH:MM"` strings, with `minutes` staying the stored authoritative number.
+`spanMinutes` derives it when both times are set (an end before the start means
+the session crossed midnight), and a sleep entry belongs to the date it
+*started*, so most nights end on the following day — hence `endsNextDay` and
+the `+1d` marks.
+
 ## Persistence
 
 **On the server the shape is different.** Four tables, not one document:
@@ -91,7 +112,14 @@ week, month keys are `'YYYY-MM'`.
 unit), `days` keyed `(project_id, date)`, `period_notes` keyed
 `(project_id, kind, key)` where the note and its ignore flag share a row, and
 `user_prefs` for `active_project_id`. RLS on all four; days and notes inherit
-ownership from their project. See `migrations/001_normalize_schema.sql`.
+ownership from their project. See `migrations/001_normalize_schema.sql`, then
+`002_sleep.sql` which adds the `sleep` column to `days`.
+
+Adding a field to a day means three edits, not one: the column, the `select`
+list in `loadFromTables`, and the `upsert` in `applyWriteOp`. Miss the third
+and it saves nothing; miss the second and it reads back empty. Miss the column
+itself and the read fails outright, which puts the whole app on the dead-end
+screen — a missing column is not a missing value.
 
 `loadFromTables()` reads all four and assembles the in-memory shape above, so
 the split stops at the edge of the app. It pages at `PAGE_SIZE` because

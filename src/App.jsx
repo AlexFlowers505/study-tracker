@@ -70,6 +70,7 @@ import {
   Lock,
   MessageSquare,
   Rocket,
+  Sigma,
   Compass,
   Gauge,
   EyeOff,
@@ -137,6 +138,7 @@ const PALETTE = [
   "#C98A2E",
   "#6B7FD7",
 ]
+const SLEEP_COLOR = PALETTE[3]
 
 const ACCENT = "#2F5FBF" // bluish active-state accent
 const EXAM_COLOR = "#C1595B"
@@ -245,6 +247,8 @@ const DEFAULT_SETTINGS = {
   totalExams: 10,
   lessonsEnabled: true,
   examsEnabled: true,
+  goalsEnabled: true,
+  sleepEnabled: false,
   startDate: null,
   endDate: null,
   projectName: "Time tracker",
@@ -258,7 +262,7 @@ function makeProject(overrides = {}) {
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
     slots: DEFAULT_SLOTS,
     categories: DEFAULT_CATEGORIES,
-    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment,start?,end?}] }, lessons: number, exam: boolean, ignore?: boolean, comment?: string }
+    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment,start?,end?}] }, sleep?: [{id,start,end,minutes,comment}], lessons: number, exam: boolean, ignore?: boolean, comment?: string }
     weekNotes: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> comment string
     monthNotes: {}, // key: 'YYYY-MM' -> comment string
     weekIgnore: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> boolean, ignore this week in statistics
@@ -327,6 +331,11 @@ const spanMinutes = (start, end) => {
   const b = timeToMinutes(end)
   return b === a ? 0 : b > a ? b - a : b + 1440 - a
 }
+// Sleep is logged on the day it starts, so most nights end on the next date.
+// Anywhere an end time is shown on its own it has to say so, or 23:30–07:00
+// reads as a time machine.
+const endsNextDay = (entry) =>
+  !!entry.start && !!entry.end && timeToMinutes(entry.end) < timeToMinutes(entry.start)
 const fromKey = (k) => {
   const [y, m, d] = k.split("-").map(Number)
   return new Date(y, m - 1, d)
@@ -390,7 +399,9 @@ const fmtHoursChart = (hoursValue) => {
 const fmtAxisHours = (hoursValue) => `${Math.round(hoursValue)}`
 
 const goalForDate = (settings, date) =>
-  Number(settings?.dailyGoals?.[date.getDay()]) || 0
+  settings?.goalsEnabled === false
+    ? 0
+    : Number(settings?.dailyGoals?.[date.getDay()]) || 0
 
 // A day is out of the statistics if it, its week, or its month carries the
 // "ignore in statistics" flag. Everything that reports a number — the period
@@ -1511,7 +1522,7 @@ async function loadFromTables(client) {
     fetchAllRows(() =>
       client
         .from("days")
-        .select("project_id,date,cells,lessons,exam,ignored,comment"),
+        .select("project_id,date,cells,sleep,lessons,exam,ignored,comment"),
     ),
     fetchAllRows(() =>
       client.from("period_notes").select("project_id,kind,key,note,ignored"),
@@ -1539,8 +1550,10 @@ async function loadFromTables(client) {
   dayRows.forEach((r) => {
     const p = byId.get(r.project_id)
     if (!p) return
+    const sleep = r.sleep || []
     p.days[r.date] = {
       cells: r.cells || {},
+      ...(sleep.length ? { sleep } : {}),
       lessons: Number(r.lessons) || 0,
       exam: !!r.exam,
       ignore: !!r.ignored,
@@ -1626,6 +1639,7 @@ async function applyWriteOp(client, userId, op, data) {
           project_id: project.id,
           date: op.dateKey,
           cells: day.cells || {},
+          sleep: day.sleep || [],
           lessons: Number(day.lessons) || 0,
           exam: !!day.exam,
           ignored: !!day.ignore,
@@ -1697,6 +1711,7 @@ export default function StudyTrackerApp() {
   const [saveFailed, setSaveFailed] = useState(false)
   const [showOverall, setShowOverall] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
+  const [showSleep, setShowSleep] = useState(false)
   // Which slots/categories are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
@@ -2102,6 +2117,9 @@ export default function StudyTrackerApp() {
           showFilter={showFilter}
           onToggleFilter={() => setShowFilter((v) => !v)}
           filteredOutCount={hiddenSlots.size + hiddenCategories.size}
+          sleepEnabled={project.settings.sleepEnabled === true}
+          showSleep={showSleep}
+          onToggleSleep={() => setShowSleep((v) => !v)}
         />
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
@@ -2135,6 +2153,18 @@ export default function StudyTrackerApp() {
               variant="inline"
             />
           </div>
+        )}
+
+        {/* Period-scoped, unlike the two panels above it, but it shares their
+            band so everything opened from the period bar appears in one place. */}
+        {showSleep && project.settings.sleepEnabled === true && (
+          <SleepSection
+            days={project.days}
+            range={range}
+            weekIgnore={project.weekIgnore}
+            monthIgnore={project.monthIgnore}
+            onClose={() => setShowSleep(false)}
+          />
         )}
 
         <LogView
@@ -2564,6 +2594,13 @@ function ProjectDetailsTab({ settings, onSave }) {
   const [examsEnabled, setExamsEnabled] = useState(
     settings.examsEnabled !== false,
   )
+  const [goalsEnabled, setGoalsEnabled] = useState(
+    settings.goalsEnabled !== false,
+  )
+  // Opt-in, so an existing project without the key stays as it was.
+  const [sleepEnabled, setSleepEnabled] = useState(
+    settings.sleepEnabled === true,
+  )
   const [startDate, setStartDate] = useState(
     settings.startDate || toKey(new Date()),
   )
@@ -2592,6 +2629,8 @@ function ProjectDetailsTab({ settings, onSave }) {
           totalExams,
           lessonsEnabled,
           examsEnabled,
+          goalsEnabled,
+          sleepEnabled,
           startDate,
           endDate: endDate || null,
           dailyGoals,
@@ -2607,6 +2646,8 @@ function ProjectDetailsTab({ settings, onSave }) {
     totalExams,
     lessonsEnabled,
     examsEnabled,
+    goalsEnabled,
+    sleepEnabled,
     startDate,
     endDate,
     dailyGoals,
@@ -2714,6 +2755,21 @@ function ProjectDetailsTab({ settings, onSave }) {
           className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
         />
       </div>
+      {/* No count to go with it, so it stands alone rather than heading an
+          input the way lessons and exams do. */}
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+          <Moon size={12} /> Enable sleep tracking
+        </span>
+        <Tip text="Log sleep on its own tab in the day editor, kept out of study totals">
+          <SwitchToggle
+            checked={sleepEnabled}
+            onChange={setSleepEnabled}
+            label="Enable sleep tracking"
+          />
+        </Tip>
+      </div>
+
       <Field label="Project start date">
         <DateField
           value={startDate}
@@ -2737,9 +2793,18 @@ function ProjectDetailsTab({ settings, onSave }) {
       </Field>
 
       <div>
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-2">
-          <Gauge size={12} /> Effectiveness meter — daily minute goal
-        </span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+            <Gauge size={12} /> Effectiveness meter — daily minute goal
+          </span>
+          <Tip text="Show the daily minute goal in the log and analytics">
+            <SwitchToggle
+              checked={goalsEnabled}
+              onChange={setGoalsEnabled}
+              label="Show the daily minute goal in the log and analytics"
+            />
+          </Tip>
+        </div>
         <div className="grid grid-cols-7 gap-1.5">
           {WEEKDAY_ORDER.map((idx) => (
             <label key={idx} className="flex flex-col items-center gap-1">
@@ -2750,8 +2815,9 @@ function ProjectDetailsTab({ settings, onSave }) {
                 type="number"
                 min={0}
                 value={dailyGoals[idx] ?? 0}
+                disabled={!goalsEnabled}
                 onChange={(e) => setGoal(idx, e.target.value)}
-                className="w-full border border-[#1E2A33]/20 rounded-xl px-1.5 py-1.5 text-xs text-center"
+                className="w-full border border-[#1E2A33]/20 rounded-xl px-1.5 py-1.5 text-xs text-center disabled:opacity-40 disabled:cursor-not-allowed"
               />
             </label>
           ))}
@@ -3149,6 +3215,9 @@ function PeriodBar({
   showFilter,
   onToggleFilter,
   filteredOutCount,
+  sleepEnabled,
+  showSleep,
+  onToggleSleep,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -3196,7 +3265,7 @@ function PeriodBar({
                   : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
               }`}
             >
-              <Rocket size={16} />
+              <Sigma size={16} />
             </button>
           </Tip>
           {/* The dot stays on whether the panel is open or shut: a filter you
@@ -3228,6 +3297,22 @@ function PeriodBar({
               )}
             </button>
           </Tip>
+          {/* Absent rather than disabled when sleep tracking is off: there is
+              nothing behind it to show. */}
+          {sleepEnabled && (
+            <Tip text={showSleep ? "Hide sleep" : "Show sleep"}>
+              <button
+                onClick={onToggleSleep}
+                className={`${btnBase} p-2 rounded-full ${
+                  showSleep
+                    ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
+                    : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+                }`}
+              >
+                <Moon size={16} />
+              </button>
+            </Tip>
+          )}
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip
@@ -4045,9 +4130,23 @@ function CompactDayCell({
 
 // `wide` spreads the slot groups across columns instead of stacking them —
 // used by the Day view, where the card has the full page width to play with.
-function EntriesReadout({ slots, categories, cells, wide = false }) {
+function EntriesReadout({
+  slots,
+  categories,
+  cells,
+  sleep = [],
+  sleepEnabled = false,
+  wide = false,
+}) {
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
-  if (!hasAny) return null
+  // Its own group, never folded into a slot: sleep is a separate axis and must
+  // not read as study time.
+  const sleepEntries = sleepEnabled ? sleep : []
+  const sleepMinutes = sleepEntries.reduce(
+    (a, e) => a + (Number(e.minutes) || 0),
+    0,
+  )
+  if (!hasAny && !sleepEntries.length) return null
   return (
     <div
       className={
@@ -4116,6 +4215,47 @@ function EntriesReadout({ slots, categories, cells, wide = false }) {
           </div>
         )
       })}
+      {sleepEntries.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span
+              className="text-[9px] font-mono font-bold"
+              style={{ color: SLEEP_COLOR }}
+            >
+              {fmtHours(sleepMinutes)}
+            </span>
+            <Moon size={10} style={{ color: SLEEP_COLOR }} />
+            <span
+              className="text-[9px] uppercase tracking-widest font-mono font-bold"
+              style={{ color: SLEEP_COLOR }}
+            >
+              Sleep
+            </span>
+          </div>
+          <div className="space-y-1">
+            {sleepEntries.map((e) => (
+              <div
+                key={e.id}
+                className="pl-3 border-l-2"
+                style={{ borderColor: `${SLEEP_COLOR}30` }}
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70">
+                  <span className="text-[#1E2A33]/45">
+                    {e.start && e.end
+                      ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""}`
+                      : `${e.minutes}m`}
+                  </span>
+                </div>
+                {e.comment && (
+                  <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
+                    {e.comment}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -4321,6 +4461,8 @@ function FullDayCard({
           slots={slots}
           categories={categories}
           cells={entry?.cells || {}}
+          sleep={entry?.sleep || []}
+          sleepEnabled={settings?.sleepEnabled === true}
           wide={big}
         />
       )}
@@ -4372,6 +4514,7 @@ function Heatmap({
 }) {
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
   const startDate = settings?.startDate ? fromKey(settings.startDate) : null
+  const goalsEnabled = settings?.goalsEnabled !== false
 
   // Cell color now reflects whether the daily goal was met (not how much was
   // studied relative to other days) — only meaningful for days that have
@@ -4495,27 +4638,31 @@ function Heatmap({
         })}
       </div>
       <div className="flex items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
-        <span className="flex items-center gap-1.5">
-          <span
-            className="w-3 h-3 rounded-[3px]"
-            style={{ backgroundColor: `${GOAL_MET_COLOR}30` }}
-          />
-          Goal met
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="w-3 h-3 rounded-[3px]"
-            style={{ backgroundColor: `${EXAM_COLOR}30` }}
-          />
-          Goal missed
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="w-3 h-3 rounded-[3px]"
-            style={{ backgroundColor: NEUTRAL_CELL }}
-          />
-          No goal / not yet due
-        </span>
+        {goalsEnabled && (
+          <>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 rounded-[3px]"
+                style={{ backgroundColor: `${GOAL_MET_COLOR}30` }}
+              />
+              Goal met
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 rounded-[3px]"
+                style={{ backgroundColor: `${EXAM_COLOR}30` }}
+              />
+              Goal missed
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 rounded-[3px]"
+                style={{ backgroundColor: NEUTRAL_CELL }}
+              />
+              No goal / not yet due
+            </span>
+          </>
+        )}
         <span className="flex items-center gap-1.5">
           <span
             className="w-3 h-3 rounded-[3px]"
@@ -4655,6 +4802,8 @@ function DayQuickviewModal({
                   slots={slots}
                   categories={categories}
                   cells={dayEntry?.cells || {}}
+                  sleep={dayEntry?.sleep || []}
+                  sleepEnabled={settings?.sleepEnabled === true}
                 />
               )}
               <div className={`${CARD} p-4 space-y-2 text-xs font-mono`}>
@@ -4746,6 +4895,37 @@ function DayEditForm({
     onChange({ cells: { ...cells, [slotId]: arr } })
   }
 
+  // Sleep is a second, independent list on the day — no slot, no category, and
+  // deliberately absent from `dayBreakdown` below, which is what keeps it out
+  // of every study figure in the app.
+  const sleepEnabled = settings?.sleepEnabled === true
+  const sleepEntries = dayEntry?.sleep || []
+  const sleepTotal = sleepEntries.reduce(
+    (a, e) => a + (Number(e.minutes) || 0),
+    0,
+  )
+  const [tab, setTab] = useState("project")
+
+  const writeSleep = (arr) => onChange({ sleep: arr })
+  const addSleepEntry = () => {
+    const previous = sleepEntries[sleepEntries.length - 1]
+    writeSleep([
+      ...sleepEntries,
+      {
+        id: makeId("sleep"),
+        minutes: 0,
+        comment: "",
+        ...(previous?.end ? { start: previous.end } : {}),
+      },
+    ])
+  }
+  const updateSleepEntry = (entryId, patch) =>
+    writeSleep(
+      sleepEntries.map((e) => (e.id === entryId ? patchEntry(e, patch) : e)),
+    )
+  const removeSleepEntry = (entryId) =>
+    writeSleep(sleepEntries.filter((e) => e.id !== entryId))
+
   const { total } = dayBreakdown({ cells }, slots)
   const d = fromKey(dateKey)
 
@@ -4799,6 +4979,19 @@ function DayEditForm({
       </div>
 
       <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {sleepEnabled && (
+            <SegmentedControl
+              items={[
+                { id: "project", label: "Project tracker" },
+                { id: "sleep", label: "Sleep tracker" },
+              ]}
+              activeId={tab}
+              onChange={setTab}
+            />
+          )}
+
+          {(!sleepEnabled || tab === "project") && (
+            <>
           {/* Notes come first — it's the field reached for most often, and it
               reads as the day's headline rather than a footnote. */}
           <div className="bg-white rounded-2xl p-4">
@@ -5019,6 +5212,122 @@ function DayEditForm({
               </div>
             )
           })}
+            </>
+          )}
+
+          {sleepEnabled && tab === "sleep" && (
+            <div className="bg-white rounded-2xl overflow-hidden">
+              <div
+                className="flex items-center justify-between px-4 py-2.5"
+                style={{ backgroundColor: `${SLEEP_COLOR}1A` }}
+              >
+                <div className="flex items-center gap-2">
+                  <Moon size={14} style={{ color: SLEEP_COLOR }} />
+                  <span className="font-mono text-xs uppercase tracking-wide font-bold">
+                    Sleep
+                  </span>
+                  <Tip text="Add sleep entry">
+                    <button
+                      onClick={addSleepEntry}
+                      className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </Tip>
+                </div>
+                <span className="font-mono text-xs text-[#1E2A33]/55">
+                  {sleepTotal}m / {fmtHoursFixed1(sleepTotal)}
+                </span>
+              </div>
+
+              <div className="p-3 space-y-2">
+                {sleepEntries.length === 0 && (
+                  <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
+                    No sleep logged for this day.
+                  </p>
+                )}
+                {sleepEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                  >
+                    <TimeRangeField
+                      start={entry.start}
+                      end={entry.end}
+                      onChange={(start, end) =>
+                        updateSleepEntry(entry.id, {
+                          ...(start ? { start } : {}),
+                          ...(end ? { end } : {}),
+                        })
+                      }
+                      onClear={() =>
+                        updateSleepEntry(entry.id, {
+                          start: undefined,
+                          end: undefined,
+                        })
+                      }
+                    />
+                    <div className="flex items-center gap-2">
+                      {/* The entry sits on the day you went to bed, so most
+                          nights end on the next date. Say it plainly. */}
+                      <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+                        {endsNextDay(entry) ? "Ends next day" : ""}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={entry.minutes}
+                        onChange={(e) =>
+                          updateSleepEntry(entry.id, {
+                            minutes: Number(e.target.value),
+                          })
+                        }
+                        disabled={!!(entry.start && entry.end)}
+                        className={`${FIELD_BOXED} w-20 ${
+                          entry.start && entry.end
+                            ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                            : ""
+                        }`}
+                      />
+                      <span className="text-[10px] font-mono text-[#1E2A33]/40">
+                        min
+                      </span>
+                      <button
+                        onClick={() => removeSleepEntry(entry.id)}
+                        className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="flex items-start gap-1.5">
+                      <MessageSquare
+                        size={12}
+                        className="text-[#1E2A33]/30 shrink-0 mt-2"
+                      />
+                      <AutoTextarea
+                        value={entry.comment || ""}
+                        onChange={(e) =>
+                          updateSleepEntry(entry.id, {
+                            comment: e.target.value,
+                          })
+                        }
+                        placeholder="Note (optional)"
+                        rows={2}
+                        maxHeight={220}
+                        className={`${FIELD_ON_TINT} flex-1`}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={addSleepEntry}
+                  className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
+                >
+                  <Plus size={12} /> Add entry
+                </button>
+              </div>
+            </div>
+          )}
         </div>
     </>
   )
@@ -5027,6 +5336,13 @@ function DayEditForm({
 /* ---------------------------------------------------------------
    Analytics View
 --------------------------------------------------------------- */
+
+const chartModeOptions = (lessonsEnabled) => [
+  { id: "hours", label: "Hours" },
+  { id: "category", label: "Categories" },
+  { id: "slot", label: "Slots" },
+  ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
+]
 
 // Shared by the "Overall stats" (all-time) and "Stats" (period-scoped) sections —
 // takes whichever set of day keys and date bounds apply, and returns the same
@@ -5173,6 +5489,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
 
   const lessonsEnabled = settings.lessonsEnabled ?? true
   const examsEnabled = settings.examsEnabled ?? true
+  const goalsEnabled = settings?.goalsEnabled !== false
 
   // If lessons tracking gets turned off while a chart is showing its Lessons
   // mode, fall back to a mode that still has data to show.
@@ -5588,12 +5905,14 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
           }
         })
         if (weekdayMode === "hours") {
-          row.goal = toHours(Number(settings.dailyGoals?.[wd]) || 0)
+          row.goal = goalsEnabled
+            ? toHours(Number(settings.dailyGoals?.[wd]) || 0)
+            : 0
         }
       }
       return row
     })
-  }, [rangedKeys, weeklyBuckets, days, slots, categories, weekdayMode, settings])
+  }, [rangedKeys, weeklyBuckets, days, slots, categories, weekdayMode, settings, goalsEnabled])
 
   return (
     <div className="space-y-8">
@@ -5622,12 +5941,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
         }
         action={
           <SegmentedControl
-            items={[
-              { id: "slot", label: "Slots" },
-              { id: "category", label: "Categories" },
-              { id: "hours", label: "Hours" },
-              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
-            ]}
+            items={chartModeOptions(lessonsEnabled)}
             activeId={dailyMode}
             onChange={setDailyMode}
           />
@@ -5666,16 +5980,20 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                   name="Hours studied"
                   dot={{ r: 3 }}
                 />,
-                <Line
-                  key="goal-line"
-                  type="monotone"
-                  dataKey="goal"
-                  stroke="#1E2A33"
-                  strokeWidth={1.5}
-                  strokeDasharray="6 3"
-                  dot={false}
-                  name="Goal"
-                />,
+                ...(goalsEnabled
+                  ? [
+                      <Line
+                        key="goal-line"
+                        type="monotone"
+                        dataKey="goal"
+                        stroke="#1E2A33"
+                        strokeWidth={1.5}
+                        strokeDasharray="6 3"
+                        dot={false}
+                        name="Goal"
+                      />,
+                    ]
+                  : []),
               ]
             ) : dailyMode === "lessons" ? (
               <Area
@@ -5732,19 +6050,16 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
         title="Weekday effectiveness"
         subtitle={
           weekdayMode === "hours"
-            ? "Hours studied per weekday, compared week over week"
+            ? goalsEnabled
+              ? "Hours studied per weekday, compared week over week"
+              : "Hours studied per weekday"
             : weekdayMode === "lessons"
               ? "Lessons completed per weekday, compared week over week"
               : `Hours per weekday in this range, split by ${weekdayMode}`
         }
         action={
           <SegmentedControl
-            items={[
-              { id: "slot", label: "Slots" },
-              { id: "category", label: "Categories" },
-              { id: "hours", label: "Hours" },
-              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
-            ]}
+            items={chartModeOptions(lessonsEnabled)}
             activeId={weekdayMode}
             onChange={setWeekdayMode}
           />
@@ -5800,7 +6115,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                   />
                 ),
               )}
-            {weekdayMode === "hours" && (
+            {goalsEnabled && weekdayMode === "hours" && (
               <Line
                 type="monotone"
                 dataKey="goal"
@@ -5823,19 +6138,16 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
         title="Weekly effectiveness"
         subtitle={
           weeklyMode === "hours"
-            ? "Total hours studied, aggregated per week"
+            ? goalsEnabled
+              ? "Total hours studied, aggregated per week"
+              : "Total hours studied per week"
             : weeklyMode === "lessons"
               ? "Lessons completed per week"
               : `Hours per week, split by ${weeklyMode}`
         }
         action={
           <SegmentedControl
-            items={[
-              { id: "hours", label: "Hours" },
-              { id: "slot", label: "Slots" },
-              { id: "category", label: "Categories" },
-              ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
-            ]}
+            items={chartModeOptions(lessonsEnabled)}
             activeId={weeklyMode}
             onChange={setWeeklyMode}
           />
@@ -5897,7 +6209,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                   name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
                   dot={{ r: 3 }}
                 />,
-                weeklyMode === "hours" && (
+                goalsEnabled && weeklyMode === "hours" && (
                   <Line
                     key="goal-line"
                     type="monotone"
@@ -5927,19 +6239,16 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
           title="Monthly effectiveness"
           subtitle={
             monthlyMode === "hours"
-              ? "Total hours studied, aggregated per month"
+              ? goalsEnabled
+                ? "Total hours studied, aggregated per month"
+                : "Total hours studied per month"
               : monthlyMode === "lessons"
                 ? "Lessons completed per month"
                 : `Hours per month, split by ${monthlyMode}`
           }
           action={
             <SegmentedControl
-              items={[
-                { id: "hours", label: "Hours" },
-                { id: "slot", label: "Slots" },
-                { id: "category", label: "Categories" },
-                ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
-              ]}
+              items={chartModeOptions(lessonsEnabled)}
               activeId={monthlyMode}
               onChange={setMonthlyMode}
             />
@@ -6002,7 +6311,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                     name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
                     dot={{ r: 3 }}
                   />,
-                  monthlyMode === "hours" && (
+                  goalsEnabled && monthlyMode === "hours" && (
                     <Line
                       key="goal-line"
                       type="monotone"
@@ -6225,6 +6534,180 @@ function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
 // Two shapes for the same numbers: `inline` is the full-width block on
 // desktop, `sheet` is the phone's bottom drawer — denser tiles and no forecast
 // prose, because it has to earn every pixel it takes from the log behind it.
+/* ---------------------------------------------------------------
+   Sleep section — opened from the period bar, scoped to the period.
+
+   The axis starts at 18:00 rather than midnight. A night runs from one
+   evening into the next morning, so on a plain 0–23 axis every night is
+   split in two and thrown to opposite ends of the chart, where the shape
+   of it is unreadable. Rotating the frame makes one night one block, and
+   the same rotation is what makes the averages come out right: the naive
+   mean of 23:30 and 00:30 is midday, the exact opposite of the answer.
+--------------------------------------------------------------- */
+
+const DAY_START_HOUR = 18
+const ROTATION = DAY_START_HOUR * 60
+
+const toRotated = (minutes) => (minutes - ROTATION + 1440) % 1440
+const fromRotated = (minutes) => (Math.round(minutes) + ROTATION) % 1440
+const minutesToTime = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`
+
+// Nights, not entries: a night is one timed sleep entry placed on the rotated
+// clock, so overlap tests and averages both work on plain numbers.
+function collectNights(days, dates, isIgnored) {
+  const nights = []
+  dates.forEach((date) => {
+    const key = toKey(date)
+    const day = days[key]
+    if (!day || isIgnored(key, day)) return
+    ;(day.sleep || []).forEach((e) => {
+      if (!e.start || !e.end) return
+      const duration = spanMinutes(e.start, e.end)
+      if (duration <= 0) return
+      nights.push({ key, start: toRotated(timeToMinutes(e.start)), duration })
+    })
+  })
+  return nights
+}
+
+function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
+  const stats = useMemo(() => {
+    const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
+    const nights = collectNights(
+      days,
+      datesInRange(range.start, range.end),
+      isIgnored,
+    )
+    if (!nights.length) return null
+
+    // A day with nothing logged is an unknown, not a zero — counting it as a
+    // zero would flatten the curve for every stretch where logging was patchy.
+    const daysWithSleep = new Set(nights.map((n) => n.key)).size
+    const covered = Array.from({ length: 24 }, () => new Set())
+    nights.forEach((n) => {
+      for (let m = n.start; m < n.start + n.duration; m += 1) {
+        covered[Math.floor((m % 1440) / 60)].add(n.key)
+      }
+    })
+
+    const data = covered.map((set, i) => ({
+      hour: (DAY_START_HOUR + i) % 24,
+      label: pad((DAY_START_HOUR + i) % 24),
+      pct: Math.round((set.size / daysWithSleep) * 1000) / 10,
+    }))
+
+    const avg = (list) => list.reduce((a, b) => a + b, 0) / list.length
+    return {
+      data,
+      nights: nights.length,
+      daysWithSleep,
+      bedtime: minutesToTime(fromRotated(avg(nights.map((n) => n.start)))),
+      wake: minutesToTime(
+        fromRotated(avg(nights.map((n) => n.start + n.duration))),
+      ),
+      duration: avg(nights.map((n) => n.duration)),
+    }
+  }, [days, range.start, range.end, weekIgnore, monthIgnore])
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-5 border-2 mb-4"
+      style={{
+        backgroundColor: `${SLEEP_COLOR}14`,
+        borderColor: `${SLEEP_COLOR}45`,
+      }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
+          style={{ backgroundColor: `${SLEEP_COLOR}30` }}
+        >
+          <Moon size={13} style={{ color: SLEEP_COLOR }} />
+        </span>
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
+          Sleep
+        </h3>
+        {onClose && (
+          <Tip text="Hide sleep">
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <X size={16} />
+            </button>
+          </Tip>
+        )}
+      </div>
+      <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+        {stats
+          ? `${stats.nights} nights logged across ${stats.daysWithSleep} days in this period`
+          : "For the chosen period"}
+      </p>
+
+      {!stats ? (
+        // The normal case for any range that predates sleep tracking, so it
+        // gets a sentence rather than an empty axis.
+        <p className="text-xs font-mono text-[#1E2A33]/50">
+          No sleep with a start and end time in this period yet.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <StatTile
+              label="Average bedtime"
+              value={stats.bedtime}
+              icon={Moon}
+            />
+            <StatTile
+              label="Average wake-up"
+              value={stats.wake}
+              icon={Sunrise}
+            />
+            <StatTile
+              label="Average night"
+              value={fmtHours(stats.duration)}
+              sub={`${Math.round(stats.duration)}m`}
+              icon={Clock}
+            />
+          </div>
+
+          <ChartCard
+            title="When you sleep"
+            subtitle="Share of logged nights asleep at each hour"
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={stats.data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                <XAxis
+                  dataKey="label"
+                  interval={2}
+                  tick={{ fontSize: 10, fontFamily: "monospace" }}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fontSize: 10, fontFamily: "monospace" }}
+                />
+                <Tooltip
+                  formatter={(value) => [`${value}% of nights`, "Asleep"]}
+                  labelFormatter={(label) => `${label}:00`}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="pct"
+                  stroke={SLEEP_COLOR}
+                  fill={`${SLEEP_COLOR}40`}
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </>
+      )}
+    </div>
+  )
+}
+
 function OverallStatsSection({
   overall,
   lessonsEnabled,
@@ -6324,7 +6807,7 @@ function OverallStatsSection({
           className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
           style={{ backgroundColor: `${tint}30` }}
         >
-          <Rocket size={13} style={{ color: tint }} />
+          <Sigma size={13} style={{ color: tint }} />
         </span>
         <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
           Overall stats
