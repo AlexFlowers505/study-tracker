@@ -44,6 +44,9 @@ Plain JS with JSX — no TypeScript.
   else is Tailwind utilities inline; don't grow this file without reason.
 - `documentation.md` — longer prose reference for the same app. Useful
   background; this file stays the short operational version.
+- `AGENTS.md` — instructions for Codex, which implements specs written here.
+  It points at this file rather than restating it, so repo facts have one
+  home; keep the pointer honest and don't let the two drift.
 - `README.md` is the untouched Vite template. Don't treat it as documentation.
 
 ## Page structure

@@ -258,7 +258,7 @@ function makeProject(overrides = {}) {
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
     slots: DEFAULT_SLOTS,
     categories: DEFAULT_CATEGORIES,
-    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment}] }, lessons: number, exam: boolean, ignore?: boolean, comment?: string }
+    days: {}, // key: 'YYYY-MM-DD' -> { cells: { slotId: [{id,category,minutes,comment,start?,end?}] }, lessons: number, exam: boolean, ignore?: boolean, comment?: string }
     weekNotes: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> comment string
     monthNotes: {}, // key: 'YYYY-MM' -> comment string
     weekIgnore: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> boolean, ignore this week in statistics
@@ -317,6 +317,16 @@ function buildInitialData() {
 const pad = (n) => String(n).padStart(2, "0")
 const toKey = (d) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const timeToMinutes = (hhmm) => {
+  const [h, m] = hhmm.split(":").map(Number)
+  return h * 60 + m
+}
+// End before start means the session ran past midnight.
+const spanMinutes = (start, end) => {
+  const a = timeToMinutes(start)
+  const b = timeToMinutes(end)
+  return b === a ? 0 : b > a ? b - a : b + 1440 - a
+}
 const fromKey = (k) => {
   const [y, m, d] = k.split("-").map(Number)
   return new Date(y, m - 1, d)
@@ -919,8 +929,7 @@ function useDatePopover(openInitially = false) {
   return { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle }
 }
 
-const DATE_PANEL_CLASS =
-  "z-[110] w-max rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
+const DATE_PANEL_CLASS = "z-[110] rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
 
 function DateField({
   value,
@@ -949,7 +958,7 @@ function DateField({
       {open &&
         box &&
         createPortal(
-          <div ref={panelRef} style={panelStyle} className={DATE_PANEL_CLASS}>
+          <div ref={panelRef} style={panelStyle} className={`${DATE_PANEL_CLASS} w-max`}>
             <DayPicker
               mode="single"
               weekStartsOn={1}
@@ -1039,7 +1048,7 @@ function DateRangeField({ start, end, onChange, openOnMount = false }) {
       {open &&
         box &&
         createPortal(
-          <div ref={panelRef} style={panelStyle} className={DATE_PANEL_CLASS}>
+          <div ref={panelRef} style={panelStyle} className={`${DATE_PANEL_CLASS} w-max`}>
             <DayPicker
               mode="range"
               weekStartsOn={1}
@@ -4085,7 +4094,9 @@ function EntriesReadout({ slots, categories, cells, wide = false }) {
                     style={{ borderColor: `${slot.color}30` }}
                   >
                     <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70">
-                      <span className="text-[#1E2A33]/45">{e.minutes}m</span>
+                      <span className="text-[#1E2A33]/45">
+                        {e.start && e.end ? `${e.start}–${e.end}` : `${e.minutes}m`}
+                      </span>
                       <RenderIcon
                         name={cat.iconName}
                         size={9}
@@ -4701,20 +4712,32 @@ function DayEditForm({
   const dayComment = dayEntry?.comment || ""
   const lessonsEnabled = settings?.lessonsEnabled !== false
   const examsEnabled = settings?.examsEnabled !== false
+  const withDerivedMinutes = (entry) =>
+    entry.start && entry.end
+      ? { ...entry, minutes: spanMinutes(entry.start, entry.end) }
+      : entry
+  const patchEntry = (entry, patch) => {
+    const next = { ...entry, ...patch }
+    if (patch.start === undefined && "start" in patch) delete next.start
+    if (patch.end === undefined && "end" in patch) delete next.end
+    return withDerivedMinutes(next)
+  }
 
   const addEntry = (slotId) => {
     const arr = cells[slotId] || []
+    const previous = arr[arr.length - 1]
     const newEntry = {
       id: makeId("entry"),
       category: categories[0]?.id,
       minutes: 15,
       comment: "",
+      ...(previous?.end ? { start: previous.end } : {}),
     }
     onChange({ cells: { ...cells, [slotId]: [...arr, newEntry] } })
   }
   const updateEntry = (slotId, entryId, patch) => {
     const arr = (cells[slotId] || []).map((e) =>
-      e.id === entryId ? { ...e, ...patch } : e,
+      e.id === entryId ? patchEntry(e, patch) : e,
     )
     onChange({ cells: { ...cells, [slotId]: arr } })
   }
@@ -4907,6 +4930,22 @@ function DayEditForm({
                         key={entry.id}
                         className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
                       >
+                        <TimeRangeField
+                          start={entry.start}
+                          end={entry.end}
+                          onChange={(start, end) =>
+                            updateEntry(slot.id, entry.id, {
+                              ...(start ? { start } : {}),
+                              ...(end ? { end } : {}),
+                            })
+                          }
+                          onClear={() =>
+                            updateEntry(slot.id, entry.id, {
+                              start: undefined,
+                              end: undefined,
+                            })
+                          }
+                        />
                         <div className="flex items-center gap-2">
                           <select
                             value={entry.category}
@@ -4932,7 +4971,12 @@ function DayEditForm({
                                 minutes: Number(e.target.value),
                               })
                             }
-                            className={`${FIELD_BOXED} w-20`}
+                            disabled={!!(entry.start && entry.end)}
+                            className={`${FIELD_BOXED} w-20 ${
+                              entry.start && entry.end
+                                ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                                : ""
+                            }`}
                           />
                           <span className="text-[10px] font-mono text-[#1E2A33]/40">
                             min
@@ -6487,5 +6531,242 @@ function ChartCard({ title, subtitle, action, children }) {
       </div>
       {children}
     </div>
+  )
+}
+
+function TimeRangeField({ start, end, onChange, onClear }) {
+  const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
+    useDatePopover()
+  const [step, setStep] = useState("start-hour")
+  const [hoverValue, setHoverValue] = useState(null)
+  const [startText, setStartText] = useState(start || "")
+  const [endText, setEndText] = useState(end || "")
+  const isMinute = step.endsWith("minute")
+  const editingStart = step.startsWith("start")
+  const current = editingStart ? start : end
+  const currentValue = current ? timeToMinutes(current) : null
+
+  // The props change after a valid buffer is committed; keep the local text
+  // aligned without remounting the focused input.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setStartText(start || ""), [start])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setEndText(end || ""), [end])
+
+  const openPicker = () => {
+    setStep("start-hour")
+    setHoverValue(null)
+    toggle()
+  }
+
+  const setValue = (field, value) => {
+    onChange(field === "start" ? value : start, field === "end" ? value : end)
+  }
+
+  const timeFromDialValue = (value) => {
+    const [oldHour = 0, oldMinute = 0] = current
+      ? current.split(":").map(Number)
+      : []
+    return isMinute
+      ? `${pad(oldHour)}:${pad(value)}`
+      : `${pad(value)}:${pad(oldMinute)}`
+  }
+
+  const selectDialValue = (value) => {
+    const field = editingStart ? "start" : "end"
+    setValue(field, timeFromDialValue(value))
+    setHoverValue(null)
+    if (step === "start-hour") setStep("start-minute")
+    else if (step === "start-minute") setStep("end-hour")
+    else if (step === "end-hour") setStep("end-minute")
+    else setOpen(false)
+  }
+
+  const handleTextTime = (field, value) => {
+    const match = value.match(/^(\d{1,2}):([0-5]\d)$/)
+    if (!match || Number(match[1]) > 23) return
+    setValue(field, `${pad(Number(match[1]))}:${match[2]}`)
+  }
+
+  const dialValueFromPointer = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * 200 - 100
+    const y = ((event.clientY - rect.top) / rect.height) * 200 - 100
+    const n = isMinute ? 60 : 12
+    const angle = (Math.atan2(x, -y) + 2 * Math.PI) % (2 * Math.PI)
+    const value = Math.round((angle / (2 * Math.PI)) * n) % n
+    const radius = Math.hypot(x, y)
+    if (!isMinute) return radius < 65 ? value + 12 : value
+    return (Math.round(value / 5) * 5) % 60
+  }
+
+  const committedDialValue = isMinute
+    ? currentValue === null
+      ? null
+      : currentValue % 60
+    : currentValue === null
+      ? null
+      : Math.floor(currentValue / 60)
+  const dialValue = hoverValue === null ? committedDialValue : hoverValue
+  const dialAngle =
+    dialValue === null
+      ? null
+      : ((dialValue % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) *
+        2 *
+        Math.PI
+  const markerRadius = !isMinute && dialValue >= 12 ? 52 : 78
+  const markerX = dialAngle === null ? 100 : 100 + markerRadius * Math.sin(dialAngle)
+  const markerY = dialAngle === null ? 100 : 100 - markerRadius * Math.cos(dialAngle)
+  const dialLabels = isMinute
+    ? Array.from({ length: 12 }, (_, i) => ({ value: i * 5, radius: 78 }))
+    : Array.from({ length: 24 }, (_, i) => ({ value: i, radius: i < 12 ? 78 : 52 }))
+
+  const previewTime = hoverValue === null ? current : timeFromDialValue(hoverValue)
+  const previewStart = editingStart ? previewTime : start
+  const previewEnd = editingStart ? end : previewTime
+  const duration =
+    previewStart && previewEnd ? spanMinutes(previewStart, previewEnd) : null
+  const crossesMidnight = duration !== null && duration > 12 * 60
+  const triggerLabel = start || end ? `${start || "…"} – ${end || "…"}` : "Set time"
+
+  const hint =
+    step === "start-hour"
+      ? "Pick the start hour"
+      : step === "start-minute"
+        ? "Now the start minutes"
+        : step === "end-hour"
+          ? "Now the end hour"
+          : "Now the end minutes"
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={openPicker}
+        className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+      >
+        <Clock size={13} className="text-[#1E2A33]/40 shrink-0" />
+        <span className={start || end ? "" : "text-[#1E2A33]/35"}>{triggerLabel}</span>
+      </button>
+      {open &&
+        box &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={panelStyle}
+            className={`${DATE_PANEL_CLASS} w-[236px]`}
+          >
+            <div className="grid grid-cols-2 gap-2 px-1 pt-1">
+              {["start", "end"].map((field) => (
+                <label key={field} className="min-w-0">
+                  <span className="block mb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45">
+                    {field}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="HH:MM"
+                    value={
+                      editingStart === (field === "start") && hoverValue !== null
+                        ? previewTime
+                        : field === "start"
+                          ? startText
+                          : endText
+                    }
+                    onFocus={() => setStep(`${field}-hour`)}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (field === "start") setStartText(value)
+                      else setEndText(value)
+                      handleTextTime(field, value)
+                    }}
+                    style={
+                      editingStart === (field === "start")
+                        ? { boxShadow: `0 0 0 2px ${ACCENT}40` }
+                        : undefined
+                    }
+                    className={`${FIELD_BOXED} w-full px-2 py-1 text-center`}
+                  />
+                </label>
+              ))}
+            </div>
+            {duration !== null && (
+              <div
+                className="px-1 pt-2 text-[10px] font-mono"
+                style={crossesMidnight ? { color: EXAM_COLOR } : undefined}
+              >
+                {duration}m · {fmtHours(duration)}
+                {crossesMidnight && " · crosses midnight"}
+              </div>
+            )}
+            <svg
+              viewBox="0 0 200 200"
+              onMouseMove={(event) => setHoverValue(dialValueFromPointer(event))}
+              onMouseLeave={() => setHoverValue(null)}
+              onClick={(event) => selectDialValue(dialValueFromPointer(event))}
+              className="block w-full cursor-pointer select-none"
+              aria-label={`Time dial: ${hint}`}
+            >
+              <circle cx="100" cy="100" r="90" fill={`${INK}08`} />
+              <circle cx="100" cy="100" r="78" fill="none" stroke={`${INK}18`} />
+              {!isMinute && <circle cx="100" cy="100" r="52" fill="none" stroke={`${INK}18`} />}
+              {dialAngle !== null && (
+                <>
+                  <line
+                    x1="100"
+                    y1="100"
+                    x2={markerX}
+                    y2={markerY}
+                    stroke={ACCENT}
+                    strokeWidth="2"
+                    opacity={hoverValue === null ? 1 : 0.55}
+                  />
+                  <circle
+                    cx={markerX}
+                    cy={markerY}
+                    r="14"
+                    fill={ACCENT}
+                    opacity={hoverValue === null ? 1 : 0.55}
+                  />
+                </>
+              )}
+              <circle cx="100" cy="100" r="3" fill={ACCENT} />
+              {dialLabels.map(({ value, radius }) => {
+                const angle = ((value % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) * 2 * Math.PI
+                const x = 100 + radius * Math.sin(angle)
+                const y = 100 - radius * Math.cos(angle)
+                const selected = value === dialValue
+                return (
+                  <text
+                    key={value}
+                    x={x}
+                    y={y + 3}
+                    textAnchor="middle"
+                    className="font-mono text-[10px]"
+                    fill={selected ? "white" : `${INK}99`}
+                  >
+                    {isMinute ? pad(value) : value}
+                  </text>
+                )
+              })}
+            </svg>
+            <p className="px-2 pb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
+              {hint}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                onClear()
+                setOpen(false)
+              }}
+              className={`${btnBase} w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+            >
+              Clear
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
