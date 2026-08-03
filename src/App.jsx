@@ -1194,6 +1194,37 @@ function MenuToggle({ label, icon: Icon, checked, onChange, hint }) {
 // The white stat block — one label, one big figure, an optional smaller
 // suffix. Shared by the analytics sections and the log's period summaries so
 // the two tabs read as the same thing.
+/* ---------------------------------------------------------------
+   Brand — the app's own mark, distinct from the per-project icon a
+   user picks in Setup. A lens with clock hands: at favicon size the
+   hands blur away but the magnifier silhouette still reads.
+
+   Kept in sync by hand with `public/favicon.svg`, which is the same
+   drawing on a dark rounded square.
+--------------------------------------------------------------- */
+
+const APP_NAME = "TimeLens"
+
+function TimeLensMark({ size = 16, className = "" }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="14.5" cy="14.5" r="7.5" strokeWidth="2" />
+      <path d="M14.5 10.5V14.5H18" strokeWidth="1.9" />
+      <path d="M20 20L25 25" strokeWidth="2.6" />
+    </svg>
+  )
+}
+
 function StatTile({ label, value, sub, icon: Icon }) {
   return (
     <div className={`${CARD} p-4`}>
@@ -1399,10 +1430,10 @@ function AuthScreen({ client, error }) {
       <div className={`${CARD} w-full max-w-sm p-6`}>
         <div className="flex items-center gap-2 mb-1">
           <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center">
-            <Train size={16} className="text-[#F4F5F7]" />
+            <TimeLensMark size={18} className="text-[#F4F5F7]" />
           </div>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg">
-            Time tracker
+            {APP_NAME}
           </h1>
         </div>
         <p className="text-[11px] font-mono uppercase tracking-widest text-[#1E2A33]/45 mb-5">
@@ -2301,20 +2332,24 @@ function TopBar({
       <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center shrink-0">
-            <RenderIcon
-              name={projectIcon}
-              size={16}
-              className="text-[#F4F5F7]"
-            />
+            <TimeLensMark size={18} className="text-[#F4F5F7]" />
           </div>
+          {/* The app is the headline; the project it happens to be showing is
+              the line under it, with its own icon so it stays identifiable
+              once there is more than one. */}
           <div className="min-w-0">
             <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg leading-none truncate">
-              {projectName}
+              {APP_NAME}
             </h1>
-            <p className="text-[11px] uppercase tracking-widest text-[#1E2A33]/50 font-mono mt-0.5">
-              {startDate
-                ? `${fmtDateLong(startDate)} → ${endDate ? fmtDateLong(endDate) : "ongoing"}`
-                : "Route tracker & forecast"}
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-[#1E2A33]/50 font-mono mt-0.5 min-w-0">
+              <RenderIcon name={projectIcon} size={11} className="shrink-0" />
+              <span className="truncate">{projectName}</span>
+              {startDate && (
+                <span className="shrink-0 hidden sm:inline text-[#1E2A33]/40">
+                  · {fmtDateLong(startDate)} →{" "}
+                  {endDate ? fmtDateLong(endDate) : "ongoing"}
+                </span>
+              )}
             </p>
           </div>
         </div>
