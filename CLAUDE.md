@@ -113,7 +113,17 @@ unit), `days` keyed `(project_id, date)`, `period_notes` keyed
 `(project_id, kind, key)` where the note and its ignore flag share a row, and
 `user_prefs` for `active_project_id`. RLS on all four; days and notes inherit
 ownership from their project. See `migrations/001_normalize_schema.sql`, then
-`002_sleep.sql` which adds the `sleep` column to `days`.
+`002_sleep.sql` (the `sleep` column on `days`) and `003_change_log.sql` (the
+`change_log` table).
+
+`change_log` is the one exception to everything below. It records what an edit
+changed — old value and new — capped at `CHANGE_LOG_LIMIT`, oldest dropped. It
+is a convenience, not data anybody typed, so both its read and its write are
+**deliberately best-effort**: the read ignores `{ error }` so a missing table
+leaves an empty log instead of the dead-end screen, and the write swallows
+failures so it can never raise the save banner or re-queue forever. That is the
+only place in this file where skipping the error check is right, and there is a
+comment saying so.
 
 Adding a field to a day means three edits, not one: the column, the `select`
 list in `loadFromTables`, and the `upsert` in `applyWriteOp`. Miss the third

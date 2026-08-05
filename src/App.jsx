@@ -77,6 +77,10 @@ import {
   MoreVertical,
   Download,
   Filter,
+  ChevronUp,
+  ChevronDown,
+  ArrowRightLeft,
+  History,
 } from "lucide-react"
 
 /* ---------------------------------------------------------------
@@ -283,6 +287,7 @@ function makeProject(overrides = {}) {
     monthNotes: {}, // key: 'YYYY-MM' -> comment string
     weekIgnore: {}, // key: 'YYYY-MM-DD' (Monday of that week) -> boolean, ignore this week in statistics
     monthIgnore: {}, // key: 'YYYY-MM' -> boolean, ignore this month in statistics
+    changeLog: [], // newest first: [{ id, at, title, details: [string] }], capped at CHANGE_LOG_LIMIT
     ...overrides,
   }
 }
@@ -443,6 +448,116 @@ const toRoman = (n) => ROMAN[n - 1] || String(n)
 
 const fmtDaysWithMonths = (days) =>
   `${days}d (${(days / 30.44).toFixed(1)} months)`
+
+/* ---------------------------------------------------------------
+   Change log
+
+   Records what an edit actually changed, not that one happened — the point
+   is to answer "what was the time before I overwrote it", which needs the
+   old value alongside the new one.
+
+   Best-effort by design: it is a convenience, so a log that cannot be read
+   or written must never take the app down or raise the save banner. See
+   `CHANGE_LOG_LIMIT` for the cap; the oldest fall off the end.
+--------------------------------------------------------------- */
+
+const CHANGE_LOG_LIMIT = 200
+
+const entryLabel = (e, categories) => {
+  const cat = e.category ? getById(categories, e.category).label : null
+  const when =
+    e.start && e.end
+      ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""}`
+      : `${Number(e.minutes) || 0}m`
+  return cat ? `${when} ${cat}` : when
+}
+
+// Field-by-field so the line can say "10:35 → 11:05" rather than "changed".
+function diffEntry(before, after, categories) {
+  const lines = []
+  const field = (name, a, b) => {
+    if ((a ?? "") === (b ?? "")) return
+    lines.push(`${name}: ${a || "—"} → ${b || "—"}`)
+  }
+  field("start", before.start, after.start)
+  field("end", before.end, after.end)
+  field("minutes", before.minutes, after.minutes)
+  if (before.category !== after.category) {
+    field(
+      "category",
+      getById(categories, before.category).label,
+      getById(categories, after.category).label,
+    )
+  }
+  if ((before.comment || "") !== (after.comment || "")) lines.push("comment edited")
+  return lines
+}
+
+// Walks both versions of a day and describes the difference in plain lines.
+function diffDay(before, after, slots, categories) {
+  const details = []
+  const beforeCells = before?.cells || {}
+  const afterCells = after?.cells || {}
+  const seen = new Set()
+
+  const indexById = (list) => {
+    const map = new Map()
+    ;(list || []).forEach((e) => map.set(e.id, e))
+    return map
+  }
+
+  slots.forEach((slot) => {
+    const a = indexById(beforeCells[slot.id])
+    const b = indexById(afterCells[slot.id])
+    b.forEach((entry, id) => {
+      seen.add(id)
+      const prev = a.get(id)
+      if (!prev) {
+        details.push(`+ ${slot.label}: ${entryLabel(entry, categories)}`)
+        return
+      }
+      diffEntry(prev, entry, categories).forEach((line) =>
+        details.push(`~ ${slot.label}: ${line}`),
+      )
+    })
+    a.forEach((entry, id) => {
+      if (!b.has(id)) details.push(`− ${slot.label}: ${entryLabel(entry, categories)}`)
+    })
+  })
+
+  // An entry that left one slot and arrived in another shows up above as a
+  // delete and an add; collapsing them would hide which slot it landed in.
+  const beforeSleep = indexById(before?.sleep)
+  const afterSleep = indexById(after?.sleep)
+  afterSleep.forEach((entry, id) => {
+    const prev = beforeSleep.get(id)
+    if (!prev) {
+      details.push(`+ Sleep: ${entryLabel(entry, categories)}`)
+      return
+    }
+    diffEntry(prev, entry, categories).forEach((line) =>
+      details.push(`~ Sleep: ${line}`),
+    )
+  })
+  beforeSleep.forEach((entry, id) => {
+    if (!afterSleep.has(id))
+      details.push(`− Sleep: ${entryLabel(entry, categories)}`)
+  })
+
+  const scalar = (name, a, b) => {
+    if ((a ?? "") === (b ?? "")) return
+    details.push(`${name}: ${a || "—"} → ${b || "—"}`)
+  }
+  scalar("lessons", before?.lessons, after?.lessons)
+  if (!!before?.exam !== !!after?.exam)
+    details.push(after?.exam ? "exam passed" : "exam unmarked")
+  if (!!before?.ignore !== !!after?.ignore)
+    details.push(after?.ignore ? "ignored in statistics" : "no longer ignored")
+  if ((before?.comment || "") !== (after?.comment || ""))
+    details.push("day note edited")
+
+  return details
+}
 
 function dayBreakdown(dayEntry, slots) {
   const bySlot = {}
@@ -1596,8 +1711,37 @@ async function loadFromTables(client) {
       monthNotes: {},
       weekIgnore: {},
       monthIgnore: {},
+      changeLog: [],
     }),
   )
+
+  // Outside the Promise.all above, and the only place in this file where a
+  // missing `{ error }` check is correct: the change log is a convenience, so a
+  // project whose log table is absent or unreadable must still open normally
+  // with all its real data. supabase-js reports the failure in the payload
+  // rather than throwing, so ignoring it leaves `logRows` null and the log
+  // simply empty. Do not "fix" this by checking the error — that would put the
+  // whole app on the dead-end screen over data nobody typed. The try/catch is
+  // only for a network throw.
+  try {
+    const { data: logRows } = await client
+      .from("change_log")
+      .select("id,project_id,at,title,details")
+      .order("at", { ascending: false })
+      .limit(CHANGE_LOG_LIMIT)
+    ;(logRows || []).forEach((r) => {
+      const p = byId.get(r.project_id)
+      if (!p) return
+      p.changeLog.push({
+        id: r.id,
+        at: r.at,
+        title: r.title || "",
+        details: r.details || [],
+      })
+    })
+  } catch {
+    // no log, no problem
+  }
 
   dayRows.forEach((r) => {
     const p = byId.get(r.project_id)
@@ -1658,6 +1802,15 @@ const opDeleteProject = (projectId) => ({
   kind: "deleteProject",
   projectId,
 })
+// Unlike the others this op carries its payload: a log line is immutable once
+// written, so there is nothing to re-read from state at flush time.
+const opLog = (projectId, entry, dropIds) => ({
+  key: `log:${entry.id}`,
+  kind: "log",
+  projectId,
+  entry,
+  dropIds,
+})
 
 async function applyWriteOp(client, userId, op, data) {
   // supabase-js returns failures in the payload rather than throwing, so every
@@ -1699,6 +1852,27 @@ async function applyWriteOp(client, userId, op, data) {
           updated_at: stamp,
         }),
       )
+    }
+    case "log": {
+      if (!project) return
+      // Swallowed on purpose. The log is a convenience; a failure here must not
+      // raise the save banner or get re-queued forever, or a missing table
+      // would make the app look permanently broken over data nobody typed.
+      try {
+        await client.from("change_log").insert({
+          id: op.entry.id,
+          project_id: project.id,
+          at: op.entry.at,
+          title: op.entry.title,
+          details: op.entry.details,
+        })
+        if (op.dropIds?.length) {
+          await client.from("change_log").delete().in("id", op.dropIds)
+        }
+      } catch {
+        // ignored
+      }
+      return
     }
     case "note": {
       if (!project) return
@@ -1765,6 +1939,7 @@ export default function StudyTrackerApp() {
   const [showOverall, setShowOverall] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   // Which slots/categories are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
@@ -1963,10 +2138,25 @@ export default function StudyTrackerApp() {
       exam: false,
       ignore: false,
     }
-    patchProject(
-      { days: { ...project.days, [key]: { ...existing, ...patch } } },
-      opDay(project.id, key),
-    )
+    const next = { ...existing, ...patch }
+    // Recorded before the write so the log holds the old value, which is the
+    // only reason to keep a log at all.
+    const details = diffDay(existing, next, project.slots, project.categories)
+    const ops = [opDay(project.id, key)]
+    let changeLog = project.changeLog || []
+    if (details.length) {
+      const logEntry = {
+        id: makeId("log"),
+        at: new Date().toISOString(),
+        title: `${fmtDateLong(key)} · ${details.length} change${details.length > 1 ? "s" : ""}`,
+        details,
+      }
+      const merged = [logEntry, ...changeLog]
+      const dropIds = merged.slice(CHANGE_LOG_LIMIT).map((l) => l.id)
+      changeLog = merged.slice(0, CHANGE_LOG_LIMIT)
+      ops.push(opLog(project.id, logEntry, dropIds))
+    }
+    patchProject({ days: { ...project.days, [key]: next }, changeLog }, ops)
   }
 
   // The note and its ignore flag share a row, so both edits target the same op.
@@ -2173,6 +2363,8 @@ export default function StudyTrackerApp() {
           sleepEnabled={project.settings.sleepEnabled === true}
           showSleep={showSleep}
           onToggleSleep={() => setShowSleep((v) => !v)}
+          showLog={showLog}
+          onToggleLog={() => setShowLog((v) => !v)}
         />
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
@@ -2206,6 +2398,13 @@ export default function StudyTrackerApp() {
               variant="inline"
             />
           </div>
+        )}
+
+        {showLog && (
+          <ChangeLogSection
+            entries={project.changeLog || []}
+            onClose={() => setShowLog(false)}
+          />
         )}
 
         {/* Period-scoped, unlike the two panels above it, but it shares their
@@ -3293,6 +3492,8 @@ function PeriodBar({
   sleepEnabled,
   showSleep,
   onToggleSleep,
+  showLog,
+  onToggleLog,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -3388,6 +3589,18 @@ function PeriodBar({
               </button>
             </Tip>
           )}
+          <Tip text={showLog ? "Hide the change log" : "Show the change log"}>
+            <button
+              onClick={onToggleLog}
+              className={`${btnBase} p-2 rounded-full ${
+                showLog
+                  ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
+                  : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+              }`}
+            >
+              <History size={16} />
+            </button>
+          </Tip>
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip
@@ -3631,14 +3844,6 @@ function LogView({
           onSave={(text) => onUpdateMonthNote(monthKey, text)}
         />
       )}
-
-      <PeriodTotals
-        dates={visibleDates}
-        days={days}
-        slots={slots}
-        categories={categories}
-        isIgnored={isIgnored}
-      />
 
       {granularity === "month" && (
         <MonthGrid
@@ -4238,6 +4443,13 @@ const entryTimeLabel = (e) =>
 // One entry line. The header is the sticky half — while a long comment scrolls
 // past, the time and category it belongs to stay put. The comment folds away
 // on its own button, starting from whatever the card-wide toggle says.
+//
+// Header and comment are siblings rather than a wrapped pair on purpose. A
+// sticky element cannot leave its containing block, so with a per-entry wrapper
+// the header was shoved out of view as soon as its own entry ended, and the
+// strip under the slot header filled with the tail of that entry's comment.
+// Flat, each header is pinned until the next one arrives, so a comment never
+// reaches that strip.
 function ReadoutEntry({
   timeLabel,
   icon,
@@ -4247,18 +4459,22 @@ function ReadoutEntry({
   sticky,
   surface,
   defaultOpen,
+  isLast,
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const showComment = !!comment && open
+  const rail = { borderLeftColor: borderColor }
+  const divider = "border-b border-b-[#1E2A33]/10"
   return (
-    <div
-      className="pl-3 border-l-2 border-b border-b-[#1E2A33]/10 last:border-b-0 py-1"
-      style={{ borderLeftColor: borderColor }}
-    >
+    <>
       <div
-        className={`flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70 ${
-          sticky ? "sticky top-[22px] z-[1]" : ""
-        }`}
-        style={sticky ? surface : undefined}
+        className={`pl-3 border-l-2 pt-1 ${
+          showComment ? "" : `pb-1 ${isLast ? "" : divider}`
+        } ${sticky ? "sticky top-6 z-[1]" : ""}`}
+        style={{ ...rail, ...(sticky ? surface : {}) }}
+      >
+      <div
+        className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70"
       >
         {comment && (
           <button
@@ -4279,12 +4495,18 @@ function ReadoutEntry({
         {icon}
         {label && <span className="truncate">{label}</span>}
       </div>
-      {comment && open && (
-        <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
-          {comment}
+      </div>
+      {showComment && (
+        <div
+          className={`pl-3 border-l-2 pb-1 ${isLast ? "" : divider}`}
+          style={rail}
+        >
+          <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
+            {comment}
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -4332,8 +4554,14 @@ function EntriesReadout({
         return (
           <div key={slot.id}>
             <div
-              className={`flex items-center gap-1.5 mb-1 ${
-                scrollable ? "sticky top-0 z-[2] py-0.5" : ""
+              className={`flex items-center gap-1.5 ${
+                scrollable
+                  ? // A margin here would be transparent, and entries scrolled
+                    // visibly through it between the two sticky rows. The gap
+                    // has to be padding, inside the painted box, and the height
+                    // has to be exact so the entry rows below can offset by it.
+                    "sticky top-0 z-[2] h-6 pb-1 box-border"
+                  : "mb-1"
               }`}
               style={stickyStyle}
             >
@@ -4356,11 +4584,12 @@ function EntriesReadout({
               </span>
             </div>
             <div>
-              {entries.map((e) => {
+              {entries.map((e, i) => {
                 const cat = getById(categories, e.category)
                 return (
                   <ReadoutEntry
                     key={e.id}
+                    isLast={i === entries.length - 1}
                     timeLabel={entryTimeLabel(e)}
                     icon={
                       <RenderIcon
@@ -4405,9 +4634,10 @@ function EntriesReadout({
             </span>
           </div>
           <div>
-            {sleepEntries.map((e) => (
+            {sleepEntries.map((e, i) => (
               <ReadoutEntry
                 key={e.id}
+                isLast={i === sleepEntries.length - 1}
                 timeLabel={entryTimeLabel(e)}
                 comment={e.comment}
                 borderColor={`${SLEEP_COLOR}30`}
@@ -4569,21 +4799,6 @@ function FullDayCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          {onQuickAdd && (
-            <Tip text="Add an entry">
-              <button
-                // The card itself opens the editor, so this has to keep its
-                // click from bubbling up to it.
-                onClick={(ev) => {
-                  ev.stopPropagation()
-                  onQuickAdd()
-                }}
-                className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
-              >
-                <Plus size={14} />
-              </button>
-            </Tip>
-          )}
           {isToday && (
             <span
               className="text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
@@ -4612,6 +4827,24 @@ function FullDayCard({
               <span className="text-[9px] uppercase tracking-wide font-mono bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full">
                 {entry.lessons}L
               </span>
+            </Tip>
+          )}
+          {/* Last in the row on purpose: the badges before it come and go, so
+              anchoring the button to the right edge is the only way it lands in
+              the same spot on every day of the week. */}
+          {onQuickAdd && (
+            <Tip text="Add an entry">
+              <button
+                // The card itself opens the editor, so this has to keep its
+                // click from bubbling up to it.
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onQuickAdd()
+                }}
+                className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+              >
+                <Plus size={14} />
+              </button>
             </Tip>
           )}
         </div>
@@ -5259,13 +5492,11 @@ function DayEditForm({
 
   const addEntry = (slotId) => {
     const arr = cells[slotId] || []
-    const previous = arr[arr.length - 1]
     const newEntry = {
       id: makeId("entry"),
       category: categories[0]?.id,
       minutes: 0,
       comment: "",
-      ...(previous?.end ? { start: previous.end } : {}),
     }
     onChange({ cells: { ...cells, [slotId]: [...arr, newEntry] } })
   }
@@ -5278,6 +5509,28 @@ function DayEditForm({
   const removeEntry = (slotId, entryId) => {
     const arr = (cells[slotId] || []).filter((e) => e.id !== entryId)
     onChange({ cells: { ...cells, [slotId]: arr } })
+  }
+  // Order is the list's own, not derived from the times — an entry with no
+  // times still has to sit somewhere, and sorting by time would shuffle rows
+  // out from under you mid-edit.
+  const moveEntry = (slotId, index, dir) => {
+    const arr = [...(cells[slotId] || [])]
+    const next = index + dir
+    if (next < 0 || next >= arr.length) return
+    ;[arr[index], arr[next]] = [arr[next], arr[index]]
+    onChange({ cells: { ...cells, [slotId]: arr } })
+  }
+  const moveEntryToSlot = (fromSlot, entryId, toSlot) => {
+    if (fromSlot === toSlot) return
+    const entry = (cells[fromSlot] || []).find((e) => e.id === entryId)
+    if (!entry) return
+    onChange({
+      cells: {
+        ...cells,
+        [fromSlot]: (cells[fromSlot] || []).filter((e) => e.id !== entryId),
+        [toSlot]: [...(cells[toSlot] || []), entry],
+      },
+    })
   }
 
   // Sleep is a second, independent list on the day — no slot, no category, and
@@ -5292,18 +5545,11 @@ function DayEditForm({
   const [tab, setTab] = useState("project")
 
   const writeSleep = (arr) => onChange({ sleep: arr })
-  const addSleepEntry = () => {
-    const previous = sleepEntries[sleepEntries.length - 1]
+  const addSleepEntry = () =>
     writeSleep([
       ...sleepEntries,
-      {
-        id: makeId("sleep"),
-        minutes: 0,
-        comment: "",
-        ...(previous?.end ? { start: previous.end } : {}),
-      },
+      { id: makeId("sleep"), minutes: 0, comment: "" },
     ])
-  }
   const updateSleepEntry = (entryId, patch) =>
     writeSleep(
       sleepEntries.map((e) => (e.id === entryId ? patchEntry(e, patch) : e)),
@@ -5490,7 +5736,7 @@ function DayEditForm({
                       No study logged for this slot.
                     </p>
                   )}
-                  {entries.map((entry) => {
+                  {entries.map((entry, entryIndex) => {
                     const options = categories.some(
                       (c) => c.id === entry.category,
                     )
@@ -5564,6 +5810,44 @@ function DayEditForm({
                           >
                             <Trash2 size={14} />
                           </button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            disabled={entryIndex === 0}
+                            onClick={() => moveEntry(slot.id, entryIndex, -1)}
+                            className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            disabled={entryIndex === entries.length - 1}
+                            onClick={() => moveEntry(slot.id, entryIndex, 1)}
+                            className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                          <PopoverMenu
+                            label="Move to another time slot"
+                            icon={ArrowRightLeft}
+                          >
+                            {slots.map((target) => (
+                              <button
+                                key={target.id}
+                                disabled={target.id === slot.id}
+                                onClick={() =>
+                                  moveEntryToSlot(slot.id, entry.id, target.id)
+                                }
+                                className={`${btnBase} w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-mono text-left hover:bg-[#1E2A33]/5 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                              >
+                                <RenderIcon
+                                  name={target.iconName}
+                                  size={12}
+                                  style={{ color: target.color }}
+                                />
+                                {target.label}
+                              </button>
+                            ))}
+                          </PopoverMenu>
                         </div>
                         <div className="flex items-start gap-1.5">
                           <MessageSquare
@@ -5865,6 +6149,10 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
   const isDayIgnored = useMemo(
     () => makeIsIgnored(weekIgnore, monthIgnore),
     [weekIgnore, monthIgnore],
+  )
+  const rangeDates = useMemo(
+    () => datesInRange(rangeStart, rangeEnd),
+    [rangeStart, rangeEnd],
   )
   const [dailyMode, setDailyMode] = useState("slot") // 'slot' | 'category' | 'hours' | 'lessons'
   const [weekdayMode, setWeekdayMode] = useState("hours") // 'slot' | 'category' | 'hours' | 'lessons'
@@ -6300,6 +6588,17 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
 
   return (
     <div className="space-y-8">
+      {/* Moved down from the log: they answer "where did the period's time
+          go", which is a stats question, and they read the same range as
+          everything else here. */}
+      <PeriodTotals
+        dates={rangeDates}
+        days={days}
+        slots={slots}
+        categories={categories}
+        isIgnored={isDayIgnored}
+      />
+
       <OverviewStats
         period={periodStats}
         lessonsEnabled={lessonsEnabled}
@@ -7064,8 +7363,8 @@ function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
                 <XAxis
                   dataKey="label"
-                  interval={2}
-                  tick={{ fontSize: 10, fontFamily: "monospace" }}
+                  interval={0}
+                  tick={{ fontSize: 9, fontFamily: "monospace" }}
                 />
                 <YAxis
                   domain={[0, 100]}
@@ -7087,6 +7386,75 @@ function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
             </ResponsiveContainer>
           </ChartCard>
         </>
+      )}
+    </div>
+  )
+}
+
+function ChangeLogSection({ entries, onClose }) {
+  const tint = "#5C8A3A"
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-5 border-2 mb-4"
+      style={{ backgroundColor: `${tint}14`, borderColor: `${tint}45` }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
+          style={{ backgroundColor: `${tint}30` }}
+        >
+          <History size={13} style={{ color: tint }} />
+        </span>
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
+          Change log
+        </h3>
+        {onClose && (
+          <Tip text="Hide the change log">
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <X size={16} />
+            </button>
+          </Tip>
+        )}
+      </div>
+      <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+        The last {CHANGE_LOG_LIMIT} edits · oldest fall off the end
+      </p>
+
+      {!entries.length ? (
+        <p className="text-xs font-mono text-[#1E2A33]/50">
+          Nothing recorded yet.
+        </p>
+      ) : (
+        <div className="max-h-80 overflow-y-auto pr-1 space-y-2">
+          {entries.map((e) => (
+            <div key={e.id} className={`${CARD} p-3`}>
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-[11px] font-bold shrink-0">
+                  {new Date(e.at).toLocaleString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 truncate">
+                  {e.title}
+                </span>
+              </div>
+              <ul className="mt-1 space-y-0.5">
+                {e.details.map((line, i) => (
+                  <li
+                    key={i}
+                    className="text-[10px] font-mono text-[#1E2A33]/65 whitespace-pre-wrap"
+                  >
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -7465,7 +7833,9 @@ function TimeRangeField({ start, end, onChange, onClear }) {
     const angle = (Math.atan2(x, -y) + 2 * Math.PI) % (2 * Math.PI)
     const value = Math.round((angle / (2 * Math.PI)) * n) % n
     const radius = Math.hypot(x, y)
-    if (!isMinute) return radius < 65 ? value + 12 : value
+    // Inner ring starts the day, the outer ring carries it on: reading outwards
+    // is the direction people reach for first.
+    if (!isMinute) return radius < 65 ? value : value + 12
     return (Math.round(value / 5) * 5) % 60
   }
 
@@ -7483,12 +7853,12 @@ function TimeRangeField({ start, end, onChange, onClear }) {
       : ((dialValue % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) *
         2 *
         Math.PI
-  const markerRadius = !isMinute && dialValue >= 12 ? 52 : 78
+  const markerRadius = !isMinute && dialValue < 12 ? 52 : 78
   const markerX = dialAngle === null ? 100 : 100 + markerRadius * Math.sin(dialAngle)
   const markerY = dialAngle === null ? 100 : 100 - markerRadius * Math.cos(dialAngle)
   const dialLabels = isMinute
     ? Array.from({ length: 12 }, (_, i) => ({ value: i * 5, radius: 78 }))
-    : Array.from({ length: 24 }, (_, i) => ({ value: i, radius: i < 12 ? 78 : 52 }))
+    : Array.from({ length: 24 }, (_, i) => ({ value: i, radius: i < 12 ? 52 : 78 }))
 
   const previewTime = hoverValue === null ? current : timeFromDialValue(hoverValue)
   const previewStart = editingStart ? previewTime : start
