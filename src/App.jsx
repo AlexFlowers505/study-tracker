@@ -154,12 +154,28 @@ const CARD = "bg-white rounded-2xl p-4"
 // the background-color alone would let the parent bleed through — which is how
 // the month grid ended up showing one colour on desktop and another on a
 // phone, where the cells sit on the grid's seam colour.
-const cellSurface = (wash) => ({
-  backgroundColor: "#FFFFFF",
+const cellSurface = (wash, base = "#FFFFFF") => ({
+  backgroundColor: base,
   ...(wash
     ? { backgroundImage: `linear-gradient(${wash}, ${wash})` }
     : {}),
 })
+
+const PAGE_TINT = "#F4F5F7"
+
+// One surface for "goal met / missed / ignored", shared by the week cards and
+// the month grid. They used to differ only in what sat under the same
+// translucent wash — white in the grid, the page tint behind the cards — which
+// rendered as two different colours for the same state.
+// A day with no verdict stays white, which is what separates it from the page;
+// the tinted states composite over the page tint, which is the pairing the week
+// cards already had and the more contrasty of the two.
+const dayStateSurface = (goalOutcome, ignored) => {
+  if (ignored) return cellSurface(`${INK}0A`, PAGE_TINT)
+  if (goalOutcome === "met") return cellSurface(`${GOAL_MET_COLOR}17`, PAGE_TINT)
+  if (goalOutcome === "missed") return cellSurface(`${EXAM_COLOR}17`, PAGE_TINT)
+  return cellSurface(null)
+}
 // Fields are filled, not outlined: on a white card they take the page tint, on
 // a tinted row they go white. That contrast step is what reads as "editable",
 // so the border is redundant. Selects and number inputs keep a hairline
@@ -420,6 +436,11 @@ const NEVER_IGNORED = () => false
 
 // Day count -> "60d (2.0 months)" label, used anywhere a raw elapsed-day
 // figure benefits from a more intuitive months-scale readout alongside it.
+// A month never holds more than six week rows, so the table is the whole
+// implementation — no need for the subtractive-notation algorithm.
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"]
+const toRoman = (n) => ROMAN[n - 1] || String(n)
+
 const fmtDaysWithMonths = (days) =>
   `${days}d (${(days / 30.44).toFixed(1)} months)`
 
@@ -1169,13 +1190,13 @@ function PopoverMenu({ label, icon: Icon = MoreVertical, children }) {
 
 function MenuToggle({ label, icon: Icon, checked, onChange, hint }) {
   return (
-    <label className="flex items-start gap-2 px-2.5 py-2 rounded-xl cursor-pointer hover:bg-[#1E2A33]/5">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-3.5 h-3.5 accent-[#1E2A33]/60 mt-[2px] shrink-0"
-      />
+    <div
+      onClick={() => onChange(!checked)}
+      className="flex items-start gap-2.5 px-2.5 py-2 rounded-xl cursor-pointer hover:bg-[#1E2A33]/5"
+    >
+      <span className="mt-[1px] shrink-0">
+        <SwitchToggle checked={checked} onChange={onChange} label={label} />
+      </span>
       <span className="min-w-0">
         <span className="flex items-center gap-1.5 text-[11px] font-mono text-[#1E2A33]/80">
           {Icon && <Icon size={12} className="text-[#1E2A33]/45 shrink-0" />}
@@ -1187,7 +1208,7 @@ function MenuToggle({ label, icon: Icon, checked, onChange, hint }) {
           </span>
         )}
       </span>
-    </label>
+    </div>
   )
 }
 
@@ -1728,11 +1749,12 @@ export default function StudyTrackerApp() {
   const [loaded, setLoaded] = useState(false)
   // One period drives the whole page: the log grid at the top and the
   // analytics below it always describe the same stretch of days.
-  const [period, setPeriod] = useState("month")
+  const [period, setPeriod] = useState("week")
   const [logCursor, setLogCursor] = useState(new Date())
   const [customStart, setCustomStart] = useState(toKey(addDays(new Date(), -30)))
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
+  const [quickAddKey, setQuickAddKey] = useState(null)
   const [showSetup, setShowSetup] = useState(false)
   // Set when the initial read threw. While true the app is read-only: it holds
   // placeholder state that must never be written back over the real row.
@@ -2210,6 +2232,7 @@ export default function StudyTrackerApp() {
           onUpdateMonthNote={updateMonthNote}
           onUpdateWeekIgnore={updateWeekIgnore}
           onUpdateMonthIgnore={updateMonthIgnore}
+          onQuickAddDay={setQuickAddKey}
         />
 
         <div className="mt-10">
@@ -2260,6 +2283,23 @@ export default function StudyTrackerApp() {
             variant="sheet"
           />
         </div>
+      )}
+
+      {quickAddKey && (
+        <QuickAddEntryModal
+          dateKey={quickAddKey}
+          slots={project.slots}
+          categories={project.categories}
+          onCancel={() => setQuickAddKey(null)}
+          onAdd={(dateKey, slotId, entry) => {
+            const day = project.days[dateKey] || {}
+            const cells = day.cells || {}
+            updateDay(dateKey, {
+              cells: { ...cells, [slotId]: [...(cells[slotId] || []), entry] },
+            })
+            setQuickAddKey(null)
+          }}
+        />
       )}
 
       {editingKey && (
@@ -3435,8 +3475,12 @@ function LogView({
   onUpdateMonthNote,
   onUpdateWeekIgnore,
   onUpdateMonthIgnore,
+  onQuickAddDay,
 }) {
   const granularity = period
+  // Card-wide default for entry comments; each entry can still be folded on
+  // its own button, and flipping this resets those.
+  const [commentsOpen, setCommentsOpen] = useState(true)
   const {
     slots,
     categories,
@@ -3532,18 +3576,29 @@ function LogView({
         </div>
         {/* Only weeks and months carry an ignore flag, so the menu appears
             only where there is something in it. */}
-        {(granularity === "week" || granularity === "month") && (
+        {(granularity === "week" ||
+          granularity === "month" ||
+          granularity === "day") && (
           <PopoverMenu label={`${granularity} settings`}>
+            {granularity !== "day" && (
+              <MenuToggle
+                label="Ignore in statistics"
+                icon={EyeOff}
+                hint="Every figure on this page skips it"
+                checked={periodIgnored}
+                onChange={(next) =>
+                  granularity === "week"
+                    ? onUpdateWeekIgnore(weekKey, next)
+                    : onUpdateMonthIgnore(monthKey, next)
+                }
+              />
+            )}
             <MenuToggle
-              label="Ignore in statistics"
-              icon={EyeOff}
-              hint="Every figure on this page skips it"
-              checked={periodIgnored}
-              onChange={(next) =>
-                granularity === "week"
-                  ? onUpdateWeekIgnore(weekKey, next)
-                  : onUpdateMonthIgnore(monthKey, next)
-              }
+              label="Show entry comments"
+              icon={MessageSquare}
+              hint="Each entry can still be folded on its own"
+              checked={commentsOpen}
+              onChange={setCommentsOpen}
             />
           </PopoverMenu>
         )}
@@ -3612,6 +3667,8 @@ function LogView({
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}
           big={granularity === "day"}
+          commentsOpen={commentsOpen}
+          onQuickAddDay={granularity === "week" ? onQuickAddDay : undefined}
         />
       )}
       {/* Anything longer than a month — including all-time and custom — is
@@ -3947,6 +4004,7 @@ function MonthGrid({
               goal={wGoal}
               ignored={weekIgnored}
               isPast={weekPast}
+              ordinal={ri + 1}
             />
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real
@@ -3991,7 +4049,7 @@ function MonthGrid({
 // Caption above each week row. No fill of its own — the goal outcome reads as
 // a dot beside the hours, which leaves the rounded corners to the block of
 // days below where they belong.
-function WeekSummaryStrip({ total, goal, ignored, isPast }) {
+function WeekSummaryStrip({ total, goal, ignored, isPast, ordinal }) {
   const met = !ignored && goal > 0 && total >= goal
   const goalOutcome =
     !ignored && isPast && goal > 0 ? (total >= goal ? "met" : "missed") : null
@@ -4001,10 +4059,12 @@ function WeekSummaryStrip({ total, goal, ignored, isPast }) {
         ignored ? "opacity-60" : ""
       }`}
     >
+      {/* Everything that describes the week sits on the left, so the eye finds
+          the same information in the same place on every row; the rule fills
+          whatever is left over. */}
       <span className="text-[#1E2A33]/45 flex items-center gap-1 shrink-0">
-        Week {ignored && <EyeOff size={9} />}
+        Week {toRoman(ordinal)} {ignored && <EyeOff size={9} />}
       </span>
-      <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
       <span
         className="font-bold shrink-0"
         style={met ? { color: GOAL_MET_COLOR } : undefined}
@@ -4027,6 +4087,7 @@ function WeekSummaryStrip({ total, goal, ignored, isPast }) {
           />
         </Tip>
       )}
+      <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
     </div>
   )
 }
@@ -4082,15 +4143,12 @@ function CompactDayCell({
         // Without one it picked up whatever sat behind the cell — the page on
         // desktop, the seam colour of the phone grid — and the same day came
         // out two different shades on the two layouts.
-        style={cellSurface(
-          ignored
-            ? `${INK}0A`
-            : goalOutcome === "met"
-              ? `${GOAL_MET_COLOR}17`
-              : goalOutcome === "missed"
-                ? `${EXAM_COLOR}17`
-                : null,
-        )}
+        style={{
+          ...dayStateSurface(goalOutcome, ignored),
+          ...(isToday
+            ? { outline: `2px solid ${ACCENT}`, outlineOffset: "-2px" }
+            : {}),
+        }}
       >
       <div className="flex items-start justify-between">
         <span
@@ -4101,6 +4159,12 @@ function CompactDayCell({
         </span>
         <div className="flex items-center gap-1">
           {ignored && <EyeOff size={11} className="text-[#1E2A33]/35" />}
+          {settings?.sleepEnabled === true &&
+            (entry?.sleep || []).length > 0 && (
+              <Tip text="Sleep logged">
+                <Moon size={11} style={{ color: SLEEP_COLOR }} />
+              </Tip>
+            )}
           {entry?.exam && examsEnabled && (
             <Tip text="Exam passed">
               <span
@@ -4163,6 +4227,67 @@ function CompactDayCell({
 
 /* ---- Week / Day view (full detail cards) ---- */
 
+// A timed entry says both things at once: when it happened and how long it
+// lasted. Reading one off the other in your head is the sort of arithmetic the
+// app exists to save.
+const entryTimeLabel = (e) =>
+  e.start && e.end
+    ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""} (${fmtHours(e.minutes)})`
+    : `${e.minutes}m`
+
+// One entry line. The header is the sticky half — while a long comment scrolls
+// past, the time and category it belongs to stay put. The comment folds away
+// on its own button, starting from whatever the card-wide toggle says.
+function ReadoutEntry({
+  timeLabel,
+  icon,
+  label,
+  comment,
+  borderColor,
+  sticky,
+  surface,
+  defaultOpen,
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div
+      className="pl-3 border-l-2 border-b border-b-[#1E2A33]/10 last:border-b-0 py-1"
+      style={{ borderLeftColor: borderColor }}
+    >
+      <div
+        className={`flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70 ${
+          sticky ? "sticky top-[22px] z-[1]" : ""
+        }`}
+        style={sticky ? surface : undefined}
+      >
+        {comment && (
+          <button
+            // The whole card is a button that opens the editor, so this one has
+            // to keep its click to itself.
+            onClick={(ev) => {
+              ev.stopPropagation()
+              setOpen((v) => !v)
+            }}
+            className={`${btnBase} shrink-0 p-0.5 rounded hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 ${
+              open ? "text-[#1E2A33]/45" : "text-[#1E2A33]/25"
+            }`}
+          >
+            <MessageSquare size={10} />
+          </button>
+        )}
+        <span className="text-[#1E2A33]/45 shrink-0">{timeLabel}</span>
+        {icon}
+        {label && <span className="truncate">{label}</span>}
+      </div>
+      {comment && open && (
+        <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
+          {comment}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // `wide` spreads the slot groups across columns instead of stacking them —
 // used by the Day view, where the card has the full page width to play with.
 function EntriesReadout({
@@ -4172,6 +4297,9 @@ function EntriesReadout({
   sleep = [],
   sleepEnabled = false,
   wide = false,
+  scrollable = false,
+  surface,
+  commentsOpen = true,
 }) {
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
   // Its own group, never folded into a slot: sleep is a separate axis and must
@@ -4182,13 +4310,17 @@ function EntriesReadout({
     0,
   )
   if (!hasAny && !sleepEntries.length) return null
+  // The sticky headers paint the card's own surface, passed down rather than
+  // guessed: a day card is white, goal-tinted or greyed, and a sticky row that
+  // picked the wrong one would leave text scrolling visibly underneath it.
+  const stickyStyle = scrollable ? surface : undefined
   return (
     <div
-      className={
+      className={`${
         wide
           ? "grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3"
           : "space-y-2.5"
-      }
+      } ${scrollable ? "max-h-64 overflow-y-auto pr-1" : ""}`}
     >
       {slots.map((slot) => {
         const entries = cells[slot.id] || []
@@ -4199,7 +4331,12 @@ function EntriesReadout({
         )
         return (
           <div key={slot.id}>
-            <div className="flex items-center gap-1.5 mb-1">
+            <div
+              className={`flex items-center gap-1.5 mb-1 ${
+                scrollable ? "sticky top-0 z-[2] py-0.5" : ""
+              }`}
+              style={stickyStyle}
+            >
               <span
                 className="text-[9px] font-mono font-bold"
                 style={{ color: slot.color }}
@@ -4218,32 +4355,27 @@ function EntriesReadout({
                 {slot.label}
               </span>
             </div>
-            <div className="space-y-1">
+            <div>
               {entries.map((e) => {
                 const cat = getById(categories, e.category)
                 return (
-                  <div
+                  <ReadoutEntry
                     key={e.id}
-                    className="pl-3 border-l-2"
-                    style={{ borderColor: `${slot.color}30` }}
-                  >
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70">
-                      <span className="text-[#1E2A33]/45">
-                        {e.start && e.end ? `${e.start}–${e.end}` : `${e.minutes}m`}
-                      </span>
+                    timeLabel={entryTimeLabel(e)}
+                    icon={
                       <RenderIcon
                         name={cat.iconName}
                         size={9}
                         style={{ color: cat.color }}
                       />
-                      <span>{cat.label}</span>
-                    </div>
-                    {e.comment && (
-                      <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
-                        {e.comment}
-                      </div>
-                    )}
-                  </div>
+                    }
+                    label={cat.label}
+                    comment={e.comment}
+                    borderColor={`${slot.color}30`}
+                    sticky={scrollable}
+                    surface={stickyStyle}
+                    defaultOpen={commentsOpen}
+                  />
                 )
               })}
             </div>
@@ -4252,7 +4384,12 @@ function EntriesReadout({
       })}
       {sleepEntries.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 mb-1">
+          <div
+            className={`flex items-center gap-1.5 mb-1 ${
+              scrollable ? "sticky top-0 z-[2] py-0.5" : ""
+            }`}
+            style={stickyStyle}
+          >
             <span
               className="text-[9px] font-mono font-bold"
               style={{ color: SLEEP_COLOR }}
@@ -4267,26 +4404,17 @@ function EntriesReadout({
               Sleep
             </span>
           </div>
-          <div className="space-y-1">
+          <div>
             {sleepEntries.map((e) => (
-              <div
+              <ReadoutEntry
                 key={e.id}
-                className="pl-3 border-l-2"
-                style={{ borderColor: `${SLEEP_COLOR}30` }}
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70">
-                  <span className="text-[#1E2A33]/45">
-                    {e.start && e.end
-                      ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""}`
-                      : `${e.minutes}m`}
-                  </span>
-                </div>
-                {e.comment && (
-                  <div className="text-[10px] font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap">
-                    {e.comment}
-                  </div>
-                )}
-              </div>
+                timeLabel={entryTimeLabel(e)}
+                comment={e.comment}
+                borderColor={`${SLEEP_COLOR}30`}
+                sticky={scrollable}
+                surface={stickyStyle}
+                defaultOpen={commentsOpen}
+              />
             ))}
           </div>
         </div>
@@ -4307,6 +4435,8 @@ function FullCardGrid({
   weekIgnore = {},
   monthIgnore = {},
   big,
+  commentsOpen = true,
+  onQuickAddDay,
 }) {
   const startDate = settings.startDate ? fromKey(settings.startDate) : null
   return (
@@ -4339,7 +4469,11 @@ function FullCardGrid({
             ignored={ignored}
             onNavigate={() => onNavigateDay(toKey(date))}
             onEdit={() => onEditDay(toKey(date))}
+            onQuickAdd={
+              onQuickAddDay ? () => onQuickAddDay(toKey(date)) : undefined
+            }
             big={big}
+            commentsOpen={commentsOpen}
           />
         )
       })}
@@ -4360,7 +4494,9 @@ function FullDayCard({
   ignored,
   onNavigate,
   onEdit,
+  onQuickAdd,
   big,
+  commentsOpen = true,
 }) {
   if (isBeforeStart) {
     return (
@@ -4386,6 +4522,9 @@ function FullDayCard({
   const metGoal = !ignored && goal > 0 && total >= goal
   const isPast = !ignored && !isToday && !isFuture && goal > 0
   const goalOutcome = isPast ? (total >= goal ? "met" : "missed") : null
+  const surface = dayStateSurface(goalOutcome, ignored)
+  const hasSleep =
+    settings?.sleepEnabled === true && (entry?.sleep || []).length > 0
   // Both week and day cards open the editor directly on click — there's no further
   // drill-down level below them, so the whole block doubles as the edit button.
   const handleClick = onEdit
@@ -4401,19 +4540,13 @@ function FullDayCard({
       // of a border, so a card never has two competing emphasis signals.
       className={`${btnBase} text-left w-full rounded-2xl hover:shadow-md flex flex-col cursor-pointer ${
         big ? "p-5 gap-4" : "p-3 gap-3"
-      } ${
-        ignored
-          ? "bg-[#1E2A33]/[0.04] grayscale opacity-60"
-          : goalOutcome
-            ? ""
-            : "bg-white"
-      }`}
+      } ${ignored ? "grayscale opacity-60" : ""}`}
+      // `outline` rather than a ring: it draws inside the box, follows the
+      // radius, and leaves the hover shadow alone.
       style={{
-        ...(goalOutcome === "met"
-          ? { backgroundColor: `${GOAL_MET_COLOR}17` }
-          : {}),
-        ...(goalOutcome === "missed"
-          ? { backgroundColor: `${EXAM_COLOR}17` }
+        ...surface,
+        ...(isToday
+          ? { outline: `2px solid ${ACCENT}`, outlineOffset: "-2px" }
           : {}),
       }}
     >
@@ -4436,6 +4569,21 @@ function FullDayCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {onQuickAdd && (
+            <Tip text="Add an entry">
+              <button
+                // The card itself opens the editor, so this has to keep its
+                // click from bubbling up to it.
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onQuickAdd()
+                }}
+                className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+              >
+                <Plus size={14} />
+              </button>
+            </Tip>
+          )}
           {isToday && (
             <span
               className="text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
@@ -4485,22 +4633,29 @@ function FullDayCard({
         )}
       </div>
 
-      {total === 0 ? (
+      {/* A day can have sleep and no study — the placeholder is only for a day
+          with neither, or the sleep sitting on it would be invisible. */}
+      {total === 0 && !hasSleep && (
         <p
           className={`font-mono text-[#1E2A33]/35 ${big ? "text-xs" : "text-[10px]"}`}
         >
           No study logged — tap to add
         </p>
-      ) : (
-        <EntriesReadout
-          slots={slots}
-          categories={categories}
-          cells={entry?.cells || {}}
-          sleep={entry?.sleep || []}
-          sleepEnabled={settings?.sleepEnabled === true}
-          wide={big}
-        />
       )}
+      <EntriesReadout
+        // Remounts when the card-wide toggle flips, which drops the per-entry
+        // overrides so the toggle always means what it says.
+        key={commentsOpen ? "comments-open" : "comments-closed"}
+        slots={slots}
+        categories={categories}
+        cells={entry?.cells || {}}
+        sleep={entry?.sleep || []}
+        sleepEnabled={settings?.sleepEnabled === true}
+        wide={big}
+        scrollable={!big}
+        surface={surface}
+        commentsOpen={commentsOpen}
+      />
 
       {entry?.comment && (
         <div className="flex items-start gap-1.5 rounded-xl bg-[#1E2A33]/[0.04] p-2.5">
@@ -4731,6 +4886,201 @@ function useModalDismiss(onClose) {
   return onBackdropClick
 }
 
+/* ---------------------------------------------------------------
+   Quick add — a whole entry composed before anything is written.
+
+   Unlike the day editor, which saves every keystroke, nothing here reaches
+   the day until "Add". That is the point of it, and it is also why leaving
+   asks first: there is unsaved work in the dialog, which is never true
+   anywhere else in this app.
+--------------------------------------------------------------- */
+
+function QuickAddEntryModal({ dateKey, slots, categories, onCancel, onAdd }) {
+  const [slotId, setSlotId] = useState(slots[0]?.id)
+  const [category, setCategory] = useState(categories[0]?.id)
+  const [start, setStart] = useState(undefined)
+  const [end, setEnd] = useState(undefined)
+  const [minutes, setMinutes] = useState(0)
+  const [comment, setComment] = useState("")
+  const [confirming, setConfirming] = useState(false)
+
+  const timed = !!(start && end)
+  const total = timed ? spanMinutes(start, end) : Number(minutes) || 0
+
+  const requestCancel = useCallback(() => setConfirming(true), [])
+  const onBackdropClick = useModalDismiss(requestCancel)
+
+  const submit = () => {
+    onAdd(dateKey, slotId, {
+      id: makeId("entry"),
+      category,
+      minutes: total,
+      comment,
+      ...(start ? { start } : {}),
+      ...(end ? { end } : {}),
+    })
+  }
+
+  const d = fromKey(dateKey)
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onMouseDown={onBackdropClick}
+    >
+      <div
+        style={{ backgroundColor: PAGE_TINT }}
+        className="w-full sm:max-w-[420px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-5 py-4 bg-white">
+          <div>
+            <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
+              New entry
+            </h2>
+            <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+              {d.toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
+          </div>
+          <button
+            onClick={requestCancel}
+            className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+                Slot
+              </span>
+              <select
+                value={slotId}
+                onChange={(e) => setSlotId(e.target.value)}
+                className={`${FIELD_BOXED} w-full`}
+              >
+                {slots.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+                Category
+              </span>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className={`${FIELD_BOXED} w-full`}
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <TimeRangeField
+              start={start}
+              end={end}
+              onChange={(nextStart, nextEnd) => {
+                setStart(nextStart || undefined)
+                setEnd(nextEnd || undefined)
+              }}
+              onClear={() => {
+                setStart(undefined)
+                setEnd(undefined)
+              }}
+            />
+            <input
+              type="number"
+              min={0}
+              value={total}
+              disabled={timed}
+              onChange={(e) => setMinutes(Number(e.target.value))}
+              className={`${FIELD_BOXED} w-20 ${
+                timed ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5" : ""
+              }`}
+            />
+            <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+              min / {fmtHoursFixed1(total)}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-1.5">
+            <MessageSquare
+              size={12}
+              className="text-[#1E2A33]/30 shrink-0 mt-2"
+            />
+            <AutoTextarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Note (optional)"
+              rows={2}
+              maxHeight={200}
+              className={`${FIELD_ON_WHITE} flex-1`}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={requestCancel}
+              className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submit}
+              className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-white`}
+              style={{ backgroundColor: ACCENT }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {confirming && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
+          onMouseDown={(e) => e.target === e.currentTarget && setConfirming(false)}
+        >
+          <div className={`${CARD} w-full max-w-[300px] p-5`}>
+            <p className="text-xs font-mono text-[#1E2A33]/80 mb-4">
+              Discard this new entry?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirming(false)}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+              >
+                Keep editing
+              </button>
+              <button
+                onClick={onCancel}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-white`}
+                style={{ backgroundColor: EXAM_COLOR }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DayQuickviewModal({
   dateKey,
   dayEntry,
@@ -4913,7 +5263,7 @@ function DayEditForm({
     const newEntry = {
       id: makeId("entry"),
       category: categories[0]?.id,
-      minutes: 15,
+      minutes: 0,
       comment: "",
       ...(previous?.end ? { start: previous.end } : {}),
     }
@@ -5080,18 +5430,17 @@ function DayEditForm({
                 </span>
               </label>
             )}
-            <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
+              <SwitchToggle
                 checked={ignore}
-                onChange={(e) => onChange({ ignore: e.target.checked })}
-                className="w-4 h-4 accent-[#1E2A33]/60"
+                onChange={(next) => onChange({ ignore: next })}
+                label="Ignore in statistics"
               />
               <span className="flex items-center gap-1">
                 <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
                 statistics
               </span>
-            </label>
+            </div>
           </div>
 
           {slots.map((slot) => {
@@ -5206,8 +5555,8 @@ function DayEditForm({
                                 : ""
                             }`}
                           />
-                          <span className="text-[10px] font-mono text-[#1E2A33]/40">
-                            min
+                          <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+                            min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
                           </span>
                           <button
                             onClick={() => removeEntry(slot.id, entry.id)}
@@ -5324,8 +5673,8 @@ function DayEditForm({
                             : ""
                         }`}
                       />
-                      <span className="text-[10px] font-mono text-[#1E2A33]/40">
-                        min
+                      <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+                        min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
                       </span>
                       <button
                         onClick={() => removeSleepEntry(entry.id)}
@@ -7071,8 +7420,10 @@ function TimeRangeField({ start, end, onChange, onClear }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setEndText(end || ""), [end])
 
+  // Reopening a half-set range means you came back for the missing half, so
+  // land on it rather than on the value that is already there.
   const openPicker = () => {
-    setStep("start-hour")
+    setStep(start && !end ? "end-hour" : "start-hour")
     setHoverValue(null)
     toggle()
   }
