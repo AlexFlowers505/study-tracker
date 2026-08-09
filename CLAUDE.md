@@ -13,6 +13,7 @@ would leak into every other project on the machine.
 npm run dev       # Vite dev server (port 5173)
 npm run build     # production build to dist/
 npm run lint      # ESLint — run before finishing a change
+npm run typecheck # tsc --noEmit — clean, and must stay clean
 npm run preview   # serve the built dist/
 ```
 

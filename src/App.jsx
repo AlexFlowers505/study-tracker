@@ -81,6 +81,8 @@ import {
   ChevronDown,
   ArrowRightLeft,
   History,
+  Flame,
+  Trophy,
 } from "lucide-react"
 
 /* ---------------------------------------------------------------
@@ -351,10 +353,13 @@ const spanMinutes = (start, end) => {
   const b = timeToMinutes(end)
   return b === a ? 0 : b > a ? b - a : b + 1440 - a
 }
-// Sleep is logged on the day it starts, so most nights end on the next date.
+// A sleep entry belongs to the day the night *ended* — the night of the 3rd
+// into the 4th is logged on the 4th, which is how you think about it the
+// morning after. So a start later than the end means bedtime was the evening
+// before, and it is the start that carries the day marker.
 // Anywhere an end time is shown on its own it has to say so, or 23:30–07:00
 // reads as a time machine.
-const endsNextDay = (entry) =>
+const startedPreviousDay = (entry) =>
   !!entry.start &&
   !!entry.end &&
   timeToMinutes(entry.end) < timeToMinutes(entry.start)
@@ -468,7 +473,7 @@ const entryLabel = (e, categories) => {
   const cat = e.category ? getById(categories, e.category).label : null
   const when =
     e.start && e.end
-      ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""}`
+      ? `${startedPreviousDay(e) ? "−1d " : ""}${e.start}–${e.end}`
       : `${Number(e.minutes) || 0}m`
   return cat ? `${when} ${cat}` : when
 }
@@ -814,7 +819,15 @@ function useSeriesToggle() {
     })
   }, [])
   const reset = useCallback(() => setHidden(new Set()), [])
-  return { hidden, toggle, reset }
+  const hideAll = useCallback((ids) => setHidden(new Set(ids)), [])
+  return { hidden, toggle, reset, hideAll }
+}
+
+// One button rather than two: with everything already hidden, "clear all" has
+// nothing to do, and vice versa — so the control shows whichever half applies.
+function bulkToggleFor(series, state) {
+  const ids = series.map((s) => s.id)
+  return (showAll) => (showAll ? state.reset() : state.hideAll(ids))
 }
 
 // `tipFor` turns each chip into a tooltip trigger — used by the page-level
@@ -825,9 +838,19 @@ function ToggleChips({
   onToggle,
   className = "justify-center mt-3",
   tipFor,
+  onBulk,
 }) {
+  const allHidden = items.length > 0 && items.every((it) => hidden.has(it.id))
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {onBulk && items.length > 1 && (
+        <button
+          onClick={() => onBulk(allHidden)}
+          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+        >
+          {allHidden ? "Select all" : "Clear all"}
+        </button>
+      )}
       {items.map((it) => {
         const isHidden = hidden.has(it.id)
         const chip = (
@@ -1957,6 +1980,7 @@ export default function StudyTrackerApp() {
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  const [showStreaks, setShowStreaks] = useState(false)
   // Which slots/categories are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
@@ -2378,6 +2402,8 @@ export default function StudyTrackerApp() {
           onToggleSleep={() => setShowSleep((v) => !v)}
           showLog={showLog}
           onToggleLog={() => setShowLog((v) => !v)}
+          showStreaks={showStreaks}
+          onToggleStreaks={() => setShowStreaks((v) => !v)}
         />
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
@@ -2399,10 +2425,11 @@ export default function StudyTrackerApp() {
         )}
 
         {/* Sits between the period bar and the period's own figures, full
-            width and scrolling with the page. Below lg the same content
-            arrives as a bottom sheet instead. */}
+            width and scrolling with the page — on every screen size. It used
+            to be a fixed bottom sheet on phones, which covered the log it was
+            meant to be compared against. */}
         {showOverall && (
-          <div className="hidden lg:block mb-4">
+          <div className="mb-4">
             <OverallStatsSection
               overall={overallAllTime}
               lessonsEnabled={project.settings.lessonsEnabled !== false}
@@ -2413,22 +2440,17 @@ export default function StudyTrackerApp() {
           </div>
         )}
 
+        {showStreaks && (
+          <StreaksSection
+            project={visibleProject}
+            onClose={() => setShowStreaks(false)}
+          />
+        )}
+
         {showLog && (
           <ChangeLogSection
             entries={project.changeLog || []}
             onClose={() => setShowLog(false)}
-          />
-        )}
-
-        {/* Period-scoped, unlike the two panels above it, but it shares their
-            band so everything opened from the period bar appears in one place. */}
-        {showSleep && project.settings.sleepEnabled === true && (
-          <SleepSection
-            days={project.days}
-            range={range}
-            weekIgnore={project.weekIgnore}
-            monthIgnore={project.monthIgnore}
-            onClose={() => setShowSleep(false)}
           />
         )}
 
@@ -2445,6 +2467,20 @@ export default function StudyTrackerApp() {
           onUpdateWeekIgnore={updateWeekIgnore}
           onUpdateMonthIgnore={updateMonthIgnore}
           onQuickAddDay={setQuickAddKey}
+          // Rendered inside the period section rather than above it: sleep is
+          // period-scoped, so it belongs under the heading that says everything
+          // below describes the chosen range.
+          sleepSection={
+            showSleep && project.settings.sleepEnabled === true ? (
+              <SleepSection
+                days={project.days}
+                range={range}
+                weekIgnore={project.weekIgnore}
+                monthIgnore={project.monthIgnore}
+                onClose={() => setShowSleep(false)}
+              />
+            ) : null
+          }
         />
 
         <div className="mt-10">
@@ -2478,22 +2514,6 @@ export default function StudyTrackerApp() {
               Retry now
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Phone: a bottom sheet rather than a modal. It pins to the bottom
-          edge and only claims the height it needs, so the log stays visible
-          and usable above it — a dialog would have covered the very thing
-          you're comparing the totals against. */}
-      {showOverall && (
-        <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 max-h-[60vh] overflow-y-auto shadow-[0_-8px_24px_rgba(30,42,51,0.15)]">
-          <OverallStatsSection
-            overall={overallAllTime}
-            lessonsEnabled={project.settings.lessonsEnabled !== false}
-            examsEnabled={project.settings.examsEnabled !== false}
-            onClose={() => setShowOverall(false)}
-            variant="sheet"
-          />
         </div>
       )}
 
@@ -3175,10 +3195,19 @@ function EditableList({ items, onChange, noun, warningNote }) {
     onChange(items.filter((i) => i.id !== id))
     setConfirmDeleteId(null)
   }
+  // The stored order is the display order everywhere — the log's slot groups,
+  // the donut legends, the chart series all read this list as-is.
+  const moveItem = (index, dir) => {
+    const next = [...items]
+    const to = index + dir
+    if (to < 0 || to >= next.length) return
+    ;[next[index], next[to]] = [next[to], next[index]]
+    onChange(next)
+  }
 
   return (
     <div className="space-y-2">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
           key={item.id}
           className="border border-[#1E2A33]/15 rounded-xl p-2 bg-white"
@@ -3204,6 +3233,22 @@ function EditableList({ items, onChange, noun, warningNote }) {
           ) : (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
+                <div className="flex flex-col shrink-0">
+                  <button
+                    disabled={index === 0}
+                    onClick={() => moveItem(index, -1)}
+                    className={`${btnBase} p-0.5 rounded text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                  >
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    disabled={index === items.length - 1}
+                    onClick={() => moveItem(index, 1)}
+                    className={`${btnBase} p-0.5 rounded text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
                 <div className="relative">
                   <button
                     onClick={() =>
@@ -3507,6 +3552,8 @@ function PeriodBar({
   onToggleSleep,
   showLog,
   onToggleLog,
+  showStreaks,
+  onToggleStreaks,
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -3582,6 +3629,18 @@ function PeriodBar({
                   style={{ backgroundColor: FILTER_TINT }}
                 />
               )}
+            </button>
+          </Tip>
+          <Tip text={showStreaks ? "Hide streaks" : "Show streaks"}>
+            <button
+              onClick={onToggleStreaks}
+              className={`${btnBase} p-2 rounded-full ${
+                showStreaks
+                  ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
+                  : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+              }`}
+            >
+              <Flame size={16} />
             </button>
           </Tip>
           {/* Absent rather than disabled when sleep tracking is off: there is
@@ -3700,6 +3759,7 @@ function LogView({
   onUpdateWeekIgnore,
   onUpdateMonthIgnore,
   onQuickAddDay,
+  sleepSection,
 }) {
   const granularity = period
   // Card-wide default for entry comments; each entry can still be folded on
@@ -3852,6 +3912,8 @@ function LogView({
           onSave={(text) => onUpdateMonthNote(monthKey, text)}
         />
       )}
+
+      {sleepSection}
 
       {granularity === "month" && (
         <MonthGrid
@@ -4445,7 +4507,7 @@ function CompactDayCell({
 // app exists to save.
 const entryTimeLabel = (e) =>
   e.start && e.end
-    ? `${e.start}–${e.end}${endsNextDay(e) ? " +1d" : ""} (${fmtHours(e.minutes)})`
+    ? `${startedPreviousDay(e) ? "−1d " : ""}${e.start}–${e.end} (${fmtHours(e.minutes)})`
     : `${e.minutes}m`
 
 // One entry line. The header is the sticky half — while a long comment scrolls
@@ -4556,6 +4618,47 @@ function EntriesReadout({
           : "space-y-2.5"
       } ${scrollable ? "max-h-64 overflow-y-auto pr-1" : ""}`}
     >
+      {/* First, not last. The night belongs to the morning of this day, so it
+          comes before the studying that followed it — listed underneath, it
+          read as "and then I went to sleep", which is the wrong way round. */}
+      {sleepEntries.length > 0 && (
+        <div>
+          <div
+            className={`flex items-center gap-1.5 ${
+              scrollable ? "sticky top-0 z-[2] h-6 pb-1 box-border" : "mb-1"
+            }`}
+            style={stickyStyle}
+          >
+            <span
+              className="text-[9px] font-mono font-bold"
+              style={{ color: SLEEP_COLOR }}
+            >
+              {fmtHours(sleepMinutes)}
+            </span>
+            <Moon size={10} style={{ color: SLEEP_COLOR }} />
+            <span
+              className="text-[9px] uppercase tracking-widest font-mono font-bold truncate"
+              style={{ color: SLEEP_COLOR }}
+            >
+              Slept into this day
+            </span>
+          </div>
+          <div>
+            {sleepEntries.map((e, i) => (
+              <ReadoutEntry
+                key={e.id}
+                isLast={i === sleepEntries.length - 1}
+                timeLabel={entryTimeLabel(e)}
+                comment={e.comment}
+                borderColor={`${SLEEP_COLOR}30`}
+                sticky={scrollable}
+                surface={stickyStyle}
+                defaultOpen={commentsOpen}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       {slots.map((slot) => {
         const entries = cells[slot.id] || []
         if (!entries.length) return null
@@ -4623,44 +4726,6 @@ function EntriesReadout({
           </div>
         )
       })}
-      {sleepEntries.length > 0 && (
-        <div>
-          <div
-            className={`flex items-center gap-1.5 mb-1 ${
-              scrollable ? "sticky top-0 z-[2] py-0.5" : ""
-            }`}
-            style={stickyStyle}
-          >
-            <span
-              className="text-[9px] font-mono font-bold"
-              style={{ color: SLEEP_COLOR }}
-            >
-              {fmtHours(sleepMinutes)}
-            </span>
-            <Moon size={10} style={{ color: SLEEP_COLOR }} />
-            <span
-              className="text-[9px] uppercase tracking-widest font-mono font-bold"
-              style={{ color: SLEEP_COLOR }}
-            >
-              Sleep
-            </span>
-          </div>
-          <div>
-            {sleepEntries.map((e, i) => (
-              <ReadoutEntry
-                key={e.id}
-                isLast={i === sleepEntries.length - 1}
-                timeLabel={entryTimeLabel(e)}
-                comment={e.comment}
-                borderColor={`${SLEEP_COLOR}30`}
-                sticky={scrollable}
-                surface={stickyStyle}
-                defaultOpen={commentsOpen}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -5956,10 +6021,10 @@ function DayEditForm({
                     }
                   />
                   <div className="flex items-center gap-2">
-                    {/* The entry sits on the day you went to bed, so most
-                          nights end on the next date. Say it plainly. */}
+                    {/* The entry sits on the day the night ended, so a bedtime
+                        later than the wake-up was the evening before. */}
                     <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
-                      {endsNextDay(entry) ? "Ends next day" : ""}
+                      {startedPreviousDay(entry) ? "Started previous day" : ""}
                     </span>
                     <input
                       type="number"
@@ -6617,22 +6682,22 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
 
   return (
     <div className="space-y-8">
-      {/* Moved down from the log: they answer "where did the period's time
-          go", which is a stats question, and they read the same range as
-          everything else here. */}
-      <PeriodTotals
-        dates={rangeDates}
-        days={days}
-        slots={slots}
-        categories={categories}
-        isIgnored={isDayIgnored}
-      />
-
       <OverviewStats
         period={periodStats}
         lessonsEnabled={lessonsEnabled}
         examsEnabled={examsEnabled}
-      />
+      >
+        {/* Inside the Stats block and first in it, under the heading: "where
+            did the period's time go" is one of the period's numbers, not a
+            heading of its own. */}
+        <PeriodTotals
+          dates={rangeDates}
+          days={days}
+          slots={slots}
+          categories={categories}
+          isIgnored={isDayIgnored}
+        />
+      </OverviewStats>
 
       <AveragesStats
         period={periodStats}
@@ -6755,6 +6820,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
             items={dailySeries}
             hidden={dailyToggle.hidden}
             onToggle={dailyToggle.toggle}
+            onBulk={bulkToggleFor(dailySeries, dailyToggle)}
           />
         )}
       </ChartCard>
@@ -6844,6 +6910,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
           items={weekdaySeries}
           hidden={weekdayToggle.hidden}
           onToggle={weekdayToggle.toggle}
+          onBulk={bulkToggleFor(weekdaySeries, weekdayToggle)}
         />
       </ChartCard>
       <ChartCard
@@ -6940,6 +7007,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
             items={weeklySeries}
             hidden={weeklyToggle.hidden}
             onToggle={weeklyToggle.toggle}
+            onBulk={bulkToggleFor(weeklySeries, weeklyToggle)}
           />
         )}
       </ChartCard>
@@ -7042,6 +7110,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
               items={monthlySeries}
               hidden={monthlyToggle.hidden}
               onToggle={monthlyToggle.toggle}
+              onBulk={bulkToggleFor(monthlySeries, monthlyToggle)}
             />
           )}
         </ChartCard>
@@ -7107,7 +7176,7 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
   )
 }
 
-function OverviewStats({ period, lessonsEnabled, examsEnabled }) {
+function OverviewStats({ period, lessonsEnabled, examsEnabled, children }) {
   const hours = (period.totalMinutes / 60).toFixed(1)
 
   // Lessons and exams for the chosen period live here rather than above the
@@ -7143,6 +7212,7 @@ function OverviewStats({ period, lessonsEnabled, examsEnabled }) {
       <p className="text-[11px] font-mono text-[#1E2A33]/40 mb-3 uppercase tracking-widest">
         Overview, selected period
       </p>
+      {children}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {stats.map((s) => (
           <StatTile
@@ -7258,6 +7328,10 @@ function AveragesStats({ period, lessonsEnabled, examsEnabled }) {
 const DAY_START_HOUR = 18
 const ROTATION = DAY_START_HOUR * 60
 
+// Every three hours across the rotated 24, so the per-night chart and the
+// distribution below it read against the same clock.
+const HOUR_TICKS = Array.from({ length: 9 }, (_, i) => i * 180)
+
 const toRotated = (minutes) => (minutes - ROTATION + 1440) % 1440
 const fromRotated = (minutes) => (Math.round(minutes) + ROTATION) % 1440
 const minutesToTime = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`
@@ -7274,7 +7348,13 @@ function collectNights(days, dates, isIgnored) {
       if (!e.start || !e.end) return
       const duration = spanMinutes(e.start, e.end)
       if (duration <= 0) return
-      nights.push({ key, start: toRotated(timeToMinutes(e.start)), duration })
+      nights.push({
+        key,
+        start: toRotated(timeToMinutes(e.start)),
+        duration,
+        from: e.start,
+        to: e.end,
+      })
     })
   })
   return nights
@@ -7306,9 +7386,33 @@ function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
       pct: Math.round((set.size / daysWithSleep) * 1000) / 10,
     }))
 
+    const perNight = nights
+      .slice()
+      .sort((a, b) => (a.key < b.key ? -1 : 1))
+      .map((n) => ({
+        label: fromKey(n.key).toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+        }),
+        // Longer form for the axis that has room for it; the per-night rows
+        // keep the short one, their axis is 42px wide.
+        labelLong: fromKey(n.key).toLocaleDateString(undefined, {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        }),
+        offset: n.start,
+        span: n.duration,
+        hours: Number((n.duration / 60).toFixed(2)),
+        minutes: n.duration,
+        start: n.from,
+        end: n.to,
+      }))
+
     const avg = (list) => list.reduce((a, b) => a + b, 0) / list.length
     return {
       data,
+      perNight,
       nights: nights.length,
       daysWithSleep,
       bedtime: minutesToTime(fromRotated(avg(nights.map((n) => n.start)))),
@@ -7381,6 +7485,89 @@ function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
             />
           </div>
 
+          <div className="space-y-4">
+          <ChartCard
+            title="Nights, one row each"
+            subtitle="Same clock as below — every logged night on its own line"
+          >
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(140, stats.perNight.length * 18 + 40)}
+            >
+              <BarChart
+                data={stats.perNight}
+                layout="vertical"
+                barCategoryGap={2}
+                margin={{ left: 8, right: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                <XAxis
+                  type="number"
+                  domain={[0, 1440]}
+                  ticks={HOUR_TICKS}
+                  tickFormatter={(v) => pad(((v / 60) + DAY_START_HOUR) % 24)}
+                  tick={{ fontSize: 9, fontFamily: "monospace" }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={42}
+                  tick={{ fontSize: 9, fontFamily: "monospace" }}
+                />
+                <Tooltip
+                  cursor={{ fill: `${INK}08` }}
+                  formatter={(value, name, props) =>
+                    name === "span"
+                      ? [
+                          `${props.payload.start}–${props.payload.end} · ${fmtHours(props.payload.minutes)}`,
+                          "Asleep",
+                        ]
+                      : null
+                  }
+                />
+                {/* An invisible bar offsets each night to its start; the second
+                    one is the night itself. Recharts has no range bar, and this
+                    is the standard way to fake one. */}
+                <Bar dataKey="offset" stackId="n" fill="transparent" />
+                <Bar
+                  dataKey="span"
+                  stackId="n"
+                  fill={SLEEP_COLOR}
+                  radius={[3, 3, 3, 3]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard
+            title="Hours slept per night"
+            subtitle="One bar per logged night"
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={stats.perNight}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                <XAxis
+                  dataKey="labelLong"
+                  tick={{ fontSize: 9, fontFamily: "monospace" }}
+                />
+                <YAxis
+                  tickFormatter={fmtAxisHours}
+                  tick={{ fontSize: 10, fontFamily: "monospace" }}
+                />
+                <Tooltip
+                  formatter={(value) => [`${Number(value).toFixed(1)}h`, "Slept"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="hours"
+                  stroke={SLEEP_COLOR}
+                  fill={`${SLEEP_COLOR}40`}
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
           <ChartCard
             title="When you sleep"
             subtitle="Share of logged nights asleep at each hour"
@@ -7412,7 +7599,179 @@ function SleepSection({ days, range, weekIgnore, monthIgnore, onClose }) {
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
+          </div>
         </>
+      )}
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------
+   Streaks — project-wide, not period-scoped.
+
+   A day only counts if it had something to hit: a day with no goal cannot
+   be failed, and an ignored day is out of the statistics everywhere, so
+   neither extends a streak nor breaks one. Today is the one exception on
+   the *current* streak — it is still in progress, so falling short of the
+   goal at 3pm must not read as a broken streak.
+--------------------------------------------------------------- */
+
+function computeStreaks(project) {
+  const { days, slots, settings, weekIgnore = {}, monthIgnore = {} } = project
+  const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
+  const keys = Object.keys(days).sort()
+  const firstKey = settings.startDate || keys[0]
+  if (!firstKey) return null
+
+  const today = new Date()
+  const todayKey = toKey(today)
+  const dates = []
+  for (let d = fromKey(firstKey); toKey(d) <= todayKey; d = addDays(d, 1)) {
+    dates.push(d)
+  }
+  if (!dates.length) return null
+
+  const dayVerdict = (d) => {
+    const key = toKey(d)
+    const goal = goalForDate(settings, d)
+    if (goal <= 0 || isIgnored(key, days[key])) return null // neutral
+    return dayBreakdown(days[key], slots).total >= goal
+  }
+
+  let bestDays = 0
+  let run = 0
+  dates.forEach((d) => {
+    const met = dayVerdict(d)
+    if (met === null) return
+    if (met) {
+      run += 1
+      if (run > bestDays) bestDays = run
+    } else run = 0
+  })
+
+  let currentDays = 0
+  for (let i = dates.length - 1; i >= 0; i -= 1) {
+    const met = dayVerdict(dates[i])
+    if (met === null) continue
+    if (met) currentDays += 1
+    else if (i === dates.length - 1) continue // today is not over yet
+    else break
+  }
+
+  // Whole periods only: a week or month still running has not been missed.
+  const bucketStreak = (starts, datesOf) => {
+    let best = 0
+    let streak = 0
+    starts.forEach((start, i) => {
+      if (i === starts.length - 1) return
+      const { total, goal } = rangeStats(
+        datesOf(start),
+        days,
+        slots,
+        settings,
+        isIgnored,
+      )
+      if (goal <= 0) return
+      if (total >= goal) {
+        streak += 1
+        if (streak > best) best = streak
+      } else streak = 0
+    })
+    return best
+  }
+
+  const weekStarts = []
+  for (
+    let w = startOfWeek(fromKey(firstKey));
+    toKey(w) <= toKey(startOfWeek(today));
+    w = addDays(w, 7)
+  ) {
+    weekStarts.push(w)
+  }
+  const monthStarts = []
+  for (
+    let m = new Date(fromKey(firstKey).getFullYear(), fromKey(firstKey).getMonth(), 1);
+    m <= new Date(today.getFullYear(), today.getMonth(), 1);
+    m = addMonths(m, 1)
+  ) {
+    monthStarts.push(m)
+  }
+
+  return {
+    bestDays,
+    currentDays,
+    bestWeeks: bucketStreak(weekStarts, weekDates),
+    bestMonths: bucketStreak(monthStarts, monthDates),
+  }
+}
+
+function StreaksSection({ project, onClose }) {
+  const streaks = useMemo(() => computeStreaks(project), [project])
+  const tint = "#C98A2E"
+  const plural = (n) => (n === 1 ? "" : "s")
+
+  return (
+    <div
+      className="rounded-2xl p-4 sm:p-5 border-2 mb-4"
+      style={{ backgroundColor: `${tint}14`, borderColor: `${tint}45` }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
+          style={{ backgroundColor: `${tint}30` }}
+        >
+          <Flame size={13} style={{ color: tint }} />
+        </span>
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
+          Streaks
+        </h3>
+        {onClose && (
+          <Tip text="Hide streaks">
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+            >
+              <X size={16} />
+            </button>
+          </Tip>
+        )}
+      </div>
+      <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+        Whole project · days without a goal and ignored days are skipped, not
+        counted against you
+      </p>
+
+      {!streaks ? (
+        <p className="text-xs font-mono text-[#1E2A33]/50">
+          Nothing to measure yet.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            label="Current day streak"
+            value={streaks.currentDays}
+            sub={`day${plural(streaks.currentDays)}`}
+            icon={Flame}
+          />
+          <StatTile
+            label="Best day streak"
+            value={streaks.bestDays}
+            sub={`day${plural(streaks.bestDays)}`}
+            icon={CalendarCheck}
+          />
+          <StatTile
+            label="Best week streak"
+            value={streaks.bestWeeks}
+            sub={`week${plural(streaks.bestWeeks)}`}
+            icon={CalendarDays}
+          />
+          <StatTile
+            label="Best month streak"
+            value={streaks.bestMonths}
+            sub={`month${plural(streaks.bestMonths)}`}
+            icon={Trophy}
+          />
+        </div>
       )}
     </div>
   )
@@ -7967,15 +8326,6 @@ function TimeRangeField({ start, end, onChange, onClear }) {
                 </label>
               ))}
             </div>
-            {duration !== null && (
-              <div
-                className="px-1 pt-2 text-[10px] font-mono"
-                style={crossesMidnight ? { color: EXAM_COLOR } : undefined}
-              >
-                {duration}m · {fmtHours(duration)}
-                {crossesMidnight && " · crosses midnight"}
-              </div>
-            )}
             <svg
               viewBox="0 0 200 200"
               onMouseMove={(event) =>
@@ -8046,6 +8396,20 @@ function TimeRangeField({ start, end, onChange, onClear }) {
                 )
               })}
             </svg>
+            {/* Below the dial and always occupying its line, empty or not.
+                Above it, appearing and disappearing as the range fills in, it
+                shoved the dial up and down under the cursor. */}
+            <div
+              className="px-1 pt-1 h-4 text-[10px] font-mono"
+              style={crossesMidnight ? { color: EXAM_COLOR } : undefined}
+            >
+              {duration !== null && (
+                <>
+                  {duration}m · {fmtHours(duration)}
+                  {crossesMidnight && " · crosses midnight"}
+                </>
+              )}
+            </div>
             <p className="px-2 pb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
               {hint}
             </p>
