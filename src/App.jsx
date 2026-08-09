@@ -160,9 +160,7 @@ const CARD = "bg-white rounded-2xl p-4"
 // phone, where the cells sit on the grid's seam colour.
 const cellSurface = (wash, base = "#FFFFFF") => ({
   backgroundColor: base,
-  ...(wash
-    ? { backgroundImage: `linear-gradient(${wash}, ${wash})` }
-    : {}),
+  ...(wash ? { backgroundImage: `linear-gradient(${wash}, ${wash})` } : {}),
 })
 
 const PAGE_TINT = "#F4F5F7"
@@ -176,7 +174,8 @@ const PAGE_TINT = "#F4F5F7"
 // cards already had and the more contrasty of the two.
 const dayStateSurface = (goalOutcome, ignored) => {
   if (ignored) return cellSurface(`${INK}0A`, PAGE_TINT)
-  if (goalOutcome === "met") return cellSurface(`${GOAL_MET_COLOR}17`, PAGE_TINT)
+  if (goalOutcome === "met")
+    return cellSurface(`${GOAL_MET_COLOR}17`, PAGE_TINT)
   if (goalOutcome === "missed") return cellSurface(`${EXAM_COLOR}17`, PAGE_TINT)
   return cellSurface(null)
 }
@@ -356,7 +355,9 @@ const spanMinutes = (start, end) => {
 // Anywhere an end time is shown on its own it has to say so, or 23:30–07:00
 // reads as a time machine.
 const endsNextDay = (entry) =>
-  !!entry.start && !!entry.end && timeToMinutes(entry.end) < timeToMinutes(entry.start)
+  !!entry.start &&
+  !!entry.end &&
+  timeToMinutes(entry.end) < timeToMinutes(entry.start)
 const fromKey = (k) => {
   const [y, m, d] = k.split("-").map(Number)
   return new Date(y, m - 1, d)
@@ -489,7 +490,8 @@ function diffEntry(before, after, categories) {
       getById(categories, after.category).label,
     )
   }
-  if ((before.comment || "") !== (after.comment || "")) lines.push("comment edited")
+  if ((before.comment || "") !== (after.comment || ""))
+    lines.push("comment edited")
   return lines
 }
 
@@ -521,7 +523,8 @@ function diffDay(before, after, slots, categories) {
       )
     })
     a.forEach((entry, id) => {
-      if (!b.has(id)) details.push(`− ${slot.label}: ${entryLabel(entry, categories)}`)
+      if (!b.has(id))
+        details.push(`− ${slot.label}: ${entryLabel(entry, categories)}`)
     })
   })
 
@@ -595,7 +598,8 @@ function buildTooltip(dayEntry, slots, categories, settings) {
   categories.forEach((c) => {
     if (byCategory[c.id]) lines.push(`${c.label}: ${byCategory[c.id]}m`)
   })
-  if (lessonsEnabled && dayEntry.lessons) lines.push(`Lessons: ${dayEntry.lessons}`)
+  if (lessonsEnabled && dayEntry.lessons)
+    lines.push(`Lessons: ${dayEntry.lessons}`)
   if (examsEnabled && dayEntry.exam) lines.push("Exam passed")
   if (dayEntry.comment) lines.push("—", dayEntry.comment)
   return lines.join("\n")
@@ -737,12 +741,7 @@ function Tip({
       {children}
       {box &&
         createPortal(
-          <TipBubble
-            box={box}
-            text={text}
-            multiline={multiline}
-            side={side}
-          />,
+          <TipBubble box={box} text={text} multiline={multiline} side={side} />,
           document.body,
         )}
     </span>
@@ -1076,7 +1075,8 @@ function useDatePopover(openInitially = false) {
   return { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle }
 }
 
-const DATE_PANEL_CLASS = "z-[110] rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
+const DATE_PANEL_CLASS =
+  "z-[110] rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
 
 function DateField({
   value,
@@ -1105,7 +1105,11 @@ function DateField({
       {open &&
         box &&
         createPortal(
-          <div ref={panelRef} style={panelStyle} className={`${DATE_PANEL_CLASS} w-max`}>
+          <div
+            ref={panelRef}
+            style={panelStyle}
+            className={`${DATE_PANEL_CLASS} w-max`}
+          >
             <DayPicker
               mode="single"
               weekStartsOn={1}
@@ -1171,7 +1175,8 @@ function DateRangeField({ start, end, onChange, openOnMount = false }) {
       onChange(toKey(day), toKey(day))
       return
     }
-    const [from, to] = pendingFrom <= day ? [pendingFrom, day] : [day, pendingFrom]
+    const [from, to] =
+      pendingFrom <= day ? [pendingFrom, day] : [day, pendingFrom]
     onChange(toKey(from), toKey(to))
     setPendingFrom(null)
     setOpen(false)
@@ -1195,7 +1200,11 @@ function DateRangeField({ start, end, onChange, openOnMount = false }) {
       {open &&
         box &&
         createPortal(
-          <div ref={panelRef} style={panelStyle} className={`${DATE_PANEL_CLASS} w-max`}>
+          <div
+            ref={panelRef}
+            style={panelStyle}
+            className={`${DATE_PANEL_CLASS} w-max`}
+          >
             <DayPicker
               mode="range"
               weekStartsOn={1}
@@ -1288,7 +1297,10 @@ function PopoverMenu({ label, icon: Icon = MoreVertical, children }) {
               // Right-aligned to the trigger, which lives at the right edge of
               // its row; clamped so it can't slip off a narrow screen.
               left: Math.max(
-                Math.min(box.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+                Math.min(
+                  box.right - MENU_WIDTH,
+                  window.innerWidth - MENU_WIDTH - 8,
+                ),
                 8,
               ),
               width: MENU_WIDTH,
@@ -1526,7 +1538,8 @@ function AuthScreen({ client, error }) {
         // it's someone who needs a fresh confirmation email (e.g. because an
         // earlier one had a bad link). Treat both the same: explicitly resend.
         const alreadyRegisteredError =
-          error && /already registered|already exists/i.test(error.message || "")
+          error &&
+          /already registered|already exists/i.test(error.message || "")
         const alreadyPendingConfirmation =
           !error &&
           data?.user &&
@@ -1685,7 +1698,9 @@ async function fetchAllRows(makeQuery) {
 // a user_id filter of its own.
 async function loadFromTables(client) {
   const [projectRows, dayRows, noteRows, prefs] = await Promise.all([
-    fetchAllRows(() => client.from("projects").select("id,settings,slots,categories")),
+    fetchAllRows(() =>
+      client.from("projects").select("id,settings,slots,categories"),
+    ),
     fetchAllRows(() =>
       client
         .from("days")
@@ -1925,7 +1940,9 @@ export default function StudyTrackerApp() {
   // analytics below it always describe the same stretch of days.
   const [period, setPeriod] = useState("week")
   const [logCursor, setLogCursor] = useState(new Date())
-  const [customStart, setCustomStart] = useState(toKey(addDays(new Date(), -30)))
+  const [customStart, setCustomStart] = useState(
+    toKey(addDays(new Date(), -30)),
+  )
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState(null)
   const [quickAddKey, setQuickAddKey] = useState(null)
@@ -2017,11 +2034,7 @@ export default function StudyTrackerApp() {
           await applyWriteOp(cloudClient, session.user.id, op, snapshot)
         }
       } else {
-        await window.storage.set(
-          STORAGE_KEY,
-          JSON.stringify(snapshot),
-          false,
-        )
+        await window.storage.set(STORAGE_KEY, JSON.stringify(snapshot), false)
       }
       setSaveFailed(false)
     } catch (e) {
@@ -2757,8 +2770,8 @@ function ProjectsTab({ projects, activeProjectId, onSwitch, onAdd, onDelete }) {
   return (
     <div className="space-y-2 font-mono text-sm">
       <p className="text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
-        Switch between separate projects, each with its own slots, categories and
-        log.
+        Switch between separate projects, each with its own slots, categories
+        and log.
       </p>
       {projects.map((p) => {
         const active = p.id === activeProjectId
@@ -3530,9 +3543,7 @@ function PeriodBar({
         <div className="flex items-center gap-1.5">
           {/* Project-wide totals are independent of the period, so they live
               behind a toggle rather than taking permanent space. */}
-          <Tip
-            text={showOverall ? "Hide overall stats" : "Show overall stats"}
-          >
+          <Tip text={showOverall ? "Hide overall stats" : "Show overall stats"}>
             <button
               onClick={onToggleOverall}
               className={`${btnBase} p-2 rounded-full ${
@@ -3731,8 +3742,7 @@ function LogView({
     granularity === "month" &&
     toKey(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)) < todayKey
   const weekPast =
-    granularity === "week" &&
-    toKey(addDays(startOfWeek(cursor), 6)) < todayKey
+    granularity === "week" && toKey(addDays(startOfWeek(cursor), 6)) < todayKey
   const periodIgnored =
     granularity === "week"
       ? !!weekIgnore[weekKey]
@@ -3751,9 +3761,7 @@ function LogView({
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           {periodIgnored && (
-            <Tip
-              text={`This ${granularity} is excluded from every statistic`}
-            >
+            <Tip text={`This ${granularity} is excluded from every statistic`}>
               <EyeOff size={14} className="text-[#1E2A33]/45" />
             </Tip>
           )}
@@ -4089,8 +4097,7 @@ function PeriodTotals({ dates, days, slots, categories, isIgnored }) {
     [dates, days, isIgnored],
   )
 
-  const perDay =
-    divisor > 1 ? ` · ${fmtHoursFixed1(total / divisor)}/day` : ""
+  const perDay = divisor > 1 ? ` · ${fmtHoursFixed1(total / divisor)}/day` : ""
 
   if (total === 0) {
     return (
@@ -4120,7 +4127,6 @@ function PeriodTotals({ dates, days, slots, categories, isIgnored }) {
     </div>
   )
 }
-
 
 // Sums logged time and daily goals across a list of dates — used for the
 // week/month header totals and the month view's per-week summary column.
@@ -4281,7 +4287,9 @@ function WeekSummaryStrip({ total, goal, ignored, isPast, ordinal }) {
       )}
       {goalOutcome && (
         <Tip
-          text={goalOutcome === "met" ? "Weekly goal met" : "Weekly goal missed"}
+          text={
+            goalOutcome === "met" ? "Weekly goal met" : "Weekly goal missed"
+          }
         >
           <span
             className="w-2 h-2 rounded-full inline-block shrink-0"
@@ -4355,76 +4363,76 @@ function CompactDayCell({
             : {}),
         }}
       >
-      <div className="flex items-start justify-between">
-        <span
-          className={`font-mono text-xs ${isToday ? "font-extrabold" : ""}`}
-          style={isToday ? { color: ACCENT } : undefined}
-        >
-          {date.getDate()}
-        </span>
-        <div className="flex items-center gap-1">
-          {ignored && <EyeOff size={11} className="text-[#1E2A33]/35" />}
-          {settings?.sleepEnabled === true &&
-            (entry?.sleep || []).length > 0 && (
-              <Tip text="Sleep logged">
-                <Moon size={11} style={{ color: SLEEP_COLOR }} />
+        <div className="flex items-start justify-between">
+          <span
+            className={`font-mono text-xs ${isToday ? "font-extrabold" : ""}`}
+            style={isToday ? { color: ACCENT } : undefined}
+          >
+            {date.getDate()}
+          </span>
+          <div className="flex items-center gap-1">
+            {ignored && <EyeOff size={11} className="text-[#1E2A33]/35" />}
+            {settings?.sleepEnabled === true &&
+              (entry?.sleep || []).length > 0 && (
+                <Tip text="Sleep logged">
+                  <Moon size={11} style={{ color: SLEEP_COLOR }} />
+                </Tip>
+              )}
+            {entry?.exam && examsEnabled && (
+              <Tip text="Exam passed">
+                <span
+                  className="flex items-center justify-center w-4 h-4 rounded-full"
+                  style={{ backgroundColor: EXAM_COLOR }}
+                >
+                  <Award size={10} className="text-white" />
+                </span>
               </Tip>
             )}
-          {entry?.exam && examsEnabled && (
-            <Tip text="Exam passed">
-              <span
-                className="flex items-center justify-center w-4 h-4 rounded-full"
-                style={{ backgroundColor: EXAM_COLOR }}
-              >
-                <Award size={10} className="text-white" />
-              </span>
-            </Tip>
-          )}
+          </div>
         </div>
-      </div>
 
-      {/* Per-slot minutes need more room than a phone column has; on small
+        {/* Per-slot minutes need more room than a phone column has; on small
           screens the slots collapse to coloured dots and the hours below
           carry the number. */}
-      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
-        {slots.map((s) =>
-          bySlot[s.id] > 0 ? (
-            <span
-              key={s.id}
-              className="flex items-center gap-0.5 text-[8px] font-mono font-bold"
-              style={{ color: s.color }}
-            >
+        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+          {slots.map((s) =>
+            bySlot[s.id] > 0 ? (
               <span
-                className="w-1 h-1 rounded-full"
-                style={{ backgroundColor: s.color }}
-              />
-              <span className="hidden sm:inline">{bySlot[s.id]}</span>
-            </span>
-          ) : null,
-        )}
-        {total === 0 && (
-          <span className="text-[8px] font-mono text-[#1E2A33]/25">—</span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono text-[#1E2A33]/70">
-        <span
-          className="truncate"
-          style={
-            metGoal ? { color: GOAL_MET_COLOR, fontWeight: 700 } : undefined
-          }
-        >
-          {total > 0 ? fmtHours(total) : ""}
-          {goal > 0 && (
-            <span className="hidden sm:inline text-[#1E2A33]/30">
-              /{fmtHours(goal)}
-            </span>
+                key={s.id}
+                className="flex items-center gap-0.5 text-[8px] font-mono font-bold"
+                style={{ color: s.color }}
+              >
+                <span
+                  className="w-1 h-1 rounded-full"
+                  style={{ backgroundColor: s.color }}
+                />
+                <span className="hidden sm:inline">{bySlot[s.id]}</span>
+              </span>
+            ) : null,
           )}
-        </span>
-        {entry?.lessons > 0 && lessonsEnabled && (
-          <span className="shrink-0">{entry.lessons}L</span>
-        )}
-      </div>
+          {total === 0 && (
+            <span className="text-[8px] font-mono text-[#1E2A33]/25">—</span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono text-[#1E2A33]/70">
+          <span
+            className="truncate"
+            style={
+              metGoal ? { color: GOAL_MET_COLOR, fontWeight: 700 } : undefined
+            }
+          >
+            {total > 0 ? fmtHours(total) : ""}
+            {goal > 0 && (
+              <span className="hidden sm:inline text-[#1E2A33]/30">
+                /{fmtHours(goal)}
+              </span>
+            )}
+          </span>
+          {entry?.lessons > 0 && lessonsEnabled && (
+            <span className="shrink-0">{entry.lessons}L</span>
+          )}
+        </div>
       </div>
     </Tip>
   )
@@ -4473,28 +4481,32 @@ function ReadoutEntry({
         } ${sticky ? "sticky top-6 z-[1]" : ""}`}
         style={{ ...rail, ...(sticky ? surface : {}) }}
       >
-      <div
-        className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70"
-      >
-        {comment && (
-          <button
-            // The whole card is a button that opens the editor, so this one has
-            // to keep its click to itself.
-            onClick={(ev) => {
-              ev.stopPropagation()
-              setOpen((v) => !v)
-            }}
-            className={`${btnBase} shrink-0 p-0.5 rounded hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 ${
-              open ? "text-[#1E2A33]/45" : "text-[#1E2A33]/25"
-            }`}
-          >
-            <MessageSquare size={10} />
-          </button>
-        )}
-        <span className="text-[#1E2A33]/45 shrink-0">{timeLabel}</span>
-        {icon}
-        {label && <span className="truncate">{label}</span>}
-      </div>
+        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#1E2A33]/70">
+          <span className="text-[#1E2A33]/45 shrink-0">{timeLabel}</span>
+          {icon}
+          {label && (
+            <Tip className="truncate" text={label}>
+              <span className="truncate">{label}</span>
+            </Tip>
+          )}
+          {comment && (
+            <Tip text={!showComment ? "Show comment" : "Hide comment"}>
+              <button
+                // The whole card is a button that opens the editor, so this one has
+                // to keep its click to itself.
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  setOpen((v) => !v)
+                }}
+                className={`${btnBase} shrink-0 p-0.5 rounded cursor-pointer hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 ${
+                  open ? "text-[#1E2A33]/45" : "text-[#1E2A33]/25"
+                }`}
+              >
+                <MessageSquare size={10} />
+              </button>
+            </Tip>
+          )}
+        </div>
       </div>
       {showComment && (
         <div
@@ -5242,7 +5254,9 @@ function QuickAddEntryModal({ dateKey, slots, categories, onCancel, onAdd }) {
               disabled={timed}
               onChange={(e) => setMinutes(Number(e.target.value))}
               className={`${FIELD_BOXED} w-20 ${
-                timed ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5" : ""
+                timed
+                  ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                  : ""
               }`}
             />
             <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
@@ -5286,7 +5300,9 @@ function QuickAddEntryModal({ dateKey, slots, categories, onCancel, onAdd }) {
       {confirming && (
         <div
           className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-          onMouseDown={(e) => e.target === e.currentTarget && setConfirming(false)}
+          onMouseDown={(e) =>
+            e.target === e.currentTarget && setConfirming(false)
+          }
         >
           <div className={`${CARD} w-full max-w-[300px] p-5`}>
             <p className="text-xs font-mono text-[#1E2A33]/80 mb-4">
@@ -5610,393 +5626,397 @@ function DayEditForm({
       </div>
 
       <div className="p-5 space-y-4 overflow-y-auto flex-1">
-          {sleepEnabled && (
-            <SegmentedControl
-              items={[
-                { id: "project", label: "Project tracker" },
-                { id: "sleep", label: "Sleep tracker" },
-              ]}
-              activeId={tab}
-              onChange={setTab}
-            />
-          )}
+        {sleepEnabled && (
+          <SegmentedControl
+            items={[
+              { id: "project", label: "Project tracker" },
+              { id: "sleep", label: "Sleep tracker" },
+            ]}
+            activeId={tab}
+            onChange={setTab}
+          />
+        )}
 
-          {(!sleepEnabled || tab === "project") && (
-            <>
-          {/* Notes come first — it's the field reached for most often, and it
+        {(!sleepEnabled || tab === "project") && (
+          <>
+            {/* Notes come first — it's the field reached for most often, and it
               reads as the day's headline rather than a footnote. */}
-          <div className="bg-white rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <MessageSquare size={12} className="text-[#1E2A33]/40" />
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
-                Day notes
-              </span>
+            <div className="bg-white rounded-2xl p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <MessageSquare size={12} className="text-[#1E2A33]/40" />
+                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                  Day notes
+                </span>
+              </div>
+              <AutoTextarea
+                value={dayComment}
+                onChange={(e) => onChange({ comment: e.target.value })}
+                placeholder="Add a note for the whole day (optional)"
+                rows={2}
+                maxHeight={200}
+                className={FIELD_ON_WHITE}
+              />
             </div>
-            <AutoTextarea
-              value={dayComment}
-              onChange={(e) => onChange({ comment: e.target.value })}
-              placeholder="Add a note for the whole day (optional)"
-              rows={2}
-              maxHeight={200}
-              className={FIELD_ON_WHITE}
-            />
-          </div>
 
-          {/* Lesson count, exam and the ignore flag are day-level facts like
+            {/* Lesson count, exam and the ignore flag are day-level facts like
               the note above — they belong beside it, not buried under every
               slot. */}
-          <div
-            className={`${CARD} flex items-center justify-between gap-4 flex-wrap`}
-          >
-            {lessonsEnabled && (
-              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
-                Lessons completed today
-                <input
-                  type="number"
-                  min={0}
-                  value={lessons}
-                  onChange={(e) =>
-                    onChange({ lessons: Number(e.target.value) })
-                  }
-                  className={`${FIELD_BOXED} w-20`}
-                />
-              </label>
-            )}
-            {examsEnabled && (
-              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={exam}
-                  onChange={(e) => onChange({ exam: e.target.checked })}
-                  className="w-4 h-4 accent-[#C1595B]"
+            <div
+              className={`${CARD} flex items-center justify-between gap-4 flex-wrap`}
+            >
+              {lessonsEnabled && (
+                <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
+                  Lessons completed today
+                  <input
+                    type="number"
+                    min={0}
+                    value={lessons}
+                    onChange={(e) =>
+                      onChange({ lessons: Number(e.target.value) })
+                    }
+                    className={`${FIELD_BOXED} w-20`}
+                  />
+                </label>
+              )}
+              {examsEnabled && (
+                <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={exam}
+                    onChange={(e) => onChange({ exam: e.target.checked })}
+                    className="w-4 h-4 accent-[#C1595B]"
+                  />
+                  <span className="flex items-center gap-1">
+                    <Award size={13} style={{ color: EXAM_COLOR }} /> Exam
+                    passed today
+                  </span>
+                </label>
+              )}
+              <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
+                <SwitchToggle
+                  checked={ignore}
+                  onChange={(next) => onChange({ ignore: next })}
+                  label="Ignore in statistics"
                 />
                 <span className="flex items-center gap-1">
-                  <Award size={13} style={{ color: EXAM_COLOR }} /> Exam passed
-                  today
+                  <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
+                  statistics
                 </span>
-              </label>
-            )}
-            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wide">
-              <SwitchToggle
-                checked={ignore}
-                onChange={(next) => onChange({ ignore: next })}
-                label="Ignore in statistics"
-              />
-              <span className="flex items-center gap-1">
-                <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
-                statistics
-              </span>
+              </div>
             </div>
-          </div>
 
-          {slots.map((slot) => {
-            const entries = cells[slot.id] || []
-            const slotTotal = entries.reduce(
-              (a, e) => a + (Number(e.minutes) || 0),
-              0,
-            )
-            return (
-              <div
-                key={slot.id}
-                className="bg-white rounded-2xl overflow-hidden"
-              >
-                {/* The slot's own colour, washed out, is the header. It both
+            {slots.map((slot) => {
+              const entries = cells[slot.id] || []
+              const slotTotal = entries.reduce(
+                (a, e) => a + (Number(e.minutes) || 0),
+                0,
+              )
+              return (
+                <div
+                  key={slot.id}
+                  className="bg-white rounded-2xl overflow-hidden"
+                >
+                  {/* The slot's own colour, washed out, is the header. It both
                     separates the header from the body and says which slot this
                     is without an outline or a rule. */}
-                <div
-                  className="flex items-center justify-between px-4 py-2.5"
-                  style={{ backgroundColor: `${slot.color}1A` }}
-                >
-                  <div className="flex items-center gap-2">
-                    <RenderIcon
-                      name={slot.iconName}
-                      size={14}
-                      style={{ color: slot.color }}
-                    />
-                    <span className="font-mono text-xs uppercase tracking-wide font-bold">
-                      {slot.label}
-                    </span>
-                    <Tip text="Add entry">
-                      <button
-                        onClick={() => addEntry(slot.id)}
-                        className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
-                      >
-                        <Plus size={13} />
-                      </button>
-                    </Tip>
-                  </div>
-                  <span className="font-mono text-xs text-[#1E2A33]/55">
-                    {slotTotal}m / {fmtHoursFixed1(slotTotal)}
-                  </span>
-                </div>
-
-                <div className="p-3 space-y-2">
-                  {entries.length === 0 && (
-                    <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
-                      No study logged for this slot.
-                    </p>
-                  )}
-                  {entries.map((entry, entryIndex) => {
-                    const options = categories.some(
-                      (c) => c.id === entry.category,
-                    )
-                      ? categories
-                      : [
-                          {
-                            id: entry.category,
-                            label: `(removed) ${entry.category}`,
-                          },
-                          ...categories,
-                        ]
-                    return (
-                      <div
-                        key={entry.id}
-                        className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
-                      >
-                        <TimeRangeField
-                          start={entry.start}
-                          end={entry.end}
-                          onChange={(start, end) =>
-                            updateEntry(slot.id, entry.id, {
-                              ...(start ? { start } : {}),
-                              ...(end ? { end } : {}),
-                            })
-                          }
-                          onClear={() =>
-                            updateEntry(slot.id, entry.id, {
-                              start: undefined,
-                              end: undefined,
-                            })
-                          }
-                        />
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={entry.category}
-                            onChange={(e) =>
-                              updateEntry(slot.id, entry.id, {
-                                category: e.target.value,
-                              })
-                            }
-                            className={`${FIELD_BOXED} flex-1 w-full`}
-                          >
-                            {options.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min={0}
-                            value={entry.minutes}
-                            onChange={(e) =>
-                              updateEntry(slot.id, entry.id, {
-                                minutes: Number(e.target.value),
-                              })
-                            }
-                            disabled={!!(entry.start && entry.end)}
-                            className={`${FIELD_BOXED} w-20 ${
-                              entry.start && entry.end
-                                ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
-                                : ""
-                            }`}
-                          />
-                          <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
-                            min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
-                          </span>
-                          <button
-                            onClick={() => removeEntry(slot.id, entry.id)}
-                            className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            disabled={entryIndex === 0}
-                            onClick={() => moveEntry(slot.id, entryIndex, -1)}
-                            className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
-                          >
-                            <ChevronUp size={14} />
-                          </button>
-                          <button
-                            disabled={entryIndex === entries.length - 1}
-                            onClick={() => moveEntry(slot.id, entryIndex, 1)}
-                            className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
-                          >
-                            <ChevronDown size={14} />
-                          </button>
-                          <PopoverMenu
-                            label="Move to another time slot"
-                            icon={ArrowRightLeft}
-                          >
-                            {slots.map((target) => (
-                              <button
-                                key={target.id}
-                                disabled={target.id === slot.id}
-                                onClick={() =>
-                                  moveEntryToSlot(slot.id, entry.id, target.id)
-                                }
-                                className={`${btnBase} w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-mono text-left hover:bg-[#1E2A33]/5 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
-                              >
-                                <RenderIcon
-                                  name={target.iconName}
-                                  size={12}
-                                  style={{ color: target.color }}
-                                />
-                                {target.label}
-                              </button>
-                            ))}
-                          </PopoverMenu>
-                        </div>
-                        <div className="flex items-start gap-1.5">
-                          <MessageSquare
-                            size={12}
-                            className="text-[#1E2A33]/30 shrink-0 mt-2"
-                          />
-                          <AutoTextarea
-                            value={entry.comment || ""}
-                            onChange={(e) =>
-                              updateEntry(slot.id, entry.id, {
-                                comment: e.target.value,
-                              })
-                            }
-                            placeholder="Note (optional) — shown on the day and week view"
-                            rows={2}
-                            maxHeight={220}
-                            className={`${FIELD_ON_TINT} flex-1`}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <button
-                    onClick={() => addEntry(slot.id)}
-                    className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
-                  >
-                    <Plus size={12} /> Add entry
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-            </>
-          )}
-
-          {sleepEnabled && tab === "sleep" && (
-            <div className="bg-white rounded-2xl overflow-hidden">
-              <div
-                className="flex items-center justify-between px-4 py-2.5"
-                style={{ backgroundColor: `${SLEEP_COLOR}1A` }}
-              >
-                <div className="flex items-center gap-2">
-                  <Moon size={14} style={{ color: SLEEP_COLOR }} />
-                  <span className="font-mono text-xs uppercase tracking-wide font-bold">
-                    Sleep
-                  </span>
-                  <Tip text="Add sleep entry">
-                    <button
-                      onClick={addSleepEntry}
-                      className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
-                    >
-                      <Plus size={13} />
-                    </button>
-                  </Tip>
-                </div>
-                <span className="font-mono text-xs text-[#1E2A33]/55">
-                  {sleepTotal}m / {fmtHoursFixed1(sleepTotal)}
-                </span>
-              </div>
-
-              <div className="p-3 space-y-2">
-                {sleepEntries.length === 0 && (
-                  <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
-                    No sleep logged for this day.
-                  </p>
-                )}
-                {sleepEntries.map((entry) => (
                   <div
-                    key={entry.id}
-                    className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                    className="flex items-center justify-between px-4 py-2.5"
+                    style={{ backgroundColor: `${slot.color}1A` }}
                   >
-                    <TimeRangeField
-                      start={entry.start}
-                      end={entry.end}
-                      onChange={(start, end) =>
-                        updateSleepEntry(entry.id, {
-                          ...(start ? { start } : {}),
-                          ...(end ? { end } : {}),
-                        })
-                      }
-                      onClear={() =>
-                        updateSleepEntry(entry.id, {
-                          start: undefined,
-                          end: undefined,
-                        })
-                      }
-                    />
                     <div className="flex items-center gap-2">
-                      {/* The entry sits on the day you went to bed, so most
-                          nights end on the next date. Say it plainly. */}
-                      <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
-                        {endsNextDay(entry) ? "Ends next day" : ""}
+                      <RenderIcon
+                        name={slot.iconName}
+                        size={14}
+                        style={{ color: slot.color }}
+                      />
+                      <span className="font-mono text-xs uppercase tracking-wide font-bold">
+                        {slot.label}
                       </span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={entry.minutes}
-                        onChange={(e) =>
-                          updateSleepEntry(entry.id, {
-                            minutes: Number(e.target.value),
-                          })
-                        }
-                        disabled={!!(entry.start && entry.end)}
-                        className={`${FIELD_BOXED} w-20 ${
-                          entry.start && entry.end
-                            ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
-                            : ""
-                        }`}
-                      />
-                      <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
-                        min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
-                      </span>
-                      <button
-                        onClick={() => removeSleepEntry(entry.id)}
-                        className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <Tip text="Add entry">
+                        <button
+                          onClick={() => addEntry(slot.id)}
+                          className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </Tip>
                     </div>
-                    <div className="flex items-start gap-1.5">
-                      <MessageSquare
-                        size={12}
-                        className="text-[#1E2A33]/30 shrink-0 mt-2"
-                      />
-                      <AutoTextarea
-                        value={entry.comment || ""}
-                        onChange={(e) =>
-                          updateSleepEntry(entry.id, {
-                            comment: e.target.value,
-                          })
-                        }
-                        placeholder="Note (optional)"
-                        rows={2}
-                        maxHeight={220}
-                        className={`${FIELD_ON_TINT} flex-1`}
-                      />
-                    </div>
+                    <span className="font-mono text-xs text-[#1E2A33]/55">
+                      {slotTotal}m / {fmtHoursFixed1(slotTotal)}
+                    </span>
                   </div>
-                ))}
-                <button
-                  onClick={addSleepEntry}
-                  className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
-                >
-                  <Plus size={12} /> Add entry
-                </button>
+
+                  <div className="p-3 space-y-2">
+                    {entries.length === 0 && (
+                      <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
+                        No study logged for this slot.
+                      </p>
+                    )}
+                    {entries.map((entry, entryIndex) => {
+                      const options = categories.some(
+                        (c) => c.id === entry.category,
+                      )
+                        ? categories
+                        : [
+                            {
+                              id: entry.category,
+                              label: `(removed) ${entry.category}`,
+                            },
+                            ...categories,
+                          ]
+                      return (
+                        <div
+                          key={entry.id}
+                          className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                        >
+                          <TimeRangeField
+                            start={entry.start}
+                            end={entry.end}
+                            onChange={(start, end) =>
+                              updateEntry(slot.id, entry.id, {
+                                ...(start ? { start } : {}),
+                                ...(end ? { end } : {}),
+                              })
+                            }
+                            onClear={() =>
+                              updateEntry(slot.id, entry.id, {
+                                start: undefined,
+                                end: undefined,
+                              })
+                            }
+                          />
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={entry.category}
+                              onChange={(e) =>
+                                updateEntry(slot.id, entry.id, {
+                                  category: e.target.value,
+                                })
+                              }
+                              className={`${FIELD_BOXED} flex-1 w-full`}
+                            >
+                              {options.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min={0}
+                              value={entry.minutes}
+                              onChange={(e) =>
+                                updateEntry(slot.id, entry.id, {
+                                  minutes: Number(e.target.value),
+                                })
+                              }
+                              disabled={!!(entry.start && entry.end)}
+                              className={`${FIELD_BOXED} w-20 ${
+                                entry.start && entry.end
+                                  ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                                  : ""
+                              }`}
+                            />
+                            <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+                              min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
+                            </span>
+                            <button
+                              onClick={() => removeEntry(slot.id, entry.id)}
+                              className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              disabled={entryIndex === 0}
+                              onClick={() => moveEntry(slot.id, entryIndex, -1)}
+                              className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button
+                              disabled={entryIndex === entries.length - 1}
+                              onClick={() => moveEntry(slot.id, entryIndex, 1)}
+                              className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                            <PopoverMenu
+                              label="Move to another time slot"
+                              icon={ArrowRightLeft}
+                            >
+                              {slots.map((target) => (
+                                <button
+                                  key={target.id}
+                                  disabled={target.id === slot.id}
+                                  onClick={() =>
+                                    moveEntryToSlot(
+                                      slot.id,
+                                      entry.id,
+                                      target.id,
+                                    )
+                                  }
+                                  className={`${btnBase} w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-mono text-left hover:bg-[#1E2A33]/5 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                                >
+                                  <RenderIcon
+                                    name={target.iconName}
+                                    size={12}
+                                    style={{ color: target.color }}
+                                  />
+                                  {target.label}
+                                </button>
+                              ))}
+                            </PopoverMenu>
+                          </div>
+                          <div className="flex items-start gap-1.5">
+                            <MessageSquare
+                              size={12}
+                              className="text-[#1E2A33]/30 shrink-0 mt-2"
+                            />
+                            <AutoTextarea
+                              value={entry.comment || ""}
+                              onChange={(e) =>
+                                updateEntry(slot.id, entry.id, {
+                                  comment: e.target.value,
+                                })
+                              }
+                              placeholder="Note (optional) — shown on the day and week view"
+                              rows={2}
+                              maxHeight={220}
+                              className={`${FIELD_ON_TINT} flex-1`}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <button
+                      onClick={() => addEntry(slot.id)}
+                      className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
+                    >
+                      <Plus size={12} /> Add entry
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {sleepEnabled && tab === "sleep" && (
+          <div className="bg-white rounded-2xl overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-2.5"
+              style={{ backgroundColor: `${SLEEP_COLOR}1A` }}
+            >
+              <div className="flex items-center gap-2">
+                <Moon size={14} style={{ color: SLEEP_COLOR }} />
+                <span className="font-mono text-xs uppercase tracking-wide font-bold">
+                  Sleep
+                </span>
+                <Tip text="Add sleep entry">
+                  <button
+                    onClick={addSleepEntry}
+                    className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </Tip>
               </div>
+              <span className="font-mono text-xs text-[#1E2A33]/55">
+                {sleepTotal}m / {fmtHoursFixed1(sleepTotal)}
+              </span>
             </div>
-          )}
-        </div>
+
+            <div className="p-3 space-y-2">
+              {sleepEntries.length === 0 && (
+                <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
+                  No sleep logged for this day.
+                </p>
+              )}
+              {sleepEntries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                >
+                  <TimeRangeField
+                    start={entry.start}
+                    end={entry.end}
+                    onChange={(start, end) =>
+                      updateSleepEntry(entry.id, {
+                        ...(start ? { start } : {}),
+                        ...(end ? { end } : {}),
+                      })
+                    }
+                    onClear={() =>
+                      updateSleepEntry(entry.id, {
+                        start: undefined,
+                        end: undefined,
+                      })
+                    }
+                  />
+                  <div className="flex items-center gap-2">
+                    {/* The entry sits on the day you went to bed, so most
+                          nights end on the next date. Say it plainly. */}
+                    <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+                      {endsNextDay(entry) ? "Ends next day" : ""}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={entry.minutes}
+                      onChange={(e) =>
+                        updateSleepEntry(entry.id, {
+                          minutes: Number(e.target.value),
+                        })
+                      }
+                      disabled={!!(entry.start && entry.end)}
+                      className={`${FIELD_BOXED} w-20 ${
+                        entry.start && entry.end
+                          ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                          : ""
+                      }`}
+                    />
+                    <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+                      min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
+                    </span>
+                    <button
+                      onClick={() => removeSleepEntry(entry.id)}
+                      className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <MessageSquare
+                      size={12}
+                      className="text-[#1E2A33]/30 shrink-0 mt-2"
+                    />
+                    <AutoTextarea
+                      value={entry.comment || ""}
+                      onChange={(e) =>
+                        updateSleepEntry(entry.id, {
+                          comment: e.target.value,
+                        })
+                      }
+                      placeholder="Note (optional)"
+                      rows={2}
+                      maxHeight={220}
+                      className={`${FIELD_ON_TINT} flex-1`}
+                    />
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={addSleepEntry}
+                className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
+              >
+                <Plus size={12} /> Add entry
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -6584,7 +6604,16 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
       }
       return row
     })
-  }, [rangedKeys, weeklyBuckets, days, slots, categories, weekdayMode, settings, goalsEnabled])
+  }, [
+    rangedKeys,
+    weeklyBuckets,
+    days,
+    slots,
+    categories,
+    weekdayMode,
+    settings,
+    goalsEnabled,
+  ])
 
   return (
     <div className="space-y-8">
@@ -6864,48 +6893,46 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                   : [`${value}`, name]
               }
             />
-            {weeklyMode === "slot" || weeklyMode === "category" ? (
-              weeklySeries
-                .filter((s) => !weeklyToggle.hidden.has(s.id))
-                .map((s) => (
+            {weeklyMode === "slot" || weeklyMode === "category"
+              ? weeklySeries
+                  .filter((s) => !weeklyToggle.hidden.has(s.id))
+                  .map((s) => (
+                    <Area
+                      key={s.id}
+                      type="monotone"
+                      dataKey={s.id}
+                      stackId="a"
+                      stroke={s.color}
+                      fill={s.color}
+                      fillOpacity={0.55}
+                      name={s.label}
+                    />
+                  ))
+              : [
                   <Area
-                    key={s.id}
+                    key="value"
                     type="monotone"
-                    dataKey={s.id}
-                    stackId="a"
-                    stroke={s.color}
-                    fill={s.color}
-                    fillOpacity={0.55}
-                    name={s.label}
-                  />
-                ))
-            ) : (
-              [
-                <Area
-                  key="value"
-                  type="monotone"
-                  dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
-                  stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                  fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                  name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
-                  dot={{ r: 3 }}
-                />,
-                goalsEnabled && weeklyMode === "hours" && (
-                  <Line
-                    key="goal-line"
-                    type="monotone"
-                    dataKey="goal"
-                    stroke="#1E2A33"
-                    strokeWidth={1.5}
-                    strokeDasharray="6 3"
-                    dot={false}
-                    name="Goal"
-                  />
-                ),
-              ]
-            )}
+                    dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
+                    stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                    fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
+                    dot={{ r: 3 }}
+                  />,
+                  goalsEnabled && weeklyMode === "hours" && (
+                    <Line
+                      key="goal-line"
+                      type="monotone"
+                      dataKey="goal"
+                      stroke="#1E2A33"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 3"
+                      dot={false}
+                      name="Goal"
+                    />
+                  ),
+                ]}
           </AreaChart>
         </ResponsiveContainer>
         {(weeklyMode === "slot" || weeklyMode === "category") && (
@@ -6965,49 +6992,49 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
                     : [`${value}`, name]
                 }
               />
-              {monthlyMode === "slot" || monthlyMode === "category" ? (
-                monthlySeries
-                  .filter((s) => !monthlyToggle.hidden.has(s.id))
-                  .map((s) => (
+              {monthlyMode === "slot" || monthlyMode === "category"
+                ? monthlySeries
+                    .filter((s) => !monthlyToggle.hidden.has(s.id))
+                    .map((s) => (
+                      <Area
+                        key={s.id}
+                        type="monotone"
+                        dataKey={s.id}
+                        stackId="a"
+                        stroke={s.color}
+                        fill={s.color}
+                        fillOpacity={0.55}
+                        name={s.label}
+                      />
+                    ))
+                : // Flat array, not a Fragment — see the note on the daily chart.
+                  [
                     <Area
-                      key={s.id}
+                      key="value"
                       type="monotone"
-                      dataKey={s.id}
-                      stackId="a"
-                      stroke={s.color}
-                      fill={s.color}
-                      fillOpacity={0.55}
-                      name={s.label}
-                    />
-                  ))
-              ) : (
-                // Flat array, not a Fragment — see the note on the daily chart.
-                [
-                  <Area
-                    key="value"
-                    type="monotone"
-                    dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
-                    stroke={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                    fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                    fillOpacity={0.15}
-                    strokeWidth={2}
-                    name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
-                    dot={{ r: 3 }}
-                  />,
-                  goalsEnabled && monthlyMode === "hours" && (
-                    <Line
-                      key="goal-line"
-                      type="monotone"
-                      dataKey="goal"
-                      stroke="#1E2A33"
-                      strokeWidth={1.5}
-                      strokeDasharray="6 3"
-                      dot={false}
-                      name="Goal"
-                    />
-                  ),
-                ]
-              )}
+                      dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
+                      stroke={
+                        monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT
+                      }
+                      fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                      fillOpacity={0.15}
+                      strokeWidth={2}
+                      name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
+                      dot={{ r: 3 }}
+                    />,
+                    goalsEnabled && monthlyMode === "hours" && (
+                      <Line
+                        key="goal-line"
+                        type="monotone"
+                        dataKey="goal"
+                        stroke="#1E2A33"
+                        strokeWidth={1.5}
+                        strokeDasharray="6 3"
+                        dot={false}
+                        name="Goal"
+                      />
+                    ),
+                  ]}
             </AreaChart>
           </ResponsiveContainer>
           {(monthlyMode === "slot" || monthlyMode === "category") && (
@@ -7025,8 +7052,8 @@ function AnalyticsView({ data, rangeStart, rangeEnd, overallAllTime }) {
           >
             {examsGapData.length === 0 ? (
               <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
-                No exams passed yet — this fills in as you mark exam days in
-                the log.
+                No exams passed yet — this fills in as you mark exam days in the
+                log.
               </p>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
@@ -7854,19 +7881,26 @@ function TimeRangeField({ start, end, onChange, onClear }) {
         2 *
         Math.PI
   const markerRadius = !isMinute && dialValue < 12 ? 52 : 78
-  const markerX = dialAngle === null ? 100 : 100 + markerRadius * Math.sin(dialAngle)
-  const markerY = dialAngle === null ? 100 : 100 - markerRadius * Math.cos(dialAngle)
+  const markerX =
+    dialAngle === null ? 100 : 100 + markerRadius * Math.sin(dialAngle)
+  const markerY =
+    dialAngle === null ? 100 : 100 - markerRadius * Math.cos(dialAngle)
   const dialLabels = isMinute
     ? Array.from({ length: 12 }, (_, i) => ({ value: i * 5, radius: 78 }))
-    : Array.from({ length: 24 }, (_, i) => ({ value: i, radius: i < 12 ? 52 : 78 }))
+    : Array.from({ length: 24 }, (_, i) => ({
+        value: i,
+        radius: i < 12 ? 52 : 78,
+      }))
 
-  const previewTime = hoverValue === null ? current : timeFromDialValue(hoverValue)
+  const previewTime =
+    hoverValue === null ? current : timeFromDialValue(hoverValue)
   const previewStart = editingStart ? previewTime : start
   const previewEnd = editingStart ? end : previewTime
   const duration =
     previewStart && previewEnd ? spanMinutes(previewStart, previewEnd) : null
   const crossesMidnight = duration !== null && duration > 12 * 60
-  const triggerLabel = start || end ? `${start || "…"} – ${end || "…"}` : "Set time"
+  const triggerLabel =
+    start || end ? `${start || "…"} – ${end || "…"}` : "Set time"
 
   const hint =
     step === "start-hour"
@@ -7886,7 +7920,9 @@ function TimeRangeField({ start, end, onChange, onClear }) {
         className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
       >
         <Clock size={13} className="text-[#1E2A33]/40 shrink-0" />
-        <span className={start || end ? "" : "text-[#1E2A33]/35"}>{triggerLabel}</span>
+        <span className={start || end ? "" : "text-[#1E2A33]/35"}>
+          {triggerLabel}
+        </span>
       </button>
       {open &&
         box &&
@@ -7907,7 +7943,8 @@ function TimeRangeField({ start, end, onChange, onClear }) {
                     inputMode="numeric"
                     placeholder="HH:MM"
                     value={
-                      editingStart === (field === "start") && hoverValue !== null
+                      editingStart === (field === "start") &&
+                      hoverValue !== null
                         ? previewTime
                         : field === "start"
                           ? startText
@@ -7941,15 +7978,31 @@ function TimeRangeField({ start, end, onChange, onClear }) {
             )}
             <svg
               viewBox="0 0 200 200"
-              onMouseMove={(event) => setHoverValue(dialValueFromPointer(event))}
+              onMouseMove={(event) =>
+                setHoverValue(dialValueFromPointer(event))
+              }
               onMouseLeave={() => setHoverValue(null)}
               onClick={(event) => selectDialValue(dialValueFromPointer(event))}
               className="block w-full cursor-pointer select-none"
               aria-label={`Time dial: ${hint}`}
             >
               <circle cx="100" cy="100" r="90" fill={`${INK}08`} />
-              <circle cx="100" cy="100" r="78" fill="none" stroke={`${INK}18`} />
-              {!isMinute && <circle cx="100" cy="100" r="52" fill="none" stroke={`${INK}18`} />}
+              <circle
+                cx="100"
+                cy="100"
+                r="78"
+                fill="none"
+                stroke={`${INK}18`}
+              />
+              {!isMinute && (
+                <circle
+                  cx="100"
+                  cy="100"
+                  r="52"
+                  fill="none"
+                  stroke={`${INK}18`}
+                />
+              )}
               {dialAngle !== null && (
                 <>
                   <line
@@ -7972,7 +8025,10 @@ function TimeRangeField({ start, end, onChange, onClear }) {
               )}
               <circle cx="100" cy="100" r="3" fill={ACCENT} />
               {dialLabels.map(({ value, radius }) => {
-                const angle = ((value % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) * 2 * Math.PI
+                const angle =
+                  ((value % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) *
+                  2 *
+                  Math.PI
                 const x = 100 + radius * Math.sin(angle)
                 const y = 100 - radius * Math.cos(angle)
                 const selected = value === dialValue
