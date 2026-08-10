@@ -2,18 +2,14 @@
   // One config, not the three-file reference setup Vite scaffolds: this repo
   // has one app and no separate node-side source to type.
   //
-  // `allowJs` with `checkJs` off is what makes the move gradual — .jsx and .tsx
-  // import each other freely, and a file starts being type-checked the moment
-  // it is renamed, not before. Turn `checkJs` on once nothing is left in .jsx.
+  // The move off one big .jsx file is done — `src` is TypeScript throughout,
+  // so there is no JavaScript left to allow or to leave unchecked.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-
-    "allowJs": true,
-    "checkJs": false,
 
     // Vite transpiles per file and never type-checks; `tsc` here is only ever
     // asked for a verdict, never for output.

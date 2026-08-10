@@ -108,37 +108,43 @@ end $$;
 
 -- --------------------------------------------------------------- check it
 
--- Run this BEFORE the migration to preview it, and again after to confirm the
--- left-hand column is empty. Each row is one night that is filed a day early.
+-- Run this BEFORE the migration to preview it. Each row is one night that is
+-- filed a day early.
 --
--- select d.project_id,
---        d.date                       as filed_on,
---        d.date + 1                   as should_be,
---        e.value->>'start'            as bedtime,
---        e.value->>'end'              as wake,
---        (select count(*) from days t
---          where t.project_id = d.project_id
---            and t.date = d.date + 1)  as target_row_exists,
---        (select jsonb_array_length(t.sleep) from days t
---          where t.project_id = d.project_id
---            and t.date = d.date + 1)  as target_sleep_entries
--- from days d
--- cross join lateral jsonb_array_elements(d.sleep) e
--- where jsonb_typeof(d.sleep) = 'array'
---   and e.value->>'start' ~ '^[0-9]{1,2}:[0-9]{2}$'
---   and e.value->>'end'   ~ '^[0-9]{1,2}:[0-9]{2}$'
---   and lpad(e.value->>'end', 5, '0') < lpad(e.value->>'start', 5, '0')
--- order by d.project_id, d.date;
+-- It is NOT a post-migration check, and re-running it afterwards proves
+-- nothing: a night that crossed midnight still crosses midnight once it has
+-- moved, so the same rows come back with `filed_on` one day later. Under the
+-- new rule that is the correct resting place, not a pending move. To confirm
+-- the migration ran, look for its row in `applied_migrations`.
+--
+select d.project_id,
+       d.date                       as filed_on,
+       d.date + 1                   as should_be,
+       e.value->>'start'            as bedtime,
+       e.value->>'end'              as wake,
+       (select count(*) from days t
+         where t.project_id = d.project_id
+           and t.date = d.date + 1)  as target_row_exists,
+       (select jsonb_array_length(t.sleep) from days t
+         where t.project_id = d.project_id
+           and t.date = d.date + 1)  as target_sleep_entries
+from days d
+cross join lateral jsonb_array_elements(d.sleep) e
+where jsonb_typeof(d.sleep) = 'array'
+  and e.value->>'start' ~ '^[0-9]{1,2}:[0-9]{2}$'
+  and e.value->>'end'   ~ '^[0-9]{1,2}:[0-9]{2}$'
+  and lpad(e.value->>'end', 5, '0') < lpad(e.value->>'start', 5, '0')
+order by d.project_id, d.date;
 
 -- Totals, if you just want the size of it:
---
--- select count(*) as entries_to_move,
---        count(distinct d.date) as days_touched,
---        min(d.date) as earliest,
---        max(d.date) as latest
--- from days d
--- cross join lateral jsonb_array_elements(d.sleep) e
--- where jsonb_typeof(d.sleep) = 'array'
---   and e.value->>'start' ~ '^[0-9]{1,2}:[0-9]{2}$'
---   and e.value->>'end'   ~ '^[0-9]{1,2}:[0-9]{2}$'
---   and lpad(e.value->>'end', 5, '0') < lpad(e.value->>'start', 5, '0');
+
+select count(*) as entries_to_move,
+       count(distinct d.date) as days_touched,
+       min(d.date) as earliest,
+       max(d.date) as latest
+from days d
+cross join lateral jsonb_array_elements(d.sleep) e
+where jsonb_typeof(d.sleep) = 'array'
+  and e.value->>'start' ~ '^[0-9]{1,2}:[0-9]{2}$'
+  and e.value->>'end'   ~ '^[0-9]{1,2}:[0-9]{2}$'
+  and lpad(e.value->>'end', 5, '0') < lpad(e.value->>'start', 5, '0');

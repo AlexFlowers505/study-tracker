@@ -34,12 +34,14 @@ wastes the most time here.
 There are no tests. These two commands are the whole automated check:
 
 ```
-npx eslint src/App.jsx     # baseline is 16 errors — compare, don't chase zero
+npm run typecheck          # must be clean
+npm run lint               # must be clean
 npm run build              # must succeed
 ```
 
-The lint baseline is pre-existing (unused imports, a few `react-hooks`
-complaints). Do not "fix" those as a side quest and do not add to the count.
+All three are clean today. **Expect zero and leave zero** — there is no
+baseline to compare against any more, so any error the tools report is one
+you introduced.
 
 ## What you cannot verify — say so
 
@@ -65,10 +67,10 @@ study history. Treat it as production:
 
 ## Files
 
-- `src/App.jsx` is the app. One file, deliberately. Do not split it into
-  modules unless the spec says to.
-- `src/App-old.jsx` is a dead snapshot. Never edit it, never import it. Do not
-  fix its lint errors.
+- `src/` is TypeScript throughout and split into `types/`, `lib/`, `data/`,
+  `ui/` and `views/`. `CLAUDE.md` has the map — read it before adding a file,
+  and put new code in the layer it belongs to rather than in `App.tsx`, which
+  is now only the shell.
 - Do not reformat, reorder or re-wrap code you were not asked to change, and do
   not run a formatter over the whole file. The diff has to stay reviewable.
 

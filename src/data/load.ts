@@ -1,0 +1,159 @@
+/* ---------------------------------------------------------------
+   Reading the four tables back into one in-memory document.
+
+   The split stops here: everything above this file sees the same
+   `{ activeProjectId, projects: [...] }` object it always did.
+
+   A failed read is NOT an empty account. Every call checks `{ error }` and
+   throws, because supabase-js reports failures in the payload rather than
+   throwing — and the caller turns that into a dead-end screen that refuses
+   to write. The old behaviour opened the setup modal over the defaults, and
+   its auto-save then overwrote the real data.
+--------------------------------------------------------------- */
+
+import type { AppData, ChangeLogEntry, Project } from "../types/model"
+import {
+  DEFAULT_CATEGORIES,
+  DEFAULT_SETTINGS,
+  DEFAULT_SLOTS,
+} from "../lib/defaults"
+import { CHANGE_LOG_LIMIT } from "../lib/changelog"
+import type { Client } from "./supabase"
+import { PAGE_SIZE } from "./supabase"
+import { DAY_SELECT } from "./schema"
+import type {
+  ChangeLogRow,
+  DayRow,
+  NoteRow,
+  ProjectRow,
+  WeekVerdictRow,
+} from "./schema"
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Query = any
+
+async function fetchAllRows<T>(makeQuery: () => Query): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    rows.push(...((data || []) as T[]))
+    if (!data || data.length < PAGE_SIZE) return rows
+  }
+}
+
+/**
+ * RLS scopes every one of these to the signed-in user, so none of them needs
+ * a `user_id` filter of its own.
+ */
+export async function loadFromTables(client: Client): Promise<AppData | null> {
+  const [projectRows, dayRows, noteRows, verdictRows, prefs] =
+    await Promise.all([
+    fetchAllRows<ProjectRow>(() =>
+      client.from("projects").select("id,settings,slots,categories"),
+    ),
+    fetchAllRows<DayRow>(() => client.from("days").select(DAY_SELECT)),
+    fetchAllRows<NoteRow>(() =>
+      client.from("period_notes").select("project_id,kind,key,note,ignored"),
+    ),
+    fetchAllRows<WeekVerdictRow>(() =>
+      client.from("week_verdicts").select("project_id,week_key,earned,sealed_at"),
+    ),
+    client.from("user_prefs").select("active_project_id").maybeSingle(),
+  ])
+  if (prefs.error) throw prefs.error
+  if (!projectRows.length) return null
+
+  const byId = new Map<string, Project>()
+  projectRows.forEach((r) =>
+    byId.set(r.id, {
+      id: r.id,
+      settings: { ...DEFAULT_SETTINGS, ...(r.settings || {}) },
+      slots: Array.isArray(r.slots) && r.slots.length ? r.slots : DEFAULT_SLOTS,
+      categories:
+        Array.isArray(r.categories) && r.categories.length
+          ? r.categories
+          : DEFAULT_CATEGORIES,
+      days: {},
+      weekNotes: {},
+      monthNotes: {},
+      weekIgnore: {},
+      monthIgnore: {},
+      changeLog: [],
+      weekVerdicts: {},
+    }),
+  )
+
+  // Outside the Promise.all above, and the only place in this codebase where
+  // a missing `{ error }` check is correct: the change log is a convenience,
+  // so a project whose log table is absent or unreadable must still open
+  // normally with all its real data. supabase-js reports the failure in the
+  // payload rather than throwing, so ignoring it leaves `logRows` null and the
+  // log simply empty. Do not "fix" this by checking the error — that would put
+  // the whole app on the dead-end screen over data nobody typed. The try/catch
+  // is only for a network throw.
+  try {
+    const { data: logRows } = await client
+      .from("change_log")
+      .select("id,project_id,at,title,details")
+      .order("at", { ascending: false })
+      .limit(CHANGE_LOG_LIMIT)
+    ;((logRows || []) as ChangeLogRow[]).forEach((r) => {
+      const p = byId.get(r.project_id)
+      if (!p) return
+      const entry: ChangeLogEntry = {
+        id: r.id,
+        at: r.at,
+        title: r.title || "",
+        details: r.details || [],
+      }
+      p.changeLog?.push(entry)
+    })
+  } catch {
+    // no log, no problem
+  }
+
+  dayRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p) return
+    const sleep = r.sleep || []
+    p.days[r.date] = {
+      cells: r.cells || {},
+      ...(sleep.length ? { sleep } : {}),
+      lessons: Number(r.lessons) || 0,
+      exam: !!r.exam,
+      ignore: !!r.ignored,
+      frozen: !!r.frozen,
+      comment: r.comment || "",
+    }
+  })
+
+  verdictRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p?.weekVerdicts) return
+    p.weekVerdicts[r.week_key] = {
+      weekKey: r.week_key,
+      earned: !!r.earned,
+      sealedAt: r.sealed_at,
+    }
+  })
+
+  noteRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p) return
+    const week = r.kind === "week"
+    const notes = week ? p.weekNotes : p.monthNotes
+    const flags = week ? p.weekIgnore : p.monthIgnore
+    if (r.note) notes[r.key] = r.note
+    if (r.ignored) flags[r.key] = true
+  })
+
+  const projects = [...byId.values()]
+  const activeId = prefs.data?.active_project_id
+  return {
+    activeProjectId: projects.some((p) => p.id === activeId)
+      ? activeId
+      : projects[0].id,
+    projects,
+  }
+}

@@ -7,17 +7,12 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   globalIgnores(['dist']),
+  // The app is TypeScript throughout; the only JavaScript left is this file
+  // and vite.config.js, which are Node config and carry no JSX or React.
   {
-    files: ['**/*.{js,jsx}'],
-    extends: [
-      js.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
-    languageOptions: {
-      globals: globals.browser,
-      parserOptions: { ecmaFeatures: { jsx: true } },
-    },
+    files: ['**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: { globals: globals.node },
   },
   {
     files: ['**/*.{ts,tsx}'],
