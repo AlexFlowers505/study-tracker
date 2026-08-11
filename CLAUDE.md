@@ -65,11 +65,20 @@ which are Node config and get their own lint block.
   - `defaults.ts`, `id.ts`, `changelog.ts`, `streaks.ts`.
 - `src/data/` — the only place that knows the server shape is four tables and
   not one document:
-  - `supabase.ts` — the URL, the anon key, `CLOUD_ENABLED`, `PAGE_SIZE`.
+  - `supabase.ts` — the URL and anon key (from env), `CLOUD_ENABLED`,
+    `PROJECT_REF`, `PAGE_SIZE`.
   - `schema.ts` — row types plus `DAY_COLUMNS` / `DAY_SELECT` / `DayUpsert`.
   - `load.ts` — `loadFromTables`, which reassembles the in-memory document.
   - `ops.ts` — the `WriteOp` union, its constructors, and `applyWriteOp`.
-  - `auth.ts` — `useCloudAuth`, which lazily imports the Supabase package.
+  - `auth.ts` — `useCloudAuth`, which lazily imports the Supabase package and
+    flags password recovery. A reset link arrives *with* a session, so without
+    that flag the logbook would open over the form; `App` therefore checks
+    `recovery` before it checks `session`.
+  - `importData.ts` — the bulk counterpart to Export JSON, and `admin.ts`,
+    which decides whether Setup draws those buttons at all.
+  - The load effect is keyed on `session?.user.id`, **not** on the session
+    object. GoTrue hands out a fresh one per auth event per client, and using
+    it as a dependency re-read all four tables twelve times on one page load.
 - `src/ui/` — presentational primitives. **Everything that floats lives here
   and nowhere else**: `Tip.tsx`, `PopoverMenu.tsx`, `DateField.tsx`
   (`DateField`, `DateRangeField`) and `TimeRangeField.tsx` all portal to
@@ -290,9 +299,54 @@ Match the existing file:
   `rangeStats`, `periodBreakdown`, `elapsedDayCount` and the analytics. Don't
   add a stat that counts ignored days.
 
+## Environments
+
+**Two Supabase projects, one per environment**, selected by Vite's mode:
+
+| command | env file | database |
+| --- | --- | --- |
+| `npm run dev` | `.env.development.local` (gitignored) | your dev project |
+| `npm run build`, `npm run preview` | `.env.production` (committed) | the real logbook |
+
+Both read `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, and **neither falls
+back to the other**. Unset means `CLOUD_ENABLED` is false and the app stops on
+a "No database configured" screen — deliberately, because the alternative
+(defaulting to the production values) turns one missing file into silent edits
+against real data. The signed-out local fallback is not a safety net either:
+it calls `window.storage`, which browsers do not have.
+
+`.env.example` is the template, and documents the one-time dev-project setup:
+create the project, run `migrations/001…005` in its SQL editor in order, copy
+the URL and anon key. Sign-up there is a separate account from production.
+
+On localhost an `EnvBadge` sits in the bottom-left corner naming the mode and
+the project ref it resolved to. It exists because `npm run dev` and
+`npm run preview` render a byte-identical page over completely different data;
+off localhost it renders nothing.
+
+Migrations are applied by hand in the Supabase SQL editor. Apply a new one to
+**both** projects, or dev drifts from prod and stops being a rehearsal.
+`001` skips its `study_data` backfill when that table is absent, which is how
+it runs on a database that never held the blob.
+
+Refreshing dev from prod is Setup's **Export JSON** → **Import JSON** (admin
+only — `migrations/006_admins.sql`, and the header there explains why that is
+UI hygiene rather than a permission: import writes through the same anon key
+and the same RLS as every other edit, so the buttons are a convenience gate,
+while RLS is what actually keeps one account out of another's rows)
+(`src/data/importData.ts`, `src/views/DataTransfer.tsx`). Accounts do not cross
+Supabase projects, so you sign up separately on dev; `projects.user_id` is the
+only field the import rewrites, because `days`, `period_notes` and
+`week_verdicts` carry no user of their own and inherit ownership through
+`project_id`, which the app generates and which is identical in both databases.
+The import bypasses the save queue — one request per row is right for editing
+and wrong for a whole logbook — and it merges rather than replaces, so rows
+deleted since the export stay behind in the target.
+
 ## Secrets
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are inline constants (search for
-`SUPABASE_URL`). The anon key is publishable by design; the actual protection is
-row-level security on `study_data`. Don't add any other credentials to the
-source — a service-role key in this file would be a real leak.
+`.env.production` is committed on purpose. The anon key is publishable by
+design — it names the project, it grants nothing; the actual protection is
+row-level security on every table. Don't add any other credential to the
+source or to any env file: a service-role key would be a real leak, and
+`VITE_`-prefixed vars are inlined into the client bundle in plain text.

@@ -47,6 +47,8 @@ import {
 } from "./lib/period"
 import { useCloudAuth } from "./data/auth"
 import { loadFromTables } from "./data/load"
+import { importIntoTables } from "./data/importData"
+import { fetchIsAdmin } from "./data/admin"
 import {
   applyWriteOp,
   opDay,
@@ -66,7 +68,8 @@ import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
 import { SetupModal } from "./views/SetupModal"
 import { TopBar } from "./views/TopBar"
-import { AuthScreen } from "./views/AuthScreen"
+import { AuthScreen, SetPasswordScreen } from "./views/AuthScreen"
+import { EnvBadge } from "./views/EnvBadge"
 import { AnalyticsView } from "./views/AnalyticsView"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
 import { DayQuickviewModal } from "./views/DayEditor"
@@ -87,6 +90,8 @@ export default function StudyTrackerApp() {
     ready: authReady,
     loadError,
     cloudEnabled,
+    recovery,
+    endRecovery,
   } = useCloudAuth()
 
   const [data, setData] = useState(DEFAULT_DATA) // { activeProjectId, projects: [...] }
@@ -108,6 +113,9 @@ export default function StudyTrackerApp() {
   // Set when a write fails. Surfaced as a banner — silence here is what let a
   // day and a half of edits disappear into the console.
   const [saveFailed, setSaveFailed] = useState(false)
+  // Drives which buttons Setup draws, nothing more. RLS is what keeps a
+  // logbook private; see migrations/006_admins.sql.
+  const [isAdmin, setIsAdmin] = useState(false)
   const [showOverall, setShowOverall] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
@@ -132,6 +140,15 @@ export default function StudyTrackerApp() {
 
   const canUseCloud = cloudEnabled && cloudClient && session
 
+  // What the load actually depends on: *which* account, not which Session
+  // object. `canUseCloud` evaluates to the session itself, and GoTrue hands
+  // out a fresh one on every auth event — initial, signed-in, each token
+  // refresh, once per client — so using it as a dependency re-read all four
+  // tables twelve times on a single page load. Keyed on the user id it runs
+  // once, and a token refresh no longer costs a full re-read.
+  const accountKey = session?.user.id ?? null
+  const clientReady = !!cloudClient
+
   useEffect(() => {
     if (!authReady) return
     if (cloudEnabled && !session) {
@@ -140,6 +157,8 @@ export default function StudyTrackerApp() {
       // derive it from — hence the exemption.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoaded(true)
+      // Whoever signs in next has to earn it again.
+      setIsAdmin(false)
       return
     }
     ;(async () => {
@@ -148,6 +167,9 @@ export default function StudyTrackerApp() {
           const assembled = await loadFromTables(cloudClient)
           if (assembled) setData(assembled)
           else setShowSetup(true)
+          // Never throws — a failed check reads as "not an admin" — so it
+          // can't drag the logbook onto the dead-end screen with it.
+          setIsAdmin(await fetchIsAdmin(cloudClient, session.user.id))
         } else {
           const res = await window.storage.get(STORAGE_KEY, false)
           const parsed = res && res.value ? JSON.parse(res.value) : null
@@ -167,7 +189,7 @@ export default function StudyTrackerApp() {
       setLoaded(true)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady, canUseCloud])
+  }, [authReady, cloudEnabled, clientReady, accountKey])
 
   // Saves are coalesced: React state updates on every edit so the UI stays
   // responsive, but the rows only go out once edits stop. pendingRef is a map
@@ -465,6 +487,23 @@ export default function StudyTrackerApp() {
     URL.revokeObjectURL(url)
   }
 
+  // The other direction. It writes straight to the tables rather than through
+  // persist(): the queue is one request per row, which is right for editing
+  // and wrong for a whole logbook at once.
+  const importData = async (next: AppData) => {
+    if (!canUseCloud) throw new Error("Sign in first — there's nowhere to write")
+    if (loadFailed)
+      throw new Error("Not while the load is broken — reload and try again")
+    // Anything already queued was computed against the data being replaced, so
+    // let it land first rather than letting it fire over the import.
+    await writeNow()
+    await importIntoTables(cloudClient!, session!.user.id, next)
+    // Reload rather than swapping state in place: every open panel, cursor and
+    // filter was chosen against the old document, and the honest way to show
+    // the new one is the same path a fresh visit takes.
+    window.location.reload()
+  }
+
   // All-time starts at the first logged day, falling back to the project's
   // configured start — computed here because it needs the saved data.
   const allTimeStart = useMemo(() => {
@@ -515,15 +554,72 @@ export default function StudyTrackerApp() {
     [visibleProject],
   )
 
-  if (!authReady || (cloudEnabled && authReady && !session)) {
-    if (!authReady) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] font-mono text-sm">
-          Loading logbook…
+  // No env vars, no database. A dead end rather than the signed-out local
+  // fallback, because that path calls `window.storage` — an API browsers do
+  // not have — so "degrading gracefully" here means a logbook that silently
+  // keeps nothing. Better to say which file is empty.
+  if (!cloudEnabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] p-6">
+        <div className={`${CARD} max-w-md text-center`}>
+          <h1 className="font-sans font-extrabold uppercase tracking-tight text-base mb-2">
+            No database configured
+          </h1>
+          <p className="text-xs font-mono text-[#1E2A33]/60 leading-relaxed">
+            {import.meta.env.DEV ? (
+              <>
+                Fill <span className="text-[#1E2A33]">VITE_SUPABASE_URL</span>{" "}
+                and{" "}
+                <span className="text-[#1E2A33]">VITE_SUPABASE_ANON_KEY</span>{" "}
+                in <span className="text-[#1E2A33]">.env.development.local</span>{" "}
+                with your dev project, then restart the dev server — Vite reads
+                env files once, at boot. See{" "}
+                <span className="text-[#1E2A33]">.env.example</span> for how to
+                set that project up.
+              </>
+            ) : (
+              <>
+                This build went out without{" "}
+                <span className="text-[#1E2A33]">.env.production</span>. Nothing
+                is lost — the data is untouched on the server, this copy just
+                has no address for it.
+              </>
+            )}
+          </p>
         </div>
-      )
-    }
-    return <AuthScreen client={cloudClient} error={loadError} />
+      </div>
+    )
+  }
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] font-mono text-sm">
+        Loading logbook…
+      </div>
+    )
+  }
+
+  // Ahead of the session check, and that ordering is the whole point: a reset
+  // link arrives *with* a session, so anywhere later and the logbook would
+  // open over the top of the form the person came here to fill in.
+  if (recovery) {
+    return (
+      <>
+        <SetPasswordScreen client={cloudClient} onDone={endRecovery} />
+        <EnvBadge />
+      </>
+    )
+  }
+
+  if (!session) {
+    // The badge belongs here most of all: signing in is the moment you pick an
+    // account, and the dev project has its own.
+    return (
+      <>
+        <AuthScreen client={cloudClient} error={loadError} />
+        <EnvBadge />
+      </>
+    )
   }
 
   if (!loaded) {
@@ -798,8 +894,12 @@ export default function StudyTrackerApp() {
           onAddProject={addProject}
           onDeleteProject={deleteProject}
           onExport={exportData}
+          onImport={importData}
+          isAdmin={isAdmin}
         />
       )}
+
+      <EnvBadge />
     </div>
   )
 }

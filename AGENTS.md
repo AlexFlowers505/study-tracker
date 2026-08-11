@@ -111,11 +111,20 @@ checks `{ error }`. Skipping that check once cost a day and a half of edits.
 Windows, PowerShell. Port 5173 is often already taken by a dev server the user
 has running — do not kill it.
 
+Two databases. `npm run dev` reads `.env.development.local` (gitignored, a
+throwaway Supabase project); `npm run build` and `npm run preview` read the
+committed `.env.production`, which is the user's real logbook. Neither falls
+back to the other — unset vars give a "No database configured" screen, on
+purpose. Verify against the dev server, not a production preview. A new
+migration has to be applied by hand to **both** projects.
+
 ## Secrets
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are inline constants by design; the anon
-key is publishable and RLS is the actual protection. Never add any other
-credential to the source. A service-role key in this file would be a real leak.
+The anon key is publishable by design — it names the project and grants
+nothing; RLS is the actual protection — which is why `.env.production` is
+committed. Never add any other credential to the source or to an env file: a
+service-role key would be a real leak, and `VITE_`-prefixed vars land in the
+client bundle in plain text.
 
 ## Reporting back
 

@@ -4,14 +4,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Download,
   Gauge,
   Moon,
   Plus,
   Trash2,
   X,
 } from 'lucide-react'
-import type { Category, Project, Settings, Slot } from '../types/model'
+import type { AppData, Category, Project, Settings, Slot } from '../types/model'
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from '../lib/date'
 import { DEFAULT_SETTINGS } from '../lib/defaults'
 import {
@@ -26,6 +25,7 @@ import { RenderIcon } from '../ui/icons'
 import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
+import { DataTransfer } from './DataTransfer'
 
 export function SetupModal({
   settings,
@@ -41,6 +41,8 @@ export function SetupModal({
   onAddProject,
   onDeleteProject,
   onExport,
+  onImport,
+  isAdmin,
 }: {
   settings: Settings
   slots: Slot[]
@@ -55,6 +57,8 @@ export function SetupModal({
   onAddProject: () => void
   onDeleteProject: (id: string) => void
   onExport: () => void
+  onImport: (data: AppData) => Promise<void>
+  isAdmin: boolean
 }) {
   const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
@@ -155,18 +159,9 @@ export function SetupModal({
         </div>
 
         {/* Outside the tabs because it covers everything, not the tab you
-            happen to be on: one file with every project in it. */}
-        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-[#1E2A33]/10 shrink-0 rounded-b-xl bg-white">
-          <span className="text-[10px] font-mono text-[#1E2A33]/45">
-            Download everything as a file you keep
-          </span>
-          <button
-            onClick={onExport}
-            className={`${btnBase} shrink-0 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest px-3 py-2 rounded-full bg-[#1E2A33]/5 hover:bg-[#1E2A33]/10`}
-          >
-            <Download size={13} /> Export JSON
-          </button>
-        </div>
+            happen to be on: one file with every project in it. Admin-only —
+            a UI gate, not a permission; see migrations/006_admins.sql. */}
+        {isAdmin && <DataTransfer onExport={onExport} onImport={onImport} />}
       </div>
     </div>
   )

@@ -15,7 +15,7 @@
 
 import type { AppData, ChangeLogEntry, DayKey } from "../types/model"
 import type { Client } from "./supabase"
-import type { DayUpsert } from "./schema"
+import { dayUpsertRow } from "./schema"
 
 export type WriteOp =
   | { key: string; kind: "project"; projectId: string }
@@ -135,20 +135,13 @@ export async function applyWriteOp(
       if (!project) return
       const day = project.days[op.dateKey]
       if (!day) return
-      // Typed as DayUpsert so a new field on `Day` cannot be left out here.
-      const row: DayUpsert = {
-        project_id: project.id,
-        date: op.dateKey,
-        cells: day.cells || {},
-        sleep: day.sleep || [],
-        lessons: Number(day.lessons) || 0,
-        exam: !!day.exam,
-        ignored: !!day.ignore,
-        frozen: !!day.frozen,
-        comment: day.comment || "",
-        updated_at: stamp,
-      }
-      return run(client.from("days").upsert(row))
+      // Shared with the bulk import, so the two writers cannot disagree about
+      // what a day row contains.
+      return run(
+        client
+          .from("days")
+          .upsert(dayUpsertRow(project.id, op.dateKey, day, stamp)),
+      )
     }
 
     case "log": {

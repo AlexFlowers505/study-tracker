@@ -5,9 +5,13 @@
 -- and one bad write could take out everything at once. Row-per-day fixes all
 -- three — a day edit becomes an upsert of one row.
 --
--- Safe to run more than once. It does NOT touch `study_data`: that table stays
--- exactly as it is, as a fallback, until the app has been running on the new
--- tables long enough to trust them.
+-- Safe to run more than once, and safe on a database that never had the blob:
+-- the backfill at the bottom is skipped when `study_data` is absent, which is
+-- the normal case for a fresh dev project.
+--
+-- It does NOT touch `study_data` where that table does exist: it stays exactly
+-- as it is, as a fallback, until the app has been running on the new tables
+-- long enough to trust them.
 
 -- ---------------------------------------------------------------- tables
 
@@ -102,6 +106,21 @@ create policy "own prefs" on user_prefs
 
 -- ------------------------------------------------------- migrate the blob
 
+-- Only the original project has a `study_data` table to migrate from. A fresh
+-- project — a dev database, say — starts empty and has nothing to backfill, so
+-- the whole block is skipped rather than failing on a missing relation.
+--
+-- It has to be a DO block for that: plpgsql resolves table names when a
+-- statement actually runs, so the statements below are never looked up when
+-- the guard returns first. Written out at top level they would fail to parse
+-- no matter what guard sat in front of them.
+do $mig$
+begin
+  if to_regclass('public.study_data') is null then
+    raise notice 'study_data not present — fresh database, nothing to backfill';
+    return;
+  end if;
+
 insert into projects (id, user_id, settings, slots, categories)
 select p->>'id',
        d.user_id,
@@ -163,9 +182,13 @@ from study_data d
 on conflict (user_id) do update
   set active_project_id = excluded.active_project_id;
 
+end
+$mig$;
+
 -- --------------------------------------------------------------- check it
 
--- Run this afterwards; migrated and blob counts should match per project.
+-- Only meaningful where the blob existed. Run it afterwards on that database;
+-- migrated and blob counts should match per project.
 --
 -- select p.id,
 --        p.settings->>'projectName' as project,

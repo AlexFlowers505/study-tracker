@@ -148,22 +148,11 @@ Build command `npm run build`, publish directory `dist`. No server-side code is 
 
 ### 5.3 Supabase (optional, for multi-user accounts + cloud sync)
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In the SQL editor, run:
-   ```sql
-   create table study_data (
-     user_id uuid primary key references auth.users(id) on delete cascade,
-     data jsonb not null,
-     updated_at timestamptz default now()
-   );
-   alter table study_data enable row level security;
-   create policy "read own data" on study_data for select using (auth.uid() = user_id);
-   create policy "write own data" on study_data for insert with check (auth.uid() = user_id);
-   create policy "update own data" on study_data for update using (auth.uid() = user_id);
-   ```
-3. In Project Settings → API, copy the **Project URL** (root only — no `/rest/v1/` path) and the **anon/public key** into the `SUPABASE_URL` / `SUPABASE_ANON_KEY` constants near the top of `App.jsx`.
+2. In the SQL editor, run `migrations/001_normalize_schema.sql` through `005_freezes.sql`, in order, one at a time. They create the four tables the app actually uses (`projects`, `days`, `period_notes`, `user_prefs`, plus `change_log` and `week_verdicts`) with row-level security on each. The old single-blob `study_data` table is history — it is no longer read or written.
+3. In Project Settings → API, copy the **Project URL** (root only — no `/rest/v1/` path) and the **anon/public key** into `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in an env file. Which file decides which database you get: `.env.development.local` for `npm run dev`, `.env.production` for a build. See `.env.example`.
 4. `npm install @supabase/supabase-js`.
-5. The anon/public key is safe to commit/ship in client code — it's constrained entirely by the RLS policies above (which restrict every row to `auth.uid() = user_id`). **Never** put the `service_role` key in frontend code; it bypasses RLS.
-6. Until `SUPABASE_URL`/`SUPABASE_ANON_KEY` are filled in with valid values, the app never attempts to load the Supabase package and quietly runs single-user/local-storage — so it's always safe to leave unconfigured during development.
+5. The anon/public key is safe to commit/ship in client code — it's constrained entirely by the RLS policies (every row is reachable only by its owner). **Never** put the `service_role` key in frontend code or in a `VITE_`-prefixed env var; it bypasses RLS, and `VITE_` vars are inlined into the bundle in plain text.
+6. Leave the vars unset and the app stops on a "No database configured" screen rather than running offline. That is deliberate: the signed-out local fallback calls `window.storage`, which browsers do not have, so "quietly runs local" would mean quietly keeping nothing.
 
 ---
 

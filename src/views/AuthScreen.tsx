@@ -25,6 +25,7 @@ export function AuthScreen({
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
   const [resendBusy, setResendBusy] = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   // Confirmation-link target — without this, Supabase falls back to the
@@ -54,6 +55,30 @@ export function AuthScreen({
       setMsg(errText(err) || "Couldn't resend the email.")
     } finally {
       setResendBusy(false)
+    }
+  }
+
+  const sendReset = async () => {
+    if (!client) return
+    if (!email) {
+      setMsg("Enter your email above, then tap reset.")
+      return
+    }
+    setResetBusy(true)
+    setMsg(null)
+    try {
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: emailRedirectTo,
+      })
+      if (error) throw error
+      // Deliberately the same message whether or not the address is
+      // registered. Saying "no such account" would turn this box into a way to
+      // find out who has one.
+      setMsg("If that email has an account, a reset link is on its way.")
+    } catch (err) {
+      setMsg(errText(err) || "Couldn't send the reset email.")
+    } finally {
+      setResetBusy(false)
     }
   }
 
@@ -205,6 +230,130 @@ export function AuthScreen({
           className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] disabled:opacity-50`}
         >
           {resendBusy ? "Sending…" : "Didn't get the email? Resend it"}
+        </button>
+
+        {mode === "signin" && (
+          <button
+            onClick={sendReset}
+            disabled={resetBusy}
+            className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] disabled:opacity-50`}
+          >
+            {resetBusy ? "Sending…" : "Forgot your password? Reset it"}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------
+   Setting a new password.
+
+   Shown instead of the logbook when the app was opened from a reset link. The
+   link carries a real session, which is what makes `updateUser` work here
+   without the old password — and also why this screen has to exist: without
+   it the app would just open, signed in, and never ask.
+--------------------------------------------------------------- */
+
+export function SetPasswordScreen({
+  client,
+  onDone,
+}: {
+  client: Client | null
+  /** Clears the recovery flag so the app falls through to the logbook. */
+  onDone: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!client) return
+    if (password !== confirm) {
+      setMsg("The two passwords don't match.")
+      return
+    }
+    setBusy(true)
+    setMsg(null)
+    try {
+      const { error } = await client.auth.updateUser({ password })
+      if (error) throw error
+      // The recovery session is already a signed-in one, so there is nothing
+      // left to do but get out of the way.
+      onDone()
+    } catch (err) {
+      setMsg(errText(err) || "Couldn't set the password.")
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F4F5F7] text-[#1E2A33] flex items-center justify-center p-4">
+      <div className={`${CARD} w-full max-w-sm p-6`}>
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center">
+            <TimeLensMark size={18} className="text-[#F4F5F7]" />
+          </div>
+          <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg">
+            {APP_NAME}
+          </h1>
+        </div>
+        <p className="text-[11px] font-mono uppercase tracking-widest text-[#1E2A33]/45 mb-5">
+          Choose a new password
+        </p>
+
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+              <Lock size={11} /> New password
+            </span>
+            <input
+              type="password"
+              required
+              minLength={6}
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+            />
+          </label>
+          <label className="block">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+              <Lock size={11} /> Repeat it
+            </span>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+            />
+          </label>
+
+          {msg && (
+            <p className="text-[11px] font-mono text-[#C1595B]">{msg}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            style={{ backgroundColor: ACCENT }}
+            className={`${btnBase} w-full text-white text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
+          >
+            {busy ? "Saving…" : "Save password"}
+          </button>
+        </form>
+
+        {/* An escape hatch for landing here by accident — the link already
+            signed you in, so skipping just means keeping the old password. */}
+        <button
+          onClick={onDone}
+          className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+        >
+          Skip — keep my current password
         </button>
       </div>
     </div>

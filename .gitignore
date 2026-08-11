@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Per-machine Supabase target. .env.production is committed on purpose (the
+# anon key is publishable); .env.development.local points at your own dev
+# project and is yours alone. Covered by *.local above — spelled out because
+# the difference between these two files is the difference between editing
+# test data and editing the real logbook.
+.env*.local
+
 # Claude Code: shared project config is committed (CLAUDE.md,
 # .claude/settings.json); per-machine overrides are not.
 .claude/settings.local.json

@@ -49,6 +49,31 @@ export type DayUpsert = { [C in DayColumn]: unknown } & {
   updated_at: string
 }
 
+/**
+ * The one place a `Day` turns into a row. Both writers go through it — the
+ * per-row save queue in `ops.ts` and the bulk import — so a field added to
+ * `Day` can never be persisted by one path and silently dropped by the other.
+ */
+export function dayUpsertRow(
+  projectId: string,
+  dateKey: string,
+  day: Day,
+  stamp: string,
+): DayUpsert {
+  return {
+    project_id: projectId,
+    date: dateKey,
+    cells: day.cells || {},
+    sleep: day.sleep || [],
+    lessons: Number(day.lessons) || 0,
+    exam: !!day.exam,
+    ignored: !!day.ignore,
+    frozen: !!day.frozen,
+    comment: day.comment || "",
+    updated_at: stamp,
+  }
+}
+
 export interface DayRow {
   project_id: string
   date: string
