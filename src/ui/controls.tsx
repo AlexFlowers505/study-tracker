@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react"
 import type { TextareaHTMLAttributes } from "react"
 import { segBtn, segBtnStyle } from "./buttonStyles"
+import { usePalette } from "./useTheme"
 
 /**
  * Textarea that grows with its content up to a max height, then scrolls —
@@ -53,18 +54,19 @@ export function SegmentedControl({
   onChange: (id: string) => void
   size?: "sm" | "lg"
 }) {
+  const c = usePalette()
   return (
-    <div className="inline-flex rounded-xl border border-[#1E2A33]/20 overflow-hidden bg-white">
+    <div className="inline-flex rounded-xl border border-ink/20 overflow-hidden bg-card">
       {items.map((it, i) => {
         const active = activeId === it.id
         return (
           <button
             key={it.id}
             onClick={() => onChange(it.id)}
-            style={segBtnStyle(active)}
+            style={segBtnStyle(active, c)}
             className={
               segBtn(active) +
-              ` border-0 ${i > 0 ? "border-l border-l-[#1E2A33]/10" : ""} ${size === "lg" ? "px-4 py-2" : ""}`
+              ` border-0 ${i > 0 ? "border-l border-l-ink/10" : ""} ${size === "lg" ? "px-4 py-2" : ""}`
             }
           >
             {it.label}

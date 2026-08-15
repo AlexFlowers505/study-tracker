@@ -35,7 +35,6 @@ import { fromKey, toKey } from '../lib/date'
 import { makeId } from '../lib/id'
 import {
   fmtHours,
-  fmtHoursFixed1,
   startedPreviousDay,
 } from '../lib/time'
 import {
@@ -52,7 +51,6 @@ import {
   FIELD_BOXED,
   FIELD_ON_TINT,
   FIELD_ON_WHITE,
-  SLEEP_COLOR,
   btnBase,
 } from '../lib/theme'
 import { AutoTextarea, SegmentedControl } from '../ui/controls'
@@ -65,6 +63,7 @@ import { useModalDismiss } from '../ui/useModalDismiss'
 import { AddCounterForm, SlotCounterRows } from './SlotCounters'
 import { FullCardGrid } from './DayCards'
 
+import { usePalette } from "../ui/useTheme"
 export interface DayDialogProps {
   dateKey: DayKey
   dayEntry?: Day
@@ -102,6 +101,7 @@ export function DayQuickviewModal({
   canFreeze?: (key: DayKey) => boolean
   onFreeze?: (key: DayKey) => void
 }) {
+  const c = usePalette()
   const [mode, setMode] = useState(startInEditMode ? "edit" : "preview")
   const onBackdropClick = useModalDismiss(onClose)
   const d = fromKey(dateKey)
@@ -112,7 +112,7 @@ export function DayQuickviewModal({
       onMouseDown={onBackdropClick}
     >
       <div
-        style={{ backgroundColor: mode === "edit" ? "#F4F5F7" : "transparent" }}
+        style={{ backgroundColor: mode === "edit" ? c.page : "transparent" }}
         className={`w-full sm:max-w-[820px] max-h-[90vh] h-full sm:h-auto flex flex-col overflow-hidden ${
           mode === "edit" ? "sm:rounded-2xl shadow-2xl" : ""
         }`}
@@ -162,7 +162,7 @@ export function DayQuickviewModal({
                   <Tip text="Edit this day">
                     <button
                       onClick={() => setMode("edit")}
-                      className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                      className={`${btnBase} p-1.5 rounded-lg text-ink/45 hover:text-ink hover:bg-ink/10`}
                     >
                       <PenLine size={16} />
                     </button>
@@ -173,7 +173,7 @@ export function DayQuickviewModal({
                         onGoToDayView(dateKey)
                         onClose()
                       }}
-                      className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                      className={`${btnBase} p-1.5 rounded-lg text-ink/45 hover:text-ink hover:bg-ink/10`}
                     >
                       <ArrowUpRight size={17} />
                     </button>
@@ -210,6 +210,7 @@ function DayEditForm({
   onBack: (() => void) | null
   onGoToDayView: (() => void) | null
 }) {
+  const c = usePalette()
   const cells = dayEntry?.cells || {}
   const counters = dayEntry?.counters || {}
   // Which slot's add-counter form is open, and which counter row is being
@@ -281,13 +282,13 @@ function DayEditForm({
     <>
       {/* White header against the tinted body — the colour change separates the
           two, so no divider rule is needed. */}
-      <div className="flex items-center justify-between px-5 py-4 bg-white shrink-0">
+      <div className="flex items-center justify-between px-5 py-4 bg-card shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           {onBack && (
             <Tip text="Back to preview">
               <button
                 onClick={onBack}
-                className={`${btnBase} p-1.5 -ml-1.5 rounded-lg text-[#1E2A33]/50 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 shrink-0`}
+                className={`${btnBase} p-1.5 -ml-1.5 rounded-lg text-ink/50 hover:text-ink hover:bg-ink/10 shrink-0`}
               >
                 <ChevronLeft size={18} />
               </button>
@@ -301,7 +302,7 @@ function DayEditForm({
                 day: "numeric",
               })}
             </h2>
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
               {total} minutes logged · {fmtHours(total)}
             </p>
           </div>
@@ -311,7 +312,7 @@ function DayEditForm({
             <Tip text="Go to day view">
               <button
                 onClick={onGoToDayView}
-                className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33] p-1 rounded-lg hover:bg-[#1E2A33]/10`}
+                className={`${btnBase} text-ink/50 hover:text-ink p-1 rounded-lg hover:bg-ink/10`}
               >
                 <ArrowUpRight size={18} />
               </button>
@@ -319,7 +320,7 @@ function DayEditForm({
           )}
           <button
             onClick={onClose}
-            className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+            className={`${btnBase} text-ink/50 hover:text-ink`}
           >
             <X size={20} />
           </button>
@@ -342,10 +343,10 @@ function DayEditForm({
           <>
             {/* Notes come first — it's the field reached for most often, and it
               reads as the day's headline rather than a footnote. */}
-            <div className="bg-white rounded-2xl p-4">
+            <div className="bg-card rounded-2xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <MessageSquare size={12} className="text-[#1E2A33]/40" />
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+                <MessageSquare size={12} className="text-ink/40" />
+                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/50">
                   Day notes
                 </span>
               </div>
@@ -372,7 +373,7 @@ function DayEditForm({
                   label="Ignore in statistics"
                 />
                 <span className="flex items-center gap-1">
-                  <EyeOff size={13} className="text-[#1E2A33]/60" /> Ignore in
+                  <EyeOff size={13} className="text-ink/60" /> Ignore in
                   statistics
                 </span>
               </div>
@@ -387,7 +388,7 @@ function DayEditForm({
               return (
                 <div
                   key={slot.id}
-                  className="bg-white rounded-2xl overflow-hidden"
+                  className="bg-card rounded-2xl overflow-hidden"
                 >
                   {/* The slot's own colour, washed out, is the header. It both
                     separates the header from the body and says which slot this
@@ -413,10 +414,10 @@ function DayEditForm({
                                 addCounterSlot === slot.id ? null : slot.id,
                               )
                             }
-                            className={`${btnBase} p-0.5 rounded-md hover:bg-[#1E2A33]/10 ${
+                            className={`${btnBase} p-0.5 rounded-md hover:bg-ink/10 ${
                               addCounterSlot === slot.id
-                                ? "text-[#1E2A33] bg-[#1E2A33]/10"
-                                : "text-[#1E2A33]/40 hover:text-[#1E2A33]"
+                                ? "text-ink bg-ink/10"
+                                : "text-ink/40 hover:text-ink"
                             }`}
                           >
                             <Hash size={13} />
@@ -426,14 +427,14 @@ function DayEditForm({
                       <Tip text="Add entry">
                         <button
                           onClick={() => addEntry(slot.id)}
-                          className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                          className={`${btnBase} p-0.5 rounded-md text-ink/40 hover:text-ink hover:bg-ink/10`}
                         >
                           <Plus size={13} />
                         </button>
                       </Tip>
                     </div>
-                    <span className="font-mono text-xs text-[#1E2A33]/55">
-                      {slotTotal}m / {fmtHoursFixed1(slotTotal)}
+                    <span className="font-mono text-xs text-ink/55">
+                      {fmtHours(slotTotal)}
                     </span>
                   </div>
 
@@ -489,7 +490,7 @@ function DayEditForm({
                       />
                     )}
                     {entries.length === 0 && (
-                      <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
+                      <p className="text-xs font-mono text-ink/40 px-1">
                         No study logged for this slot.
                       </p>
                     )}
@@ -508,7 +509,7 @@ function DayEditForm({
                       return (
                         <div
                           key={entry.id}
-                          className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                          className="rounded-xl bg-page p-2.5 space-y-2"
                         >
                           <TimeRangeField
                             start={entry.start}
@@ -554,16 +555,16 @@ function DayEditForm({
                               disabled={!!(entry.start && entry.end)}
                               className={`${FIELD_BOXED} w-20 ${
                                 entry.start && entry.end
-                                  ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                                  ? "cursor-not-allowed text-ink/40 bg-ink/5"
                                   : ""
                               }`}
                             />
-                            <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
-                              min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
+                            <span className="text-[10px] font-mono text-ink/40 whitespace-nowrap">
+                              min · {fmtHours(Number(entry.minutes) || 0)}
                             </span>
                             <button
                               onClick={() => removeEntry(slot.id, entry.id)}
-                              className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
+                              className={`${btnBase} p-1.5 rounded-lg text-ink/40 hover:text-exam hover:bg-card`}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -572,14 +573,14 @@ function DayEditForm({
                             <button
                               disabled={entryIndex === 0}
                               onClick={() => moveEntry(slot.id, entryIndex, -1)}
-                              className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                              className={`${btnBase} p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-card disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                             >
                               <ChevronUp size={14} />
                             </button>
                             <button
                               disabled={entryIndex === entries.length - 1}
                               onClick={() => moveEntry(slot.id, entryIndex, 1)}
-                              className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                              className={`${btnBase} p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-card disabled:opacity-25 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                             >
                               <ChevronDown size={14} />
                             </button>
@@ -598,7 +599,7 @@ function DayEditForm({
                                       target.id,
                                     )
                                   }
-                                  className={`${btnBase} w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-mono text-left hover:bg-[#1E2A33]/5 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                                  className={`${btnBase} w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-mono text-left hover:bg-ink/5 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                                 >
                                   <RenderIcon
                                     name={target.iconName}
@@ -613,7 +614,7 @@ function DayEditForm({
                           <div className="flex items-start gap-1.5">
                             <MessageSquare
                               size={12}
-                              className="text-[#1E2A33]/30 shrink-0 mt-2"
+                              className="text-ink/30 shrink-0 mt-2"
                             />
                             <AutoTextarea
                               value={entry.comment || ""}
@@ -633,7 +634,7 @@ function DayEditForm({
                     })}
                     <button
                       onClick={() => addEntry(slot.id)}
-                      className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
+                      className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-ink/60 hover:text-ink px-1 py-1`}
                     >
                       <Plus size={12} /> Add entry
                     </button>
@@ -645,40 +646,40 @@ function DayEditForm({
         )}
 
         {sleepEnabled && tab === "sleep" && (
-          <div className="bg-white rounded-2xl overflow-hidden">
+          <div className="bg-card rounded-2xl overflow-hidden">
             <div
               className="flex items-center justify-between px-4 py-2.5"
-              style={{ backgroundColor: `${SLEEP_COLOR}1A` }}
+              style={{ backgroundColor: `${c.sleep}1A` }}
             >
               <div className="flex items-center gap-2">
-                <Moon size={14} style={{ color: SLEEP_COLOR }} />
+                <Moon size={14} style={{ color: c.sleep }} />
                 <span className="font-mono text-xs uppercase tracking-wide font-bold">
                   Sleep
                 </span>
                 <Tip text="Add sleep entry">
                   <button
                     onClick={addSleepEntry}
-                    className={`${btnBase} p-0.5 rounded-md text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                    className={`${btnBase} p-0.5 rounded-md text-ink/40 hover:text-ink hover:bg-ink/10`}
                   >
                     <Plus size={13} />
                   </button>
                 </Tip>
               </div>
-              <span className="font-mono text-xs text-[#1E2A33]/55">
-                {sleepTotal}m / {fmtHoursFixed1(sleepTotal)}
+              <span className="font-mono text-xs text-ink/55">
+                {fmtHours(sleepTotal)}
               </span>
             </div>
 
             <div className="p-3 space-y-2">
               {sleepEntries.length === 0 && (
-                <p className="text-xs font-mono text-[#1E2A33]/40 px-1">
+                <p className="text-xs font-mono text-ink/40 px-1">
                   No sleep logged for this day.
                 </p>
               )}
               {sleepEntries.map((entry) => (
                 <div
                   key={entry.id}
-                  className="rounded-xl bg-[#F4F5F7] p-2.5 space-y-2"
+                  className="rounded-xl bg-page p-2.5 space-y-2"
                 >
                   <TimeRangeField
                     start={entry.start}
@@ -699,7 +700,7 @@ function DayEditForm({
                   <div className="flex items-center gap-2">
                     {/* The entry sits on the day the night ended, so a bedtime
                         later than the wake-up was the evening before. */}
-                    <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+                    <span className="flex-1 text-[9px] font-mono uppercase tracking-widest text-ink/40">
                       {startedPreviousDay(entry) ? "Started previous day" : ""}
                     </span>
                     <input
@@ -714,16 +715,16 @@ function DayEditForm({
                       disabled={!!(entry.start && entry.end)}
                       className={`${FIELD_BOXED} w-20 ${
                         entry.start && entry.end
-                          ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                          ? "cursor-not-allowed text-ink/40 bg-ink/5"
                           : ""
                       }`}
                     />
-                    <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
-                      min / {fmtHoursFixed1(Number(entry.minutes) || 0)}
+                    <span className="text-[10px] font-mono text-ink/40 whitespace-nowrap">
+                      min · {fmtHours(Number(entry.minutes) || 0)}
                     </span>
                     <button
                       onClick={() => dropSleepEntry(entry.id)}
-                      className={`${btnBase} p-1.5 rounded-lg text-[#1E2A33]/40 hover:text-[#C1595B] hover:bg-white`}
+                      className={`${btnBase} p-1.5 rounded-lg text-ink/40 hover:text-exam hover:bg-card`}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -731,7 +732,7 @@ function DayEditForm({
                   <div className="flex items-start gap-1.5">
                     <MessageSquare
                       size={12}
-                      className="text-[#1E2A33]/30 shrink-0 mt-2"
+                      className="text-ink/30 shrink-0 mt-2"
                     />
                     <AutoTextarea
                       value={entry.comment || ""}
@@ -750,7 +751,7 @@ function DayEditForm({
               ))}
               <button
                 onClick={addSleepEntry}
-                className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1`}
+                className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-wide text-ink/60 hover:text-ink px-1 py-1`}
               >
                 <Plus size={12} /> Add entry
               </button>

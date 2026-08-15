@@ -23,10 +23,8 @@ import type { CounterUnit } from "../types/model"
 import type { DayCounters } from "../lib/counters"
 import { setSlotCount, slotUnitValue, unitsInSlot } from "../lib/counters"
 import {
-  EXAM_COLOR,
   FIELD_BARE,
   FIELD_BOXED,
-  GOAL_MET_COLOR,
   btnBase,
   cardSmall,
   cardTiny,
@@ -34,6 +32,7 @@ import {
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 
+import { usePalette } from "../ui/useTheme"
 const iconBtn = `${btnBase} p-1 rounded shrink-0`
 
 export function SlotCounterRows({
@@ -58,6 +57,7 @@ export function SlotCounterRows({
   onCancel?: () => void
   onClose?: () => void
 }) {
+  const c = usePalette()
   const present = unitsInSlot(units, counters, slotId)
   if (!present.length) return null
 
@@ -108,8 +108,8 @@ export function SlotCounterRows({
                     onChange(setSlotCount(counters, unit.id, slotId, 0))
                     onClose()
                   }}
-                  className={`${iconBtn} hover:bg-white/70`}
-                  style={{ color: EXAM_COLOR }}
+                  className={`${iconBtn} hover:bg-card/70`}
+                  style={{ color: c.exam }}
                 >
                   <Trash2 size={11} />
                 </button>
@@ -117,7 +117,7 @@ export function SlotCounterRows({
               <Tip text="Cancel changes">
                 <button
                   onClick={onCancel}
-                  className={`${iconBtn} text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white/70`}
+                  className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
                 >
                   <Ban size={11} />
                 </button>
@@ -125,8 +125,8 @@ export function SlotCounterRows({
               <Tip text="Done">
                 <button
                   onClick={onClose}
-                  className={`${iconBtn} hover:bg-white/70`}
-                  style={{ color: GOAL_MET_COLOR }}
+                  className={`${iconBtn} hover:bg-card/70`}
+                  style={{ color: c.goalMet }}
                 >
                   <Check size={12} />
                 </button>
@@ -179,6 +179,7 @@ export function AddCounterForm({
   onAdd: (unitId: string, amount: number) => void
   onCancel: () => void
 }) {
+  const c = usePalette()
   const taken = new Set(unitsInSlot(units, counters, slotId).map((u) => u.id))
   const firstFree = units.find((u) => !taken.has(u.id))
   const [unitId, setUnitId] = useState(firstFree?.id ?? units[0]?.id)
@@ -190,10 +191,10 @@ export function AddCounterForm({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="flex flex-wrap items-center gap-1.5 mb-1 rounded-lg bg-[#1E2A33]/[0.04] px-2 py-1.5"
+      className="flex flex-wrap items-center gap-1.5 mb-1 rounded-lg bg-ink/[0.04] px-2 py-1.5"
     >
       {allTaken ? (
-        <span className="text-[10px] font-mono text-[#1E2A33]/50">
+        <span className="text-[10px] font-mono text-ink/50">
           Every counter is already in this slot — edit one above.
         </span>
       ) : (
@@ -232,8 +233,8 @@ export function AddCounterForm({
           <button
             onClick={() => onAdd(unitId, amount)}
             disabled={taken.has(unitId)}
-            className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest text-white disabled:opacity-40`}
-            style={{ backgroundColor: GOAL_MET_COLOR }}
+            className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest disabled:opacity-40`}
+            style={{ backgroundColor: c.goalMet, color: c.onFill }}
           >
             Add
           </button>
@@ -241,7 +242,7 @@ export function AddCounterForm({
       )}
       <button
         onClick={onCancel}
-        className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+        className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink`}
       >
         Cancel
       </button>

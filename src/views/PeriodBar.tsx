@@ -26,11 +26,12 @@ import {
   rangeLabel,
   stepCursor,
 } from "../lib/period"
-import { ACCENT, FILTER_TINT, PROJECT_TINT, btnBase } from "../lib/theme"
+import { btnBase } from "../lib/theme"
 import { DateRangeField } from "../ui/DateField"
 import { Tip } from "../ui/Tip"
 import { useRevealOnScrollUp } from "../ui/useRevealOnScrollUp"
 
+import { usePalette } from "../ui/useTheme"
 /**
  * Pill-style period picker: one rounded trough holding rounded pills, the
  * active one filled. Distinct from `SegmentedControl` (still used for the
@@ -43,8 +44,9 @@ function PeriodPills({
   period: PeriodId
   setPeriod: (id: PeriodId) => void
 }) {
+  const c = usePalette()
   return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-white p-1 shadow-sm">
+    <div className="inline-flex items-center gap-1 rounded-full bg-card p-1 shadow-sm">
       {PERIODS.map((p) => {
         const active = p.id === period
         return (
@@ -53,10 +55,10 @@ function PeriodPills({
             onClick={() => setPeriod(p.id)}
             className={`${btnBase} rounded-full px-3 py-1.5 text-[11px] font-mono whitespace-nowrap ${
               active
-                ? "text-white"
-                : "text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+                ? ""
+                : "text-ink/60 hover:text-ink hover:bg-ink/5"
             }`}
-            style={active ? { backgroundColor: ACCENT } : undefined}
+            style={active ? { backgroundColor: c.accent } : undefined}
           >
             {p.label}
           </button>
@@ -86,27 +88,28 @@ function PanelToggle({
   count?: number | null
   countColor?: string
 }) {
+  const c = usePalette()
   return (
     <Tip text={tip}>
       <button
         onClick={onClick}
         className={`${btnBase} relative p-2 rounded-full ${
           active
-            ? "bg-[#1E2A33]/[0.08] text-[#1E2A33]"
-            : "text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+            ? "bg-ink/[0.08] text-ink"
+            : "text-ink/45 hover:text-ink hover:bg-ink/5"
         }`}
       >
         <Icon size={16} />
         {badge && (
           <span
-            className="absolute top-1 right-1 w-2 h-2 rounded-full ring-2 ring-[#F4F5F7]"
-            style={{ backgroundColor: FILTER_TINT }}
+            className="absolute top-1 right-1 w-2 h-2 rounded-full ring-2 ring-page"
+            style={{ backgroundColor: c.filter }}
           />
         )}
         {count != null && (
           <span
-            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none text-white ring-2 ring-[#F4F5F7]"
-            style={{ backgroundColor: countColor }}
+            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            style={{ backgroundColor: countColor, color: c.onFill }}
           >
             {count}
           </span>
@@ -160,13 +163,14 @@ export function PeriodBar({
   /** Null when the effectiveness meter is off — no metric, no streak. */
   currentStreak?: number | null
 }) {
+  const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
-  const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
+  const navBtn = `${btnBase} rounded-full bg-card shadow-sm hover:bg-ink/5 disabled:opacity-35 disabled:hover:bg-card disabled:cursor-not-allowed`
   const visible = useRevealOnScrollUp()
 
   return (
     <div
-      className={`sticky top-0 z-10 -mx-4 mb-4 px-4 py-3 bg-[#F4F5F7]/95 backdrop-blur transition-transform duration-200 ease-out ${
+      className={`sticky top-0 z-10 -mx-4 mb-4 px-4 py-3 bg-page/95 backdrop-blur transition-transform duration-200 ease-out ${
         visible ? "translate-y-0" : "-translate-y-[130%]"
       }`}
     >
@@ -202,7 +206,12 @@ export function PeriodBar({
               in the bar and the only group that reads fine half-visible, so on
               a narrow screen this strip scrolls and the navigation beside it
               keeps its place. */}
-          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto [&>*]:shrink-0">
+          {/* `p-1 -m-1` is not decoration: `overflow-x-auto` makes the other
+              axis compute to `auto` too, and the streak count sits a couple of
+              pixels outside its button, so without padding inside the scroll
+              box the badge was shaved off. The negative margin keeps the row
+              the height it was. */}
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
           {/* The dot stays on whether the panel is open or shut: a filter you
               can't see is the one you most need telling about, otherwise every
               figure on the page is quietly short and nothing says why. */}
@@ -224,7 +233,7 @@ export function PeriodBar({
             active={showStreaks}
             onClick={onToggleStreaks}
             count={currentStreak}
-            countColor={PROJECT_TINT}
+            countColor={c.project}
             tip={
               currentStreak == null
                 ? showStreaks
@@ -261,7 +270,7 @@ export function PeriodBar({
                 if (!navigable) setPeriod("week")
                 setCursor(new Date())
               }}
-              className={`${btnBase} p-2 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+              className={`${btnBase} p-2 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5`}
             >
               <CalendarCheck size={16} />
             </button>

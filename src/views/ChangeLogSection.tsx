@@ -3,8 +3,8 @@ import type { ChangeLogEntry } from "../types/model"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
 import { CARD } from "../lib/theme"
 import { PanelSection } from "./PanelSection"
+import { usePalette } from "../ui/useTheme"
 
-const CHANGELOG_TINT = "#5C8A3A"
 
 export function ChangeLogSection({
   entries,
@@ -13,9 +13,10 @@ export function ChangeLogSection({
   entries: ChangeLogEntry[]
   onClose?: () => void
 }) {
+  const c = usePalette()
   return (
     <PanelSection
-      tint={CHANGELOG_TINT}
+      tint={c.changelog}
       icon={History}
       title="Change log"
       subtitle={`The last ${CHANGE_LOG_LIMIT} edits · oldest fall off the end`}
@@ -23,7 +24,7 @@ export function ChangeLogSection({
       onClose={onClose}
     >
       {!entries.length ? (
-        <p className="text-xs font-mono text-[#1E2A33]/50">
+        <p className="text-xs font-mono text-ink/50">
           Nothing recorded yet.
         </p>
       ) : (
@@ -37,7 +38,7 @@ export function ChangeLogSection({
                     minute: "2-digit",
                   })}
                 </span>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 truncate">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-ink/50 truncate">
                   {e.title}
                 </span>
               </div>
@@ -45,7 +46,7 @@ export function ChangeLogSection({
                 {e.details.map((line, i) => (
                   <li
                     key={i}
-                    className="text-[10px] font-mono text-[#1E2A33]/65 whitespace-pre-wrap"
+                    className="text-[10px] font-mono text-ink/65 whitespace-pre-wrap"
                   >
                     {line}
                   </li>

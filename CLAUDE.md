@@ -42,10 +42,25 @@ which are Node config and get their own lint block.
 - `src/lib/` — pure functions, no JSX, all TypeScript and all strict:
   - `date.ts` — local-time date keys and arithmetic, `datesInRange`,
     `weekDates`, `monthDates`, weekday order and labels.
-  - `time.ts` — `"HH:MM"` arithmetic, hour formatting, and the 18:00-rotated
-    clock the sleep view runs on.
-  - `theme.ts` — colours, the `CARD`/`FIELD_*` class strings, `cellSurface`
-    and `dayStateSurface`.
+  - `time.ts` — `"HH:MM"` arithmetic, duration formatting, and the
+    18:00-rotated clock the sleep view runs on. **Every duration in the app
+    goes through `fmtHours`, and it prints hours *and* minutes — `2h 30m`,
+    never `2.5h`.** Decimal hours read fine as a magnitude and badly as a plan:
+    "0.4h left" has to be multiplied by 60 before it means anything you can
+    act on, and doing that arithmetic is the job. Minutes are also what gets
+    stored, so the printed figure is exact rather than rounded to a tenth of an
+    hour. `fmtHoursChart` is the same format for the charts, which carry hours;
+    `fmtAxisHours` stays whole numbers, because an axis label is a scale mark
+    and not a duration. `HOUR_TICKS` marks **every** hour of the rotated clock,
+    and the sleep charts step by one hour on both axes: the grid line is the
+    ruler you read a night's start and end against, and three-hour spacing left
+    you estimating inside a block two hours wide. Recharts thins the labels
+    when they would collide, so the grid stays fine-grained on a phone even
+    where the numbers cannot all fit.
+  - `theme.ts` — the two palettes, the `CARD`/`FIELD_*` class strings,
+    `cellSurface`, `dayStateSurface` and `chartTooltip`. See **Theming** below;
+    the short version is that surfaces are Tailwind tokens and the accents are
+    a `Palette` object you get from `usePalette()`.
   - `stats.ts` — `dayBreakdown`, `rangeStats`, `periodBreakdown`,
     `elapsedDayCount`, `goalForDate`, `makeIsIgnored`. **Every number the app
     reports comes from here, and none of it ever reads `day.sleep`.**
@@ -90,6 +105,14 @@ which are Node config and get their own lint block.
   `document.body`. Nothing outside `src/ui/` imports `createPortal`, and it
   should stay that way — a hand-rolled bubble inside the tree gets clipped by
   the modal shell, its scroll area or the month grid.
+  - `TimeRangeField.tsx` walks four steps on one dial (start hour, start
+    minutes, end hour, end minutes) and the panel looks identical at each, so
+    **which field the dial is driving is stated three times over**: the active
+    half wears the accent (label, ring, fill and figures), the idle half drops
+    to 60% opacity, and a line above the dial names it in words. Picking the
+    end when you meant the start is otherwise silent — you get a valid time in
+    the wrong field. The line sits *above* the dial, not below with the
+    duration, because it says what the next click will do.
   - `datePopover.ts` — `useDatePopover` plus the react-day-picker styling,
     which has to sit on the calendar's own root to win.
   - `icons.tsx` — `RenderIcon`; the list itself is data in `iconLibrary.ts`,
@@ -107,11 +130,16 @@ which are Node config and get their own lint block.
     subtitle, an `action` slot and a close X. **Use it rather than hand-rolling
     a sixth copy** — the panels read as siblings because they are one
     component wearing different tints.
-    All five panels are built from it: `CountFilter.tsx`,
-    `OverallStatsSection.tsx`, `SleepSection.tsx`, `StreaksSection.tsx`,
-    `ChangeLogSection.tsx`.
+    All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
+    `StreaksSection.tsx`, `ChangeLogSection.tsx`.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
+    **The donuts sort biggest first**, ring and legend alike, and the sort
+    lives in `TotalsDonut` rather than in `periodBreakdown`: a part-of-whole
+    answers "what took the most", and configured order (morning, daytime,
+    evening) makes you compare slices by eye to work that out. The ordering is
+    a property of that drawing, not of the numbers, so `periodBreakdown` keeps
+    returning them in configured order for anything else that asks.
   - `EntriesReadout.tsx` — the entry list inside a day card. Two tiers of
     sticky header, and the numbers have to agree: the slot header is `h-6`
     (24px) at `top-0`, the entry header sits at `top-6`. Change one and
@@ -135,6 +163,14 @@ which are Node config and get their own lint block.
   - A card's title and **all** its buttons share one flex line, with the month
     underneath. Centring them against the title-plus-month block left every
     button floating half a line below the heading it belongs to.
+    One line *while there is room for one*: the row is `flex-wrap`, and the
+    action group takes `ml-auto` so it stays hard right whether it sits beside
+    the date or drops to a line of its own. `justify-between` alone let a
+    crowded day — badges plus sleep, freeze, counter and add — walk straight
+    over its own date, because the date's group was the only shrinkable one and
+    its text simply overflowed the box it had been squeezed into. The date
+    itself is `shrink-0`; it is the one thing on the card that must never be
+    clipped.
   - **The day dialog renders `FullCardGrid` with a single date and `big`** —
     the week's own card at full width, not a second drawing of the same day.
     The week view is where the work happens and its card is the good one; its
@@ -171,14 +207,34 @@ which are Node config and get their own lint block.
     move-back and the value-restore as **one** cells computation, since two
     calls in a tick would both read the same `cells` and the second would
     silently drop the first.
-  - `StatsSection.tsx` — the plain heading-plus-subtitle a stats block sits
-    under, shared by `OverviewStats.tsx`, `AveragesStats.tsx` and
-    `RemarkableStats.tsx` so the three read as one column.
-    `OverviewStats` takes the donuts as `children`: where the period's time
-    went is one of the period's numbers, not a heading of its own.
-  - Overall stats and streaks share `PROJECT_TINT`: both are project-wide
-    while everything else on the page is period-scoped, so they read as a
-    pair on purpose.
+  - `TabbedSection.tsx` — the heading, the "?" and the tab row that
+    `AnalyticsView` builds its two sections from. It renders **only the active
+    tab**, never `display: none`: a Recharts `ResponsiveContainer` measures the
+    box it is in, and one in a hidden parent measures zero.
+    It deliberately does **not** reuse `SegmentedControl` — a chart carries one
+    of those for its own slot/category split, and two identical pill rows
+    stacked read as one control drawn twice. Underlined tabs, the shape Setup
+    already uses, say "a level up" instead.
+    `OverviewStats.tsx`, `AveragesStats.tsx` and `RemarkableStats.tsx` are the
+    Summary tabs and render bare content — the tab row names them, so none of
+    the three carries a heading of its own. `OverviewStats` takes the donuts as
+    `children`: where the period's time went is one of the period's numbers.
+  - Streaks own `PROJECT_TINT`, the one project-wide thing on a page that is
+    otherwise period-scoped. It is a marigold, not the ochre it started as: a
+    desaturated yellow at that lightness reads olive, which is the wrong
+    feeling for the number you are trying not to lose. Saturating without
+    darkening would have cost the white count badge its contrast, so it moved
+    warmer and one step deeper together.
+  - **A day that has not happened yet offers no way to edit it.** Not disabled
+    — absent: the card is inert, and the quick-adds, the freeze, the note and
+    editing in place all go with it, in the week row, the Day view and the
+    month grid alike. `FullCardGrid` decides it once (`key > todayKey`) and
+    withholds the handlers; `CompactDayCell` takes `onEdit` as optional for the
+    same reason. A "+" that works and a "+" that refuses when pressed are both
+    wrong there, and an absent one says "not yet" without an error message.
+    The wording follows: such a day reads `goal 3h (planned)`, not `(3h left)`
+    — nothing is owed on a day that has not started — and the empty-day line
+    drops its "tap to add", which would point at a door that isn't there.
   - `LogView.tsx`, `AnalyticsView.tsx` — the two halves of the page, both
     driven by the one range `periodRange()` hands them.
   - `DayCards.tsx` (the week row and the day view's wide card),
@@ -188,6 +244,11 @@ which are Node config and get their own lint block.
 - `src/App.tsx` — the shell and nothing else: auth, the load, the save queue,
   the count-filter projection, and which panels are open. ~700 lines, down
   from 8400.
+- `src/ui/useTheme.ts` — the theme store. A module-level value plus
+  `useSyncExternalStore` rather than a context: the choice has to reach
+  `documentElement` before React renders anything, so there is state outside
+  the tree either way, and `usePalette()` is wanted in twenty unrelated
+  components that a provider would have to be threaded through for nothing.
 - `src/App.css` — Tailwind import plus one global rule: thin scrollbars
   (`scrollbar-width` for Firefox, `::-webkit-scrollbar` for WebKit). Everything
   else is Tailwind utilities inline; don't grow this file without reason.
@@ -221,14 +282,27 @@ One page, not tabs. A single period drives everything:
   inside itself. That is one bug, and it turned up in the period bar, the
   log's heading row and `ChartCard` (a Recharts container has its own minimum).
 - Below it: `LogView` (notes, donut breakdowns, day cards / month grid /
-  heatmap) and then `AnalyticsView` (stat tiles and charts) for the same range.
+  heatmap) and then `AnalyticsView` for the same range.
+- `AnalyticsView` is **two tabbed sections, not six stacked blocks**:
+  - **Summary** — Overview, Averages, Remarkable.
+  - **Trends** — Daily, Weekday, Weekly, Monthly.
+
+  They are named for what you learn, not for what you look at. Everything in
+  Summary is the whole period collapsed into one figure; everything in Trends
+  is the same period spread across time. "Stats" and "Analytics" would have
+  been two names for one thing — both halves are statistics, and how they are
+  drawn is not a distinction worth a heading. Each section's `?` says what it
+  holds; each Summary tab's caption says what that tab covers.
 - Three panels open from `PeriodBar` and render between it and `LogView`, the
   filter first because it governs everything below it:
   - `CountFilter` — which slots/categories count. Not period-scoped; switching
     periods leaves it alone, so its toggle carries a dot while anything is
     struck out, or a live filter would silently shrink every figure.
-  - `OverallStatsSection` — project-wide totals and forecast. Inline block on
-    desktop, bottom sheet on phones (its `variant`).
+  - `StreaksSection` — project-wide, and the only panel that is. Its
+    how-it-works bubble opens **downwards** (`side="bottom"`): it is the
+    tallest tooltip in the app and the panel sits just under the sticky period
+    bar, so anchored above its trigger the opening lines — the ones that say
+    what a streak is — ran off the top of the viewport.
   - `SleepSection` — only when `settings.sleepEnabled`; its toggle is absent,
     not disabled, when the feature is off. Unlike the other two it *is*
     period-scoped, and it reads `project.days` rather than `visibleProject`,
@@ -335,16 +409,70 @@ API that does not exist in a browser (left over from the app's origin as a
 Claude artifact). Offline mode is therefore non-functional — add a
 `localStorage` shim if it's needed.
 
+## Theming
+
+Light and dark, chosen in Setup's **App** tab — the one tab there that is not
+about a project.
+
+**The preference is a device preference, kept in `localStorage`.** Not in the
+account, and that is deliberate twice over: the same logbook is reasonably
+light at a desk and dark in bed, and anything that had to be fetched before it
+could be applied would paint the wrong theme and then correct itself in front
+of you. `index.html` carries a small pre-paint script that reads the same key
+(`timelens-theme`) and stamps `data-theme` on `<html>` before the bundle loads.
+Change the key in one place and you must change it in the other.
+
+Colour lives in two layers, split by what each one is actually needed as:
+
+- **Surfaces are Tailwind tokens** — `--color-ink`, `--color-page`,
+  `--color-card` (plus `--color-exam`, the one accent needed as a class because
+  delete buttons want `hover:`). Declared in `App.css` under `@theme` and
+  re-pointed by a `html[data-theme="dark"]` block. Everything written as a
+  class name uses these: `bg-card`, `text-ink/40`, `border-ink/15`.
+- **Accents are a `Palette` object** from `usePalette()` in `src/ui/useTheme.ts`.
+  Use it for anything that reaches the DOM as something other than a class:
+  inline `style`, Recharts props (which are SVG attributes, where `var()` is
+  not a value), and the `${colour}1A` alpha suffixes, which cannot be
+  concatenated onto a custom property.
+
+**One flip inverts nearly the whole interface**, because `ink` is not just the
+text colour — it is the foreground, and a wash is the foreground at low alpha.
+`bg-ink/[0.04]` darkens a white card and lightens a near-black one without
+anything else being said, and the same is true of every hairline and every dim
+label. That is why the palettes are three surface colours rather than a list of
+greys.
+
+Two things needed real thought rather than a straight swap:
+
+- **The accents are lightened for dark, not reused.** `#2F5FBF` on the dark
+  card is a contrast of 2.6 — a smudge. But that means a solid accent fill goes
+  *light*, and white text on it gets worse exactly as the rest of the page gets
+  better, so chips take `c.onFill` (white in light, near-black in dark) instead
+  of a `text-white` class.
+- **The day-state washes are heavier in dark** (`2E` against `17`). A 9% tint
+  reads clearly over `#F4F5F7` and all but vanishes over `#10151A`, because the
+  eye has far less light to compare it against.
+
+Slot, category and counter colours are **left exactly as stored**. They are the
+user's data; silently recolouring someone's categories to suit a background is
+a worse failure than a chip that is a shade dark.
+
+Light mode is unchanged to the byte — the light palette holds the same values
+the constants held before, which is what makes this safe to have done in one
+pass.
+
 ## Conventions
 
 Match the existing file:
 
 - No semicolons, double-quoted strings, Prettier-style wrapping.
 - Function components declared with `function`, small helpers as arrow consts.
-- Reuse the color constants (`PALETTE`, `ACCENT`, `EXAM_COLOR`,
-  `GOAL_MET_COLOR`, `INK`) and the `CARD` / `FIELD_*` class strings instead of
-  new hex literals. Tailwind cannot see class names built from template
-  literals — dynamic colors go in `style`, not `className`.
+- **No new hex literals.** Surfaces come from the Tailwind tokens (`bg-card`,
+  `text-ink/40`), accents from `usePalette()`, and the shared class strings
+  (`CARD`, `FIELD_*`) from `theme.ts`. A hardcoded colour is a colour that will
+  not follow the theme, and it will look fine to whoever wrote it. Tailwind
+  also cannot see class names built from template literals — dynamic colours go
+  in `style`, not `className`.
 - **Never index into `PALETTE` for a fixed role.** `SLEEP_COLOR` used to be
   `PALETTE[3]`, which silently repainted every sleep chart the first time the
   list was reordered. Retiring a colour is safe for saved data — slots and

@@ -6,10 +6,11 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Lock, Mail } from 'lucide-react'
 import type { Client } from '../data/supabase'
-import { ACCENT, CARD, btnBase } from '../lib/theme'
+import { CARD, btnBase } from '../lib/theme'
 import { APP_NAME } from '../lib/defaults'
 import { TimeLensMark } from '../ui/Brand'
 
+import { usePalette } from "../ui/useTheme"
 const errText = (err: unknown): string =>
   err instanceof Error ? err.message : String(err ?? "")
 
@@ -20,6 +21,7 @@ export function AuthScreen({
   client: Client | null
   error?: unknown
 }) {
+  const c = usePalette()
   const [mode, setMode] = useState("signin") // signin | signup
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -144,24 +146,24 @@ export function AuthScreen({
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] text-[#1E2A33] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-page text-ink flex items-center justify-center p-4">
       <div className={`${CARD} w-full max-w-sm p-6`}>
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center">
-            <TimeLensMark size={18} className="text-[#F4F5F7]" />
+          <div className="w-8 h-8 rounded-xl bg-ink flex items-center justify-center">
+            <TimeLensMark size={18} className="text-page" />
           </div>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg">
             {APP_NAME}
           </h1>
         </div>
-        <p className="text-[11px] font-mono uppercase tracking-widest text-[#1E2A33]/45 mb-5">
+        <p className="text-[11px] font-mono uppercase tracking-widest text-ink/45 mb-5">
           {mode === "signin"
             ? "Sign in to your logbook"
             : "Create your logbook"}
         </p>
 
         {error ? (
-          <p className="text-[11px] font-mono text-[#C1595B] mb-3">
+          <p className="text-[11px] font-mono text-exam mb-3">
             Cloud sync failed to load ({errText(error)}). Check your Supabase
             setup.
           </p>
@@ -169,7 +171,7 @@ export function AuthScreen({
 
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
               <Mail size={11} /> Email
             </span>
             <input
@@ -177,11 +179,11 @@ export function AuthScreen({
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+              className="w-full border border-ink/20 rounded-xl px-3 py-2 text-sm font-mono"
             />
           </label>
           <label className="block">
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
               <Lock size={11} /> Password
             </span>
             <input
@@ -190,19 +192,19 @@ export function AuthScreen({
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+              className="w-full border border-ink/20 rounded-xl px-3 py-2 text-sm font-mono"
             />
           </label>
 
           {msg && (
-            <p className="text-[11px] font-mono text-[#1E2A33]/70">{msg}</p>
+            <p className="text-[11px] font-mono text-ink/70">{msg}</p>
           )}
 
           <button
             type="submit"
             disabled={busy}
-            style={{ backgroundColor: ACCENT }}
-            className={`${btnBase} w-full text-white text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
+            style={{ backgroundColor: c.accent, color: c.onFill }}
+            className={`${btnBase} w-full text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
           >
             {busy
               ? "Please wait…"
@@ -217,7 +219,7 @@ export function AuthScreen({
             setMode(mode === "signin" ? "signup" : "signin")
             setMsg(null)
           }}
-          className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+          className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink`}
         >
           {mode === "signin"
             ? "Need an account? Sign up"
@@ -227,7 +229,7 @@ export function AuthScreen({
         <button
           onClick={resendConfirmation}
           disabled={resendBusy}
-          className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] disabled:opacity-50`}
+          className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink disabled:opacity-50`}
         >
           {resendBusy ? "Sending…" : "Didn't get the email? Resend it"}
         </button>
@@ -236,7 +238,7 @@ export function AuthScreen({
           <button
             onClick={sendReset}
             disabled={resetBusy}
-            className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33] disabled:opacity-50`}
+            className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink disabled:opacity-50`}
           >
             {resetBusy ? "Sending…" : "Forgot your password? Reset it"}
           </button>
@@ -263,6 +265,7 @@ export function SetPasswordScreen({
   /** Clears the recovery flag so the app falls through to the logbook. */
   onDone: () => void
 }) {
+  const c = usePalette()
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [busy, setBusy] = useState(false)
@@ -290,23 +293,23 @@ export function SetPasswordScreen({
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] text-[#1E2A33] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-page text-ink flex items-center justify-center p-4">
       <div className={`${CARD} w-full max-w-sm p-6`}>
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center">
-            <TimeLensMark size={18} className="text-[#F4F5F7]" />
+          <div className="w-8 h-8 rounded-xl bg-ink flex items-center justify-center">
+            <TimeLensMark size={18} className="text-page" />
           </div>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg">
             {APP_NAME}
           </h1>
         </div>
-        <p className="text-[11px] font-mono uppercase tracking-widest text-[#1E2A33]/45 mb-5">
+        <p className="text-[11px] font-mono uppercase tracking-widest text-ink/45 mb-5">
           Choose a new password
         </p>
 
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
               <Lock size={11} /> New password
             </span>
             <input
@@ -316,11 +319,11 @@ export function SetPasswordScreen({
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+              className="w-full border border-ink/20 rounded-xl px-3 py-2 text-sm font-mono"
             />
           </label>
           <label className="block">
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
               <Lock size={11} /> Repeat it
             </span>
             <input
@@ -329,19 +332,19 @@ export function SetPasswordScreen({
               minLength={6}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm font-mono"
+              className="w-full border border-ink/20 rounded-xl px-3 py-2 text-sm font-mono"
             />
           </label>
 
           {msg && (
-            <p className="text-[11px] font-mono text-[#C1595B]">{msg}</p>
+            <p className="text-[11px] font-mono text-exam">{msg}</p>
           )}
 
           <button
             type="submit"
             disabled={busy}
-            style={{ backgroundColor: ACCENT }}
-            className={`${btnBase} w-full text-white text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
+            style={{ backgroundColor: c.accent, color: c.onFill }}
+            className={`${btnBase} w-full text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
           >
             {busy ? "Saving…" : "Save password"}
           </button>
@@ -351,7 +354,7 @@ export function SetPasswordScreen({
             signed you in, so skipping just means keeping the old password. */}
         <button
           onClick={onDone}
-          className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+          className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink`}
         >
           Skip — keep my current password
         </button>

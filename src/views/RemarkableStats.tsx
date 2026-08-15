@@ -3,9 +3,9 @@ import type { LucideIcon } from "lucide-react"
 import type { DayKey } from "../types/model"
 import { fmtDateLong } from "../lib/date"
 import { fmtHoursChart } from "../lib/time"
-import { CARD, EXAM_COLOR, GOAL_MET_COLOR } from "../lib/theme"
-import { StatsSection } from "./StatsSection"
+import { CARD } from "../lib/theme"
 
+import { usePalette } from "../ui/useTheme"
 export interface Extreme {
   key: DayKey
   hours: number
@@ -31,6 +31,7 @@ const fmtMonth = (k: string) => {
 }
 
 export function RemarkableStats({ remarkable }: { remarkable: Remarkable }) {
+  const c = usePalette()
   const items: {
     label: string
     data?: Extreme | null
@@ -83,48 +84,40 @@ export function RemarkableStats({ remarkable }: { remarkable: Remarkable }) {
   ]
 
   return (
-    <StatsSection
-      title="Remarkable"
-      subtitle={<>Best &amp; worst, within the selected period, in hours</>}
-    >
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {items.map((it) => {
-          const Icon = it.icon
-          const color = it.tone === "good" ? GOAL_MET_COLOR : EXAM_COLOR
-          return (
-            <div key={it.label} className={`${CARD} p-4`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
-                  {it.label}
-                </span>
-                <span
-                  className="flex items-center justify-center w-6 h-6 rounded-full"
-                  style={{ backgroundColor: `${color}1A` }}
-                >
-                  <Icon size={12} style={{ color }} />
-                </span>
-              </div>
-              {it.data ? (
-                <>
-                  <span
-                    className="font-mono text-xl font-bold"
-                    style={{ color }}
-                  >
-                    {fmtHoursChart(it.data.hours)}
-                  </span>
-                  <div className="text-[10px] font-mono text-[#1E2A33]/40 mt-1">
-                    {it.fmt(it.data.key)}
-                  </div>
-                </>
-              ) : (
-                <span className="font-mono text-xl font-bold text-[#1E2A33]/25">
-                  —
-                </span>
-              )}
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {items.map((it) => {
+        const Icon = it.icon
+        const color = it.tone === "good" ? c.goalMet : c.exam
+        return (
+          <div key={it.label} className={`${CARD} p-4`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[9px] font-mono uppercase tracking-widest text-ink/50">
+                {it.label}
+              </span>
+              <span
+                className="flex items-center justify-center w-6 h-6 rounded-full"
+                style={{ backgroundColor: `${color}1A` }}
+              >
+                <Icon size={12} style={{ color }} />
+              </span>
             </div>
-          )
-        })}
-      </div>
-    </StatsSection>
+            {it.data ? (
+              <>
+                <span className="font-mono text-xl font-bold" style={{ color }}>
+                  {fmtHoursChart(it.data.hours)}
+                </span>
+                <div className="text-[10px] font-mono text-ink/40 mt-1">
+                  {it.fmt(it.data.key)}
+                </div>
+              </>
+            ) : (
+              <span className="font-mono text-xl font-bold text-ink/25">
+                —
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }

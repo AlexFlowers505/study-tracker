@@ -41,46 +41,121 @@ export const PALETTE = [
   "#5E7A86", // slate
 ]
 
-/**
- * Spelled out rather than indexed into `PALETTE`. It used to be `PALETTE[3]`,
- * which quietly made every sleep chart a different colour the moment the list
- * was reordered.
- */
-export const SLEEP_COLOR = "#8B6FB3"
+/* ---------------------------------------------------------------
+   The two palettes.
 
-export const ACCENT = "#2F5FBF" // bluish active-state accent
-export const EXAM_COLOR = "#C1595B"
-export const GOAL_MET_COLOR = "#2F9E8F"
-export const INK = "#1E2A33" // the app's near-black, used for text and washes
-export const PAGE_TINT = "#F4F5F7"
-// Shared by the count filter's panel and the dot on its toggle, so the badge in
-// the period bar reads as belonging to the panel it opens.
-export const FILTER_TINT = "#6B7FD7"
-/**
- * A day saved by a streak freeze. Its own colour on purpose: the goal was
- * missed, so it must not read as green — but a freeze was spent to stop it
- * being a failure, so it must not read as red either.
- */
-export const FREEZE_COLOR = "#4C8FBD"
-/**
- * Overall stats and streaks share this amber, and that is deliberate: both
- * are project-wide while everything else on the page is period-scoped, so
- * reading as a pair is the point.
- */
-export const PROJECT_TINT = "#C98A2E"
+   Surfaces (`ink`, `page`, `card`) are declared in `App.css` as Tailwind
+   tokens as well, because almost every use of them is a class name — the
+   copies here are for the handful of places that need a real colour string in
+   JavaScript: Recharts takes its colours as SVG attributes, where `var()` is
+   not a value, and `cellSurface` needs an opaque base to paint a wash over.
+   **Keep the two in step**; the CSS block is the one that decides what the
+   page looks like before the bundle has run.
 
-export const CARD = "bg-white rounded-2xl p-4"
+   The accents are only here. They are lightened for dark rather than reused,
+   because a colour chosen to carry against white does not carry against
+   near-black: `#2F5FBF` on the dark card is a contrast of 2.6, which is a
+   smudge rather than an accent.
+--------------------------------------------------------------- */
+
+export type ThemeChoice = "light" | "dark" | "system"
+/** What `system` resolves to — the only thing anything downstream cares about. */
+export type ThemeMode = "light" | "dark"
+
+export interface Palette {
+  /** Which of the two this is. Carried on the palette so anything that needs
+   *  to know only has to take the one object. */
+  mode: ThemeMode
+  /** The foreground, and — at an alpha — every wash, hairline and dim label. */
+  ink: string
+  page: string
+  card: string
+  /**
+   * Text on top of a solid accent fill: the "Today" pill, the streak count,
+   * the active segment. It is not simply white, because the accents lighten in
+   * dark mode and white on a light fill is the one pairing that gets *worse*
+   * when the rest of the page gets better.
+   */
+  onFill: string
+  accent: string
+  exam: string
+  goalMet: string
+  freeze: string
+  sleep: string
+  project: string
+  filter: string
+  changelog: string
+}
+
+export const PALETTES: Record<ThemeMode, Palette> = {
+  light: {
+    mode: "light",
+    ink: "#1E2A33",
+    page: "#F4F5F7",
+    card: "#FFFFFF",
+    onFill: "#FFFFFF",
+    accent: "#2F5FBF",
+    exam: "#C1595B",
+    goalMet: "#2F9E8F",
+    freeze: "#4C8FBD",
+    sleep: "#8B6FB3",
+    project: "#D2740A",
+    filter: "#6B7FD7",
+    changelog: "#5C8A3A",
+  },
+  dark: {
+    mode: "dark",
+    ink: "#E4E9EF",
+    page: "#10151A",
+    card: "#1A2129",
+    onFill: "#10151A",
+    accent: "#6D9BEA",
+    exam: "#E58184",
+    goalMet: "#3FB5A4",
+    freeze: "#66A9D7",
+    sleep: "#AE8FD9",
+    project: "#E9932A",
+    filter: "#94A5EE",
+    changelog: "#8FC163",
+  },
+}
+
+/*
+   What each accent means, kept from when they were loose constants:
+
+   - `accent`   — the active state, and today.
+   - `exam`     — a missed goal. Red.
+   - `goalMet`  — a met goal. Green.
+   - `freeze`   — a day saved by a streak freeze. Its own colour on purpose:
+                  the goal was missed, so it must not read as green, but a
+                  freeze was spent to stop it being a failure, so it must not
+                  read as red either.
+   - `sleep`    — spelled out rather than indexed into `PALETTE`. It used to be
+                  `PALETTE[3]`, which quietly repainted every sleep chart the
+                  moment that list was reordered.
+   - `project`  — streaks, the one project-wide thing on a period-scoped page.
+                  A marigold, not the ochre it started as: a desaturated yellow
+                  at that lightness reads olive, which is the wrong feeling for
+                  the number you are trying not to lose.
+   - `filter`   — shared by the count filter's panel and the dot on its toggle,
+                  so the badge reads as belonging to the panel it opens.
+*/
+
+export const CARD = "bg-card rounded-2xl p-4"
 
 /**
- * An opaque white base with a translucent wash painted on top, so a tinted
- * surface looks the same whatever sits behind it. Setting the wash as the
+ * An opaque base with a translucent wash painted on top, so a tinted surface
+ * looks the same whatever sits behind it. Setting the wash as the
  * background-color alone lets the parent bleed through — which is how the
  * month grid ended up showing one colour on desktop and another on a phone,
  * where the cells sit on the grid's seam colour.
+ *
+ * `base` has to be passed rather than defaulted to white: which colour counts
+ * as "opaque nothing" is exactly the thing that changes between themes.
  */
 export const cellSurface = (
   wash: string | null,
-  base = "#FFFFFF",
+  base: string,
 ): CSSProperties => ({
   backgroundColor: base,
   ...(wash ? { backgroundImage: `linear-gradient(${wash}, ${wash})` } : {}),
@@ -92,18 +167,26 @@ export const cellSurface = (
  * translucent wash — white in the grid, the page tint behind the cards — which
  * rendered as two different colours for the same state.
  *
- * A day with no verdict stays white, which is what separates it from the page;
- * the tinted states composite over the page tint, the more contrasty pairing.
+ * A day with no verdict takes the plain card colour, which is what separates it
+ * from the page; the tinted states composite over the page tint, the more
+ * contrasty pairing.
+ *
+ * The washes are heavier in dark. A 9% tint reads clearly over `#F4F5F7` and
+ * almost vanishes over `#10151A`, because the eye is comparing it against far
+ * less light to begin with.
  */
 export const dayStateSurface = (
+  c: Palette,
   goalOutcome: GoalOutcome,
   ignored?: boolean,
 ): CSSProperties => {
-  if (ignored) return cellSurface(`${INK}0A`, PAGE_TINT)
-  if (goalOutcome === "met") return cellSurface(`${GOAL_MET_COLOR}17`, PAGE_TINT)
-  if (goalOutcome === "frozen") return cellSurface(`${FREEZE_COLOR}17`, PAGE_TINT)
-  if (goalOutcome === "missed") return cellSurface(`${EXAM_COLOR}17`, PAGE_TINT)
-  return cellSurface(null)
+  const dark = c.mode === "dark"
+  const a = dark ? "2E" : "17"
+  if (ignored) return cellSurface(`${c.ink}${dark ? "14" : "0A"}`, c.page)
+  if (goalOutcome === "met") return cellSurface(`${c.goalMet}${a}`, c.page)
+  if (goalOutcome === "frozen") return cellSurface(`${c.freeze}${a}`, c.page)
+  if (goalOutcome === "missed") return cellSurface(`${c.exam}${a}`, c.page)
+  return cellSurface(null, c.card)
 }
 
 /**
@@ -113,10 +196,10 @@ export const dayStateSurface = (
  * (`FIELD_BOXED`) — they're small enough that fill alone reads as a label.
  */
 const FIELD_BASE =
-  "font-mono placeholder:text-[#1E2A33]/30 focus:outline-none focus:ring-2 focus:ring-[#1E2A33]/10"
-export const FIELD_ON_WHITE = `${FIELD_BASE} w-full rounded-xl bg-[#F4F5F7] px-2.5 py-2 text-xs`
-export const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-[11px]`
-export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-white border border-[#1E2A33]/15 px-2 py-1.5 text-xs`
+  "font-mono placeholder:text-ink/30 focus:outline-none focus:ring-2 focus:ring-ink/10"
+export const FIELD_ON_WHITE = `${FIELD_BASE} w-full rounded-xl bg-page px-2.5 py-2 text-xs`
+export const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-card px-2.5 py-2 text-[11px]`
+export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-card border border-ink/15 px-2 py-1.5 text-xs`
 
 /**
  * The exception to the rule above, for editing something in the middle of the
@@ -131,9 +214,9 @@ export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-white border border-[#1E
  */
 export const FIELD_BARE =
   "font-mono bg-transparent border-0 p-0 appearance-none cursor-pointer " +
-  "underline decoration-dotted decoration-[#1E2A33]/30 underline-offset-[3px] " +
-  "hover:decoration-[#1E2A33]/60 focus:outline-none focus:decoration-solid " +
-  "placeholder:text-[#1E2A33]/30"
+  "underline decoration-dotted decoration-ink/30 underline-offset-[3px] " +
+  "hover:decoration-ink/60 focus:outline-none focus:decoration-solid " +
+  "placeholder:text-ink/30"
 
 /**
  * Type inside a day card, in two sizes.
@@ -153,3 +236,16 @@ export const cardSmall = (roomy?: boolean) =>
   roomy ? "text-[13px]" : "text-[13px] md:text-[10px]"
 
 export const btnBase = "transition-colors duration-150 ease-out"
+
+/**
+ * Recharts draws its tooltip as an inline-styled box, so it cannot be reached
+ * by a class and would otherwise stay white with black text on a dark page.
+ */
+export const chartTooltip = (c: Palette): CSSProperties => ({
+  fontSize: 11,
+  fontFamily: "monospace",
+  backgroundColor: c.card,
+  border: `1px solid ${c.ink}22`,
+  borderRadius: 10,
+  color: c.ink,
+})

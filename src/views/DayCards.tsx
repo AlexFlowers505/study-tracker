@@ -28,15 +28,7 @@ import { fromKey, pad, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import { dayBreakdown, goalForDate } from "../lib/stats"
 import { dayState } from "../lib/freezes"
-import {
-  ACCENT,
-  FREEZE_COLOR,
-  GOAL_MET_COLOR,
-  SLEEP_COLOR,
-  btnBase,
-  cardTiny,
-  dayStateSurface,
-} from "../lib/theme"
+import { btnBase, cardTiny, dayStateSurface } from "../lib/theme"
 import { setSlotCount } from "../lib/counters"
 import {
   moveEntryToSlot,
@@ -53,6 +45,7 @@ import { DayNoteRow } from "./DayNoteRow"
 import { EntriesReadout } from "./EntriesReadout"
 import type { EntrySnapshot, ReadoutEditing } from "./EntriesReadout"
 
+import { usePalette } from "../ui/useTheme"
 function FullDayCard({
   date,
   entry,
@@ -62,6 +55,7 @@ function FullDayCard({
   counterUnits,
   goal,
   isToday,
+  isFuture,
   isBeforeStart,
   ignored,
   todayKey,
@@ -98,6 +92,8 @@ function FullDayCard({
   counterUnits: CounterUnit[]
   goal: number
   isToday: boolean
+  /** Not happened yet: no way in, and the goal is a plan rather than a debt. */
+  isFuture: boolean
   isBeforeStart: boolean
   ignored: boolean
   todayKey: DayKey
@@ -132,6 +128,7 @@ function FullDayCard({
   onCloseNote?: () => void
   onUpdateDay?: (patch: Partial<Day>) => void
 }) {
+  const c = usePalette()
   // Above the early return, as every hook must be. Purely local: which card's
   // note is folded is a view preference, not something another card or the
   // shell has any reason to know.
@@ -140,15 +137,15 @@ function FullDayCard({
   if (isBeforeStart) {
     return (
       <div
-        className={`rounded-2xl bg-[#1E2A33]/[0.04] p-3 flex flex-col gap-1 ${big ? "w-full" : ""}`}
+        className={`rounded-2xl bg-ink/[0.04] p-3 flex flex-col gap-1 ${big ? "w-full" : ""}`}
       >
-        <div className="font-mono text-sm font-bold text-[#1E2A33]/25">
+        <div className="font-mono text-sm font-bold text-ink/25">
           {date.toLocaleDateString(undefined, {
             weekday: "short",
             day: "numeric",
           })}
         </div>
-        <div className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/20">
+        <div className="text-[9px] font-mono uppercase tracking-widest text-ink/20">
           Before project start
         </div>
       </div>
@@ -160,12 +157,14 @@ function FullDayCard({
   // One function decides what a day is; this file only paints it.
   const state = dayState(entry, date, settings, slots, todayKey)
   const goalOutcome = ignored || state === "pending" ? null : state
-  const surface = dayStateSurface(goalOutcome, ignored)
+  const surface = dayStateSurface(c, goalOutcome, ignored)
   const hasSleep =
     settings?.sleepEnabled === true && (entry?.sleep || []).length > 0
-  // Compared as the formatted string, not the raw minutes: what matters is
-  // whether the surplus survives rounding to a tenth of an hour.
-  const surplus = fmtHours(Math.max(0, total - goal))
+  // Straight minute comparison. It used to compare the *formatted* strings,
+  // because a surplus under three minutes rounded away to "0h" and printing
+  // "(+0h)" said something about rounding rather than about the day. Hours and
+  // minutes round to the minute, so there is nothing left to hide behind.
+  const surplus = total - goal
 
   // Editing needs somewhere to write and somewhere to remember what is open;
   // without both, the list stays read-only and clicking a line does nothing
@@ -241,19 +240,27 @@ function FullDayCard({
       style={{
         ...surface,
         ...(isToday
-          ? { outline: `2px solid ${ACCENT}`, outlineOffset: "-2px" }
+          ? { outline: `2px solid ${c.accent}`, outlineOffset: "-2px" }
           : {}),
       }}
     >
       {/* The title and every button share one line, with the month underneath.
           They used to be centred against the title-plus-month block, which
-          left them floating half a line below the heading they belong to. */}
+          left them floating half a line below the heading they belong to.
+
+          One line **while there is room for one**. The action group has grown
+          — badges, sleep, freeze, counter, add — and `justify-between` alone
+          let it march straight over the date, because the date's group was the
+          only shrinkable one and its text simply overflowed the box it had
+          been squeezed into. So the row wraps instead: `ml-auto` keeps the
+          actions hard right whether they sit beside the date or on a line of
+          their own, and the date itself never shrinks. */}
       <div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <div
-              className={`font-mono font-bold ${big ? "text-2xl" : "text-sm"}`}
-              style={isToday ? { color: ACCENT } : undefined}
+              className={`font-mono font-bold shrink-0 ${big ? "text-2xl" : "text-sm"}`}
+              style={isToday ? { color: c.accent } : undefined}
             >
               {date.toLocaleDateString(
                 undefined,
@@ -276,20 +283,23 @@ function FullDayCard({
                 }}
                 className={`${btnBase} p-1 rounded-lg ${
                   noteFolded
-                    ? "text-[#1E2A33]/25 hover:text-[#1E2A33]/60"
-                    : "text-[#1E2A33]/55 hover:text-[#1E2A33]"
-                } hover:bg-[#1E2A33]/10`}
+                    ? "text-ink/25 hover:text-ink/60"
+                    : "text-ink/55 hover:text-ink"
+                } hover:bg-ink/10`}
               >
                 <MessageSquare size={13} />
               </button>
             </Tip>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        {/* `flex-wrap` here too, so a day carrying several counter badges
+            spills onto another line inside its own group rather than pushing
+            the group wider than the card. */}
+        <div className="flex items-center flex-wrap justify-end gap-1.5 ml-auto min-w-0">
           {isToday && (
             <span
-              className="text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
-              style={{ backgroundColor: ACCENT }}
+              className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: c.accent, color: c.onFill }}
             >
               Today
             </span>
@@ -297,8 +307,8 @@ function FullDayCard({
           {state === "frozen" && (
             <Tip text="Streak freeze used — the goal was missed, but the streak held">
               <span
-                className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-white px-1.5 py-0.5 rounded-full"
-                style={{ backgroundColor: FREEZE_COLOR }}
+                className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
+                style={{ backgroundColor: c.freeze, color: c.onFill }}
               >
                 <Snowflake size={10} /> Frozen
               </span>
@@ -306,7 +316,7 @@ function FullDayCard({
           )}
           {ignored && (
             <Tip text="Ignored in statistics">
-              <span className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-[#1E2A33]/60 bg-[#1E2A33]/10 px-1.5 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-ink/60 bg-ink/10 px-1.5 py-0.5 rounded-full">
                 <EyeOff size={10} />
               </span>
             </Tip>
@@ -331,8 +341,8 @@ function FullDayCard({
                   ev.stopPropagation()
                   onQuickAddSleep()
                 }}
-                className={`${btnBase} p-1 rounded-lg hover:bg-[#1E2A33]/10`}
-                style={{ color: SLEEP_COLOR }}
+                className={`${btnBase} p-1 rounded-lg hover:bg-ink/10`}
+                style={{ color: c.sleep }}
               >
                 <Moon size={14} />
               </button>
@@ -345,8 +355,8 @@ function FullDayCard({
                   ev.stopPropagation()
                   onFreeze()
                 }}
-                className={`${btnBase} p-1 rounded-lg hover:bg-[#1E2A33]/10`}
-                style={{ color: FREEZE_COLOR }}
+                className={`${btnBase} p-1 rounded-lg hover:bg-ink/10`}
+                style={{ color: c.freeze }}
               >
                 <Snowflake size={14} />
               </button>
@@ -359,7 +369,7 @@ function FullDayCard({
                   ev.stopPropagation()
                   onQuickAddCounter()
                 }}
-                className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                className={`${btnBase} p-1 rounded-lg text-ink/45 hover:text-ink hover:bg-ink/10`}
               >
                 <Hash size={14} />
               </button>
@@ -375,8 +385,8 @@ function FullDayCard({
                 // Full-strength accent, not muted ink. It sat at 35% opacity
                 // next to a fully saturated sleep icon, which made the more
                 // important of the two the harder one to find.
-                className={`${btnBase} p-1 rounded-lg hover:bg-[#1E2A33]/10`}
-                style={{ color: ACCENT }}
+                className={`${btnBase} p-1 rounded-lg hover:bg-ink/10`}
+                style={{ color: c.accent }}
               >
                 <Plus size={15} />
               </button>
@@ -387,14 +397,14 @@ function FullDayCard({
               the cheapest way to say those are different kinds of thing
               without moving it out of the corner people reach for. */}
           {onClose && (
-            <span className="flex items-center pl-2 ml-1 border-l border-[#1E2A33]/15">
+            <span className="flex items-center pl-2 ml-1 border-l border-ink/15">
               <Tip text="Close">
                 <button
                   onClick={(ev) => {
                     ev.stopPropagation()
                     onClose()
                   }}
-                  className={`${btnBase} p-1 rounded-lg text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+                  className={`${btnBase} p-1 rounded-lg text-ink/45 hover:text-ink hover:bg-ink/10`}
                 >
                   <X size={16} />
                 </button>
@@ -404,7 +414,7 @@ function FullDayCard({
           </div>
         </div>
         <div
-          className={`${cardTiny(big)} font-mono uppercase tracking-widest text-[#1E2A33]/40`}
+          className={`${cardTiny(big)} font-mono uppercase tracking-widest text-ink/40`}
         >
           {date.toLocaleDateString(undefined, {
             month: "short",
@@ -416,13 +426,13 @@ function FullDayCard({
       <div className="flex items-baseline gap-1.5">
         <span
           className={`font-mono font-extrabold ${big ? "text-3xl" : "text-lg"}`}
-          style={metGoal ? { color: GOAL_MET_COLOR } : undefined}
+          style={metGoal ? { color: c.goalMet } : undefined}
         >
           {total > 0 ? fmtHours(total) : "—"}
         </span>
         {goal > 0 && (
           <span
-            className={`font-mono text-[#1E2A33]/35 ${big ? "text-xs" : "text-[10px]"}`}
+            className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
           >
             goal {fmtHours(goal)}
             {/* How far there is left to go, or how far past it you got. The
@@ -432,10 +442,18 @@ function FullDayCard({
                 Landing exactly on the goal says neither: "(+0h)" is a fact
                 about rounding, not about the day, and the total beside it has
                 already gone green. */}
-            {total < goal ? (
+            {/* "3h left" on a day that has not started reads as a debt you are
+                already behind on. Nothing is owed yet — the number is a plan,
+                and saying so is the difference between the two. */}
+            {isFuture ? (
+              <> (planned)</>
+            ) : total < goal ? (
               <> ({fmtHours(goal - total)} left)</>
-            ) : surplus !== "0h" ? (
-              <span style={{ color: GOAL_MET_COLOR }}> (+{surplus})</span>
+            ) : surplus > 0 ? (
+              <span style={{ color: c.goalMet }}>
+                {" "}
+                (+{fmtHours(surplus)})
+              </span>
             ) : null}
           </span>
         )}
@@ -465,9 +483,12 @@ function FullDayCard({
           with neither, or the sleep sitting on it would be invisible. */}
       {total === 0 && !hasSleep && (
         <p
-          className={`font-mono text-[#1E2A33]/35 ${big ? "text-xs" : "text-[10px]"}`}
+          className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
         >
-          No study logged — tap to add
+          {/* "Tap to add" only where tapping adds something. A day that has
+              not happened has no way in, so the invitation would be a dead
+              end. */}
+          No study logged{onEdit || onQuickAdd ? " — tap to add" : ""}
         </p>
       )}
       <EntriesReadout
@@ -505,12 +526,12 @@ function FullDayCard({
       {/* Read-only fallback for a card with no write path — the note still has
           to be visible there, it just cannot be opened. */}
       {!onUpdateDay && entry?.comment && (
-        <div className="flex items-start gap-1.5 rounded-xl bg-[#1E2A33]/[0.04] p-2.5">
+        <div className="flex items-start gap-1.5 rounded-xl bg-ink/[0.04] p-2.5">
           <MessageSquare
             size={11}
-            className="text-[#1E2A33]/30 shrink-0 mt-0.5"
+            className="text-ink/30 shrink-0 mt-0.5"
           />
-          <p className="text-[10px] font-mono text-[#1E2A33]/60 whitespace-pre-wrap">
+          <p className="text-[10px] font-mono text-ink/60 whitespace-pre-wrap">
             {entry.comment}
           </p>
         </div>
@@ -609,6 +630,15 @@ export function FullCardGrid({
         const wk = toKey(startOfWeek(date))
         const mk = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
         const ignored = !!weekIgnore[wk] || !!monthIgnore[mk] || !!entry?.ignore
+        // There is nothing to record about a day that has not happened yet, so
+        // every way in is withheld rather than disabled — the card, the three
+        // quick-adds, the freeze and editing in place. A "+" that refuses when
+        // pressed and a "+" that works are both wrong here; an absent one says
+        // "not yet" without needing an error message. `onEdit` going means the
+        // card is inert too, since the dialog behind it is where the day-level
+        // fields live.
+        const isFuture = key > todayKey
+        const editDay = isFuture ? undefined : onUpdateDay
         return (
           <FullDayCard
             key={key}
@@ -620,21 +650,32 @@ export function FullCardGrid({
             counterUnits={counterUnits}
             goal={goalForDate(settings, date)}
             isToday={toKey(date) === todayKey}
+            isFuture={isFuture}
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             todayKey={todayKey}
-            canFreeze={canFreezeDay ? canFreezeDay(key) : false}
-            onFreeze={onFreezeDay ? () => onFreezeDay(key) : undefined}
-            onEdit={onEditDay ? () => onEditDay(key) : undefined}
+            canFreeze={!isFuture && canFreezeDay ? canFreezeDay(key) : false}
+            onFreeze={
+              !isFuture && onFreezeDay ? () => onFreezeDay(key) : undefined
+            }
+            onEdit={
+              !isFuture && onEditDay ? () => onEditDay(key) : undefined
+            }
             longDate={longDate}
             titleActions={titleActions}
             onClose={onClose}
-            onQuickAdd={onQuickAddDay ? () => onQuickAddDay(key) : undefined}
+            onQuickAdd={
+              !isFuture && onQuickAddDay ? () => onQuickAddDay(key) : undefined
+            }
             onQuickAddSleep={
-              onQuickAddSleepDay ? () => onQuickAddSleepDay(key) : undefined
+              !isFuture && onQuickAddSleepDay
+                ? () => onQuickAddSleepDay(key)
+                : undefined
             }
             onQuickAddCounter={
-              onQuickAddCounterDay ? () => onQuickAddCounterDay(key) : undefined
+              !isFuture && onQuickAddCounterDay
+                ? () => onQuickAddCounterDay(key)
+                : undefined
             }
             big={big}
             commentsOpen={commentsOpen}
@@ -645,7 +686,7 @@ export function FullCardGrid({
               editing?.dateKey === key ? editing.snapshot : null
             }
             onOpenEntry={
-              onUpdateDay
+              editDay
                 ? (entryId, snapshot) => {
                     setEditingNote(null)
                     setEditingCounter(null)
@@ -653,14 +694,14 @@ export function FullCardGrid({
                   }
                 : undefined
             }
-            onCloseEntry={onUpdateDay ? () => setEditing(null) : undefined}
+            onCloseEntry={editDay ? () => setEditing(null) : undefined}
             counterEditing={
               editingCounter?.dateKey === key
                 ? `${editingCounter.slotId}:${editingCounter.unitId}`
                 : null
             }
             onOpenCounter={
-              onUpdateDay
+              editDay
                 ? (slotId, unitId, original) => {
                     setEditing(null)
                     setEditingNote(null)
@@ -669,10 +710,10 @@ export function FullCardGrid({
                 : undefined
             }
             onCancelCounter={
-              onUpdateDay
+              editDay
                 ? () => {
                     if (editingCounter)
-                      onUpdateDay(key, {
+                      editDay(key, {
                         counters: setSlotCount(
                           days[key]?.counters,
                           editingCounter.unitId,
@@ -684,10 +725,10 @@ export function FullCardGrid({
                   }
                 : undefined
             }
-            onCloseCounter={onUpdateDay ? () => setEditingCounter(null) : undefined}
+            onCloseCounter={editDay ? () => setEditingCounter(null) : undefined}
             noteEditing={editingNote?.dateKey === key}
             onOpenNote={
-              onUpdateDay
+              editDay
                 ? () => {
                     setEditing(null)
                     setEditingCounter(null)
@@ -699,18 +740,18 @@ export function FullCardGrid({
                 : undefined
             }
             onCancelNote={
-              onUpdateDay
+              editDay
                 ? () => {
                     // Write-through again, so cancelling is putting the old
                     // text back rather than dropping an unsaved buffer.
-                    onUpdateDay(key, { comment: editingNote?.original ?? "" })
+                    editDay(key, { comment: editingNote?.original ?? "" })
                     setEditingNote(null)
                   }
                 : undefined
             }
-            onCloseNote={onUpdateDay ? () => setEditingNote(null) : undefined}
+            onCloseNote={editDay ? () => setEditingNote(null) : undefined}
             onUpdateDay={
-              onUpdateDay ? (patch) => onUpdateDay(key, patch) : undefined
+              editDay ? (patch) => editDay(key, patch) : undefined
             }
           />
         )

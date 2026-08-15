@@ -19,7 +19,6 @@ import {
 import { fmtHours } from '../lib/time'
 import { makeIsIgnored, rangeStats } from '../lib/stats'
 import { WIDE_PERIODS, rangeLabel } from '../lib/period'
-import { EXAM_COLOR, GOAL_MET_COLOR } from '../lib/theme'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import { MenuToggle } from '../ui/toggles'
 import { RenderIcon } from '../ui/icons'
@@ -29,6 +28,7 @@ import { Heatmap } from './Heatmap'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
 
+import { usePalette } from "../ui/useTheme"
 export function LogView({
   data,
   period,
@@ -69,6 +69,7 @@ export function LogView({
    *  project — sleep has no slots or categories for the filter to act on. */
   sleepSection?: ReactNode
 }) {
+  const c = usePalette()
   const granularity = period
   // Card-wide default for entry comments; each entry can still be folded on
   // its own button, and flipping this resets those.
@@ -139,7 +140,7 @@ export function LogView({
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 min-w-0">
           {periodIgnored && (
             <Tip text={`This ${granularity} is excluded from every statistic`}>
-              <EyeOff size={14} className="text-[#1E2A33]/45" />
+              <EyeOff size={14} className="text-ink/45" />
             </Tip>
           )}
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
@@ -157,13 +158,13 @@ export function LogView({
                 className="w-2.5 h-2.5 rounded-full inline-block"
                 style={{
                   backgroundColor:
-                    periodGoalOutcome === "met" ? GOAL_MET_COLOR : EXAM_COLOR,
+                    periodGoalOutcome === "met" ? c.goalMet : c.exam,
                 }}
               />
             </Tip>
           )}
           {headerStats && (
-            <span className="text-xs font-mono text-[#1E2A33]/50">
+            <span className="text-xs font-mono text-ink/50">
               {headerStats.total > 0 ? fmtHours(headerStats.total) : "0h"}{" "}
               studied
               {headerStats.goal > 0 && (
@@ -294,7 +295,7 @@ export function LogView({
         />
       )}
 
-      <div className="mt-4 flex flex-wrap gap-3 text-[10px] font-mono uppercase tracking-wide text-[#1E2A33]/60">
+      <div className="mt-4 flex flex-wrap gap-3 text-[10px] font-mono uppercase tracking-wide text-ink/60">
         {slots.map((s) => (
           <span key={s.id} className="flex items-center gap-1.5">
             <RenderIcon

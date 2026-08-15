@@ -12,21 +12,23 @@
 --------------------------------------------------------------- */
 
 import { Database } from "lucide-react"
-import { EXAM_COLOR, FREEZE_COLOR, btnBase } from "../lib/theme"
+import { btnBase } from "../lib/theme"
 import { PROJECT_REF } from "../data/supabase"
 import { Tip } from "../ui/Tip"
 
+import { usePalette } from "../ui/useTheme"
 const onLocalhost = () =>
   typeof window !== "undefined" &&
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
 
 export function EnvBadge() {
+  const c = usePalette()
   if (!onLocalhost()) return null
 
   const isProd = import.meta.env.PROD
   // Red for production, and not because production is broken: on localhost it
   // is the state worth a second look before you start clicking around.
-  const color = isProd ? EXAM_COLOR : FREEZE_COLOR
+  const color = isProd ? c.exam : c.freeze
 
   return (
     <Tip

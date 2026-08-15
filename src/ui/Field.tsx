@@ -10,7 +10,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+      <span className="block text-[10px] uppercase tracking-widest text-ink/50 mb-1">
         {label}
       </span>
       {children}

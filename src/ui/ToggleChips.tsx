@@ -1,6 +1,7 @@
 import { Fragment } from "react"
 import type { ReactNode } from "react"
 import { btnBase } from "../lib/theme"
+import { usePalette } from "./useTheme"
 import { Tip } from "./Tip"
 
 export interface ChipItem {
@@ -29,13 +30,14 @@ export function ToggleChips({
   tipFor?: (item: ChipItem, isHidden: boolean) => ReactNode
   onBulk?: (showAll: boolean) => void
 }) {
+  const c = usePalette()
   const allHidden = items.length > 0 && items.every((it) => hidden.has(it.id))
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
       {onBulk && items.length > 1 && (
         <button
           onClick={() => onBulk(allHidden)}
-          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5`}
         >
           {allHidden ? "Select all" : "Clear all"}
         </button>
@@ -48,7 +50,7 @@ export function ToggleChips({
             style={{
               borderColor: it.color,
               backgroundColor: isHidden ? "transparent" : `${it.color}1A`,
-              color: isHidden ? "#1E2A3355" : it.color,
+              color: isHidden ? `${c.ink}55` : it.color,
             }}
             className={`${btnBase} flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border ${
               isHidden ? "line-through opacity-60" : ""
@@ -56,7 +58,7 @@ export function ToggleChips({
           >
             <span
               className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: isHidden ? "#1E2A3355" : it.color }}
+              style={{ backgroundColor: isHidden ? `${c.ink}55` : it.color }}
             />
             {it.label}
           </button>

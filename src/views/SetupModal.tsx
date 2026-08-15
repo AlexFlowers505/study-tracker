@@ -20,10 +20,7 @@ import type {
 } from '../types/model'
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from '../lib/date'
 import { DEFAULT_SETTINGS } from '../lib/defaults'
-import {
-  ACCENT,
-  btnBase,
-} from '../lib/theme'
+import { btnBase } from '../lib/theme'
 import { DateField } from '../ui/DateField'
 import { EditableList } from '../ui/EditableList'
 import { Field } from '../ui/Field'
@@ -33,8 +30,10 @@ import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
+import { AppearanceTab } from './AppearanceTab'
 import { DataTransfer } from './DataTransfer'
 
+import { usePalette } from "../ui/useTheme"
 export function SetupModal({
   settings,
   slots,
@@ -74,6 +73,7 @@ export function SetupModal({
   onImport: (data: AppData) => Promise<void>
   isAdmin: boolean
 }) {
+  const c = usePalette()
   const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
 
@@ -83,27 +83,27 @@ export function SetupModal({
       onMouseDown={onBackdropClick}
     >
       <div
-        style={{ backgroundColor: "#ffffff" }}
-        className="w-full max-w-lg rounded-2xl shadow-xl border border-[#1E2A33]/10 max-h-[90vh] flex flex-col"
+        style={{ backgroundColor: c.card }}
+        className="w-full max-w-lg rounded-2xl shadow-xl border border-ink/10 max-h-[90vh] flex flex-col"
       >
         <div
-          style={{ backgroundColor: "#ffffff" }}
-          className="flex items-center justify-between px-5 py-4 border-b border-[#1E2A33]/10 shrink-0 rounded-t-xl"
+          style={{ backgroundColor: c.card }}
+          className="flex items-center justify-between px-5 py-4 border-b border-ink/10 shrink-0 rounded-t-xl"
         >
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
             Setup
           </h2>
           <button
             onClick={onClose}
-            className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+            className={`${btnBase} text-ink/50 hover:text-ink`}
           >
             <X size={18} />
           </button>
         </div>
 
         <div
-          style={{ backgroundColor: "#ffffff" }}
-          className="flex border-b border-[#1E2A33]/10 shrink-0"
+          style={{ backgroundColor: c.card }}
+          className="flex border-b border-ink/10 shrink-0"
         >
           {[
             { id: "details", label: "Project details" },
@@ -111,6 +111,9 @@ export function SetupModal({
             { id: "categories", label: "Categories" },
             { id: "units", label: "Counters" },
             { id: "projects", label: "Projects" },
+            // Last, and the only one that is not about a project — it is a
+            // property of the device you are reading on.
+            { id: "app", label: "App" },
           ].map((t) => {
             const active = tab === t.id
             return (
@@ -118,12 +121,12 @@ export function SetupModal({
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 style={
-                  active ? { borderColor: ACCENT, color: ACCENT } : undefined
+                  active ? { borderColor: c.accent, color: c.accent } : undefined
                 }
                 className={`${btnBase} flex-1 text-[10px] font-mono uppercase tracking-widest px-3 py-2.5 border-b-2 ${
                   active
                     ? ""
-                    : "border-transparent text-[#1E2A33]/50 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5"
+                    : "border-transparent text-ink/50 hover:text-ink hover:bg-ink/5"
                 }`}
               >
                 {t.label}
@@ -133,9 +136,10 @@ export function SetupModal({
         </div>
 
         <div
-          style={{ backgroundColor: "#ffffff" }}
+          style={{ backgroundColor: c.card }}
           className="p-5 overflow-y-auto rounded-b-xl"
         >
+          {tab === "app" && <AppearanceTab />}
           {tab === "details" && (
             <ProjectDetailsTab settings={settings} onSave={onSaveSettings} />
           )}
@@ -202,11 +206,12 @@ function ProjectsTab({
   onAdd: () => void
   onDelete: (id: string) => void
 }) {
+  const c = usePalette()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   return (
     <div className="space-y-2 font-mono text-sm">
-      <p className="text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+      <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
         Switch between separate projects, each with its own slots, categories
         and log.
       </p>
@@ -215,13 +220,13 @@ function ProjectsTab({
         return (
           <div
             key={p.id}
-            className={`border rounded-xl p-2.5 flex items-center gap-2.5 ${active ? "border-[#1E2A33]" : "border-[#1E2A33]/15"}`}
+            className={`border rounded-xl p-2.5 flex items-center gap-2.5 ${active ? "border-ink" : "border-ink/15"}`}
           >
             <span
               className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: active ? "#1E2A33" : "#1E2A330D",
-                color: active ? "#fff" : "#1E2A33",
+                backgroundColor: active ? c.ink : `${c.ink}0D`,
+                color: active ? c.page : c.ink,
               }}
             >
               <RenderIcon name={p.settings.projectIcon} size={16} />
@@ -230,7 +235,7 @@ function ProjectsTab({
               <div className="text-xs font-bold truncate">
                 {p.settings.projectName || "Untitled project"}
               </div>
-              <div className="text-[10px] text-[#1E2A33]/40 truncate">
+              <div className="text-[10px] text-ink/40 truncate">
                 {p.settings.startDate
                   ? fmtDateLong(p.settings.startDate)
                   : "No start date"}
@@ -243,7 +248,7 @@ function ProjectsTab({
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => setConfirmDeleteId(null)}
-                  className={`${btnBase} px-2 py-1 rounded-md border border-[#1E2A33]/20 hover:bg-[#1E2A33]/5 uppercase tracking-widest text-[9px]`}
+                  className={`${btnBase} px-2 py-1 rounded-md border border-ink/20 hover:bg-ink/5 uppercase tracking-widest text-[9px]`}
                 >
                   Keep
                 </button>
@@ -252,7 +257,7 @@ function ProjectsTab({
                     onDelete(p.id)
                     setConfirmDeleteId(null)
                   }}
-                  className={`${btnBase} px-2 py-1 rounded-md bg-[#C1595B] text-white hover:bg-[#a94a4c] uppercase tracking-widest text-[9px]`}
+                  className={`${btnBase} px-2 py-1 rounded-md bg-exam text-page hover:bg-exam/85 uppercase tracking-widest text-[9px]`}
                 >
                   Remove
                 </button>
@@ -262,14 +267,14 @@ function ProjectsTab({
                 {!active && (
                   <button
                     onClick={() => onSwitch(p.id)}
-                    style={{ backgroundColor: ACCENT }}
-                    className={`${btnBase} text-white px-2.5 py-1.5 rounded-lg uppercase tracking-widest text-[9px]`}
+                    style={{ backgroundColor: c.accent, color: c.onFill }}
+                    className={`${btnBase} px-2.5 py-1.5 rounded-lg uppercase tracking-widest text-[9px]`}
                   >
                     Switch
                   </button>
                 )}
                 {active && (
-                  <span className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 px-1">
+                  <span className="text-[9px] uppercase tracking-widest text-ink/40 px-1">
                     Active
                   </span>
                 )}
@@ -283,7 +288,7 @@ function ProjectsTab({
                   <button
                     disabled={projects.length <= 1}
                     onClick={() => setConfirmDeleteId(p.id)}
-                    className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
+                    className={`${btnBase} p-1.5 text-ink/40 hover:text-exam disabled:opacity-20 disabled:cursor-not-allowed`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -295,7 +300,7 @@ function ProjectsTab({
       })}
       <button
         onClick={onAdd}
-        className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1.5`}
+        className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-ink/60 hover:text-ink px-1 py-1.5`}
       >
         <Plus size={13} /> New project
       </button>
@@ -310,6 +315,7 @@ function ProjectDetailsTab({
   settings: Settings
   onSave: (next: Settings) => void
 }) {
+  const c = usePalette()
   const [projectName, setProjectName] = useState(
     settings.projectName ?? "Time Tracker",
   )
@@ -376,7 +382,7 @@ function ProjectDetailsTab({
   return (
     <div className="space-y-5 font-mono text-sm">
       <div>
-        <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+        <span className="block text-[10px] uppercase tracking-widest text-ink/50 mb-1">
           Project
         </span>
         <div className="flex items-center gap-2">
@@ -385,13 +391,13 @@ function ProjectDetailsTab({
               type="button"
               onClick={() => setIconPickerOpen((o) => !o)}
               className={`${btnBase} w-10 h-10 rounded-xl border-2 flex items-center justify-center hover:opacity-75 shrink-0`}
-              style={{ borderColor: ACCENT, color: ACCENT }}
+              style={{ borderColor: c.accent, color: c.accent }}
             >
               <RenderIcon name={projectIcon} size={18} />
             </button>
             {iconPickerOpen && (
-              <div className="absolute z-30 top-12 left-0 bg-white border border-[#1E2A33]/15 rounded-xl shadow-lg p-2.5 w-56">
-                <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
+              <div className="absolute z-30 top-12 left-0 bg-card border border-ink/15 rounded-xl shadow-lg p-2.5 w-56">
+                <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                   Project icon
                 </p>
                 <div className="grid grid-cols-6 gap-1">
@@ -403,9 +409,9 @@ function ProjectDetailsTab({
                         setProjectIcon(opt.name)
                         setIconPickerOpen(false)
                       }}
-                      className={`${btnBase} p-1.5 rounded-md hover:bg-[#1E2A33]/10 flex items-center justify-center ${
+                      className={`${btnBase} p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
                         projectIcon === opt.name
-                          ? "bg-[#1E2A33]/10 ring-1 ring-[#1E2A33]/30"
+                          ? "bg-ink/10 ring-1 ring-ink/30"
                           : ""
                       }`}
                     >
@@ -420,7 +426,7 @@ function ProjectDetailsTab({
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             placeholder="Project name"
-            className="flex-1 border border-[#1E2A33]/20 rounded-xl px-3 py-2 text-sm"
+            className="flex-1 border border-ink/20 rounded-xl px-3 py-2 text-sm"
           />
         </div>
       </div>
@@ -433,7 +439,7 @@ function ProjectDetailsTab({
       {/* No count to go with it, so it stands alone rather than heading an
           input the way lessons and exams do. */}
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50">
           <Moon size={12} /> Enable sleep tracking
         </span>
         <Tip text="Log sleep on its own tab in the day editor, kept out of study totals">
@@ -461,7 +467,7 @@ function ProjectDetailsTab({
           clearable
           className="w-full"
         />
-        <p className="text-[9px] text-[#1E2A33]/40 mt-1">
+        <p className="text-[9px] text-ink/40 mt-1">
           Once set, days after this date won't count as "empty days" in
           Analytics.
         </p>
@@ -469,7 +475,7 @@ function ProjectDetailsTab({
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
+          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50">
             <Gauge size={12} /> Effectiveness meter — daily minute goal
           </span>
           <Tip text="Show the daily minute goal in the log and analytics">
@@ -483,7 +489,7 @@ function ProjectDetailsTab({
         <div className="grid grid-cols-7 gap-1.5">
           {WEEKDAY_ORDER.map((idx) => (
             <label key={idx} className="flex flex-col items-center gap-1">
-              <span className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40">
+              <span className="text-[9px] uppercase tracking-widest text-ink/40">
                 {WEEKDAY_LABELS[idx]}
               </span>
               <input
@@ -492,12 +498,12 @@ function ProjectDetailsTab({
                 value={dailyGoals[idx] ?? 0}
                 disabled={!goalsEnabled}
                 onChange={(e) => setGoal(idx, e.target.value)}
-                className="w-full border border-[#1E2A33]/20 rounded-xl px-1.5 py-1.5 text-xs text-center disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full border border-ink/20 rounded-xl px-1.5 py-1.5 text-xs text-center disabled:opacity-40 disabled:cursor-not-allowed"
               />
             </label>
           ))}
         </div>
-        <p className="text-[9px] text-[#1E2A33]/40 mt-1.5">
+        <p className="text-[9px] text-ink/40 mt-1.5">
           Minutes per day. Shown as an hours goal on each day card in the Log
           tab.
         </p>

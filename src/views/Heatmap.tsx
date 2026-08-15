@@ -21,8 +21,10 @@ import {
   dayBreakdown,
   goalForDate,
 } from "../lib/stats"
-import { ACCENT, EXAM_COLOR, GOAL_MET_COLOR, btnBase } from "../lib/theme"
+import type { Palette } from "../lib/theme"
+import { btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
+import { usePalette } from "../ui/useTheme"
 
 function buildHeatmapWeeks(start: Date, end: Date): (Date | null)[][] {
   const alignedStart = startOfWeek(start)
@@ -69,13 +71,16 @@ function buildMonthTags(
   })
 }
 
-const NEUTRAL_CELL = "#E7ECF3"
+/** A day inside the range with nothing logged. On white it is a wash of
+ *  blue-grey; on a dark page that reads as a hole, so it becomes a step up
+ *  from the surface instead — "empty", not "absent". */
+const neutralCell = (c: Palette) => (c.mode === "dark" ? `${c.ink}1A` : "#E7ECF3")
 // Excluded days get a hatch rather than a tint. Over a 3-month or year span
 // there are too many cells for a subtle wash to register, and a flag set
 // months ago and forgotten is exactly what makes the totals confusing.
-const IGNORED_CELL = "#1E2A3314"
-const IGNORED_HATCH =
-  "repeating-linear-gradient(45deg, transparent 0 3px, #1E2A3333 3px 6px)"
+const ignoredCell = (c: Palette) => `${c.ink}14`
+const ignoredHatch = (c: Palette) =>
+  `repeating-linear-gradient(45deg, transparent 0 3px, ${c.ink}33 3px 6px)`
 
 export function Heatmap({
   start,
@@ -102,6 +107,7 @@ export function Heatmap({
   isIgnored?: IsIgnored
   showMonths?: boolean
 }) {
+  const c = usePalette()
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
   const startDate = settings?.startDate ? fromKey(settings.startDate) : null
   const goalsEnabled = settings?.goalsEnabled !== false
@@ -133,7 +139,7 @@ export function Heatmap({
               className={`flex flex-col gap-1.5 ${newMonth ? "ml-6" : "ml-2"}`}
             >
               {showMonths && (
-                <div className="h-3 text-[8px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
+                <div className="h-3 text-[8px] font-mono text-ink/40 whitespace-nowrap">
                   {monthTag}
                 </div>
               )}
@@ -143,9 +149,9 @@ export function Heatmap({
                   return (
                     <div
                       key={di}
-                      className="w-10 h-10 rounded-lg bg-[#1E2A33]/[0.03] flex items-center justify-center shrink-0"
+                      className="w-10 h-10 rounded-lg bg-ink/[0.03] flex items-center justify-center shrink-0"
                     >
-                      <span className="text-[8px] font-mono leading-none text-[#1E2A33]/15">
+                      <span className="text-[8px] font-mono leading-none text-ink/15">
                         {date.getDate()}
                       </span>
                     </div>
@@ -160,12 +166,12 @@ export function Heatmap({
                   ? null
                   : dayGoalOutcome(date, entry, total)
                 const cellColor = ignored
-                  ? IGNORED_CELL
+                  ? ignoredCell(c)
                   : goalOutcome === "met"
-                    ? `${GOAL_MET_COLOR}30`
+                    ? `${c.goalMet}30`
                     : goalOutcome === "missed"
-                      ? `${EXAM_COLOR}30`
-                      : NEUTRAL_CELL
+                      ? `${c.exam}30`
+                      : neutralCell(c)
                 const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories, counterUnits)}`
                 return (
                   <Tip
@@ -181,14 +187,14 @@ export function Heatmap({
                       onClick={() => onSelectDay(key)}
                       style={{
                         backgroundColor: cellColor,
-                        ...(ignored ? { backgroundImage: IGNORED_HATCH } : {}),
-                        outline: isToday ? `2px solid ${ACCENT}` : "none",
+                        ...(ignored ? { backgroundImage: ignoredHatch(c) } : {}),
+                        outline: isToday ? `2px solid ${c.accent}` : "none",
                         outlineOffset: "1px",
                       }}
                       className={`${btnBase} w-10 h-10 rounded-lg hover:scale-105 flex flex-col items-center justify-center shrink-0`}
                     >
                       <span
-                        className={`text-[8px] font-mono leading-none ${ignored ? "text-[#1E2A33]/30" : "text-[#1E2A33]/40"}`}
+                        className={`text-[8px] font-mono leading-none ${ignored ? "text-ink/30" : "text-ink/40"}`}
                       >
                         {date.getDate()}
                       </span>
@@ -196,8 +202,8 @@ export function Heatmap({
                         <span
                           className={`text-[9px] font-mono font-bold leading-none mt-0.5 ${
                             ignored
-                              ? "text-[#1E2A33]/35 line-through"
-                              : "text-[#1E2A33]/80"
+                              ? "text-ink/35 line-through"
+                              : "text-ink/80"
                           }`}
                         >
                           {fmtHours(total)}
@@ -211,27 +217,27 @@ export function Heatmap({
           )
         })}
       </div>
-      <div className="flex items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+      <div className="flex items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-ink/40">
         {goalsEnabled && (
           <>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
-                style={{ backgroundColor: `${GOAL_MET_COLOR}30` }}
+                style={{ backgroundColor: `${c.goalMet}30` }}
               />
               Goal met
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
-                style={{ backgroundColor: `${EXAM_COLOR}30` }}
+                style={{ backgroundColor: `${c.exam}30` }}
               />
               Goal missed
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
-                style={{ backgroundColor: NEUTRAL_CELL }}
+                style={{ backgroundColor: neutralCell(c) }}
               />
               No goal / not yet due
             </span>
@@ -241,8 +247,8 @@ export function Heatmap({
           <span
             className="w-3 h-3 rounded-[3px]"
             style={{
-              backgroundColor: IGNORED_CELL,
-              backgroundImage: IGNORED_HATCH,
+              backgroundColor: ignoredCell(c),
+              backgroundImage: ignoredHatch(c),
             }}
           />
           Ignored — not counted

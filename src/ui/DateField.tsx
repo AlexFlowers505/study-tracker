@@ -14,9 +14,10 @@ import {
   DATE_PANEL_CLASS,
   DAY_PICKER_MODIFIER_STYLES,
   DAY_PICKER_PART_STYLES,
-  DAY_PICKER_STYLE,
+  dayPickerStyle,
   useDatePopover,
 } from "./datePopover"
+import { usePalette } from "./useTheme"
 
 export function DateField({
   value,
@@ -31,6 +32,7 @@ export function DateField({
   clearable?: boolean
   className?: string
 }) {
+  const c = usePalette()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover()
   const selected = value ? fromKey(value) : undefined
@@ -41,10 +43,10 @@ export function DateField({
         ref={triggerRef}
         type="button"
         onClick={toggle}
-        className={`${FIELD_BOXED} ${className} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+        className={`${FIELD_BOXED} ${className} ${btnBase} flex items-center gap-1.5 text-left hover:bg-ink/[0.03]`}
       >
-        <CalendarDays size={13} className="text-[#1E2A33]/40 shrink-0" />
-        <span className={value ? "" : "text-[#1E2A33]/35"}>
+        <CalendarDays size={13} className="text-ink/40 shrink-0" />
+        <span className={value ? "" : "text-ink/35"}>
           {value ? fmtShort(value) : placeholder}
         </span>
       </button>
@@ -62,7 +64,7 @@ export function DateField({
               showOutsideDays
               selected={selected}
               defaultMonth={selected}
-              style={DAY_PICKER_STYLE}
+              style={dayPickerStyle(c)}
               styles={DAY_PICKER_PART_STYLES}
               modifiersStyles={DAY_PICKER_MODIFIER_STYLES}
               onSelect={(d) => {
@@ -78,7 +80,7 @@ export function DateField({
                   onChange("")
                   setOpen(false)
                 }}
-                className={`${btnBase} w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+                className={`${btnBase} w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
               >
                 Clear date
               </button>
@@ -107,6 +109,7 @@ export function DateRangeField({
   onChange: (start: DayKey, end: DayKey) => void
   openOnMount?: boolean
 }) {
+  const c = usePalette()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover(openOnMount)
   // Left to itself, react-day-picker grows or trims the existing range
@@ -146,12 +149,12 @@ export function DateRangeField({
         ref={triggerRef}
         type="button"
         onClick={openPicker}
-        className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+        className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-ink/[0.03]`}
       >
-        <CalendarDays size={13} className="text-[#1E2A33]/40 shrink-0" />
+        <CalendarDays size={13} className="text-ink/40 shrink-0" />
         <span>
           {start ? fmtShort(start) : "Start"}
-          <span className="text-[#1E2A33]/35"> – </span>
+          <span className="text-ink/35"> – </span>
           {end ? fmtShort(end) : "End"}
         </span>
       </button>
@@ -169,13 +172,13 @@ export function DateRangeField({
               showOutsideDays
               selected={selected}
               defaultMonth={selected.from}
-              style={DAY_PICKER_STYLE}
+              style={dayPickerStyle(c)}
               styles={DAY_PICKER_PART_STYLES}
               modifiersStyles={DAY_PICKER_MODIFIER_STYLES}
               onSelect={() => {}}
               onDayClick={handleDayClick}
             />
-            <p className="px-2 pb-1 pt-0.5 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
+            <p className="px-2 pb-1 pt-0.5 text-[9px] font-mono uppercase tracking-widest text-ink/35">
               {pendingFrom ? "Now pick the end" : "Click a start, then an end"}
             </p>
           </div>,

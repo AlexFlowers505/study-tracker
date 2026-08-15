@@ -8,9 +8,10 @@ import { useMemo } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import type { Category, Day, DayKey, IsIgnored, Slot } from "../types/model"
 import { elapsedDayCount, periodBreakdown } from "../lib/stats"
-import { fmtHours, fmtHoursFixed1, toHours } from "../lib/time"
-import { CARD } from "../lib/theme"
+import { fmtHours, toHours } from "../lib/time"
+import { CARD, chartTooltip } from "../lib/theme"
 import { ChartCard } from "../ui/ChartCard"
+import { usePalette } from "../ui/useTheme"
 
 export interface TotalsRow {
   id: string
@@ -35,22 +36,31 @@ export function TotalsDonut({
   total: number
   divisor: number
 }) {
+  const c = usePalette()
   const data = useMemo(
     () =>
-      rows.map((r) => ({
-        id: r.id,
-        label: r.label,
-        color: r.color,
-        hours: toHours(r.minutes),
-        minutes: r.minutes,
-        share: total > 0 ? (r.minutes / total) * 100 : 0,
-      })),
+      rows
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          color: r.color,
+          hours: toHours(r.minutes),
+          minutes: r.minutes,
+          share: total > 0 ? (r.minutes / total) * 100 : 0,
+        }))
+        // Biggest first, in the ring and the legend alike. The question a
+        // part-of-whole answers is "what took the most", and configured order
+        // (morning, daytime, evening) makes you compare slices by eye to work
+        // that out. Sorting is stable, so equal totals keep that order.
+        // `periodBreakdown` still returns them configured — the ordering is a
+        // property of this drawing, not of the numbers.
+        .sort((a, b) => b.minutes - a.minutes),
     [rows, total],
   )
 
   if (!data.length) {
     return (
-      <p className="text-[10px] font-mono text-[#1E2A33]/40 py-6 text-center">
+      <p className="text-[10px] font-mono text-ink/40 py-6 text-center">
         Nothing logged in this period.
       </p>
     )
@@ -71,7 +81,7 @@ export function TotalsDonut({
               innerRadius={48}
               outerRadius={72}
               paddingAngle={2}
-              stroke="#fff"
+              stroke={c.card}
               strokeWidth={2}
               isAnimationActive={false}
             >
@@ -80,11 +90,11 @@ export function TotalsDonut({
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{ fontSize: 11, fontFamily: "monospace" }}
+              contentStyle={chartTooltip(c)}
               formatter={(value, name) => [
                 `${fmtHours(Number(value))}${
                   divisor > 1
-                    ? ` · ${fmtHoursFixed1(Number(value) / divisor)}/day`
+                    ? ` · ${fmtHours(Number(value) / divisor)}/day`
                     : ""
                 } · ${total > 0 ? Math.round((Number(value) / total) * 100) : 0}%`,
                 name,
@@ -96,7 +106,7 @@ export function TotalsDonut({
           <span className="font-mono text-base font-extrabold">
             {fmtHours(total)}
           </span>
-          <span className="text-[8px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+          <span className="text-[8px] font-mono uppercase tracking-widest text-ink/40">
             total
           </span>
         </div>
@@ -112,10 +122,10 @@ export function TotalsDonut({
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: d.color }}
             />
-            <span className="text-[#1E2A33]/70 truncate">{d.label}</span>
-            <span className="flex-1 border-b border-dotted border-[#1E2A33]/15 min-w-[8px]" />
+            <span className="text-ink/70 truncate">{d.label}</span>
+            <span className="flex-1 border-b border-dotted border-ink/15 min-w-[8px]" />
             <span className="font-bold shrink-0">{fmtHours(d.minutes)}</span>
-            <span className="text-[#1E2A33]/40 tabular-nums w-8 text-right shrink-0">
+            <span className="text-ink/40 tabular-nums w-8 text-right shrink-0">
               {Math.round(d.share)}%
             </span>
           </div>
@@ -147,11 +157,11 @@ export function PeriodTotals({
     [dates, days, isIgnored],
   )
 
-  const perDay = divisor > 1 ? ` · ${fmtHoursFixed1(total / divisor)}/day` : ""
+  const perDay = divisor > 1 ? ` · ${fmtHours(total / divisor)}/day` : ""
 
   if (total === 0) {
     return (
-      <div className={`${CARD} mb-4 text-[10px] font-mono text-[#1E2A33]/40`}>
+      <div className={`${CARD} mb-4 text-[10px] font-mono text-ink/40`}>
         No study logged in this period.
       </div>
     )

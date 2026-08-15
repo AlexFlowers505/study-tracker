@@ -67,8 +67,8 @@ export function PopoverMenu({
           ref={triggerRef}
           type="button"
           onClick={toggle}
-          className={`${btnBase} p-1.5 rounded-full text-[#1E2A33]/45 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5 ${
-            open ? "bg-[#1E2A33]/5 text-[#1E2A33]" : ""
+          className={`${btnBase} p-1.5 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5 ${
+            open ? "bg-ink/5 text-ink" : ""
           }`}
         >
           <Icon size={16} />
@@ -93,7 +93,7 @@ export function PopoverMenu({
               ),
               width: MENU_WIDTH,
             }}
-            className="z-[110] rounded-2xl bg-white shadow-2xl p-1.5"
+            className="z-[110] rounded-2xl bg-card shadow-2xl p-1.5"
           >
             {children}
           </div>,

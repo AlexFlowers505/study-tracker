@@ -33,11 +33,7 @@ import {
 } from '../lib/date'
 import { fmtAxisHours, fmtHoursChart, toHours } from '../lib/time'
 import { dayBreakdown, goalForDate, makeIsIgnored } from '../lib/stats'
-import {
-  ACCENT,
-  GOAL_MET_COLOR,
-  PALETTE,
-} from '../lib/theme'
+import { PALETTE, chartTooltip } from '../lib/theme'
 import { ChartCard } from '../ui/ChartCard'
 import { SegmentedControl } from '../ui/controls'
 import { ToggleChips } from '../ui/ToggleChips'
@@ -46,7 +42,9 @@ import { AveragesStats } from './AveragesStats'
 import { OverviewStats } from './OverviewStats'
 import { PeriodTotals } from './PeriodTotals'
 import { RemarkableStats } from './RemarkableStats'
+import { TabbedSection } from './TabbedSection'
 
+import { usePalette } from "../ui/useTheme"
 /**
  * A chart row: the fixed axis fields plus one numeric series per slot or
  * category, keyed by id. Recharts reads them by string key, so the shape is
@@ -66,6 +64,43 @@ const CHART_MODES = [
   { id: "slot", label: "Slots" },
 ]
 
+/* The two sections this half of the page is made of.
+ *
+ * Named for what you learn, not for what you look at: everything in Summary is
+ * the whole period collapsed into one figure, everything in Trends is the same
+ * period spread across time. "Stats" and "Analytics" would have been two words
+ * for the same thing — both halves are statistics; they differ only in how
+ * they are drawn, and that is not the useful distinction to hang a heading on.
+ */
+const SUMMARY_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "averages", label: "Averages" },
+  { id: "remarkable", label: "Remarkable" },
+]
+
+const SUMMARY_CAPTIONS: Record<string, string> = {
+  overview: "Totals for the selected period",
+  averages: "Pace over the selected period",
+  remarkable: "Best & worst, within the selected period, in hours",
+}
+
+const SUMMARY_HELP =
+  "The selected period as single figures: how much time it holds and where " +
+  "that time went, the average pace, and its best and worst days, weeks and " +
+  "months. Days marked ignored count towards none of it."
+
+const TREND_TABS = [
+  { id: "daily", label: "Daily" },
+  { id: "weekday", label: "Weekday" },
+  { id: "weekly", label: "Weekly" },
+  { id: "monthly", label: "Monthly" },
+]
+
+const TRENDS_HELP =
+  "The same period spread over time: hours per day, how the weekdays compare " +
+  "with one another, and totals week by week and month by month. Each chart " +
+  "can be split by time slot or by category."
+
 // Bounds come in from the shared period bar — analytics no longer owns a
 // range picker of its own.
 export function AnalyticsView({
@@ -77,6 +112,7 @@ export function AnalyticsView({
   rangeStart: Date
   rangeEnd: Date
 }) {
+  const c = usePalette()
   const {
     slots,
     categories,
@@ -96,6 +132,8 @@ export function AnalyticsView({
     () => datesInRange(rangeStart, rangeEnd),
     [rangeStart, rangeEnd],
   )
+  const [summaryTab, setSummaryTab] = useState("overview")
+  const [trendTab, setTrendTab] = useState("daily")
   // 'slot' | 'category' | 'hours'
   const [rawDailyMode, setDailyMode] = useState('slot')
   const [rawWeekdayMode, setWeekdayMode] = useState('hours')
@@ -427,379 +465,301 @@ export function AnalyticsView({
 
   return (
     <div className="space-y-8">
-      <OverviewStats period={periodStats}>
-        {/* Inside the Stats block and first in it, under the heading: "where
-            did the period's time go" is one of the period's numbers, not a
-            heading of its own. */}
-        <PeriodTotals
-          dates={rangeDates}
-          days={days}
-          slots={slots}
-          categories={categories}
-          isIgnored={isDayIgnored}
-        />
-      </OverviewStats>
-
-      <AveragesStats period={periodStats} />
-
-      <RemarkableStats remarkable={remarkable} />
-
-      <ChartCard
-        title="Daily study time"
-        subtitle={
-          dailyMode === "hours"
-            ? "Total hours logged per day"
-            : dailyMode === "lessons"
-              ? "Lessons completed per day"
-              : `Hours logged per day, split by ${dailyMode} — dashed line is the day's total`
-        }
-        action={
-          <SegmentedControl
-            items={CHART_MODES}
-            activeId={dailyMode}
-            onChange={setDailyMode}
-          />
-        }
+      <TabbedSection
+        title="Summary"
+        help={SUMMARY_HELP}
+        tabs={SUMMARY_TABS}
+        activeId={summaryTab}
+        onChange={setSummaryTab}
+        caption={SUMMARY_CAPTIONS[summaryTab]}
       >
-        <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={dailyTotals}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
+        {summaryTab === "overview" && (
+          <OverviewStats period={periodStats}>
+            {/* First in the Overview tab: "where did the period's time go" is
+                one of the period's numbers, not a heading of its own. */}
+            <PeriodTotals
+              dates={rangeDates}
+              days={days}
+              slots={slots}
+              categories={categories}
+              isIgnored={isDayIgnored}
             />
-            <YAxis
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
-              tickFormatter={dailyMode === "lessons" ? undefined : fmtAxisHours}
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-              formatter={(value, name) =>
-                dailyMode === "lessons"
-                  ? [`${value}`, name]
-                  : [fmtHoursChart(Number(value)), name]
-              }
-            />
-            {dailyMode === "hours" ? (
-              [
-                <Area
-                  key="total"
-                  type="monotone"
-                  dataKey="total"
-                  stroke={ACCENT}
-                  fill={ACCENT}
-                  fillOpacity={0.25}
-                  strokeWidth={2}
-                  name="Hours studied"
-                  dot={{ r: 3 }}
-                />,
-                ...(goalsEnabled
-                  ? [
-                      <Line
-                        key="goal-line"
-                        type="monotone"
-                        dataKey="goal"
-                        stroke="#1E2A33"
-                        strokeWidth={1.5}
-                        strokeDasharray="6 3"
-                        dot={false}
-                        name="Goal"
-                      />,
-                    ]
-                  : []),
-              ]
-            ) : dailyMode === "lessons" ? (
-              <Area
-                type="monotone"
-                dataKey="lessons"
-                stroke={GOAL_MET_COLOR}
-                fill={GOAL_MET_COLOR}
-                fillOpacity={0.25}
-                strokeWidth={2}
-                name="Lessons"
-                dot={{ r: 3 }}
-              />
-            ) : (
-              // NOTE: recharts inspects its direct children by type — wrapping these in a
-              // <Fragment> hides them from it entirely, so we return a flat array instead.
-              [
-                ...dailySeries
-                  .filter((s) => !dailyToggle.hidden.has(s.id))
-                  .map((s) => (
-                    <Area
-                      key={s.id}
-                      type="monotone"
-                      dataKey={s.id}
-                      stackId="a"
-                      stroke={s.color}
-                      fill={s.color}
-                      fillOpacity={0.55}
-                      name={s.label}
-                    />
-                  )),
-                <Line
-                  key="total-line"
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#1E2A33"
-                  strokeWidth={1.5}
-                  strokeDasharray="5 3"
-                  dot={false}
-                  name="Total hours"
-                />,
-              ]
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
-        {(dailyMode === "slot" || dailyMode === "category") && (
-          <ToggleChips
-            items={dailySeries}
-            hidden={dailyToggle.hidden}
-            onToggle={dailyToggle.toggle}
-            onBulk={bulkToggleFor(dailySeries, dailyToggle)}
-          />
+          </OverviewStats>
         )}
-      </ChartCard>
-      <ChartCard
-        title="Weekday effectiveness"
-        subtitle={
-          weekdayMode === "hours"
-            ? goalsEnabled
-              ? "Hours studied per weekday, compared week over week"
-              : "Hours studied per weekday"
-            : weekdayMode === "lessons"
-              ? "Lessons completed per weekday, compared week over week"
-              : `Hours per weekday in this range, split by ${weekdayMode}`
-        }
-        action={
-          <SegmentedControl
-            items={CHART_MODES}
-            activeId={weekdayMode}
-            onChange={setWeekdayMode}
-          />
-        }
-      >
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={weekdayData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-            <XAxis
-              dataKey="weekday"
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
-              tickFormatter={
-                weekdayMode === "lessons" ? undefined : fmtAxisHours
-              }
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-              formatter={(value, name) =>
-                weekdayMode === "lessons"
-                  ? [`${value}`, name]
-                  : [fmtHoursChart(Number(value)), name]
-              }
-            />
-            {weekdaySeries
-              .filter((s) => !weekdayToggle.hidden.has(s.id))
-              .map((s) =>
-                weekdayMode === "slot" || weekdayMode === "category" ? (
-                  <Area
-                    key={s.id}
-                    type="monotone"
-                    dataKey={s.id}
-                    stackId="a"
-                    stroke={s.color}
-                    fill={s.color}
-                    fillOpacity={0.55}
-                    name={s.label}
-                  />
-                ) : (
-                  <Area
-                    key={s.id}
-                    type="monotone"
-                    dataKey={s.id}
-                    stroke={s.color}
-                    fill={s.color}
-                    fillOpacity={0.1}
-                    strokeWidth={2}
-                    name={s.label}
-                    dot={{ r: 2 }}
-                  />
-                ),
-              )}
-            {goalsEnabled && weekdayMode === "hours" && (
-              <Line
-                type="monotone"
-                dataKey="goal"
-                stroke="#1E2A33"
-                strokeWidth={1.5}
-                strokeDasharray="6 3"
-                dot={false}
-                name="Goal"
-              />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
-        <ToggleChips
-          items={weekdaySeries}
-          hidden={weekdayToggle.hidden}
-          onToggle={weekdayToggle.toggle}
-          onBulk={bulkToggleFor(weekdaySeries, weekdayToggle)}
-        />
-      </ChartCard>
-      <ChartCard
-        title="Weekly effectiveness"
-        subtitle={
-          weeklyMode === "hours"
-            ? goalsEnabled
-              ? "Total hours studied, aggregated per week"
-              : "Total hours studied per week"
-            : weeklyMode === "lessons"
-              ? "Lessons completed per week"
-              : `Hours per week, split by ${weeklyMode}`
-        }
-        action={
-          <SegmentedControl
-            items={CHART_MODES}
-            activeId={weeklyMode}
-            onChange={setWeeklyMode}
-          />
-        }
-      >
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={weeklyModeData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-            <XAxis
-              dataKey="week"
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fontFamily: "monospace" }}
-              tickFormatter={
-                weeklyMode === "slot" ||
-                weeklyMode === "category" ||
-                weeklyMode === "hours"
-                  ? fmtAxisHours
-                  : undefined
-              }
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-              formatter={(value, name) =>
-                weeklyMode === "slot" ||
-                weeklyMode === "category" ||
-                weeklyMode === "hours"
-                  ? [fmtHoursChart(Number(value)), name]
-                  : [`${value}`, name]
-              }
-            />
-            {weeklyMode === "slot" || weeklyMode === "category"
-              ? weeklySeries
-                  .filter((s) => !weeklyToggle.hidden.has(s.id))
-                  .map((s) => (
-                    <Area
-                      key={s.id}
-                      type="monotone"
-                      dataKey={s.id}
-                      stackId="a"
-                      stroke={s.color}
-                      fill={s.color}
-                      fillOpacity={0.55}
-                      name={s.label}
-                    />
-                  ))
-              : [
-                  <Area
-                    key="value"
-                    type="monotone"
-                    dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
-                    stroke={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                    fill={weeklyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
-                    fillOpacity={0.15}
-                    strokeWidth={2}
-                    name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
-                    dot={{ r: 3 }}
-                  />,
-                  goalsEnabled && weeklyMode === "hours" && (
-                    <Line
-                      key="goal-line"
-                      type="monotone"
-                      dataKey="goal"
-                      stroke="#1E2A33"
-                      strokeWidth={1.5}
-                      strokeDasharray="6 3"
-                      dot={false}
-                      name="Goal"
-                    />
-                  ),
-                ]}
-          </AreaChart>
-        </ResponsiveContainer>
-        {(weeklyMode === "slot" || weeklyMode === "category") && (
-          <ToggleChips
-            items={weeklySeries}
-            hidden={weeklyToggle.hidden}
-            onToggle={weeklyToggle.toggle}
-            onBulk={bulkToggleFor(weeklySeries, weeklyToggle)}
-          />
+        {summaryTab === "averages" && <AveragesStats period={periodStats} />}
+        {summaryTab === "remarkable" && (
+          <RemarkableStats remarkable={remarkable} />
         )}
-      </ChartCard>
+      </TabbedSection>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <TabbedSection
+        title="Trends"
+        help={TRENDS_HELP}
+        tabs={TREND_TABS}
+        activeId={trendTab}
+        onChange={setTrendTab}
+      >
+        {trendTab === "daily" && (
         <ChartCard
-          title="Monthly effectiveness"
+          title="Daily study time"
           subtitle={
-            monthlyMode === "hours"
-              ? goalsEnabled
-                ? "Total hours studied, aggregated per month"
-                : "Total hours studied per month"
-              : monthlyMode === "lessons"
-                ? "Lessons completed per month"
-                : `Hours per month, split by ${monthlyMode}`
+            dailyMode === "hours"
+              ? "Total hours logged per day"
+              : dailyMode === "lessons"
+                ? "Lessons completed per day"
+                : `Hours logged per day, split by ${dailyMode} — dashed line is the day's total`
           }
           action={
             <SegmentedControl
               items={CHART_MODES}
-              activeId={monthlyMode}
-              onChange={setMonthlyMode}
+              activeId={dailyMode}
+              onChange={setDailyMode}
             />
           }
         >
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={monthlyModeData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+            <ComposedChart data={dailyTotals}>
+              <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
               <XAxis
-                dataKey="month"
-                tick={{ fontSize: 10, fontFamily: "monospace" }}
+                dataKey="date"
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
               />
               <YAxis
-                tick={{ fontSize: 10, fontFamily: "monospace" }}
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+                tickFormatter={dailyMode === "lessons" ? undefined : fmtAxisHours}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={chartTooltip(c)}
+                formatter={(value, name) =>
+                  dailyMode === "lessons"
+                    ? [`${value}`, name]
+                    : [fmtHoursChart(Number(value)), name]
+                }
+              />
+              {dailyMode === "hours" ? (
+                [
+                  <Area
+                    key="total"
+                    type="monotone"
+                    dataKey="total"
+                    stroke={c.accent}
+                    fill={c.accent}
+                    fillOpacity={0.25}
+                    strokeWidth={2}
+                    name="Hours studied"
+                    dot={{ r: 3 }}
+                  />,
+                  ...(goalsEnabled
+                    ? [
+                        <Line
+                          key="goal-line"
+                          type="monotone"
+                          dataKey="goal"
+                          stroke={c.ink}
+                          strokeWidth={1.5}
+                          strokeDasharray="6 3"
+                          dot={false}
+                          name="Goal"
+                        />,
+                      ]
+                    : []),
+                ]
+              ) : dailyMode === "lessons" ? (
+                <Area
+                  type="monotone"
+                  dataKey="lessons"
+                  stroke={c.goalMet}
+                  fill={c.goalMet}
+                  fillOpacity={0.25}
+                  strokeWidth={2}
+                  name="Lessons"
+                  dot={{ r: 3 }}
+                />
+              ) : (
+                // NOTE: recharts inspects its direct children by type — wrapping these in a
+                // <Fragment> hides them from it entirely, so we return a flat array instead.
+                [
+                  ...dailySeries
+                    .filter((s) => !dailyToggle.hidden.has(s.id))
+                    .map((s) => (
+                      <Area
+                        key={s.id}
+                        type="monotone"
+                        dataKey={s.id}
+                        stackId="a"
+                        stroke={s.color}
+                        fill={s.color}
+                        fillOpacity={0.55}
+                        name={s.label}
+                      />
+                    )),
+                  <Line
+                    key="total-line"
+                    type="monotone"
+                    dataKey="total"
+                    stroke={c.ink}
+                    strokeWidth={1.5}
+                    strokeDasharray="5 3"
+                    dot={false}
+                    name="Total hours"
+                  />,
+                ]
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+          {(dailyMode === "slot" || dailyMode === "category") && (
+            <ToggleChips
+              items={dailySeries}
+              hidden={dailyToggle.hidden}
+              onToggle={dailyToggle.toggle}
+              onBulk={bulkToggleFor(dailySeries, dailyToggle)}
+            />
+          )}
+        </ChartCard>
+        )}
+        {trendTab === "weekday" && (
+        <ChartCard
+          title="Weekday effectiveness"
+          subtitle={
+            weekdayMode === "hours"
+              ? goalsEnabled
+                ? "Hours studied per weekday, compared week over week"
+                : "Hours studied per weekday"
+              : weekdayMode === "lessons"
+                ? "Lessons completed per weekday, compared week over week"
+                : `Hours per weekday in this range, split by ${weekdayMode}`
+          }
+          action={
+            <SegmentedControl
+              items={CHART_MODES}
+              activeId={weekdayMode}
+              onChange={setWeekdayMode}
+            />
+          }
+        >
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={weekdayData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
+              <XAxis
+                dataKey="weekday"
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                 tickFormatter={
-                  monthlyMode === "slot" ||
-                  monthlyMode === "category" ||
-                  monthlyMode === "hours"
+                  weekdayMode === "lessons" ? undefined : fmtAxisHours
+                }
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={chartTooltip(c)}
+                formatter={(value, name) =>
+                  weekdayMode === "lessons"
+                    ? [`${value}`, name]
+                    : [fmtHoursChart(Number(value)), name]
+                }
+              />
+              {weekdaySeries
+                .filter((s) => !weekdayToggle.hidden.has(s.id))
+                .map((s) =>
+                  weekdayMode === "slot" || weekdayMode === "category" ? (
+                    <Area
+                      key={s.id}
+                      type="monotone"
+                      dataKey={s.id}
+                      stackId="a"
+                      stroke={s.color}
+                      fill={s.color}
+                      fillOpacity={0.55}
+                      name={s.label}
+                    />
+                  ) : (
+                    <Area
+                      key={s.id}
+                      type="monotone"
+                      dataKey={s.id}
+                      stroke={s.color}
+                      fill={s.color}
+                      fillOpacity={0.1}
+                      strokeWidth={2}
+                      name={s.label}
+                      dot={{ r: 2 }}
+                    />
+                  ),
+                )}
+              {goalsEnabled && weekdayMode === "hours" && (
+                <Line
+                  type="monotone"
+                  dataKey="goal"
+                  stroke={c.ink}
+                  strokeWidth={1.5}
+                  strokeDasharray="6 3"
+                  dot={false}
+                  name="Goal"
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+          <ToggleChips
+            items={weekdaySeries}
+            hidden={weekdayToggle.hidden}
+            onToggle={weekdayToggle.toggle}
+            onBulk={bulkToggleFor(weekdaySeries, weekdayToggle)}
+          />
+        </ChartCard>
+        )}
+        {trendTab === "weekly" && (
+        <ChartCard
+          title="Weekly effectiveness"
+          subtitle={
+            weeklyMode === "hours"
+              ? goalsEnabled
+                ? "Total hours studied, aggregated per week"
+                : "Total hours studied per week"
+              : weeklyMode === "lessons"
+                ? "Lessons completed per week"
+                : `Hours per week, split by ${weeklyMode}`
+          }
+          action={
+            <SegmentedControl
+              items={CHART_MODES}
+              activeId={weeklyMode}
+              onChange={setWeeklyMode}
+            />
+          }
+        >
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={weeklyModeData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
+              <XAxis
+                dataKey="week"
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+                tickFormatter={
+                  weeklyMode === "slot" ||
+                  weeklyMode === "category" ||
+                  weeklyMode === "hours"
                     ? fmtAxisHours
                     : undefined
                 }
                 allowDecimals={false}
               />
               <Tooltip
-                contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
+                contentStyle={chartTooltip(c)}
                 formatter={(value, name) =>
-                  monthlyMode === "slot" ||
-                  monthlyMode === "category" ||
-                  monthlyMode === "hours"
+                  weeklyMode === "slot" ||
+                  weeklyMode === "category" ||
+                  weeklyMode === "hours"
                     ? [fmtHoursChart(Number(value)), name]
                     : [`${value}`, name]
                 }
               />
-              {monthlyMode === "slot" || monthlyMode === "category"
-                ? monthlySeries
-                    .filter((s) => !monthlyToggle.hidden.has(s.id))
+              {weeklyMode === "slot" || weeklyMode === "category"
+                ? weeklySeries
+                    .filter((s) => !weeklyToggle.hidden.has(s.id))
                     .map((s) => (
                       <Area
                         key={s.id}
@@ -812,27 +772,24 @@ export function AnalyticsView({
                         name={s.label}
                       />
                     ))
-                : // Flat array, not a Fragment — see the note on the daily chart.
-                  [
+                : [
                     <Area
                       key="value"
                       type="monotone"
-                      dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
-                      stroke={
-                        monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT
-                      }
-                      fill={monthlyMode === "lessons" ? GOAL_MET_COLOR : ACCENT}
+                      dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
+                      stroke={weeklyMode === "lessons" ? c.goalMet : c.accent}
+                      fill={weeklyMode === "lessons" ? c.goalMet : c.accent}
                       fillOpacity={0.15}
                       strokeWidth={2}
-                      name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
+                      name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
                       dot={{ r: 3 }}
                     />,
-                    goalsEnabled && monthlyMode === "hours" && (
+                    goalsEnabled && weeklyMode === "hours" && (
                       <Line
                         key="goal-line"
                         type="monotone"
                         dataKey="goal"
-                        stroke="#1E2A33"
+                        stroke={c.ink}
                         strokeWidth={1.5}
                         strokeDasharray="6 3"
                         dot={false}
@@ -842,16 +799,120 @@ export function AnalyticsView({
                   ]}
             </AreaChart>
           </ResponsiveContainer>
-          {(monthlyMode === "slot" || monthlyMode === "category") && (
+          {(weeklyMode === "slot" || weeklyMode === "category") && (
             <ToggleChips
-              items={monthlySeries}
-              hidden={monthlyToggle.hidden}
-              onToggle={monthlyToggle.toggle}
-              onBulk={bulkToggleFor(monthlySeries, monthlyToggle)}
+              items={weeklySeries}
+              hidden={weeklyToggle.hidden}
+              onToggle={weeklyToggle.toggle}
+              onBulk={bulkToggleFor(weeklySeries, weeklyToggle)}
             />
           )}
         </ChartCard>
-      </div>
+        )}
+        {trendTab === "monthly" && (
+          <ChartCard
+            title="Monthly effectiveness"
+            subtitle={
+              monthlyMode === "hours"
+                ? goalsEnabled
+                  ? "Total hours studied, aggregated per month"
+                  : "Total hours studied per month"
+                : monthlyMode === "lessons"
+                  ? "Lessons completed per month"
+                  : `Hours per month, split by ${monthlyMode}`
+            }
+            action={
+              <SegmentedControl
+                items={CHART_MODES}
+                activeId={monthlyMode}
+                onChange={setMonthlyMode}
+              />
+            }
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={monthlyModeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
+                  tickFormatter={
+                    monthlyMode === "slot" ||
+                    monthlyMode === "category" ||
+                    monthlyMode === "hours"
+                      ? fmtAxisHours
+                      : undefined
+                  }
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  contentStyle={chartTooltip(c)}
+                  formatter={(value, name) =>
+                    monthlyMode === "slot" ||
+                    monthlyMode === "category" ||
+                    monthlyMode === "hours"
+                      ? [fmtHoursChart(Number(value)), name]
+                      : [`${value}`, name]
+                  }
+                />
+                {monthlyMode === "slot" || monthlyMode === "category"
+                  ? monthlySeries
+                      .filter((s) => !monthlyToggle.hidden.has(s.id))
+                      .map((s) => (
+                        <Area
+                          key={s.id}
+                          type="monotone"
+                          dataKey={s.id}
+                          stackId="a"
+                          stroke={s.color}
+                          fill={s.color}
+                          fillOpacity={0.55}
+                          name={s.label}
+                        />
+                      ))
+                  : // Flat array, not a Fragment — see the note on the daily chart.
+                    [
+                      <Area
+                        key="value"
+                        type="monotone"
+                        dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
+                        stroke={
+                          monthlyMode === "lessons" ? c.goalMet : c.accent
+                        }
+                        fill={monthlyMode === "lessons" ? c.goalMet : c.accent}
+                        fillOpacity={0.15}
+                        strokeWidth={2}
+                        name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
+                        dot={{ r: 3 }}
+                      />,
+                      goalsEnabled && monthlyMode === "hours" && (
+                        <Line
+                          key="goal-line"
+                          type="monotone"
+                          dataKey="goal"
+                          stroke={c.ink}
+                          strokeWidth={1.5}
+                          strokeDasharray="6 3"
+                          dot={false}
+                          name="Goal"
+                        />
+                      ),
+                    ]}
+              </AreaChart>
+            </ResponsiveContainer>
+            {(monthlyMode === "slot" || monthlyMode === "category") && (
+              <ToggleChips
+                items={monthlySeries}
+                hidden={monthlyToggle.hidden}
+                onToggle={monthlyToggle.toggle}
+                onBulk={bulkToggleFor(monthlySeries, monthlyToggle)}
+              />
+            )}
+          </ChartCard>
+        )}
+      </TabbedSection>
     </div>
   )
 }

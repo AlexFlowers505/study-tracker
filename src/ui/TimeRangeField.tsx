@@ -16,16 +16,10 @@ import { Clock } from "lucide-react"
 import type { TimeOfDay } from "../types/model"
 import { pad } from "../lib/date"
 import { fmtHours, spanMinutes, timeToMinutes } from "../lib/time"
-import {
-  ACCENT,
-  EXAM_COLOR,
-  FIELD_BARE,
-  FIELD_BOXED,
-  INK,
-  btnBase,
-} from "../lib/theme"
+import { FIELD_BARE, FIELD_BOXED, btnBase } from "../lib/theme"
 import { DATE_PANEL_CLASS, useDatePopover } from "./datePopover"
 
+import { usePalette } from "./useTheme"
 type Step = "start-hour" | "start-minute" | "end-hour" | "end-minute"
 
 /**
@@ -61,6 +55,7 @@ export function TimeRangeField({
    */
   bare?: boolean
 }) {
+  const c = usePalette()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover()
   const [step, setStep] = useState<Step>("start-hour")
@@ -168,6 +163,9 @@ export function TimeRangeField({
   const triggerLabel =
     start || end ? `${start || "…"} – ${end || "…"}` : "Set time"
 
+  // Screen-reader wording for the dial. The visible version of this sits above
+  // the dial and is built from `editingStart` / `isMinute` directly, so it can
+  // put the accent on the field name.
   const hint =
     step === "start-hour"
       ? "Pick the start hour"
@@ -185,15 +183,15 @@ export function TimeRangeField({
         onClick={openPicker}
         className={
           bare
-            ? `${FIELD_BARE} ${btnBase} flex items-center gap-1 text-left text-[10px] text-[#1E2A33]/70`
-            : `${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`
+            ? `${FIELD_BARE} ${btnBase} flex items-center gap-1 text-left text-[10px] text-ink/70`
+            : `${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-ink/[0.03]`
         }
       >
         <Clock
           size={bare ? 10 : 13}
-          className="text-[#1E2A33]/40 shrink-0 no-underline"
+          className="text-ink/40 shrink-0 no-underline"
         />
-        <span className={start || end ? "" : "text-[#1E2A33]/35"}>
+        <span className={start || end ? "" : "text-ink/35"}>
           {triggerLabel}
         </span>
       </button>
@@ -205,41 +203,75 @@ export function TimeRangeField({
             style={panelStyle ?? undefined}
             className={`${DATE_PANEL_CLASS} w-[236px]`}
           >
+            {/* Which of the two the dial is driving has to be unmissable: the
+                panel looks the same either way, and picking the end when you
+                meant the start is silent — you get a valid time in the wrong
+                field. So the active half is stated three times over. It wears
+                the accent (label, ring, fill and figures), the idle half drops
+                to 60% so the pair reads as live-and-secondary rather than two
+                equal boxes, and the line under them names it in words. */}
             <div className="grid grid-cols-2 gap-2 px-1 pt-1">
-              {FIELDS.map((field) => (
-                <label key={field} className="min-w-0">
-                  <span className="block mb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45">
-                    {field}
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="HH:MM"
-                    value={
-                      editingStart === (field === "start") &&
-                      hoverValue !== null
-                        ? previewTime
-                        : field === "start"
-                          ? startText
-                          : endText
-                    }
-                    onFocus={() => setStep(`${field}-hour`)}
-                    onChange={(event) => {
-                      const value = event.target.value
-                      if (field === "start") setStartText(value)
-                      else setEndText(value)
-                      handleTextTime(field, value)
-                    }}
-                    style={
-                      editingStart === (field === "start")
-                        ? { boxShadow: `0 0 0 2px ${ACCENT}40` }
-                        : undefined
-                    }
-                    className={`${FIELD_BOXED} w-full px-2 py-1 text-center`}
-                  />
-                </label>
-              ))}
+              {FIELDS.map((field) => {
+                const active = editingStart === (field === "start")
+                return (
+                  <label
+                    key={field}
+                    className={`min-w-0 block ${active ? "" : "opacity-60"}`}
+                  >
+                    <span
+                      className={`block mb-1 text-[9px] font-mono uppercase tracking-widest ${
+                        active ? "font-bold" : "text-ink/45"
+                      }`}
+                      style={active ? { color: c.accent } : undefined}
+                    >
+                      {field}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="HH:MM"
+                      value={
+                        active && hoverValue !== null
+                          ? previewTime
+                          : field === "start"
+                            ? startText
+                            : endText
+                      }
+                      onFocus={() => setStep(`${field}-hour`)}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        if (field === "start") setStartText(value)
+                        else setEndText(value)
+                        handleTextTime(field, value)
+                      }}
+                      style={
+                        active
+                          ? {
+                              boxShadow: `0 0 0 2px ${c.accent}`,
+                              borderColor: c.accent,
+                              backgroundColor: `${c.accent}12`,
+                              color: c.accent,
+                            }
+                          : undefined
+                      }
+                      className={`${FIELD_BOXED} w-full px-2 py-1 text-center ${
+                        active ? "font-bold" : ""
+                      }`}
+                    />
+                  </label>
+                )
+              })}
             </div>
+            {/* Above the dial, not below it with the duration: this says what
+                the next click will do, so it has to be read before the click,
+                not found afterwards. It is always present, so nothing shifts
+                under the cursor as the range fills in. */}
+            <p className="px-1 pt-2 text-[9px] font-mono uppercase tracking-widest text-ink/45">
+              Setting{" "}
+              <span className="font-bold" style={{ color: c.accent }}>
+                {editingStart ? "start" : "end"} {isMinute ? "minutes" : "hour"}
+              </span>
+            </p>
             <svg
               viewBox="0 0 200 200"
               onMouseMove={(event) =>
@@ -250,13 +282,13 @@ export function TimeRangeField({
               className="block w-full cursor-pointer select-none"
               aria-label={`Time dial: ${hint}`}
             >
-              <circle cx="100" cy="100" r="90" fill={`${INK}08`} />
+              <circle cx="100" cy="100" r="90" fill={`${c.ink}08`} />
               <circle
                 cx="100"
                 cy="100"
                 r="78"
                 fill="none"
-                stroke={`${INK}18`}
+                stroke={`${c.ink}18`}
               />
               {!isMinute && (
                 <circle
@@ -264,7 +296,7 @@ export function TimeRangeField({
                   cy="100"
                   r="52"
                   fill="none"
-                  stroke={`${INK}18`}
+                  stroke={`${c.ink}18`}
                 />
               )}
               {dialAngle !== null && (
@@ -274,7 +306,7 @@ export function TimeRangeField({
                     y1="100"
                     x2={markerX}
                     y2={markerY}
-                    stroke={ACCENT}
+                    stroke={c.accent}
                     strokeWidth="2"
                     opacity={hoverValue === null ? 1 : 0.55}
                   />
@@ -282,12 +314,12 @@ export function TimeRangeField({
                     cx={markerX}
                     cy={markerY}
                     r="14"
-                    fill={ACCENT}
+                    fill={c.accent}
                     opacity={hoverValue === null ? 1 : 0.55}
                   />
                 </>
               )}
-              <circle cx="100" cy="100" r="3" fill={ACCENT} />
+              <circle cx="100" cy="100" r="3" fill={c.accent} />
               {dialLabels.map(({ value, radius }) => {
                 const angle =
                   ((value % (isMinute ? 60 : 12)) / (isMinute ? 60 : 12)) *
@@ -303,7 +335,7 @@ export function TimeRangeField({
                     y={y + 3}
                     textAnchor="middle"
                     className="font-mono text-[10px]"
-                    fill={selected ? "white" : `${INK}99`}
+                    fill={selected ? "white" : `${c.ink}99`}
                   >
                     {isMinute ? pad(value) : value}
                   </text>
@@ -315,7 +347,7 @@ export function TimeRangeField({
                 shoved the dial up and down under the cursor. */}
             <div
               className="px-1 pt-1 h-4 text-[10px] font-mono"
-              style={crossesMidnight ? { color: EXAM_COLOR } : undefined}
+              style={crossesMidnight ? { color: c.exam } : undefined}
             >
               {duration !== null && (
                 <>
@@ -324,16 +356,13 @@ export function TimeRangeField({
                 </>
               )}
             </div>
-            <p className="px-2 pb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
-              {hint}
-            </p>
-            <div className="flex gap-1">
+            <div className="flex gap-1 pt-1">
               {/* Rounded to the same 5 minutes the dial itself snaps to, so
                   what it fills in is a value you could have picked by hand. */}
               <button
                 type="button"
                 onClick={() => setValue(editingStart ? "start" : "end", nowTime())}
-                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
               >
                 Now
               </button>
@@ -343,7 +372,7 @@ export function TimeRangeField({
                   onClear()
                   setOpen(false)
                 }}
-                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
               >
                 Clear
               </button>

@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react"
-import { ACCENT } from "../lib/theme"
+import type { Palette } from "../lib/theme"
 
 /**
  * These have to sit on the calendar's own root: react-day-picker's stylesheet
@@ -26,10 +26,11 @@ import { ACCENT } from "../lib/theme"
  */
 const DAY_PICKER_FONT_SIZE = "12px"
 
-export const DAY_PICKER_STYLE = {
-  "--rdp-accent-color": ACCENT,
-  "--rdp-accent-background-color": `${ACCENT}1A`,
-  "--rdp-today-color": ACCENT,
+export const dayPickerStyle = (c: Palette) =>
+  ({
+  "--rdp-accent-color": c.accent,
+  "--rdp-accent-background-color": `${c.accent}1A`,
+  "--rdp-today-color": c.accent,
   "--rdp-day-height": "30px",
   "--rdp-day-width": "30px",
   "--rdp-day_button-height": "28px",
@@ -39,7 +40,7 @@ export const DAY_PICKER_STYLE = {
   "--rdp-nav_button-width": "26px",
   "--rdp-weekday-padding": "4px 0",
   fontSize: DAY_PICKER_FONT_SIZE,
-} as CSSProperties
+  }) as CSSProperties
 
 /**
  * Two spots size themselves with absolute keywords (`font-size: large`), so
@@ -66,7 +67,7 @@ export const DAY_PICKER_MODIFIER_STYLES = {
 const DATE_PANEL_MAX_WIDTH = 260
 
 export const DATE_PANEL_CLASS =
-  "z-[110] rounded-2xl bg-white shadow-2xl p-2 text-[#1E2A33]"
+  "z-[110] rounded-2xl bg-card shadow-2xl p-2 text-ink"
 
 export function useDatePopover(openInitially = false) {
   const triggerRef = useRef<HTMLButtonElement>(null)

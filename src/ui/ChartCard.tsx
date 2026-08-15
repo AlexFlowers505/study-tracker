@@ -25,7 +25,7 @@ export function ChartCard({
             {title}
           </h3>
           {subtitle && (
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/40">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
               {subtitle}
             </p>
           )}

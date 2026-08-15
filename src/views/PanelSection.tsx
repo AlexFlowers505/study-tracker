@@ -47,7 +47,7 @@ export function PanelSection({
         >
           <Icon size={13} style={{ color: tint }} />
         </span>
-        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-[#1E2A33] flex-1">
+        <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm text-ink flex-1">
           {title}
         </h3>
         {action}
@@ -55,7 +55,7 @@ export function PanelSection({
           <Tip text={closeLabel}>
             <button
               onClick={onClose}
-              className={`${btnBase} p-1 -mr-1 rounded-full text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10`}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/10`}
             >
               <X size={16} />
             </button>
@@ -63,7 +63,7 @@ export function PanelSection({
         )}
       </div>
       {subtitle && (
-        <p className="text-[11px] font-mono text-[#1E2A33]/50 mb-3 uppercase tracking-widest">
+        <p className="text-[11px] font-mono text-ink/50 mb-3 uppercase tracking-widest">
           {subtitle}
         </p>
       )}

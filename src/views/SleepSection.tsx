@@ -25,11 +25,12 @@ import { pad } from "../lib/date"
 import { makeIsIgnored } from "../lib/stats"
 import { sleepStats } from "../lib/sleep"
 import { DAY_START_HOUR, HOUR_TICKS, fmtAxisHours, fmtHours } from "../lib/time"
-import { INK, SLEEP_COLOR } from "../lib/theme"
+
 import { ChartCard } from "../ui/ChartCard"
 import { StatTile } from "../ui/StatTile"
 import { PanelSection } from "./PanelSection"
 
+import { usePalette } from "../ui/useTheme"
 export function SleepSection({
   days,
   range,
@@ -43,15 +44,26 @@ export function SleepSection({
   monthIgnore: Record<DayKey, boolean>
   onClose?: () => void
 }) {
+  const c = usePalette()
   const stats = useMemo(
     () => sleepStats(days, range, makeIsIgnored(weekIgnore, monthIgnore)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [days, range.start, range.end, weekIgnore, monthIgnore],
   )
 
+  // One tick per hour. Left to itself Recharts picks ticks like 2.5 and 7.5
+  // for a nights-long domain, and `fmtAxisHours` rounds those to "3" and "8" —
+  // labels that are not the lines they sit on. Whole hours all the way up fix
+  // the lie and give the eye an hour-by-hour ruler to read a night against.
+  const nightTicks = useMemo(() => {
+    const max = Math.max(0, ...(stats?.perNight ?? []).map((n) => n.hours))
+    const top = Math.max(1, Math.ceil(max))
+    return Array.from({ length: top + 1 }, (_, i) => i)
+  }, [stats])
+
   return (
     <PanelSection
-      tint={SLEEP_COLOR}
+      tint={c.sleep}
       icon={Moon}
       title="Sleep"
       subtitle={
@@ -65,7 +77,7 @@ export function SleepSection({
       {!stats ? (
         // The normal case for any range that predates sleep tracking, so it
         // gets a sentence rather than an empty axis.
-        <p className="text-xs font-mono text-[#1E2A33]/50">
+        <p className="text-xs font-mono text-ink/50">
           No sleep with a start and end time in this period yet.
         </p>
       ) : (
@@ -83,8 +95,10 @@ export function SleepSection({
             />
             <StatTile
               label="Average night"
+              // No minutes sub-label any more — "7h 12m" is already the
+              // whole answer, and "432m" underneath was the same number said
+              // again in a unit nobody asked for.
               value={fmtHours(stats.duration)}
-              sub={`${Math.round(stats.duration)}m`}
               icon={Clock}
             />
           </div>
@@ -104,22 +118,22 @@ export function SleepSection({
                   barCategoryGap={2}
                   margin={{ left: 8, right: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
                   <XAxis
                     type="number"
                     domain={[0, 1440]}
                     ticks={HOUR_TICKS}
                     tickFormatter={(v) => pad((v / 60 + DAY_START_HOUR) % 24)}
-                    tick={{ fontSize: 9, fontFamily: "monospace" }}
+                    tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <YAxis
                     type="category"
                     dataKey="label"
                     width={42}
-                    tick={{ fontSize: 9, fontFamily: "monospace" }}
+                    tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <Tooltip
-                    cursor={{ fill: `${INK}08` }}
+                    cursor={{ fill: `${c.ink}08` }}
                     formatter={(_value, name, props) =>
                       name === "span"
                         ? [
@@ -136,7 +150,7 @@ export function SleepSection({
                   <Bar
                     dataKey="span"
                     stackId="n"
-                    fill={SLEEP_COLOR}
+                    fill={c.sleep}
                     radius={[3, 3, 3, 3]}
                   />
                 </BarChart>
@@ -149,26 +163,28 @@ export function SleepSection({
             >
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={stats.perNight}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
                   <XAxis
                     dataKey="labelLong"
-                    tick={{ fontSize: 9, fontFamily: "monospace" }}
+                    tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <YAxis
+                    ticks={nightTicks}
+                    domain={[0, nightTicks[nightTicks.length - 1]]}
                     tickFormatter={fmtAxisHours}
-                    tick={{ fontSize: 10, fontFamily: "monospace" }}
+                    tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <Tooltip
                     formatter={(value) => [
-                      `${Number(value).toFixed(1)}h`,
+                      fmtHours(Number(value) * 60),
                       "Slept",
                     ]}
                   />
                   <Area
                     type="monotone"
                     dataKey="hours"
-                    stroke={SLEEP_COLOR}
-                    fill={`${SLEEP_COLOR}40`}
+                    stroke={c.sleep}
+                    fill={`${c.sleep}40`}
                     strokeWidth={2}
                   />
                 </AreaChart>
@@ -181,16 +197,16 @@ export function SleepSection({
             >
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={stats.data}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={`${c.ink}22`} />
                   <XAxis
                     dataKey="label"
                     interval={0}
-                    tick={{ fontSize: 9, fontFamily: "monospace" }}
+                    tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <YAxis
                     domain={[0, 100]}
                     tickFormatter={(v) => `${v}%`}
-                    tick={{ fontSize: 10, fontFamily: "monospace" }}
+                    tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
                   <Tooltip
                     formatter={(value) => [`${value}% of nights`, "Asleep"]}
@@ -199,8 +215,8 @@ export function SleepSection({
                   <Area
                     type="monotone"
                     dataKey="pct"
-                    stroke={SLEEP_COLOR}
-                    fill={`${SLEEP_COLOR}40`}
+                    stroke={c.sleep}
+                    fill={`${c.sleep}40`}
                     strokeWidth={2}
                   />
                 </AreaChart>

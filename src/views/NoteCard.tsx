@@ -31,14 +31,14 @@ export function NoteCard({
   // when there's something written in it.
   return (
     <div className="flex items-start gap-1.5 mb-4">
-      <Icon size={12} className="text-[#1E2A33]/30 shrink-0 mt-[3px]" />
+      <Icon size={12} className="text-ink/30 shrink-0 mt-[3px]" />
       <AutoTextarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={label}
         rows={1}
         maxHeight={160}
-        className="flex-1 bg-transparent border-0 p-0 text-xs font-mono text-[#1E2A33]/50 placeholder:text-[#1E2A33]/30 focus:outline-none focus:text-[#1E2A33]/80"
+        className="flex-1 bg-transparent border-0 p-0 text-xs font-mono text-ink/50 placeholder:text-ink/30 focus:outline-none focus:text-ink/80"
       />
     </div>
   )

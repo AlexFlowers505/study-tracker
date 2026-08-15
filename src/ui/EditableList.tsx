@@ -22,6 +22,7 @@ import { PALETTE, btnBase } from "../lib/theme"
 import { ICON_LIBRARY } from "./iconLibrary"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
+import { usePalette } from "./useTheme"
 import { AutoTextarea } from "./controls"
 
 export function EditableList<T extends Labeled>({
@@ -47,6 +48,7 @@ export function EditableList<T extends Labeled>({
    */
   minItems?: number
 }) {
+  const c = usePalette()
   const [openPickerId, setOpenPickerId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -87,21 +89,21 @@ export function EditableList<T extends Labeled>({
       {items.map((item, index) => (
         <div
           key={item.id}
-          className="border border-[#1E2A33]/15 rounded-xl p-2 bg-white"
+          className="border border-ink/15 rounded-xl p-2 bg-card"
         >
           {confirmDeleteId === item.id ? (
             <div className="flex items-center justify-between gap-3 text-xs font-mono">
-              <span className="text-[#C1595B]">{warningNote(item.label)}</span>
+              <span className="text-exam">{warningNote(item.label)}</span>
               <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setConfirmDeleteId(null)}
-                  className={`${btnBase} px-2 py-1 rounded-md border border-[#1E2A33]/20 hover:bg-[#1E2A33]/5 uppercase tracking-widest text-[10px]`}
+                  className={`${btnBase} px-2 py-1 rounded-md border border-ink/20 hover:bg-ink/5 uppercase tracking-widest text-[10px]`}
                 >
                   Keep
                 </button>
                 <button
                   onClick={() => removeItem(item.id)}
-                  className={`${btnBase} px-2 py-1 rounded-md bg-[#C1595B] text-white hover:bg-[#a94a4c] uppercase tracking-widest text-[10px]`}
+                  className={`${btnBase} px-2 py-1 rounded-md bg-exam text-page hover:bg-exam/85 uppercase tracking-widest text-[10px]`}
                 >
                   Remove
                 </button>
@@ -114,14 +116,14 @@ export function EditableList<T extends Labeled>({
                   <button
                     disabled={index === 0}
                     onClick={() => moveItem(index, -1)}
-                    className={`${btnBase} p-0.5 rounded text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                   >
                     <ChevronUp size={13} />
                   </button>
                   <button
                     disabled={index === items.length - 1}
                     onClick={() => moveItem(index, 1)}
-                    className={`${btnBase} p-0.5 rounded text-[#1E2A33]/35 hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                   >
                     <ChevronDown size={13} />
                   </button>
@@ -137,8 +139,8 @@ export function EditableList<T extends Labeled>({
                     <RenderIcon name={item.iconName} size={15} />
                   </button>
                   {openPickerId === item.id && (
-                    <div className="absolute z-30 top-10 left-0 bg-white border border-[#1E2A33]/15 rounded-xl shadow-lg p-2.5 w-56">
-                      <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
+                    <div className="absolute z-30 top-10 left-0 bg-card border border-ink/15 rounded-xl shadow-lg p-2.5 w-56">
+                      <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Icon
                       </p>
                       {/* Capped and scrolled: the library is long enough now
@@ -151,9 +153,9 @@ export function EditableList<T extends Labeled>({
                             onClick={() =>
                               updateItem(item.id, { iconName: opt.name })
                             }
-                            className={`${btnBase} p-1.5 rounded-md hover:bg-[#1E2A33]/10 flex items-center justify-center ${
+                            className={`${btnBase} p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
                               item.iconName === opt.name
-                                ? "bg-[#1E2A33]/10 ring-1 ring-[#1E2A33]/30"
+                                ? "bg-ink/10 ring-1 ring-ink/30"
                                 : ""
                             }`}
                           >
@@ -161,7 +163,7 @@ export function EditableList<T extends Labeled>({
                           </button>
                         ))}
                       </div>
-                      <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
+                      <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Color
                       </p>
                       {/* The item's own colour is always offered, even when
@@ -173,14 +175,16 @@ export function EditableList<T extends Labeled>({
                         {(PALETTE.includes(item.color)
                           ? PALETTE
                           : [...PALETTE, item.color]
-                        ).map((c) => (
+                        ).map((swatch) => (
                           <button
-                            key={c}
-                            onClick={() => updateItem(item.id, { color: c })}
+                            key={swatch}
+                            onClick={() => updateItem(item.id, { color: swatch })}
                             style={{
-                              backgroundColor: c,
+                              backgroundColor: swatch,
                               outline:
-                                item.color === c ? "2px solid #1E2A33" : "none",
+                                item.color === swatch
+                                  ? `2px solid ${c.ink}`
+                                  : "none",
                               outlineOffset: "1px",
                             }}
                             className={`${btnBase} w-5 h-5 rounded-full hover:scale-110`}
@@ -189,7 +193,7 @@ export function EditableList<T extends Labeled>({
                       </div>
                       <button
                         onClick={() => setOpenPickerId(null)}
-                        className={`${btnBase} mt-3 text-[9px] uppercase tracking-widest text-[#1E2A33]/40 hover:text-[#1E2A33]`}
+                        className={`${btnBase} mt-3 text-[9px] uppercase tracking-widest text-ink/40 hover:text-ink`}
                       >
                         Done
                       </button>
@@ -201,7 +205,7 @@ export function EditableList<T extends Labeled>({
                   onChange={(e) =>
                     updateItem(item.id, { label: e.target.value })
                   }
-                  className="flex-1 border border-[#1E2A33]/20 rounded-xl px-2 py-1.5 text-xs font-mono"
+                  className="flex-1 border border-ink/20 rounded-xl px-2 py-1.5 text-xs font-mono"
                 />
                 <Tip
                   text={
@@ -213,7 +217,7 @@ export function EditableList<T extends Labeled>({
                   <button
                     disabled={items.length <= minItems}
                     onClick={() => setConfirmDeleteId(item.id)}
-                    className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
+                    className={`${btnBase} p-1.5 text-ink/40 hover:text-exam disabled:opacity-20 disabled:cursor-not-allowed`}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -222,7 +226,7 @@ export function EditableList<T extends Labeled>({
               <div className="flex items-start gap-1.5 pl-1">
                 <MessageSquare
                   size={12}
-                  className="text-[#1E2A33]/25 shrink-0 mt-1.5"
+                  className="text-ink/25 shrink-0 mt-1.5"
                 />
                 <AutoTextarea
                   value={item.description || ""}
@@ -232,7 +236,7 @@ export function EditableList<T extends Labeled>({
                   placeholder={`What counts as this ${noun}? (optional)`}
                   rows={1}
                   maxHeight={100}
-                  className="flex-1 border border-[#1E2A33]/10 rounded-lg px-2 py-1 text-[10px] font-mono bg-[#F4F5F7]/50"
+                  className="flex-1 border border-ink/10 rounded-lg px-2 py-1 text-[10px] font-mono bg-page/50"
                 />
               </div>
               {extra?.(item, (patch) => updateItem(item.id, patch))}
@@ -242,7 +246,7 @@ export function EditableList<T extends Labeled>({
       ))}
       <button
         onClick={addItem}
-        className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/60 hover:text-[#1E2A33] px-1 py-1.5`}
+        className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-ink/60 hover:text-ink px-1 py-1.5`}
       >
         <Plus size={13} /> Add {noun}
       </button>

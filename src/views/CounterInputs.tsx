@@ -68,7 +68,7 @@ export function CounterEditors({
               style={{ color: unit.color }}
             />
             <span style={{ color: unit.color }}>{unit.label}</span>
-            <span className="text-[#1E2A33]/40">
+            <span className="text-ink/40">
               {unitDayTotal(counters, unit.id)} today
             </span>
           </div>
@@ -76,7 +76,7 @@ export function CounterEditors({
             {columns.map((col) => (
               <label key={col.id} className="flex items-center gap-1">
                 <span
-                  className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45"
+                  className="text-[9px] font-mono uppercase tracking-widest text-ink/45"
                   style={col.color ? { color: col.color } : undefined}
                 >
                   {col.label}

@@ -24,13 +24,7 @@ import {
   addDays,
   fmtDateLong,
 } from "./lib/date"
-import {
-  ACCENT,
-  EXAM_COLOR,
-  FREEZE_COLOR,
-  CARD,
-  btnBase,
-} from "./lib/theme"
+import { CARD, btnBase } from "./lib/theme"
 import {
   DEFAULT_SETTINGS,
   STORAGE_KEY,
@@ -76,6 +70,7 @@ import { AnalyticsView } from "./views/AnalyticsView"
 import { QuickAddCounterModal } from "./views/QuickAddCounterModal"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
 import { DayQuickviewModal } from "./views/DayEditor"
+import { usePalette } from "./ui/useTheme"
 
 const DEFAULT_DATA = buildInitialData()
 
@@ -84,6 +79,7 @@ const DEFAULT_DATA = buildInitialData()
 --------------------------------------------------------------- */
 
 export default function StudyTrackerApp() {
+  const c = usePalette()
   const {
     client: cloudClient,
     session,
@@ -581,27 +577,27 @@ export default function StudyTrackerApp() {
   // keeps nothing. Better to say which file is empty.
   if (!cloudEnabled) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] p-6">
+      <div className="min-h-screen flex items-center justify-center bg-page text-ink p-6">
         <div className={`${CARD} max-w-md text-center`}>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-base mb-2">
             No database configured
           </h1>
-          <p className="text-xs font-mono text-[#1E2A33]/60 leading-relaxed">
+          <p className="text-xs font-mono text-ink/60 leading-relaxed">
             {import.meta.env.DEV ? (
               <>
-                Fill <span className="text-[#1E2A33]">VITE_SUPABASE_URL</span>{" "}
+                Fill <span className="text-ink">VITE_SUPABASE_URL</span>{" "}
                 and{" "}
-                <span className="text-[#1E2A33]">VITE_SUPABASE_ANON_KEY</span>{" "}
-                in <span className="text-[#1E2A33]">.env.development.local</span>{" "}
+                <span className="text-ink">VITE_SUPABASE_ANON_KEY</span>{" "}
+                in <span className="text-ink">.env.development.local</span>{" "}
                 with your dev project, then restart the dev server — Vite reads
                 env files once, at boot. See{" "}
-                <span className="text-[#1E2A33]">.env.example</span> for how to
+                <span className="text-ink">.env.example</span> for how to
                 set that project up.
               </>
             ) : (
               <>
                 This build went out without{" "}
-                <span className="text-[#1E2A33]">.env.production</span>. Nothing
+                <span className="text-ink">.env.production</span>. Nothing
                 is lost — the data is untouched on the server, this copy just
                 has no address for it.
               </>
@@ -614,7 +610,7 @@ export default function StudyTrackerApp() {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] font-mono text-sm">
+      <div className="min-h-screen flex items-center justify-center bg-page text-ink font-mono text-sm">
         Loading logbook…
       </div>
     )
@@ -645,7 +641,7 @@ export default function StudyTrackerApp() {
 
   if (!loaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] font-mono text-sm">
+      <div className="min-h-screen flex items-center justify-center bg-page text-ink font-mono text-sm">
         Loading logbook…
       </div>
     )
@@ -657,20 +653,20 @@ export default function StudyTrackerApp() {
   // that blank over the saved copy.
   if (loadFailed) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] text-[#1E2A33] p-6">
+      <div className="min-h-screen flex items-center justify-center bg-page text-ink p-6">
         <div className={`${CARD} max-w-md text-center`}>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-base mb-2">
             Couldn't load your logbook
           </h1>
-          <p className="text-xs font-mono text-[#1E2A33]/60 leading-relaxed mb-4">
+          <p className="text-xs font-mono text-ink/60 leading-relaxed mb-4">
             The server answered, but your saved data didn't come back. Nothing
             has been changed — saving is switched off until it loads, so the
             stored copy stays exactly as it is.
           </p>
           <button
             onClick={() => window.location.reload()}
-            style={{ backgroundColor: ACCENT }}
-            className={`${btnBase} text-white text-xs font-mono uppercase tracking-widest px-4 py-2.5 rounded-xl hover:opacity-90`}
+            style={{ backgroundColor: c.accent, color: c.onFill }}
+            className={`${btnBase} text-xs font-mono uppercase tracking-widest px-4 py-2.5 rounded-xl hover:opacity-90`}
           >
             Try again
           </button>
@@ -680,7 +676,7 @@ export default function StudyTrackerApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] text-[#1E2A33]">
+    <div className="min-h-screen bg-page text-ink">
       <TopBar
         onOpenSetup={() => setShowSetup(true)}
         projectName={project.settings.projectName || "Time Tracker"}
@@ -810,8 +806,8 @@ export default function StudyTrackerApp() {
           interrupt — retrying quietly in the background is not enough. */}
       {saveFailed && (
         <div
-          className="fixed inset-x-0 top-0 z-50 px-4 py-2.5 text-white shadow-lg"
-          style={{ backgroundColor: EXAM_COLOR }}
+          className="fixed inset-x-0 top-0 z-50 px-4 py-2.5 shadow-lg"
+          style={{ backgroundColor: c.exam, color: c.onFill }}
         >
           <div className="max-w-6xl mx-auto flex items-center gap-3 text-xs font-mono">
             <AlertCircle size={16} className="shrink-0" />
@@ -821,7 +817,7 @@ export default function StudyTrackerApp() {
             </span>
             <button
               onClick={writeNow}
-              className={`${btnBase} shrink-0 rounded-full bg-white/20 hover:bg-white/30 px-3 py-1 uppercase tracking-widest text-[10px]`}
+              className={`${btnBase} shrink-0 rounded-full bg-card/20 hover:bg-card/30 px-3 py-1 uppercase tracking-widest text-[10px]`}
             >
               Retry now
             </button>
@@ -839,24 +835,24 @@ export default function StudyTrackerApp() {
           }
         >
           <div className={`${CARD} w-full max-w-[340px] p-5`}>
-            <p className="text-xs font-mono text-[#1E2A33]/80 mb-1">
+            <p className="text-xs font-mono text-ink/80 mb-1">
               Use a streak freeze on {fmtDateLong(freezeCandidate)}?
             </p>
-            <p className="text-[11px] font-mono text-[#1E2A33]/45 mb-4">
+            <p className="text-[11px] font-mono text-ink/45 mb-4">
               The day keeps your streak but stays short of its goal. Spent for
               good — {ledger.balance - 1} would be left.
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setFreezeCandidate(null)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
               >
                 Cancel
               </button>
               <button
                 onClick={() => spendFreeze(freezeCandidate)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-white`}
-                style={{ backgroundColor: FREEZE_COLOR }}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
+                style={{ backgroundColor: c.freeze, color: c.onFill }}
               >
                 Use a freeze
               </button>

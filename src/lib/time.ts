@@ -36,24 +36,33 @@ export const startedPreviousDay = (entry: TimeEntry): boolean =>
 
 /* ---- Minutes as hours ---- */
 
-/** One digit after the dot unless it's a whole number. */
+/**
+ * A duration as hours **and minutes** — `2h 30m`, never `2.5h`.
+ *
+ * Decimal hours read fine as a magnitude and badly as a plan: "0.4h left" has
+ * to be multiplied by 60 before it means anything you can act on, and doing
+ * that arithmetic is the whole job of this app. Minutes are also what gets
+ * stored, so this prints the exact figure instead of one rounded to a tenth of
+ * an hour — `2.3h` was never a number anybody had logged.
+ *
+ * One unit when the other is zero: `45m`, `3h`. Both only when both are real.
+ */
 export const fmtHours = (minutes: number): string => {
-  const h = Math.round((minutes / 60) * 10) / 10
-  return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
+  const sign = minutes < 0 ? "-" : ""
+  const total = Math.round(Math.abs(minutes))
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (!h) return `${sign}${m}m`
+  if (!m) return `${sign}${h}h`
+  return `${sign}${h}h ${m}m`
 }
-
-/** Same rounding, but always one decimal — for fixed-width "Xm / Y.Zh" pairs. */
-export const fmtHoursFixed1 = (minutes: number): string =>
-  `${(minutes / 60).toFixed(1)}h`
 
 /** Full precision, for stacking and summing in charts. */
 export const toHours = (minutes: number): number => minutes / 60
 
-/** Two digits after the dot unless it's a whole number. */
-export const fmtHoursChart = (hoursValue: number): string => {
-  const h = Math.round(hoursValue * 100) / 100
-  return Number.isInteger(h) ? `${h}h` : `${h.toFixed(2)}h`
-}
+/** The same format for the charts, which carry hours rather than minutes. */
+export const fmtHoursChart = (hoursValue: number): string =>
+  fmtHours(hoursValue * 60)
 
 /**
  * Axis ticks stay whole hours — "2" and "3" rather than "2.55". Paired with
@@ -76,8 +85,15 @@ export const fmtAxisHours = (hoursValue: number): string =>
 export const DAY_START_HOUR = 18
 export const ROTATION = DAY_START_HOUR * 60
 
-/** Every three hours across the rotated 24, shared by the sleep charts. */
-export const HOUR_TICKS = Array.from({ length: 9 }, (_, i) => i * 180)
+/**
+ * Every hour across the rotated 24, for the sleep charts' clock axis.
+ *
+ * Every hour rather than every third: the grid line is the ruler you read a
+ * night's start and end against, and three-hour spacing meant estimating
+ * inside a block two hours wide. Recharts thins the *labels* when they would
+ * collide, so a phone still gets a readable axis over the same grid.
+ */
+export const HOUR_TICKS = Array.from({ length: 25 }, (_, i) => i * 60)
 
 export const toRotated = (minutes: number): number =>
   (minutes - ROTATION + 1440) % 1440

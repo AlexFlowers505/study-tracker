@@ -9,11 +9,12 @@ import {
 import type { Project } from "../types/model"
 import { FREEZE_CAP, freezeLedger } from "../lib/freezes"
 import { computeStreaks } from "../lib/streaks"
-import { FREEZE_COLOR, PROJECT_TINT } from "../lib/theme"
+
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { PanelSection } from "./PanelSection"
 
+import { usePalette } from "../ui/useTheme"
 const plural = (n: number) => (n === 1 ? "" : "s")
 
 const HOW_IT_WORKS = [
@@ -32,17 +33,22 @@ export function StreaksSection({
   project: Project
   onClose?: () => void
 }) {
+  const c = usePalette()
   const streaks = useMemo(() => computeStreaks(project), [project])
   const ledger = useMemo(() => freezeLedger(project), [project])
   const goalsOff = project.settings.goalsEnabled === false
 
   return (
     <PanelSection
-      tint={PROJECT_TINT}
+      tint={c.project}
       icon={Flame}
       title="Streaks"
       subtitle={
-        <Tip multiline text={HOW_IT_WORKS}>
+        /* Downwards. This is the tallest bubble in the app and the panel it
+           sits in opens just under the sticky period bar, so anchored above its
+           trigger the first lines ran off the top of the viewport — and the
+           first lines are the ones that say what a streak even is. */
+        <Tip multiline side="bottom" text={HOW_IT_WORKS}>
           <span className="cursor-help underline decoration-dotted underline-offset-2">
             Whole project · how streaks and freezes work
           </span>
@@ -62,8 +68,8 @@ export function StreaksSection({
             <span
               className="flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
               style={{
-                color: FREEZE_COLOR,
-                backgroundColor: `${FREEZE_COLOR}1A`,
+                color: c.freeze,
+                backgroundColor: `${c.freeze}1A`,
               }}
             >
               <Snowflake size={11} />
@@ -76,12 +82,12 @@ export function StreaksSection({
       {goalsOff ? (
         // No metric, no streak. Said out loud rather than shown as zeroes,
         // which would read as "you have no streak" instead of "this is off".
-        <p className="text-xs font-mono text-[#1E2A33]/50">
+        <p className="text-xs font-mono text-ink/50">
           Streaks need the effectiveness meter. Turn daily goals on in Setup to
           use them.
         </p>
       ) : !streaks ? (
-        <p className="text-xs font-mono text-[#1E2A33]/50">
+        <p className="text-xs font-mono text-ink/50">
           Nothing to measure yet.
         </p>
       ) : (

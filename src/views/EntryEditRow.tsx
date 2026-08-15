@@ -30,12 +30,13 @@ import type {
 } from "../types/model"
 import { getById } from "../lib/id"
 import { fmtHours } from "../lib/time"
-import { EXAM_COLOR, FIELD_BARE, GOAL_MET_COLOR, btnBase } from "../lib/theme"
+import { FIELD_BARE, btnBase } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { RenderIcon } from "../ui/icons"
 import { TimeRangeField } from "../ui/TimeRangeField"
 import { Tip } from "../ui/Tip"
 
+import { usePalette } from "../ui/useTheme"
 const iconBtn = `${btnBase} p-1 rounded shrink-0`
 
 export function EntryEditRow({
@@ -63,6 +64,7 @@ export function EntryEditRow({
   onCancel: () => void
   onClose: () => void
 }) {
+  const c = usePalette()
   const ref = useRef<HTMLDivElement>(null)
   const timed = !!(entry.start && entry.end)
   const isStudy = !!slots && !!categories && !!slotId
@@ -102,7 +104,7 @@ export function EntryEditRow({
       }}
     >
       {/* Row one is the readout's own line: time, then category. */}
-      <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-[#1E2A33]/70">
+      <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-ink/70">
         <TimeRangeField
           bare
           start={entry.start}
@@ -113,7 +115,7 @@ export function EntryEditRow({
           onClear={() => onChange({ start: undefined, end: undefined })}
         />
         {timed ? (
-          <span className="text-[#1E2A33]/45">({fmtHours(entry.minutes)})</span>
+          <span className="text-ink/45">({fmtHours(entry.minutes)})</span>
         ) : (
           <span className="flex items-center gap-1">
             <input
@@ -121,9 +123,9 @@ export function EntryEditRow({
               min={0}
               value={entry.minutes}
               onChange={(e) => onChange({ minutes: Number(e.target.value) })}
-              className={`${FIELD_BARE} w-10 text-[10px] text-[#1E2A33]/70`}
+              className={`${FIELD_BARE} w-10 text-[10px] text-ink/70`}
             />
-            <span className="text-[#1E2A33]/45">min</span>
+            <span className="text-ink/45">min</span>
           </span>
         )}
       </div>
@@ -160,7 +162,7 @@ export function EntryEditRow({
           <select
             value={(entry as StudyEntry).category}
             onChange={(e) => onChange({ category: e.target.value })}
-            className={`${FIELD_BARE} min-w-0 text-[10px] text-[#1E2A33]/70`}
+            className={`${FIELD_BARE} min-w-0 text-[10px] text-ink/70`}
           >
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -178,7 +180,7 @@ export function EntryEditRow({
         placeholder="Note"
         rows={1}
         maxHeight={160}
-        className="w-full bg-transparent border-0 p-0 text-[10px] font-mono italic text-[#1E2A33]/60 placeholder:text-[#1E2A33]/30 focus:outline-none"
+        className="w-full bg-transparent border-0 p-0 text-[10px] font-mono italic text-ink/60 placeholder:text-ink/30 focus:outline-none"
       />
 
       {/* A row of its own at the bottom, nothing sharing it. Destructive on
@@ -188,8 +190,8 @@ export function EntryEditRow({
         <Tip text="Delete this entry">
           <button
             onClick={onDelete}
-            className={`${iconBtn} hover:bg-white/70`}
-            style={{ color: EXAM_COLOR }}
+            className={`${iconBtn} hover:bg-card/70`}
+            style={{ color: c.exam }}
           >
             <Trash2 size={13} />
           </button>
@@ -198,7 +200,7 @@ export function EntryEditRow({
           <Tip text="Cancel changes">
             <button
               onClick={onCancel}
-              className={`${iconBtn} text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white/70`}
+              className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
             >
               <Ban size={13} />
             </button>
@@ -207,8 +209,8 @@ export function EntryEditRow({
           <Tip text="Done">
             <button
               onClick={onClose}
-              className={`${iconBtn} hover:bg-white/70`}
-              style={{ color: GOAL_MET_COLOR }}
+              className={`${iconBtn} hover:bg-card/70`}
+              style={{ color: c.goalMet }}
             >
               <Check size={14} />
             </button>

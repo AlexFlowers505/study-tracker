@@ -11,16 +11,20 @@
 
 import { useState } from "react"
 import type { CounterRelation, CounterUnit } from "../types/model"
-import { EXAM_COLOR, GOAL_MET_COLOR, INK } from "../lib/theme"
+import type { Palette } from "../lib/theme"
+
 import { EditableList } from "../ui/EditableList"
 import { SegmentedControl } from "../ui/controls"
 import { SwitchToggle } from "../ui/toggles"
 import { Tip } from "../ui/Tip"
+import { usePalette } from "../ui/useTheme"
 
-const RELATIONS: { id: CounterRelation; label: string; color: string }[] = [
-  { id: "positive", label: "Good", color: GOAL_MET_COLOR },
-  { id: "neutral", label: "Neutral", color: INK },
-  { id: "negative", label: "Bad", color: EXAM_COLOR },
+const relations = (
+  c: Palette,
+): { id: CounterRelation; label: string; color: string }[] => [
+  { id: "positive", label: "Good", color: c.goalMet },
+  { id: "neutral", label: "Neutral", color: c.ink },
+  { id: "negative", label: "Bad", color: c.exam },
 ]
 
 /**
@@ -74,7 +78,7 @@ function TotalField({
       // stored value: an empty field is a half-typed number, not a total of
       // nothing.
       onBlur={() => setDraft(null)}
-      className="w-20 border border-[#1E2A33]/20 rounded-lg px-2 py-1 text-[11px] font-mono"
+      className="w-20 border border-ink/20 rounded-lg px-2 py-1 text-[11px] font-mono"
     />
   )
 }
@@ -89,9 +93,10 @@ export function CounterUnitsTab({
   progress: Record<string, number>
   onChange: (next: CounterUnit[]) => void
 }) {
+  const c = usePalette()
   return (
     <div className="space-y-3">
-      <p className="text-[10px] font-mono text-[#1E2A33]/45 leading-relaxed">
+      <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
         Things you tally per day — lessons finished, exams passed, pages read.
         Each one gets its own count on every day card.
       </p>
@@ -114,7 +119,7 @@ export function CounterUnitsTab({
                 there is a number to put in it. */}
             <div className="flex items-center gap-1.5">
               <Tip multiline text={TOTAL_HELP}>
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45 cursor-help underline decoration-dotted underline-offset-2">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
                   Known total
                 </span>
               </Tip>
@@ -138,7 +143,7 @@ export function CounterUnitsTab({
               )}
               {/* How far along you are. The day cards show the day's own
                   count; the running total belongs where the total is set. */}
-              <span className="text-[10px] font-mono text-[#1E2A33]/45 whitespace-nowrap">
+              <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
                 {progress[unit.id] || 0}
                 {unit.total != null ? ` / ${unit.total}` : " so far"}
               </span>
@@ -146,12 +151,12 @@ export function CounterUnitsTab({
 
             <div className="flex items-center gap-1.5">
               <Tip multiline text={RELATION_HELP}>
-                <span className="text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/45 cursor-help underline decoration-dotted underline-offset-2">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
                   Counting up is
                 </span>
               </Tip>
               <SegmentedControl
-                items={RELATIONS}
+                items={relations(c)}
                 activeId={unit.relation}
                 onChange={(id) => update({ relation: id as CounterRelation })}
               />

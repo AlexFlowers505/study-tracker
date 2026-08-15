@@ -13,6 +13,7 @@ import type {
   Slot,
 } from "../types/model"
 import type { PeriodState } from "../lib/freezes"
+import type { Palette } from "../lib/theme"
 import {
   fromKey,
   pad,
@@ -29,28 +30,21 @@ import {
   makeIsIgnored,
   rangeStats,
 } from "../lib/stats"
-import {
-  ACCENT,
-  EXAM_COLOR,
-  FREEZE_COLOR,
-  GOAL_MET_COLOR,
-  INK,
-  SLEEP_COLOR,
-  btnBase,
-  cellSurface,
-  dayStateSurface,
-} from "../lib/theme"
+import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
+import { usePalette } from "../ui/useTheme"
 
 const WEEKDAY_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-const STATE_COLOR: Record<"met" | "frozen" | "missed", string> = {
-  met: GOAL_MET_COLOR,
-  frozen: FREEZE_COLOR,
-  missed: EXAM_COLOR,
-}
+const stateColor = (
+  c: Palette,
+): Record<"met" | "frozen" | "missed", string> => ({
+  met: c.goalMet,
+  frozen: c.freeze,
+  missed: c.exam,
+})
 
 const WEEK_DOT_TIP: Record<"met" | "frozen" | "missed", string> = {
   met: "Every day of this week hit its goal",
@@ -77,6 +71,7 @@ function WeekSummaryStrip({
   state: PeriodState
   ordinal: number
 }) {
+  const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
   const goalOutcome = ignored || state === "pending" ? null : state
   return (
@@ -88,27 +83,27 @@ function WeekSummaryStrip({
       {/* Everything that describes the week sits on the left, so the eye finds
           the same information in the same place on every row; the rule fills
           whatever is left over. */}
-      <span className="text-[#1E2A33]/45 flex items-center gap-1 shrink-0">
+      <span className="text-ink/45 flex items-center gap-1 shrink-0">
         Week {toRoman(ordinal)} {ignored && <EyeOff size={9} />}
       </span>
       <span
         className="font-bold shrink-0"
-        style={met ? { color: GOAL_MET_COLOR } : undefined}
+        style={met ? { color: c.goalMet } : undefined}
       >
         {total > 0 ? fmtHours(total) : "—"}
       </span>
       {goal > 0 && (
-        <span className="text-[#1E2A33]/40 shrink-0">of {fmtHours(goal)}</span>
+        <span className="text-ink/40 shrink-0">of {fmtHours(goal)}</span>
       )}
       {goalOutcome && (
         <Tip text={WEEK_DOT_TIP[goalOutcome]}>
           <span
             className="w-2 h-2 rounded-full inline-block shrink-0"
-            style={{ backgroundColor: STATE_COLOR[goalOutcome] }}
+            style={{ backgroundColor: stateColor(c)[goalOutcome] }}
           />
         </Tip>
       )}
-      <span className="flex-1 border-b border-dotted border-[#1E2A33]/15" />
+      <span className="flex-1 border-b border-dotted border-ink/15" />
     </div>
   )
 }
@@ -140,15 +135,18 @@ function CompactDayCell({
   isBeforeStart: boolean
   ignored: boolean
   todayKey: DayKey
-  onEdit: () => void
+  /** Absent for a day that has not happened — nothing to open, so the cell
+   *  is inert rather than opening an editor for a day you cannot log. */
+  onEdit?: () => void
 }) {
+  const c = usePalette()
   if (isBeforeStart) {
     return (
       <div
         className="h-16 sm:h-28 flex items-start p-1 sm:p-2 sm:rounded-xl"
-        style={cellSurface(`${INK}0A`)}
+        style={cellSurface(`${c.ink}0A`, c.page)}
       >
-        <span className="font-mono text-[10px] sm:text-xs text-[#1E2A33]/25">
+        <span className="font-mono text-[10px] sm:text-xs text-ink/25">
           {date.getDate()}
         </span>
       </div>
@@ -166,42 +164,44 @@ function CompactDayCell({
   return (
     <Tip text={tooltip} multiline className="w-full">
       <div
-        role="button"
-        tabIndex={0}
+        role={onEdit ? "button" : undefined}
+        tabIndex={onEdit ? 0 : undefined}
         onClick={onEdit}
-        onKeyDown={(e) => e.key === "Enter" && onEdit()}
-        className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between sm:rounded-xl hover:brightness-95 sm:hover:shadow-md cursor-pointer ${
-          ignored ? "grayscale opacity-60" : ""
-        } ${isFuture ? "opacity-50" : ""}`}
+        onKeyDown={onEdit ? (e) => e.key === "Enter" && onEdit() : undefined}
+        className={`${btnBase} text-left w-full p-1 sm:p-2 h-16 sm:h-28 flex flex-col justify-between sm:rounded-xl ${
+          onEdit ? "hover:brightness-95 sm:hover:shadow-md cursor-pointer" : ""
+        } ${ignored ? "grayscale opacity-60" : ""} ${
+          isFuture ? "opacity-50" : ""
+        }`}
         // The goal tint is translucent, so it needs an opaque base of its own.
         // Without one it picked up whatever sat behind the cell — the page on
         // desktop, the seam colour of the phone grid — and the same day came
         // out two different shades on the two layouts.
         style={{
-          ...dayStateSurface(goalOutcome, ignored),
+          ...dayStateSurface(c, goalOutcome, ignored),
           ...(isToday
-            ? { outline: `2px solid ${ACCENT}`, outlineOffset: "-2px" }
+            ? { outline: `2px solid ${c.accent}`, outlineOffset: "-2px" }
             : {}),
         }}
       >
         <div className="flex items-start justify-between">
           <span
             className={`font-mono text-xs ${isToday ? "font-extrabold" : ""}`}
-            style={isToday ? { color: ACCENT } : undefined}
+            style={isToday ? { color: c.accent } : undefined}
           >
             {date.getDate()}
           </span>
           <div className="flex items-center gap-1">
-            {ignored && <EyeOff size={11} className="text-[#1E2A33]/35" />}
+            {ignored && <EyeOff size={11} className="text-ink/35" />}
             {state === "frozen" && (
               <Tip text="Streak freeze used">
-                <Snowflake size={11} style={{ color: FREEZE_COLOR }} />
+                <Snowflake size={11} style={{ color: c.freeze }} />
               </Tip>
             )}
             {settings?.sleepEnabled === true &&
               (entry?.sleep || []).length > 0 && (
                 <Tip text="Sleep logged">
-                  <Moon size={11} style={{ color: SLEEP_COLOR }} />
+                  <Moon size={11} style={{ color: c.sleep }} />
                 </Tip>
               )}
             {/* A dot per unit the day touched, in the unit's own colour. A
@@ -221,7 +221,7 @@ function CompactDayCell({
                     <RenderIcon
                       name={u.iconName}
                       size={9}
-                      className="text-white"
+                      style={{ color: c.onFill }}
                     />
                   </span>
                 </Tip>
@@ -249,20 +249,20 @@ function CompactDayCell({
             ) : null,
           )}
           {total === 0 && (
-            <span className="text-[8px] font-mono text-[#1E2A33]/25">—</span>
+            <span className="text-[8px] font-mono text-ink/25">—</span>
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono text-[#1E2A33]/70">
+        <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono text-ink/70">
           <span
             className="truncate"
             style={
-              metGoal ? { color: GOAL_MET_COLOR, fontWeight: 700 } : undefined
+              metGoal ? { color: c.goalMet, fontWeight: 700 } : undefined
             }
           >
             {total > 0 ? fmtHours(total) : ""}
             {goal > 0 && (
-              <span className="hidden sm:inline text-[#1E2A33]/30">
+              <span className="hidden sm:inline text-ink/30">
                 /{fmtHours(goal)}
               </span>
             )}
@@ -323,7 +323,7 @@ export function MonthGrid({
   // separated by hairline seams (a 1px grid gap showing the tint through).
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-7 rounded-xl bg-[#1E2A33]/[0.04] text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/45 text-center">
+      <div className="grid grid-cols-7 rounded-xl bg-ink/[0.04] text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-ink/45 text-center">
         {WEEKDAY_HEADS.map((d) => (
           <div key={d} className="py-1.5">
             <span className="sm:hidden">{d[0]}</span>
@@ -364,14 +364,14 @@ export function MonthGrid({
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real
                 gaps and each day rounded on its own. */}
-            <div className="grid grid-cols-7 gap-px sm:gap-2 rounded-xl overflow-hidden sm:overflow-visible sm:rounded-none bg-[#1E2A33]/10 sm:bg-transparent">
+            <div className="grid grid-cols-7 gap-px sm:gap-2 rounded-xl overflow-hidden sm:overflow-visible sm:rounded-none bg-ink/10 sm:bg-transparent">
               {row.map((date, di) => {
                 // Days outside the month read as absent on both layouts: on a
                 // phone they take the page colour so they sit flush with the
                 // background rather than showing as white tiles.
                 if (!date)
                   return (
-                    <div key={di} className="bg-[#F4F5F7] sm:bg-transparent" />
+                    <div key={di} className="bg-page sm:bg-transparent" />
                   )
                 const entry = days[toKey(date)]
                 const dayIgnored = weekIgnored || !!entry?.ignore
@@ -386,11 +386,18 @@ export function MonthGrid({
                     counterUnits={counterUnits}
                     goal={goalForDate(settings, date)}
                     isToday={toKey(date) === todayKey}
-                    isFuture={date > new Date()}
+                    isFuture={toKey(date) > todayKey}
                     isBeforeStart={startDate ? date < startDate : false}
                     ignored={dayIgnored}
                     todayKey={todayKey}
-                    onEdit={() => onEditDay(toKey(date))}
+                    // Withheld for a day that has not happened: there is
+                    // nothing to record about it, so the grid does not offer a
+                    // way in. Same rule the week cards follow.
+                    onEdit={
+                      toKey(date) > todayKey
+                        ? undefined
+                        : () => onEditDay(toKey(date))
+                    }
                   />
                 )
               })}

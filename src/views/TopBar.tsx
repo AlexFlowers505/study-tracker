@@ -28,11 +28,11 @@ export function TopBar({
   // Scrolls away with the page — the period bar below is the thing worth
   // keeping within reach, and it carries its own period label.
   return (
-    <header className="bg-[#F4F5F7] border-b border-[#1E2A33]/10">
+    <header className="bg-page border-b border-ink/10">
       <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[#1E2A33] flex items-center justify-center shrink-0">
-            <TimeLensMark size={18} className="text-[#F4F5F7]" />
+          <div className="w-8 h-8 rounded-xl bg-ink flex items-center justify-center shrink-0">
+            <TimeLensMark size={18} className="text-page" />
           </div>
           {/* The app is the headline; the project it happens to be showing is
               the line under it, with its own icon so it stays identifiable
@@ -41,11 +41,11 @@ export function TopBar({
             <h1 className="font-sans font-extrabold uppercase tracking-tight text-lg leading-none truncate">
               {APP_NAME}
             </h1>
-            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-[#1E2A33]/50 font-mono mt-0.5 min-w-0">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-ink/50 font-mono mt-0.5 min-w-0">
               <RenderIcon name={projectIcon} size={11} className="shrink-0" />
               <span className="truncate">{projectName}</span>
               {startDate && (
-                <span className="shrink-0 hidden sm:inline text-[#1E2A33]/40">
+                <span className="shrink-0 hidden sm:inline text-ink/40">
                   · {fmtDateLong(startDate)} →{" "}
                   {endDate ? fmtDateLong(endDate) : "ongoing"}
                 </span>
@@ -57,7 +57,7 @@ export function TopBar({
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenSetup}
-            className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5`}
+            className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-card shadow-sm hover:bg-ink/5`}
           >
             <Settings2 size={13} /> Setup
           </button>
@@ -65,7 +65,7 @@ export function TopBar({
             <Tip text={session.user?.email}>
               <button
                 onClick={onSignOut}
-                className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5`}
+                className={`${btnBase} flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide px-3 py-2 rounded-full bg-card shadow-sm hover:bg-ink/5`}
               >
                 <LogOut size={13} />
               </button>

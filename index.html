@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TimeLens</title>
+    <!-- Before the first paint, deliberately. The theme lives in localStorage
+         because it is a device preference — the same account can reasonably be
+         light on a desktop and dark on a phone at night — and because anything
+         that needs a round trip to decide would paint the wrong theme first and
+         flash. Kept to one statement, with the app's own store as the authority
+         on the key name and the fallback. -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem("timelens-theme")
+          var dark =
+            stored === "dark" ||
+            ((!stored || stored === "system") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches)
+          document.documentElement.dataset.theme = dark ? "dark" : "light"
+        } catch (e) {
+          document.documentElement.dataset.theme = "light"
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

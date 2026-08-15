@@ -15,12 +15,13 @@ import type {
 import type { DayCounters } from "../lib/counters"
 import { getById } from "../lib/id"
 import { fmtHours, startedPreviousDay } from "../lib/time"
-import { SLEEP_COLOR, btnBase, cardSmall, cardTiny } from "../lib/theme"
+import { btnBase, cardSmall, cardTiny } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { EntryEditRow } from "./EntryEditRow"
 import { SlotCounterRows } from "./SlotCounters"
 
+import { usePalette } from "../ui/useTheme"
 /**
  * A timed entry says both things at once: when it happened and how long it
  * lasted. Reading one off the other in your head is the sort of arithmetic
@@ -79,7 +80,7 @@ function ReadoutEntry({
   const [open, setOpen] = useState(defaultOpen)
   const showComment = !!comment && open
   const rail = { borderLeftColor: borderColor }
-  const divider = "border-b border-b-[#1E2A33]/10"
+  const divider = "border-b border-b-ink/10"
   return (
     <>
       <div
@@ -107,12 +108,12 @@ function ReadoutEntry({
         className={`pl-3 border-l-2 pt-1 ${
           showComment ? "" : `pb-1 ${isLast ? "" : divider}`
         } ${sticky ? "sticky top-6 z-[1]" : ""} ${
-          onEdit ? "cursor-pointer hover:bg-[#1E2A33]/[0.05] rounded-r" : ""
+          onEdit ? "cursor-pointer hover:bg-ink/[0.05] rounded-r" : ""
         }`}
         style={{ ...rail, ...(sticky ? surface : {}) }}
       >
-        <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-[#1E2A33]/70`}>
-          <span className="text-[#1E2A33]/45 shrink-0">{timeLabel}</span>
+        <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-ink/70`}>
+          <span className="text-ink/45 shrink-0">{timeLabel}</span>
           {icon}
           {label && (
             <Tip className="truncate" text={label}>
@@ -128,8 +129,8 @@ function ReadoutEntry({
                   ev.stopPropagation()
                   setOpen((v) => !v)
                 }}
-                className={`${btnBase} shrink-0 p-0.5 rounded cursor-pointer hover:text-[#1E2A33] hover:bg-[#1E2A33]/10 ${
-                  open ? "text-[#1E2A33]/45" : "text-[#1E2A33]/25"
+                className={`${btnBase} shrink-0 p-0.5 rounded cursor-pointer hover:text-ink hover:bg-ink/10 ${
+                  open ? "text-ink/45" : "text-ink/25"
                 }`}
               >
                 <MessageSquare size={10} />
@@ -143,7 +144,7 @@ function ReadoutEntry({
           className={`pl-3 border-l-2 pb-1 ${isLast ? "" : divider}`}
           style={rail}
         >
-          <div className={`${cardSmall(roomy)} font-mono text-[#1E2A33]/50 italic mt-0.5 whitespace-pre-wrap`}>
+          <div className={`${cardSmall(roomy)} font-mono text-ink/50 italic mt-0.5 whitespace-pre-wrap`}>
             {comment}
           </div>
         </div>
@@ -225,6 +226,7 @@ export function EntriesReadout({
   /** Full-width card — see `cardTiny` / `cardSmall`. */
   roomy?: boolean
 }) {
+  const c = usePalette()
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
   // Its own group, never folded into a slot: sleep is a separate axis and must
   // not read as study time.
@@ -269,14 +271,14 @@ export function EntriesReadout({
           >
             <span
               className={`${cardTiny(roomy)} font-mono font-bold`}
-              style={{ color: SLEEP_COLOR }}
+              style={{ color: c.sleep }}
             >
               {fmtHours(sleepMinutes)}
             </span>
-            <Moon size={10} style={{ color: SLEEP_COLOR }} />
+            <Moon size={10} style={{ color: c.sleep }} />
             <span
               className={`${cardTiny(roomy)} uppercase tracking-widest font-mono font-bold truncate`}
-              style={{ color: SLEEP_COLOR }}
+              style={{ color: c.sleep }}
             >
               Slept into this day
             </span>
@@ -287,7 +289,7 @@ export function EntriesReadout({
                 <EntryEditRow
                   key={e.id}
                   entry={e}
-                  accent={SLEEP_COLOR}
+                  accent={c.sleep}
                   onChange={(patch) => editing.onChangeSleep(e.id, patch)}
                   onDelete={() => {
                     editing.onDeleteSleep(e.id)
@@ -302,7 +304,7 @@ export function EntriesReadout({
                   isLast={i === sleepEntries.length - 1}
                   timeLabel={entryTimeLabel(e)}
                   comment={e.comment}
-                  borderColor={`${SLEEP_COLOR}30`}
+                  borderColor={`${c.sleep}30`}
                   sticky={capped}
                   surface={stickyStyle}
                   defaultOpen={commentsOpen}

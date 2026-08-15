@@ -4,7 +4,6 @@ import type { LucideIcon } from "lucide-react"
 import type { OverviewTotals } from "../lib/analytics"
 import { fmtDaysWithMonths } from "../lib/date"
 import { StatTile } from "../ui/StatTile"
-import { StatsSection } from "./StatsSection"
 
 export function OverviewStats({
   period,
@@ -29,8 +28,10 @@ export function OverviewStats({
     { label: "Empty days", value: period.emptyDays, icon: AlertCircle },
   ]
 
+  // The heading and its caption live on the tab row above — see
+  // `TabbedSection`. What is left here is the block itself.
   return (
-    <StatsSection title="Stats" subtitle="Overview, selected period">
+    <>
       {children}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {stats.map((s) => (
@@ -42,6 +43,6 @@ export function OverviewStats({
           />
         ))}
       </div>
-    </StatsSection>
+    </>
   )
 }

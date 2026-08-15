@@ -71,7 +71,7 @@ function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
     <span
       role="tooltip"
       style={{ position: "fixed", ...placement }}
-      className={`pointer-events-none z-[100] rounded-lg bg-[#1E2A33] text-[#F4F5F7] text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
+      className={`pointer-events-none z-[100] rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
         multiline
           ? "whitespace-pre-line max-w-[220px] text-left"
           : "whitespace-nowrap"

@@ -17,16 +17,11 @@
 
 import { useEffect, useRef } from "react"
 import { Ban, Check, Trash2 } from "lucide-react"
-import {
-  EXAM_COLOR,
-  GOAL_MET_COLOR,
-  INK,
-  btnBase,
-  cardSmall,
-} from "../lib/theme"
+import { btnBase, cardSmall } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { Tip } from "../ui/Tip"
 
+import { usePalette } from "../ui/useTheme"
 const iconBtn = `${btnBase} p-1 rounded shrink-0`
 
 export function DayNoteRow({
@@ -51,6 +46,7 @@ export function DayNoteRow({
   onClose: () => void
   roomy?: boolean
 }) {
+  const c = usePalette()
   const ref = useRef<HTMLDivElement>(null)
 
   // Escape cancels rather than closes, same as an entry: reaching for it
@@ -77,12 +73,12 @@ export function DayNoteRow({
       // The card behind this is a button that opens the day dialog.
       onClick={stop}
       onKeyDown={stop}
-      className={`rounded-xl p-2.5 ${editing ? "" : "bg-[#1E2A33]/[0.04]"}`}
+      className={`rounded-xl p-2.5 ${editing ? "" : "bg-ink/[0.04]"}`}
       style={
         editing
           ? {
-              backgroundColor: `${INK}0F`,
-              boxShadow: `inset 0 0 0 1px ${INK}26`,
+              backgroundColor: `${c.ink}0F`,
+              boxShadow: `inset 0 0 0 1px ${c.ink}26`,
             }
           : undefined
       }
@@ -96,14 +92,14 @@ export function DayNoteRow({
             placeholder="Note for the day"
             rows={1}
             maxHeight={200}
-            className={`w-full bg-transparent border-0 p-0 ${cardSmall(roomy)} font-mono text-[#1E2A33]/70 placeholder:text-[#1E2A33]/30 focus:outline-none`}
+            className={`w-full bg-transparent border-0 p-0 ${cardSmall(roomy)} font-mono text-ink/70 placeholder:text-ink/30 focus:outline-none`}
           />
           <div className="flex items-center justify-between gap-1.5">
             <Tip text="Delete this note">
               <button
                 onClick={onDelete}
-                className={`${iconBtn} hover:bg-white/70`}
-                style={{ color: EXAM_COLOR }}
+                className={`${iconBtn} hover:bg-card/70`}
+                style={{ color: c.exam }}
               >
                 <Trash2 size={13} />
               </button>
@@ -112,7 +108,7 @@ export function DayNoteRow({
               <Tip text="Cancel changes">
                 <button
                   onClick={onCancel}
-                  className={`${iconBtn} text-[#1E2A33]/40 hover:text-[#1E2A33] hover:bg-white/70`}
+                  className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
                 >
                   <Ban size={13} />
                 </button>
@@ -120,8 +116,8 @@ export function DayNoteRow({
               <Tip text="Done">
                 <button
                   onClick={onClose}
-                  className={`${iconBtn} hover:bg-white/70`}
-                  style={{ color: GOAL_MET_COLOR }}
+                  className={`${iconBtn} hover:bg-card/70`}
+                  style={{ color: c.goalMet }}
                 >
                   <Check size={14} />
                 </button>
@@ -135,7 +131,7 @@ export function DayNoteRow({
           tabIndex={0}
           onClick={onOpen}
           onKeyDown={(e) => e.key === "Enter" && onOpen()}
-          className={`${cardSmall(roomy)} font-mono text-[#1E2A33]/60 whitespace-pre-wrap cursor-pointer rounded hover:bg-[#1E2A33]/[0.05]`}
+          className={`${cardSmall(roomy)} font-mono text-ink/60 whitespace-pre-wrap cursor-pointer rounded hover:bg-ink/[0.05]`}
         >
           {comment}
         </p>

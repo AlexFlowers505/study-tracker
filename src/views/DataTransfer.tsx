@@ -15,11 +15,12 @@ import { useRef, useState } from "react"
 import { Download, Upload } from "lucide-react"
 import type { AppData } from "../types/model"
 import { normalizeData } from "../lib/defaults"
-import { EXAM_COLOR, btnBase } from "../lib/theme"
+import { btnBase } from "../lib/theme"
 import { PROJECT_REF } from "../data/supabase"
 import { summarize } from "../data/importData"
 import type { ImportSummary } from "../data/importData"
 
+import { usePalette } from "../ui/useTheme"
 const pillBtn = `${btnBase} shrink-0 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest px-3 py-2 rounded-full`
 
 interface Staged {
@@ -35,6 +36,7 @@ export function DataTransfer({
   /** Writes the document to the tables. Rejects with a readable message. */
   onImport: (data: AppData) => Promise<void>
 }) {
+  const c = usePalette()
   const fileRef = useRef<HTMLInputElement>(null)
   const [staged, setStaged] = useState<Staged | null>(null)
   const [busy, setBusy] = useState(false)
@@ -73,9 +75,9 @@ export function DataTransfer({
   }
 
   return (
-    <div className="px-5 py-3 border-t border-[#1E2A33]/10 shrink-0 rounded-b-xl bg-white">
+    <div className="px-5 py-3 border-t border-ink/10 shrink-0 rounded-b-xl bg-card">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[10px] font-mono text-[#1E2A33]/45">
+        <span className="text-[10px] font-mono text-ink/45">
           {staged
             ? `Into ${PROJECT_REF || "this database"}`
             : "Every project, in one file"}
@@ -97,13 +99,13 @@ export function DataTransfer({
             <>
               <button
                 onClick={() => fileRef.current?.click()}
-                className={`${pillBtn} bg-[#1E2A33]/5 hover:bg-[#1E2A33]/10`}
+                className={`${pillBtn} bg-ink/5 hover:bg-ink/10`}
               >
                 <Upload size={13} /> Import JSON
               </button>
               <button
                 onClick={onExport}
-                className={`${pillBtn} bg-[#1E2A33]/5 hover:bg-[#1E2A33]/10`}
+                className={`${pillBtn} bg-ink/5 hover:bg-ink/10`}
               >
                 <Download size={13} /> Export JSON
               </button>
@@ -114,15 +116,15 @@ export function DataTransfer({
               <button
                 disabled={busy}
                 onClick={() => setStaged(null)}
-                className={`${pillBtn} text-[#1E2A33]/60 hover:bg-[#1E2A33]/5 disabled:opacity-40`}
+                className={`${pillBtn} text-ink/60 hover:bg-ink/5 disabled:opacity-40`}
               >
                 Cancel
               </button>
               <button
                 disabled={busy}
                 onClick={confirm}
-                style={{ backgroundColor: EXAM_COLOR }}
-                className={`${pillBtn} text-white hover:opacity-90 disabled:opacity-40`}
+                style={{ backgroundColor: c.exam }}
+                className={`${pillBtn} hover:opacity-90 disabled:opacity-40`}
               >
                 {busy ? "Writing…" : "Overwrite"}
               </button>
@@ -132,7 +134,7 @@ export function DataTransfer({
       </div>
 
       {staged && (
-        <p className="mt-2 text-[10px] font-mono text-[#1E2A33]/60 leading-relaxed">
+        <p className="mt-2 text-[10px] font-mono text-ink/60 leading-relaxed">
           {staged.counts.projects} project
           {staged.counts.projects === 1 ? "" : "s"}, {staged.counts.days} days,{" "}
           {staged.counts.notes} notes, {staged.counts.verdicts} week verdicts.
@@ -145,7 +147,7 @@ export function DataTransfer({
       {error && (
         <p
           className="mt-2 text-[10px] font-mono leading-relaxed"
-          style={{ color: EXAM_COLOR }}
+          style={{ color: c.exam }}
         >
           {error}
         </p>

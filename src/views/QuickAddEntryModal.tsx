@@ -12,20 +12,13 @@ import { MessageSquare, X } from "lucide-react"
 import type { Category, DayKey, Slot, StudyEntry, TimeOfDay } from "../types/model"
 import { fromKey } from "../lib/date"
 import { makeId } from "../lib/id"
-import { fmtHoursFixed1, spanMinutes } from "../lib/time"
-import {
-  ACCENT,
-  CARD,
-  EXAM_COLOR,
-  FIELD_BOXED,
-  FIELD_ON_WHITE,
-  PAGE_TINT,
-  btnBase,
-} from "../lib/theme"
+import { fmtHours, spanMinutes } from "../lib/time"
+import { CARD, FIELD_BOXED, FIELD_ON_WHITE, btnBase } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { TimeRangeField } from "../ui/TimeRangeField"
 import { useModalDismiss } from "../ui/useModalDismiss"
 
+import { usePalette } from "../ui/useTheme"
 export function QuickAddEntryModal({
   dateKey,
   slots,
@@ -47,6 +40,7 @@ export function QuickAddEntryModal({
   /** `slotId` is null for a sleep entry, which belongs to no slot. */
   onAdd: (dateKey: DayKey, slotId: string | null, entry: StudyEntry) => void
 }) {
+  const c = usePalette()
   const isSleep = variant === "sleep"
   const [slotId, setSlotId] = useState(slots[0]?.id)
   const [category, setCategory] = useState(categories[0]?.id)
@@ -81,15 +75,15 @@ export function QuickAddEntryModal({
       onMouseDown={onBackdropClick}
     >
       <div
-        style={{ backgroundColor: PAGE_TINT }}
+        style={{ backgroundColor: c.page }}
         className="w-full sm:max-w-[420px] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden"
       >
-        <div className="flex items-center justify-between px-5 py-4 bg-white">
+        <div className="flex items-center justify-between px-5 py-4 bg-card">
           <div>
             <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
               {isSleep ? "New sleep" : "New entry"}
             </h2>
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
               {d.toLocaleDateString(undefined, {
                 weekday: "long",
                 month: "long",
@@ -99,7 +93,7 @@ export function QuickAddEntryModal({
           </div>
           <button
             onClick={requestCancel}
-            className={`${btnBase} text-[#1E2A33]/50 hover:text-[#1E2A33]`}
+            className={`${btnBase} text-ink/50 hover:text-ink`}
           >
             <X size={20} />
           </button>
@@ -109,7 +103,7 @@ export function QuickAddEntryModal({
           {/* Sleep has neither, so the row is absent rather than disabled. */}
           <div className={`grid grid-cols-2 gap-2 ${isSleep ? "hidden" : ""}`}>
             <label className="block">
-              <span className="block text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+              <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
                 Slot
               </span>
               <select
@@ -125,7 +119,7 @@ export function QuickAddEntryModal({
               </select>
             </label>
             <label className="block">
-              <span className="block text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 mb-1">
+              <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
                 Category
               </span>
               <select
@@ -163,19 +157,19 @@ export function QuickAddEntryModal({
               onChange={(e) => setMinutes(Number(e.target.value))}
               className={`${FIELD_BOXED} w-20 ${
                 timed
-                  ? "cursor-not-allowed text-[#1E2A33]/40 bg-[#1E2A33]/5"
+                  ? "cursor-not-allowed text-ink/40 bg-ink/5"
                   : ""
               }`}
             />
-            <span className="text-[10px] font-mono text-[#1E2A33]/40 whitespace-nowrap">
-              min / {fmtHoursFixed1(total)}
+            <span className="text-[10px] font-mono text-ink/40 whitespace-nowrap">
+              min · {fmtHours(total)}
             </span>
           </div>
 
           <div className="flex items-start gap-1.5">
             <MessageSquare
               size={12}
-              className="text-[#1E2A33]/30 shrink-0 mt-2"
+              className="text-ink/30 shrink-0 mt-2"
             />
             <AutoTextarea
               value={comment}
@@ -190,14 +184,14 @@ export function QuickAddEntryModal({
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               onClick={requestCancel}
-              className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+              className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
             >
               Cancel
             </button>
             <button
               onClick={submit}
-              className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-white`}
-              style={{ backgroundColor: ACCENT }}
+              className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
+              style={{ backgroundColor: c.accent, color: c.onFill }}
             >
               Add
             </button>
@@ -213,20 +207,20 @@ export function QuickAddEntryModal({
           }
         >
           <div className={`${CARD} w-full max-w-[300px] p-5`}>
-            <p className="text-xs font-mono text-[#1E2A33]/80 mb-4">
+            <p className="text-xs font-mono text-ink/80 mb-4">
               Discard this new {isSleep ? "sleep entry" : "entry"}?
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirming(false)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-[#1E2A33]/60 hover:text-[#1E2A33] hover:bg-[#1E2A33]/5`}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
               >
                 Keep editing
               </button>
               <button
                 onClick={onCancel}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-white`}
-                style={{ backgroundColor: EXAM_COLOR }}
+                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
+                style={{ backgroundColor: c.exam, color: c.onFill }}
               >
                 Discard
               </button>
