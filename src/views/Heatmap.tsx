@@ -11,6 +11,7 @@ import type {
   IsIgnored,
   Settings,
   Slot,
+  CounterUnit,
 } from "../types/model"
 import { addDays, fromKey, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
@@ -87,12 +88,14 @@ export function Heatmap({
   onSelectDay,
   isIgnored = NEVER_IGNORED,
   showMonths,
+  counterUnits,
 }: {
   start: Date
   end: Date
   days: Record<DayKey, Day>
   slots: Slot[]
   categories: Category[]
+  counterUnits: CounterUnit[]
   settings: Settings
   todayKey: DayKey
   onSelectDay: (key: DayKey) => void
@@ -163,7 +166,7 @@ export function Heatmap({
                     : goalOutcome === "missed"
                       ? `${EXAM_COLOR}30`
                       : NEUTRAL_CELL
-                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories, settings)}`
+                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories, counterUnits)}`
                 return (
                   <Tip
                     key={di}

@@ -14,6 +14,7 @@ import type {
   Labeled,
   Settings,
   Slot,
+  CounterUnit,
 } from "../types/model"
 import { fromKey, monthKey, startOfWeek, toKey } from "./date"
 import { getById } from "./id"
@@ -163,10 +164,8 @@ export function buildTooltip(
   dayEntry: Day | undefined,
   slots: Slot[],
   categories: Category[],
-  settings: Settings | undefined,
+  units: CounterUnit[] = [],
 ): string {
-  const lessonsEnabled = settings?.lessonsEnabled !== false
-  const examsEnabled = settings?.examsEnabled !== false
   const { bySlot, byCategory, total } = dayBreakdown(dayEntry, slots)
   if (!dayEntry || total === 0) {
     return dayEntry?.comment
@@ -181,9 +180,10 @@ export function buildTooltip(
   categories.forEach((c) => {
     if (byCategory[c.id]) lines.push(`${c.label}: ${byCategory[c.id]}m`)
   })
-  if (lessonsEnabled && dayEntry.lessons)
-    lines.push(`Lessons: ${dayEntry.lessons}`)
-  if (examsEnabled && dayEntry.exam) lines.push("Exam passed")
+  units.forEach((u) => {
+    const value = dayEntry.counters?.[u.id]
+    if (value) lines.push(`${u.label}: ${value}`)
+  })
   if (dayEntry.comment) lines.push("—", dayEntry.comment)
   return lines.join("\n")
 }

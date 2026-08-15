@@ -20,6 +20,9 @@ import type { Day } from "../types/model"
 export const DAY_COLUMNS = {
   cells: "cells",
   sleep: "sleep",
+  counters: "counters",
+  // Superseded by `counters`, still read and written so the pre-migration
+  // columns stay usable until the new shape has been trusted for a while.
   lessons: "lessons",
   exam: "exam",
   // The flag is `ignore` in memory and `ignored` in the table.
@@ -65,6 +68,7 @@ export function dayUpsertRow(
     date: dateKey,
     cells: day.cells || {},
     sleep: day.sleep || [],
+    counters: day.counters || {},
     lessons: Number(day.lessons) || 0,
     exam: !!day.exam,
     ignored: !!day.ignore,
@@ -79,6 +83,7 @@ export interface DayRow {
   date: string
   cells: Day["cells"]
   sleep: Day["sleep"]
+  counters: Day["counters"]
   lessons: number
   exam: boolean
   ignored: boolean
@@ -92,6 +97,7 @@ export interface ProjectRow {
   settings: unknown
   slots: unknown
   categories: unknown
+  counter_units: unknown
 }
 
 export interface NoteRow {

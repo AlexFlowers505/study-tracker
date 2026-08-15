@@ -13,19 +13,16 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import type { OverviewTotals } from '../lib/analytics'
 import type { Project } from '../types/model'
 import { computeOverviewStats } from '../lib/analytics'
 import {
   WEEKDAY_LABELS,
   addDays,
-  daysBetween,
   WEEKDAY_ORDER,
   datesInRange,
   fmtShort,
@@ -60,26 +57,25 @@ type ChartRow = Record<string, string | number>
 /** Accumulator keyed by slot or category id. */
 type Sums = Record<string, number>
 
-const chartModeOptions = (lessonsEnabled: boolean) => [
+/* The Lessons series left with `spec 008`: lessons became a user-defined
+   counter unit, and charting one hard-coded unit is exactly what that change
+   was undoing. Per-unit series come back with the new statistics. */
+const CHART_MODES = [
   { id: "hours", label: "Hours" },
   { id: "category", label: "Categories" },
   { id: "slot", label: "Slots" },
-  ...(lessonsEnabled ? [{ id: "lessons", label: "Lessons" }] : []),
 ]
 
 // Bounds come in from the shared period bar — analytics no longer owns a
-// range picker of its own. `overall` is passed in rather than computed here
-// because the panel that shows it can live in the sidebar instead.
+// range picker of its own.
 export function AnalyticsView({
   data,
   rangeStart,
   rangeEnd,
-  overallAllTime,
 }: {
   data: Project
   rangeStart: Date
   rangeEnd: Date
-  overallAllTime: OverviewTotals
 }) {
   const {
     slots,
@@ -100,26 +96,22 @@ export function AnalyticsView({
     () => datesInRange(rangeStart, rangeEnd),
     [rangeStart, rangeEnd],
   )
-  // 'slot' | 'category' | 'hours' | 'lessons'
+  // 'slot' | 'category' | 'hours'
   const [rawDailyMode, setDailyMode] = useState('slot')
   const [rawWeekdayMode, setWeekdayMode] = useState('hours')
   const [rawWeeklyMode, setWeeklyMode] = useState('hours')
   const [rawMonthlyMode, setMonthlyMode] = useState('hours')
 
-  const lessonsEnabled = settings.lessonsEnabled ?? true
-  const examsEnabled = settings.examsEnabled ?? true
   const goalsEnabled = settings?.goalsEnabled !== false
 
-  // With lessons tracking off there is no data behind the Lessons mode, so a
-  // chart sitting on it falls back. Derived rather than written back from an
-  // effect: an effect would rewrite the stored choice, so turning lessons on
-  // again would leave the chart on the fallback instead of where you left it.
-  const fallback = (mode: string, to: string) =>
-    !lessonsEnabled && mode === 'lessons' ? to : mode
-  const dailyMode = fallback(rawDailyMode, 'slot')
-  const weekdayMode = fallback(rawWeekdayMode, 'hours')
-  const weeklyMode = fallback(rawWeeklyMode, 'hours')
-  const monthlyMode = fallback(rawMonthlyMode, 'hours')
+  // A stored choice can still say 'lessons' from before that mode existed, so
+  // anything unrecognised falls back rather than rendering an empty chart.
+  const known = (mode: string, to: string) =>
+    CHART_MODES.some((m) => m.id === mode) ? mode : to
+  const dailyMode = known(rawDailyMode, 'slot')
+  const weekdayMode = known(rawWeekdayMode, 'hours')
+  const weeklyMode = known(rawWeeklyMode, 'hours')
+  const monthlyMode = known(rawMonthlyMode, 'hours')
 
   const dailyToggle = useSeriesToggle()
   const weekdayToggle = useSeriesToggle()
@@ -156,15 +148,8 @@ export function AnalyticsView({
   const periodStats = useMemo(() => {
     const today = new Date()
     const cutoffEnd = rangeEnd < today ? rangeEnd : today
-    return computeOverviewStats(
-      rangedKeys,
-      days,
-      slots,
-      settings,
-      rangeStart,
-      cutoffEnd,
-    )
-  }, [rangedKeys, days, settings, slots, rangeStart, rangeEnd])
+    return computeOverviewStats(rangedKeys, days, slots, rangeStart, cutoffEnd)
+  }, [rangedKeys, days, slots, rangeStart, rangeEnd])
 
   // Best/worst day, week, and month — scoped to the chosen analytics period
   // (same as the charts). Only counts periods with at least some study logged
@@ -243,26 +228,6 @@ export function AnalyticsView({
   )
   const dailySeries =
     dailyMode === "slot" ? slots : dailyMode === "category" ? categories : []
-
-  // Days needed per exam — all-time (not range-filtered), since exam milestones
-  // are a whole-project concept rather than something bound to the analytics range.
-  const examsGapData = useMemo(() => {
-    const projectStart = settings.startDate
-      ? fromKey(settings.startDate)
-      : dayKeysSorted[0]
-        ? fromKey(dayKeysSorted[0])
-        : null
-    if (!projectStart) return []
-    let prevDayNum = 0
-    return dayKeysSorted
-      .filter((k) => days[k]?.exam)
-      .map((k, i) => {
-        const dayNum = daysBetween(projectStart, fromKey(k)) + 1
-        const gap = Math.max(dayNum - prevDayNum, 1)
-        prevDayNum = dayNum
-        return { exam: `Exam ${i + 1}`, date: fmtShort(k), dayNum, days: gap }
-      })
-  }, [dayKeysSorted, days, settings.startDate])
 
   const weeklyBuckets = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -462,11 +427,7 @@ export function AnalyticsView({
 
   return (
     <div className="space-y-8">
-      <OverviewStats
-        period={periodStats}
-        lessonsEnabled={lessonsEnabled}
-        examsEnabled={examsEnabled}
-      >
+      <OverviewStats period={periodStats}>
         {/* Inside the Stats block and first in it, under the heading: "where
             did the period's time go" is one of the period's numbers, not a
             heading of its own. */}
@@ -479,11 +440,7 @@ export function AnalyticsView({
         />
       </OverviewStats>
 
-      <AveragesStats
-        period={periodStats}
-        lessonsEnabled={lessonsEnabled}
-        examsEnabled={examsEnabled}
-      />
+      <AveragesStats period={periodStats} />
 
       <RemarkableStats remarkable={remarkable} />
 
@@ -498,7 +455,7 @@ export function AnalyticsView({
         }
         action={
           <SegmentedControl
-            items={chartModeOptions(lessonsEnabled)}
+            items={CHART_MODES}
             activeId={dailyMode}
             onChange={setDailyMode}
           />
@@ -617,7 +574,7 @@ export function AnalyticsView({
         }
         action={
           <SegmentedControl
-            items={chartModeOptions(lessonsEnabled)}
+            items={CHART_MODES}
             activeId={weekdayMode}
             onChange={setWeekdayMode}
           />
@@ -706,7 +663,7 @@ export function AnalyticsView({
         }
         action={
           <SegmentedControl
-            items={chartModeOptions(lessonsEnabled)}
+            items={CHART_MODES}
             activeId={weeklyMode}
             onChange={setWeeklyMode}
           />
@@ -806,7 +763,7 @@ export function AnalyticsView({
           }
           action={
             <SegmentedControl
-              items={chartModeOptions(lessonsEnabled)}
+              items={CHART_MODES}
               activeId={monthlyMode}
               onChange={setMonthlyMode}
             />
@@ -894,63 +851,6 @@ export function AnalyticsView({
             />
           )}
         </ChartCard>
-        {examsEnabled && (
-          <ChartCard
-            title="Days per exam"
-            subtitle="Calendar days needed to reach each exam, all-time"
-          >
-            {examsGapData.length === 0 ? (
-              <p className="text-xs font-mono text-[#1E2A33]/40 py-10 text-center">
-                No exams passed yet — this fills in as you mark exam days in the
-                log.
-              </p>
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={examsGapData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E2A3315" />
-                  <XAxis
-                    dataKey="exam"
-                    tick={{ fontSize: 10, fontFamily: "monospace" }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fontFamily: "monospace" }}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, fontFamily: "monospace" }}
-                    formatter={(value, _name, props) => [
-                      `${value} days`,
-                      `Passed ${props.payload.date}`,
-                    ]}
-                  />
-                  {overallAllTime.avgDaysPerExam != null && (
-                    <ReferenceLine
-                      y={overallAllTime.avgDaysPerExam}
-                      stroke={ACCENT}
-                      strokeDasharray="4 4"
-                      label={{
-                        value: `avg ${overallAllTime.avgDaysPerExam.toFixed(0)}d`,
-                        fontSize: 10,
-                        fill: ACCENT,
-                        position: "right",
-                      }}
-                    />
-                  )}
-                  <Area
-                    type="monotone"
-                    dataKey="days"
-                    stroke={ACCENT}
-                    fill={ACCENT}
-                    fillOpacity={0.28}
-                    strokeWidth={2}
-                    name="Days needed"
-                    dot={{ r: 4, fill: ACCENT, strokeWidth: 0 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </ChartCard>
-        )}
       </div>
     </div>
   )

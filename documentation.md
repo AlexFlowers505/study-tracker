@@ -58,7 +58,7 @@ The whole app lives in one file, `App.jsx`, organized top-to-bottom as: icon/col
 ### Setup (modal, 4 tabs)
 - **Project details** — name, icon (picker), total lessons, total exams, start date, end date (optional — once set, days after it stop counting as "empty days"), and the per-weekday effectiveness-meter goals.
   - *Lessons/exams tracking toggle*: a switch next to "Total lessons"/"Total exams" (tooltip: "Include lessons log and analytics") lets you disable lesson/exam tracking for a project without deleting any previously logged data. **Note:** as of this version, the toggle is wired into the settings model and disables the corresponding number input, but does not yet hide the lesson/exam UI elsewhere (Day editor fields, Log tab badges, Analytics cards/charts) — see [§6 Known gaps](#6-known-gaps--in-progress-work).
-- **Study slots** / **Categories** — add, rename, recolor, re-icon, delete, and set an optional description for each.
+- **Time slots** / **Categories** — add, rename, recolor, re-icon, delete, and set an optional description for each.
 - **Projects** — switch active project, create a new one, or delete one (each project is fully independent: own slots, categories, log, settings).
 
 ### Account / cloud sync (optional)

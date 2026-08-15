@@ -9,7 +9,15 @@
    written must never take the app down or raise the save banner.
 --------------------------------------------------------------- */
 
-import type { Category, Day, Slot, StudyEntry, TimeEntry } from "../types/model"
+import type {
+  Category,
+  CounterUnit,
+  Day,
+  Slot,
+  StudyEntry,
+  TimeEntry,
+} from "../types/model"
+import { UNSLOTTED } from "./counters"
 import { getById } from "./id"
 import { startedPreviousDay } from "./time"
 
@@ -64,6 +72,7 @@ export function diffDay(
   after: Day | undefined,
   slots: Slot[],
   categories: Category[],
+  units: CounterUnit[] = [],
 ): string[] {
   const details: string[] = []
   const beforeCells = before?.cells || {}
@@ -107,13 +116,27 @@ export function diffDay(
       details.push(`− Sleep: ${entryLabel(entry, categories)}`)
   })
 
-  const scalar = (name: string, a: Scalar, b: Scalar) => {
-    if ((a ?? "") === (b ?? "")) return
-    details.push(`${name}: ${a || "—"} → ${b || "—"}`)
-  }
-  scalar("lessons", before?.lessons, after?.lessons)
-  if (!!before?.exam !== !!after?.exam)
-    details.push(after?.exam ? "exam passed" : "exam unmarked")
+  // Walks the unit list rather than naming two fields. Missing this is how a
+  // counter edit would stop reaching the log — silently, since the log
+  // swallows its own failures by design.
+  // Per slot, not per day: "Lessons 2 → 3" does not say where it moved, and a
+  // count shifted from one slot to another leaves the day total unchanged and
+  // would otherwise go unrecorded entirely.
+  units.forEach((unit) => {
+    const a = before?.counters?.[unit.id] || {}
+    const b = after?.counters?.[unit.id] || {}
+    const slotIds = [...new Set([...Object.keys(a), ...Object.keys(b)])]
+    slotIds.forEach((slotId) => {
+      const from = a[slotId] || 0
+      const to = b[slotId] || 0
+      if (from === to) return
+      const where =
+        slotId === UNSLOTTED
+          ? ""
+          : ` · ${slots.find((s) => s.id === slotId)?.label || "removed slot"}`
+      details.push(`${unit.label}${where}: ${from} → ${to}`)
+    })
+  })
   if (!!before?.ignore !== !!after?.ignore)
     details.push(after?.ignore ? "ignored in statistics" : "no longer ignored")
   if ((before?.comment || "") !== (after?.comment || ""))

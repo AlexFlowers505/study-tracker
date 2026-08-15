@@ -10,7 +10,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import type { AppData, Category, Project, Settings, Slot } from '../types/model'
+import type {
+  AppData,
+  Category,
+  CounterUnit,
+  Project,
+  Settings,
+  Slot,
+} from '../types/model'
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from '../lib/date'
 import { DEFAULT_SETTINGS } from '../lib/defaults'
 import {
@@ -25,6 +32,7 @@ import { RenderIcon } from '../ui/icons'
 import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
+import { CounterUnitsTab } from './CounterUnitsTab'
 import { DataTransfer } from './DataTransfer'
 
 export function SetupModal({
@@ -35,6 +43,9 @@ export function SetupModal({
   onSaveSettings,
   onUpdateSlots,
   onUpdateCategories,
+  counterUnits,
+  counterProgress,
+  onUpdateUnits,
   projects,
   activeProjectId,
   onSwitchProject,
@@ -51,6 +62,9 @@ export function SetupModal({
   onSaveSettings: (next: Settings) => void
   onUpdateSlots: (next: Slot[]) => void
   onUpdateCategories: (next: Category[]) => void
+  counterUnits: CounterUnit[]
+  counterProgress: Record<string, number>
+  onUpdateUnits: (next: CounterUnit[]) => void
   projects: Project[]
   activeProjectId: string
   onSwitchProject: (id: string) => void
@@ -93,8 +107,9 @@ export function SetupModal({
         >
           {[
             { id: "details", label: "Project details" },
-            { id: "slots", label: "Study slots" },
+            { id: "slots", label: "Time slots" },
             { id: "categories", label: "Categories" },
+            { id: "units", label: "Counters" },
             { id: "projects", label: "Projects" },
           ].map((t) => {
             const active = tab === t.id
@@ -142,6 +157,13 @@ export function SetupModal({
               warningNote={(label) =>
                 `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
               }
+            />
+          )}
+          {tab === "units" && (
+            <CounterUnitsTab
+              units={counterUnits}
+              progress={counterProgress}
+              onChange={onUpdateUnits}
             />
           )}
           {tab === "projects" && (
@@ -294,14 +316,6 @@ function ProjectDetailsTab({
   const [projectIcon, setProjectIcon] = useState(
     settings.projectIcon ?? "Train",
   )
-  const [totalLessons, setTotalLessons] = useState(settings.totalLessons ?? 100)
-  const [totalExams, setTotalExams] = useState(settings.totalExams ?? 10)
-  const [lessonsEnabled, setLessonsEnabled] = useState(
-    settings.lessonsEnabled !== false,
-  )
-  const [examsEnabled, setExamsEnabled] = useState(
-    settings.examsEnabled !== false,
-  )
   const [goalsEnabled, setGoalsEnabled] = useState(
     settings.goalsEnabled !== false,
   )
@@ -333,10 +347,6 @@ function ProjectDetailsTab({
         onSave({
           projectName,
           projectIcon,
-          totalLessons,
-          totalExams,
-          lessonsEnabled,
-          examsEnabled,
           goalsEnabled,
           sleepEnabled,
           startDate,
@@ -350,10 +360,6 @@ function ProjectDetailsTab({
   }, [
     projectName,
     projectIcon,
-    totalLessons,
-    totalExams,
-    lessonsEnabled,
-    examsEnabled,
     goalsEnabled,
     sleepEnabled,
     startDate,
@@ -419,50 +425,11 @@ function ProjectDetailsTab({
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
-            Total lessons in project
-          </span>
-          <Tip text="Include lessons log and analytics">
-            <SwitchToggle
-              checked={lessonsEnabled}
-              onChange={setLessonsEnabled}
-              label="Include lessons log and analytics"
-            />
-          </Tip>
-        </div>
-        <input
-          type="number"
-          min={1}
-          value={totalLessons}
-          disabled={!lessonsEnabled}
-          onChange={(e) => setTotalLessons(Number(e.target.value))}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        />
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="block text-[10px] uppercase tracking-widest text-[#1E2A33]/50">
-            Total exams in project
-          </span>
-          <Tip text="Include exams log and analytics">
-            <SwitchToggle
-              checked={examsEnabled}
-              onChange={setExamsEnabled}
-              label="Include exams log and analytics"
-            />
-          </Tip>
-        </div>
-        <input
-          type="number"
-          min={0}
-          value={totalExams}
-          disabled={!examsEnabled}
-          onChange={(e) => setTotalExams(Number(e.target.value))}
-          className="w-full border border-[#1E2A33]/20 rounded-xl px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        />
-      </div>
+      {/* Lessons and exams used to live here as two fixed fields with their
+          own on/off switches. They are counter units now — a unit existing is
+          what "enabled" means, and its target is where a total lives — so
+          this tab no longer has anything to say about either. See the
+          Counters tab and `spec 008`. */}
       {/* No count to go with it, so it stands alone rather than heading an
           input the way lessons and exams do. */}
       <div className="flex items-center justify-between">

@@ -119,6 +119,52 @@ export const fmtRangeEdge = (d: Date, withYear?: boolean): string =>
     ...(withYear ? { year: "numeric" } : {}),
   })
 
+/**
+ * The same label with the year and the long month names dropped.
+ *
+ * Exists for the period bar on a phone, where the full form is wider than the
+ * navigation around it and pushed the whole page sideways. Shortening beats
+ * truncating: "Aug 10 – Aug 1…" tells you less than "10–16 Aug", and it is the
+ * end of the range that gets cut, which is the half you cannot infer.
+ */
+export function compactRangeLabel(
+  period: PeriodId,
+  cursor: Date,
+  range: DateRange,
+): string {
+  const shortMonth = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: "short" })
+  switch (period) {
+    case "year":
+      return String(cursor.getFullYear())
+    case "all":
+      return "All time"
+    case "month":
+      return cursor.toLocaleDateString(undefined, {
+        month: "short",
+        year: "numeric",
+      })
+    case "quarter":
+      return `${shortMonth(range.start)} – ${shortMonth(range.end)}`
+    case "day":
+      return cursor.toLocaleDateString(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      })
+    default: {
+      // Naming the month once is the whole saving, so only do it when both
+      // ends share one.
+      const sameMonth =
+        range.start.getMonth() === range.end.getMonth() &&
+        range.start.getFullYear() === range.end.getFullYear()
+      return sameMonth
+        ? `${range.start.getDate()}–${range.end.getDate()} ${shortMonth(range.end)}`
+        : `${range.start.getDate()} ${shortMonth(range.start)} – ${range.end.getDate()} ${shortMonth(range.end)}`
+    }
+  }
+}
+
 export function rangeLabel(
   period: PeriodId,
   cursor: Date,

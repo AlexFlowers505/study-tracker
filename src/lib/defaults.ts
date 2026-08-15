@@ -5,6 +5,7 @@
 import type { AppData, Category, Project, Settings, Slot } from "../types/model"
 import { toKey } from "./date"
 import { makeId } from "./id"
+import { dayCounters, legacyUnits } from "./counters"
 
 export const DEFAULT_SLOTS: Slot[] = [
   {
@@ -71,10 +72,6 @@ export const SAVE_DEBOUNCE_MS = 1000
 export const SAVE_RETRY_MS = 5000
 
 export const DEFAULT_SETTINGS: Settings = {
-  totalLessons: 100,
-  totalExams: 10,
-  lessonsEnabled: true,
-  examsEnabled: true,
   goalsEnabled: true,
   sleepEnabled: false,
   startDate: null,
@@ -90,6 +87,9 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
     slots: DEFAULT_SLOTS,
     categories: DEFAULT_CATEGORIES,
+    // Deliberately empty. A new project tallies nothing until you say what,
+    // rather than inheriting two units somebody else's syllabus needed.
+    counterUnits: [],
     days: {},
     weekNotes: {},
     monthNotes: {},
@@ -101,13 +101,28 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
 }
 
 export function normalizeProject(p: Partial<Project>): Project {
+  const settings = { ...DEFAULT_SETTINGS, ...(p.settings || {}) }
+  // An export taken before `spec 008` has no units and no day counters, only
+  // the old `lessons`/`exam` fields. Rebuild both here, matching what
+  // `migrations/009` did to the database, or importing an older backup loses
+  // every tally silently.
+  const days = p.days || {}
+  const migrated = !p.counterUnits
   return {
     id: p.id || makeId("project"),
-    settings: { ...DEFAULT_SETTINGS, ...(p.settings || {}) },
+    settings,
     slots: p.slots && p.slots.length ? p.slots : DEFAULT_SLOTS,
     categories:
       p.categories && p.categories.length ? p.categories : DEFAULT_CATEGORIES,
-    days: p.days || {},
+    counterUnits: p.counterUnits ?? legacyUnits(settings),
+    days: migrated
+      ? Object.fromEntries(
+          Object.entries(days).map(([key, day]) => [
+            key,
+            { ...day, counters: dayCounters(day) },
+          ]),
+        )
+      : days,
     weekNotes: p.weekNotes || {},
     monthNotes: p.monthNotes || {},
     weekIgnore: p.weekIgnore || {},

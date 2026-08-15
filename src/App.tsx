@@ -5,6 +5,7 @@ import type {
   Day,
   StudyEntry,
   Category,
+  CounterUnit,
   DayKey,
   PeriodId,
   Project,
@@ -42,6 +43,8 @@ import {
 import { makeId } from "./lib/id"
 import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
 import { canFreeze, freezeLedger } from "./lib/freezes"
+import { computeStreaks } from "./lib/streaks"
+import { addSlotCount, counterTotals } from "./lib/counters"
 import {
   periodRange,
 } from "./lib/period"
@@ -63,7 +66,6 @@ import { CountFilter } from "./views/CountFilter"
 import { StreaksSection } from "./views/StreaksSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { SleepSection } from "./views/SleepSection"
-import { OverallStatsSection } from "./views/OverallStatsSection"
 import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
 import { SetupModal } from "./views/SetupModal"
@@ -71,11 +73,9 @@ import { TopBar } from "./views/TopBar"
 import { AuthScreen, SetPasswordScreen } from "./views/AuthScreen"
 import { EnvBadge } from "./views/EnvBadge"
 import { AnalyticsView } from "./views/AnalyticsView"
+import { QuickAddCounterModal } from "./views/QuickAddCounterModal"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
 import { DayQuickviewModal } from "./views/DayEditor"
-import {
-  computeOverallAllTime,
-} from "./lib/analytics"
 
 const DEFAULT_DATA = buildInitialData()
 
@@ -105,7 +105,13 @@ export default function StudyTrackerApp() {
   )
   const [customEnd, setCustomEnd] = useState(toKey(new Date()))
   const [editingKey, setEditingKey] = useState<DayKey | null>(null)
-  const [quickAddKey, setQuickAddKey] = useState<DayKey | null>(null)
+  // One dialog, two things it can add. Held as a pair rather than two pieces
+  // of state so the two can never both be open.
+  const [quickAdd, setQuickAdd] = useState<{
+    key: DayKey
+    variant: "study" | "sleep"
+  } | null>(null)
+  const [counterAddKey, setCounterAddKey] = useState<DayKey | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   // Set when the initial read threw. While true the app is read-only: it holds
   // placeholder state that must never be written back over the real row.
@@ -116,7 +122,6 @@ export default function StudyTrackerApp() {
   // Drives which buttons Setup draws, nothing more. RLS is what keeps a
   // logbook private; see migrations/006_admins.sql.
   const [isAdmin, setIsAdmin] = useState(false)
-  const [showOverall, setShowOverall] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
@@ -330,6 +335,16 @@ export default function StudyTrackerApp() {
   const updateCategories = (categories: Category[]) =>
     updateProject({ categories })
 
+  const updateCounterUnits = (counterUnits: CounterUnit[]) =>
+    updateProject({ counterUnits })
+
+  // Project-wide, unfiltered and ignoring "ignore": this is progress against
+  // a unit's total, not a figure about the selected period.
+  const counterProgress = useMemo(
+    () => counterTotals(project.days),
+    [project.days],
+  )
+
   // A day edit now writes one row instead of the whole history.
   const updateDay = (key: DayKey, patch: Partial<Day>) => {
     const existing = project.days[key] || {
@@ -341,7 +356,13 @@ export default function StudyTrackerApp() {
     const next = { ...existing, ...patch }
     // Recorded before the write so the log holds the old value, which is the
     // only reason to keep a log at all.
-    const details = diffDay(existing, next, project.slots, project.categories)
+    const details = diffDay(
+      existing,
+      next,
+      project.slots,
+      project.categories,
+      project.counterUnits || [],
+    )
     const ops = [opDay(project.id, key)]
     let changeLog = project.changeLog || []
     if (details.length) {
@@ -364,6 +385,11 @@ export default function StudyTrackerApp() {
      `pending` is the list of finished weeks still missing a verdict, and
      sealing one is a write that happens exactly once. See lib/freezes. */
   const ledger = useMemo(() => freezeLedger(project), [project])
+
+  // For the number on the streaks toggle. Computed from `project`, never from
+  // `visibleProject`: the count filter changes what the page shows, never what
+  // a streak is worth.
+  const streaks = useMemo(() => computeStreaks(project), [project])
 
   // Seal whatever is due. Runs after a load and after any edit that finishes
   // a week; the op is an ignore-on-conflict upsert, so a replay is harmless.
@@ -549,11 +575,6 @@ export default function StudyTrackerApp() {
     }
   }, [project, hiddenSlots, hiddenCategories])
 
-  const overallAllTime = useMemo(
-    () => computeOverallAllTime(visibleProject),
-    [visibleProject],
-  )
-
   // No env vars, no database. A dead end rather than the signed-out local
   // fallback, because that path calls `window.storage` — an API browsers do
   // not have — so "degrading gracefully" here means a logbook that silently
@@ -682,8 +703,6 @@ export default function StudyTrackerApp() {
           setCustomStart={setCustomStart}
           customEnd={customEnd}
           setCustomEnd={setCustomEnd}
-          showOverall={showOverall}
-          onToggleOverall={() => setShowOverall((v) => !v)}
           showFilter={showFilter}
           onToggleFilter={() => setShowFilter((v) => !v)}
           filteredOutCount={hiddenSlots.size + hiddenCategories.size}
@@ -694,6 +713,7 @@ export default function StudyTrackerApp() {
           onToggleLog={() => setShowLog((v) => !v)}
           showStreaks={showStreaks}
           onToggleStreaks={() => setShowStreaks((v) => !v)}
+          currentStreak={streaks?.currentDays ?? null}
         />
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
@@ -718,15 +738,6 @@ export default function StudyTrackerApp() {
             width and scrolling with the page — on every screen size. It used
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
-        {showOverall && (
-          <OverallStatsSection
-            overall={overallAllTime}
-            lessonsEnabled={project.settings.lessonsEnabled !== false}
-            examsEnabled={project.settings.examsEnabled !== false}
-            onClose={() => setShowOverall(false)}
-          />
-        )}
-
         {showStreaks && (
           <StreaksSection
             project={visibleProject}
@@ -752,9 +763,23 @@ export default function StudyTrackerApp() {
           onUpdateMonthNote={updateMonthNote}
           onUpdateWeekIgnore={updateWeekIgnore}
           onUpdateMonthIgnore={updateMonthIgnore}
-          onQuickAddDay={setQuickAddKey}
+          onQuickAddDay={(key) => setQuickAdd({ key, variant: "study" })}
+          onQuickAddSleepDay={
+            project.settings.sleepEnabled === true
+              ? (key) => setQuickAdd({ key, variant: "sleep" })
+              : undefined
+          }
+          // Absent with no units defined: there would be nothing to pick.
+          onQuickAddCounterDay={
+            (project.counterUnits || []).length
+              ? setCounterAddKey
+              : undefined
+          }
           canFreezeDay={canFreezeDay}
           onFreezeDay={setFreezeCandidate}
+          // Entries are edited in the card itself. The day dialog is still
+          // there for the day-level things — lessons, exam, ignore, the note.
+          onUpdateDay={updateDay}
           // Rendered inside the period section rather than above it: sleep is
           // period-scoped, so it belongs under the heading that says everything
           // below describes the chosen range.
@@ -776,7 +801,6 @@ export default function StudyTrackerApp() {
             data={visibleProject}
             rangeStart={range.start}
             rangeEnd={range.end}
-            overallAllTime={overallAllTime}
           />
         </div>
       </main>
@@ -841,19 +865,49 @@ export default function StudyTrackerApp() {
         </div>
       )}
 
-      {quickAddKey && (
+      {counterAddKey && (
+        <QuickAddCounterModal
+          dateKey={counterAddKey}
+          units={project.counterUnits || []}
+          slots={project.slots}
+          counters={project.days[counterAddKey]?.counters || {}}
+          onCancel={() => setCounterAddKey(null)}
+          onAdd={(unitId, slotId, amount) => {
+            // Adds to what is there rather than replacing it — that is the
+            // whole difference between this and the day editor's fields.
+            updateDay(counterAddKey, {
+              counters: addSlotCount(
+                project.days[counterAddKey]?.counters,
+                unitId,
+                slotId,
+                amount,
+              ),
+            })
+            setCounterAddKey(null)
+          }}
+        />
+      )}
+
+      {quickAdd && (
         <QuickAddEntryModal
-          dateKey={quickAddKey}
+          dateKey={quickAdd.key}
+          variant={quickAdd.variant}
           slots={project.slots}
           categories={project.categories}
-          onCancel={() => setQuickAddKey(null)}
+          onCancel={() => setQuickAdd(null)}
           onAdd={(dateKey, slotId, entry) => {
             const day = project.days[dateKey] || {}
-            const cells = day.cells || {}
-            updateDay(dateKey, {
-              cells: { ...cells, [slotId]: [...(cells[slotId] || []), entry] },
-            })
-            setQuickAddKey(null)
+            // A null slot means sleep — the day's other list, which no study
+            // figure may ever read.
+            if (slotId === null) {
+              updateDay(dateKey, { sleep: [...(day.sleep || []), entry] })
+            } else {
+              const cells = day.cells || {}
+              updateDay(dateKey, {
+                cells: { ...cells, [slotId]: [...(cells[slotId] || []), entry] },
+              })
+            }
+            setQuickAdd(null)
           }}
         />
       )}
@@ -864,9 +918,23 @@ export default function StudyTrackerApp() {
           dayEntry={project.days[editingKey]}
           slots={project.slots}
           categories={project.categories}
+          counterUnits={project.counterUnits || []}
           settings={project.settings}
           onClose={() => setEditingKey(null)}
           onChange={(patch) => updateDay(editingKey, patch)}
+          // The dialog draws the same card the week does, so it keeps the
+          // card's own actions rather than losing them one level down.
+          onQuickAdd={(key) => setQuickAdd({ key, variant: "study" })}
+          onQuickAddSleep={
+            project.settings.sleepEnabled === true
+              ? (key) => setQuickAdd({ key, variant: "sleep" })
+              : undefined
+          }
+          onQuickAddCounter={
+            (project.counterUnits || []).length ? setCounterAddKey : undefined
+          }
+          canFreeze={canFreezeDay}
+          onFreeze={setFreezeCandidate}
           onGoToDayView={(key) => {
             goToDay(key)
             setEditingKey(null)
@@ -888,6 +956,9 @@ export default function StudyTrackerApp() {
           onSaveSettings={updateSettings}
           onUpdateSlots={updateSlots}
           onUpdateCategories={updateCategories}
+          counterUnits={project.counterUnits || []}
+          counterProgress={counterProgress}
+          onUpdateUnits={updateCounterUnits}
           projects={data.projects}
           activeProjectId={data.activeProjectId}
           onSwitchProject={switchProject}

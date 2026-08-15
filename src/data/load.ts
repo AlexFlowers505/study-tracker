@@ -50,7 +50,9 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
   const [projectRows, dayRows, noteRows, verdictRows, prefs] =
     await Promise.all([
     fetchAllRows<ProjectRow>(() =>
-      client.from("projects").select("id,settings,slots,categories"),
+      client
+        .from("projects")
+        .select("id,settings,slots,categories,counter_units"),
     ),
     fetchAllRows<DayRow>(() => client.from("days").select(DAY_SELECT)),
     fetchAllRows<NoteRow>(() =>
@@ -74,6 +76,9 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
         Array.isArray(r.categories) && r.categories.length
           ? r.categories
           : DEFAULT_CATEGORIES,
+      // No defaults to fall back on: an empty list is a real answer here,
+      // meaning a project that tallies nothing.
+      counterUnits: Array.isArray(r.counter_units) ? r.counter_units : [],
       days: {},
       weekNotes: {},
       monthNotes: {},
@@ -120,6 +125,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     p.days[r.date] = {
       cells: r.cells || {},
       ...(sleep.length ? { sleep } : {}),
+      counters: r.counters || {},
       lessons: Number(r.lessons) || 0,
       exam: !!r.exam,
       ignore: !!r.ignored,

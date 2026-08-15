@@ -62,6 +62,11 @@ which are Node config and get their own lint block.
   - `sleep.ts` — `collectNights` and `sleepStats`, the whole sleep panel's
     arithmetic on the rotated clock. Its own file because sleep is a separate
     axis: none of it may ever reach `stats.ts`.
+  - `entries.ts` — `patchEntry` and the cell operations (update, remove, move
+    between slots). Shared by the day editor and the in-place editor on the
+    day cards, so the rule that keeps `minutes` in step with the times has one
+    home. An explicit `undefined` start/end *deletes* the field: "no start
+    time" and "a start time of undefined" are different rows in jsonb.
   - `defaults.ts`, `id.ts`, `changelog.ts`, `streaks.ts`.
 - `src/data/` — the only place that knows the server shape is four tables and
   not one document:
@@ -112,6 +117,60 @@ which are Node config and get their own lint block.
     (24px) at `top-0`, the entry header sits at `top-6`. Change one and
     comments scroll through the gap. Its opaque background is the card's own
     surface, passed in — a transparent sticky row shows the text underneath.
+    Given the optional `editing` prop it turns a clicked line into
+    `EntryEditRow.tsx` in place; without it the list is read-only, which is
+    how the day dialog renders it. **An open form lifts the `max-h-64` cap**
+    (`capped`, not `scrollable`) — 16rem is enough to read a day and not
+    enough to edit inside.
+  - The slot groups are **always stacked, never columns**. They are a
+    sequence — morning, daytime, evening — and side by side that order stops
+    being readable, which is why the old `wide` layout was deleted rather than
+    made responsive.
+  - Day-card type comes from `cardTiny` / `cardSmall` in `theme.ts`, never a
+    bare `text-[9px]`. The cramped size is a concession to seven cards sharing
+    a row, so it applies only from `md`, where the grid reaches three across;
+    a phone (one column), the Day view and the dialog get the readable size.
+    Both branches are literal strings — Tailwind cannot see a class name
+    assembled at runtime.
+  - A card's title and **all** its buttons share one flex line, with the month
+    underneath. Centring them against the title-plus-month block left every
+    button floating half a line below the heading it belongs to.
+  - **The day dialog renders `FullCardGrid` with a single date and `big`** —
+    the week's own card at full width, not a second drawing of the same day.
+    The week view is where the work happens and its card is the good one; its
+    only problem is width, seven to a row. Giving that component more room is
+    what the dialog is for. Reimplementing it there is how the same day used
+    to look different depending on how deep you had clicked. It has **no
+    dialog chrome of its own**: the card takes `longDate`, `titleActions` (the
+    pencil and the go-to-day arrow, beside the date) and `onClose`, so nothing
+    repeats the date above a card that already states it. The close X sits in
+    the action corner where people reach for it, divided from the day's own
+    buttons by a hairline — everything left of the rule acts on the day, the
+    one right of it acts on the window. `onEdit` is omitted there, so the card
+    body is inert: inside the dialog there is nowhere further to go, and a
+    full-card target you can hit by aiming wide of an entry is a hazard rather
+    than a shortcut.
+  - Editing an entry happens on the card, not in a dialog. The day dialog is
+    still where the day-level things live (lessons, exam, ignore, the note),
+    but the path card → dialog → editor showed the same entry three different
+    ways to change one time, so the entry rows now edit where they are read.
+    Every keystroke writes straight through, as in the day editor; quick-add
+    is the one place that stages a whole entry before saving, because a
+    half-composed new entry has nowhere to live yet.
+  - `EntryEditRow.tsx` has to stay recognisable as the row it replaced: same
+    rail, same 10px mono, same order. Its fields use `FIELD_BARE` — no box, no
+    fill, a dotted underline and nothing else — and **the wash and inset
+    outline around the whole row are the "you are editing" signal**, one for
+    the row rather than one per field. `TimeRangeField` takes `bare` for the
+    same reason.
+  - Because writes go straight through, **Cancel is an undo, not a discard**:
+    it puts the row back as it was found. The snapshot lives in
+    `FullCardGrid`, not in the row — moving an entry to another slot
+    re-parents the component, and a snapshot held inside it would remount and
+    re-record the half-edited state as the original. `restoreEntry` does the
+    move-back and the value-restore as **one** cells computation, since two
+    calls in a tick would both read the same `cells` and the second would
+    silently drop the first.
   - `StatsSection.tsx` — the plain heading-plus-subtitle a stats block sits
     under, shared by `OverviewStats.tsx`, `AveragesStats.tsx` and
     `RemarkableStats.tsx` so the three read as one column.
@@ -149,7 +208,18 @@ One page, not tabs. A single period drives everything:
 - `periodRange()` is the only source of truth for "which days are we showing".
   It feeds both halves of the page, so they can never disagree about the range.
 - `PeriodBar` (sticky, hides on scroll down) holds the period pills, the
-  cursor navigation and the period label.
+  cursor navigation and the period label. Everything in it together is wider
+  than a phone, so it splits into two rows below `sm` and gives way in a fixed
+  order: the pills scroll, then the panel toggles scroll, and the navigation
+  never shrinks — knowing where you are and stepping off it is the one thing
+  the bar must always offer. The label uses `compactRangeLabel` below `sm`
+  ("10–16 Aug"), because truncating the full form eats the end of the range,
+  which is the half you cannot infer.
+- **`min-w-0` is load-bearing all over this layout.** Flex and grid items
+  default to `min-width: auto` and refuse to shrink below their content, so an
+  overflowing strip pushes the whole page sideways instead of scrolling
+  inside itself. That is one bug, and it turned up in the period bar, the
+  log's heading row and `ChartCard` (a Recharts container has its own minimum).
 - Below it: `LogView` (notes, donut breakdowns, day cards / month grid /
   heatmap) and then `AnalyticsView` (stat tiles and charts) for the same range.
 - Three panels open from `PeriodBar` and render between it and `LogView`, the
@@ -275,6 +345,12 @@ Match the existing file:
   `GOAL_MET_COLOR`, `INK`) and the `CARD` / `FIELD_*` class strings instead of
   new hex literals. Tailwind cannot see class names built from template
   literals — dynamic colors go in `style`, not `className`.
+- **Never index into `PALETTE` for a fixed role.** `SLEEP_COLOR` used to be
+  `PALETTE[3]`, which silently repainted every sleep chart the first time the
+  list was reordered. Retiring a colour is safe for saved data — slots and
+  categories store their own hex — and `EditableList` appends an item's own
+  colour to the grid when it is no longer in the palette, so nothing that used
+  a retired one shows an empty selection.
 - Use the date helpers (`toKey`, `fromKey`, `addDays`, `startOfWeek`,
   `daysBetween`) — they work in local time deliberately, to avoid UTC drift.
   Weeks start Monday (`WEEKDAY_ORDER`).

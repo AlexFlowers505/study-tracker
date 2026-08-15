@@ -1,5 +1,10 @@
 /* ---------------------------------------------------------------
-   Editable list — used for both slots and categories in Setup.
+   Editable list — slots, categories and counter units in Setup.
+
+   Generic over the item so a list can carry fields the other two do not.
+   Counter units add a total and a relation; they render through `extra`
+   rather than through a third copy of the reorder / icon / colour / delete
+   machinery, which is the part worth sharing.
 --------------------------------------------------------------- */
 
 import { useState } from "react"
@@ -19,22 +24,36 @@ import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
 import { AutoTextarea } from "./controls"
 
-export function EditableList({
+export function EditableList<T extends Labeled>({
   items,
   onChange,
   noun,
   warningNote,
+  newItem,
+  extra,
+  minItems = 1,
 }: {
-  items: Labeled[]
-  onChange: (next: Labeled[]) => void
+  items: T[]
+  onChange: (next: T[]) => void
   noun: string
   warningNote: (label: string) => ReactNode
+  /** Whatever a new item needs beyond id, label, icon and colour. */
+  newItem?: () => Omit<T, keyof Labeled>
+  /** Fields this kind of item has and the others do not. */
+  extra?: (item: T, update: (patch: Partial<T>) => void) => ReactNode
+  /**
+   * Slots and categories need at least one — an entry has to go somewhere.
+   * Counter units can go to zero: a project that tallies nothing is normal.
+   */
+  minItems?: number
 }) {
   const [openPickerId, setOpenPickerId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
-  const updateItem = (id: string, patch: Partial<Labeled>) =>
-    onChange(items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+  // The union is what lets the shared controls patch the `Labeled` half
+  // without the compiler demanding they know about `T`'s own fields.
+  const updateItem = (id: string, patch: Partial<T> | Partial<Labeled>) =>
+    onChange(items.map((i) => (i.id === id ? ({ ...i, ...patch } as T) : i)))
 
   const addItem = () =>
     onChange([
@@ -44,7 +63,8 @@ export function EditableList({
         label: `New ${noun}`,
         iconName: "Star",
         color: PALETTE[items.length % PALETTE.length],
-      },
+        ...(newItem ? newItem() : {}),
+      } as T,
     ])
 
   const removeItem = (id: string) => {
@@ -121,7 +141,10 @@ export function EditableList({
                       <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
                         Icon
                       </p>
-                      <div className="grid grid-cols-6 gap-1 mb-3">
+                      {/* Capped and scrolled: the library is long enough now
+                          that an uncapped grid would make this popover taller
+                          than the modal it opens inside. */}
+                      <div className="grid grid-cols-6 gap-1 mb-3 max-h-40 overflow-y-auto pr-1">
                         {ICON_LIBRARY.map((opt) => (
                           <button
                             key={opt.name}
@@ -141,8 +164,16 @@ export function EditableList({
                       <p className="text-[9px] uppercase tracking-widest text-[#1E2A33]/40 mb-1.5">
                         Color
                       </p>
+                      {/* The item's own colour is always offered, even when
+                          it is not in the palette. Colours have been retired
+                          from the grid before, and anything already using one
+                          would otherwise show no selection at all and lose it
+                          the moment you touched the picker. */}
                       <div className="flex flex-wrap gap-1.5">
-                        {PALETTE.map((c) => (
+                        {(PALETTE.includes(item.color)
+                          ? PALETTE
+                          : [...PALETTE, item.color]
+                        ).map((c) => (
                           <button
                             key={c}
                             onClick={() => updateItem(item.id, { color: c })}
@@ -174,11 +205,13 @@ export function EditableList({
                 />
                 <Tip
                   text={
-                    items.length <= 1 ? "At least one is required" : "Remove"
+                    items.length <= minItems
+                      ? `At least ${minItems} is required`
+                      : "Remove"
                   }
                 >
                   <button
-                    disabled={items.length <= 1}
+                    disabled={items.length <= minItems}
                     onClick={() => setConfirmDeleteId(item.id)}
                     className={`${btnBase} p-1.5 text-[#1E2A33]/40 hover:text-[#C1595B] disabled:opacity-20 disabled:cursor-not-allowed`}
                   >
@@ -202,6 +235,7 @@ export function EditableList({
                   className="flex-1 border border-[#1E2A33]/10 rounded-lg px-2 py-1 text-[10px] font-mono bg-[#F4F5F7]/50"
                 />
               </div>
+              {extra?.(item, (patch) => updateItem(item.id, patch))}
             </div>
           )}
         </div>

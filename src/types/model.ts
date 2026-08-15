@@ -20,6 +20,33 @@ export interface Labeled {
 export type Slot = Labeled
 export type Category = Labeled
 
+/**
+ * How a unit reads when it moves. Stored and configurable from the start, but
+ * nothing consumes it yet — everything that could have is being redesigned
+ * around counter units (`spec 008`). It is here so the data is already right
+ * when the statistics come back.
+ */
+export type CounterRelation = "positive" | "neutral" | "negative"
+
+/**
+ * A thing you tally per day, against a total when one is known.
+ *
+ * Replaces `lessons` (a number) and `exam` (a boolean), which were never two
+ * features — they were this one, built twice. A boolean is a counter that
+ * stops at one, so the exam flag migrated to a unit whose values happen to be
+ * 0 or 1 and nothing downstream has to know which kind it started as.
+ */
+export interface CounterUnit extends Labeled {
+  /**
+   * How many there are in all, when that is known. Absent for anything
+   * open-ended. Deliberately not called a target or a goal: a unit can count
+   * something you would rather do less of, and reaching its total is then the
+   * opposite of the idea.
+   */
+  total?: number
+  relation: CounterRelation
+}
+
 /** `"HH:MM"`, zero-padded. Compared as text in places, so the padding matters. */
 export type TimeOfDay = string
 
@@ -54,7 +81,28 @@ export type SleepEntry = TimeEntry
 export interface Day {
   cells?: Record<string, StudyEntry[]>
   sleep?: SleepEntry[]
+  /**
+   * `unitId -> slotId -> value`. Three lessons can be two in the morning and
+   * one in the evening; the day's figure for a unit is the sum of its slots,
+   * so nothing stores the same number twice and the two cannot disagree.
+   *
+   * Unit first because almost every read is "how many of this unit today".
+   * Counts recorded for the day rather than for any part of it sit under
+   * `UNSLOTTED` — everything migrated from `lessons`/`exam` is there, since
+   * those never had a slot and inventing one would be making data up.
+   *
+   * A unit the day never touched has no key at all rather than a zero:
+   * "none recorded" and "recorded as none" are different things.
+   */
+  counters?: Record<string, Record<string, number>>
+  /**
+   * Superseded by `counters` in `spec 008`, kept so the columns behind them
+   * stay readable until the new shape has been trusted for a while. Nothing
+   * should add a new read of either.
+   * @deprecated
+   */
   lessons?: number
+  /** @deprecated see `lessons` */
   exam?: boolean
   /** "Ignore in statistics" — excluded everywhere a number is reported. */
   ignore?: boolean
@@ -79,10 +127,20 @@ export interface WeekVerdict {
 }
 
 export interface Settings {
-  totalLessons: number
-  totalExams: number
-  lessonsEnabled: boolean
-  examsEnabled: boolean
+  /**
+   * The four fields lessons and exams were configured through. Superseded by
+   * counter units in `spec 008` — optional now so nothing new has to write
+   * them, and still typed so `legacyUnits` can read them out of a document
+   * that predates the change.
+   * @deprecated
+   */
+  totalLessons?: number
+  /** @deprecated see `totalLessons` */
+  totalExams?: number
+  /** @deprecated see `totalLessons` */
+  lessonsEnabled?: boolean
+  /** @deprecated see `totalLessons` */
+  examsEnabled?: boolean
   goalsEnabled: boolean
   sleepEnabled: boolean
   startDate: DayKey | null
@@ -111,6 +169,8 @@ export interface Project {
   settings: Settings
   slots: Slot[]
   categories: Category[]
+  /** Sortable, like slots and categories. Empty on a project that tallies nothing. */
+  counterUnits: CounterUnit[]
   days: Record<DayKey, Day>
   /** Keyed by the Monday of the week. */
   weekNotes: Record<DayKey, string>

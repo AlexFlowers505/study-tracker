@@ -16,17 +16,17 @@ import {
   Flame,
   History,
   Moon,
-  Sigma,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { DateRange, DayKey, PeriodId } from "../types/model"
 import {
   NAVIGABLE_PERIODS,
   PERIODS,
+  compactRangeLabel,
   rangeLabel,
   stepCursor,
 } from "../lib/period"
-import { ACCENT, FILTER_TINT, btnBase } from "../lib/theme"
+import { ACCENT, FILTER_TINT, PROJECT_TINT, btnBase } from "../lib/theme"
 import { DateRangeField } from "../ui/DateField"
 import { Tip } from "../ui/Tip"
 import { useRevealOnScrollUp } from "../ui/useRevealOnScrollUp"
@@ -73,12 +73,18 @@ function PanelToggle({
   active,
   onClick,
   badge,
+  count,
+  countColor,
 }: {
   icon: LucideIcon
   tip: ReactNode
   active: boolean
   onClick: () => void
   badge?: boolean
+  /** A number in the corner instead of a dot. Zero is worth showing too — a
+   *  broken streak is exactly the thing you want to notice. */
+  count?: number | null
+  countColor?: string
 }) {
   return (
     <Tip text={tip}>
@@ -97,6 +103,14 @@ function PanelToggle({
             style={{ backgroundColor: FILTER_TINT }}
           />
         )}
+        {count != null && (
+          <span
+            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none text-white ring-2 ring-[#F4F5F7]"
+            style={{ backgroundColor: countColor }}
+          >
+            {count}
+          </span>
+        )}
       </button>
     </Tip>
   )
@@ -112,8 +126,6 @@ export function PeriodBar({
   setCustomStart,
   customEnd,
   setCustomEnd,
-  showOverall,
-  onToggleOverall,
   showFilter,
   onToggleFilter,
   filteredOutCount,
@@ -124,6 +136,7 @@ export function PeriodBar({
   onToggleLog,
   showStreaks,
   onToggleStreaks,
+  currentStreak,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -134,8 +147,6 @@ export function PeriodBar({
   setCustomStart: (k: DayKey) => void
   customEnd?: DayKey
   setCustomEnd: (k: DayKey) => void
-  showOverall: boolean
-  onToggleOverall: () => void
   showFilter: boolean
   onToggleFilter: () => void
   filteredOutCount: number
@@ -146,6 +157,8 @@ export function PeriodBar({
   onToggleLog: () => void
   showStreaks: boolean
   onToggleStreaks: () => void
+  /** Null when the effectiveness meter is off — no metric, no streak. */
+  currentStreak?: number | null
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-white shadow-sm hover:bg-[#1E2A33]/5 disabled:opacity-35 disabled:hover:bg-white disabled:cursor-not-allowed`
@@ -157,11 +170,16 @@ export function PeriodBar({
         visible ? "translate-y-0" : "-translate-y-[130%]"
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex flex-wrap items-center gap-2 max-w-full">
+      {/* Two rows on a phone, one from `sm` up. Everything here is wider than
+          375px put together, so on mobile the pills take a line of their own
+          and the controls take the next. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Seven pills overflow a phone; let the strip scroll sideways
-              rather than clip or wrap. */}
-          <div className="max-w-full overflow-x-auto whitespace-nowrap">
+              rather than clip or wrap. `min-w-0` is what makes that work — a
+              flex item defaults to min-width:auto, which refuses to shrink
+              below its content and pushes the page sideways instead. */}
+          <div className="min-w-0 overflow-x-auto whitespace-nowrap">
             <PeriodPills period={period} setPeriod={setPeriod} />
           </div>
           {period === "custom" && (
@@ -179,15 +197,12 @@ export function PeriodBar({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Project-wide totals are independent of the period, so they live
-              behind a toggle rather than taking permanent space. */}
-          <PanelToggle
-            icon={Sigma}
-            active={showOverall}
-            onClick={onToggleOverall}
-            tip={showOverall ? "Hide overall stats" : "Show overall stats"}
-          />
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* The panel toggles give way first. They are the least urgent thing
+              in the bar and the only group that reads fine half-visible, so on
+              a narrow screen this strip scrolls and the navigation beside it
+              keeps its place. */}
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto [&>*]:shrink-0">
           {/* The dot stays on whether the panel is open or shut: a filter you
               can't see is the one you most need telling about, otherwise every
               figure on the page is quietly short and nothing says why. */}
@@ -208,7 +223,15 @@ export function PeriodBar({
             icon={Flame}
             active={showStreaks}
             onClick={onToggleStreaks}
-            tip={showStreaks ? "Hide streaks" : "Show streaks"}
+            count={currentStreak}
+            countColor={PROJECT_TINT}
+            tip={
+              currentStreak == null
+                ? showStreaks
+                  ? "Hide streaks"
+                  : "Show streaks"
+                : `${currentStreak} day${currentStreak === 1 ? "" : "s"} in a row`
+            }
           />
           {/* Absent rather than disabled when sleep tracking is off: there is
               nothing behind it to show. */}
@@ -243,28 +266,40 @@ export function PeriodBar({
               <CalendarCheck size={16} />
             </button>
           </Tip>
-          <Tip text={navigable ? undefined : "This period sets its own dates"}>
-            <button
-              disabled={!navigable}
-              onClick={() => setCursor(stepCursor(cursor, period, -1))}
-              className={`${navBtn} p-2`}
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </Tip>
-          {/* The period reads as the label of the two arrows around it. */}
-          <span className="px-1.5 font-sans font-extrabold uppercase tracking-tight text-xs text-center min-w-[5.5rem] truncate">
-            {rangeLabel(period, cursor, range)}
-          </span>
-          <Tip text={navigable ? undefined : "This period sets its own dates"}>
-            <button
-              disabled={!navigable}
-              onClick={() => setCursor(stepCursor(cursor, period, 1))}
-              className={`${navBtn} p-2`}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </Tip>
+          </div>
+
+          {/* Never scrolls and never shrinks: knowing where you are and being
+              able to step off it is the one thing the bar must always offer. */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            <Tip text={navigable ? undefined : "This period sets its own dates"}>
+              <button
+                disabled={!navigable}
+                onClick={() => setCursor(stepCursor(cursor, period, -1))}
+                className={`${navBtn} p-2`}
+              >
+                <ChevronLeft size={16} />
+              </button>
+            </Tip>
+            {/* The period reads as the label of the two arrows around it.
+                Short form on a phone, full form once there is room. */}
+            <span className="px-1 font-sans font-extrabold uppercase tracking-tight text-xs text-center whitespace-nowrap">
+              <span className="sm:hidden">
+                {compactRangeLabel(period, cursor, range)}
+              </span>
+              <span className="hidden sm:inline">
+                {rangeLabel(period, cursor, range)}
+              </span>
+            </span>
+            <Tip text={navigable ? undefined : "This period sets its own dates"}>
+              <button
+                disabled={!navigable}
+                onClick={() => setCursor(stepCursor(cursor, period, 1))}
+                className={`${navBtn} p-2`}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </Tip>
+          </div>
         </div>
       </div>
     </div>

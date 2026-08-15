@@ -16,10 +16,29 @@ import { Clock } from "lucide-react"
 import type { TimeOfDay } from "../types/model"
 import { pad } from "../lib/date"
 import { fmtHours, spanMinutes, timeToMinutes } from "../lib/time"
-import { ACCENT, EXAM_COLOR, FIELD_BOXED, INK, btnBase } from "../lib/theme"
+import {
+  ACCENT,
+  EXAM_COLOR,
+  FIELD_BARE,
+  FIELD_BOXED,
+  INK,
+  btnBase,
+} from "../lib/theme"
 import { DATE_PANEL_CLASS, useDatePopover } from "./datePopover"
 
 type Step = "start-hour" | "start-minute" | "end-hour" | "end-minute"
+
+/**
+ * The clock right now, snapped to the dial's own 5-minute grid. Rounding up
+ * past 55 carries into the next hour, and 23:xx wraps to 00 — the field holds
+ * a time of day, not a moment, so there is no date to carry into.
+ */
+const nowTime = (): TimeOfDay => {
+  const d = new Date()
+  const snapped = Math.round(d.getMinutes() / 5) * 5
+  const hour = (d.getHours() + (snapped === 60 ? 1 : 0)) % 24
+  return `${pad(hour)}:${pad(snapped % 60)}`
+}
 
 const FIELDS = ["start", "end"] as const
 type Field = (typeof FIELDS)[number]
@@ -29,11 +48,18 @@ export function TimeRangeField({
   end,
   onChange,
   onClear,
+  bare = false,
 }: {
   start?: TimeOfDay
   end?: TimeOfDay
   onChange: (start?: TimeOfDay, end?: TimeOfDay) => void
   onClear: () => void
+  /**
+   * Drops the box for editing in the middle of a line of text — the day
+   * cards, where an entry has to stay recognisable as the same row while it
+   * is being edited. The panel is identical either way.
+   */
+  bare?: boolean
 }) {
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover()
@@ -157,9 +183,16 @@ export function TimeRangeField({
         ref={triggerRef}
         type="button"
         onClick={openPicker}
-        className={`${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`}
+        className={
+          bare
+            ? `${FIELD_BARE} ${btnBase} flex items-center gap-1 text-left text-[10px] text-[#1E2A33]/70`
+            : `${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-[#1E2A33]/[0.03]`
+        }
       >
-        <Clock size={13} className="text-[#1E2A33]/40 shrink-0" />
+        <Clock
+          size={bare ? 10 : 13}
+          className="text-[#1E2A33]/40 shrink-0 no-underline"
+        />
         <span className={start || end ? "" : "text-[#1E2A33]/35"}>
           {triggerLabel}
         </span>
@@ -294,16 +327,27 @@ export function TimeRangeField({
             <p className="px-2 pb-1 text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/35">
               {hint}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                onClear()
-                setOpen(false)
-              }}
-              className={`${btnBase} w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
-            >
-              Clear
-            </button>
+            <div className="flex gap-1">
+              {/* Rounded to the same 5 minutes the dial itself snaps to, so
+                  what it fills in is a value you could have picked by hand. */}
+              <button
+                type="button"
+                onClick={() => setValue(editingStart ? "start" : "end", nowTime())}
+                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+              >
+                Now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClear()
+                  setOpen(false)
+                }}
+                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50 hover:bg-[#1E2A33]/5 hover:text-[#1E2A33]`}
+              >
+                Clear
+              </button>
+            </div>
           </div>,
           document.body,
         )}

@@ -30,15 +30,24 @@ export function QuickAddEntryModal({
   dateKey,
   slots,
   categories,
+  variant = "study",
   onCancel,
   onAdd,
 }: {
   dateKey: DayKey
   slots: Slot[]
   categories: Category[]
+  /**
+   * Sleep is the same dialog with the top row removed: it is a flat list on
+   * the day with no slot and no category. Sharing the component rather than
+   * copying it is what keeps the two ways of adding a time the same shape.
+   */
+  variant?: "study" | "sleep"
   onCancel: () => void
-  onAdd: (dateKey: DayKey, slotId: string, entry: StudyEntry) => void
+  /** `slotId` is null for a sleep entry, which belongs to no slot. */
+  onAdd: (dateKey: DayKey, slotId: string | null, entry: StudyEntry) => void
 }) {
+  const isSleep = variant === "sleep"
   const [slotId, setSlotId] = useState(slots[0]?.id)
   const [category, setCategory] = useState(categories[0]?.id)
   const [start, setStart] = useState<TimeOfDay | undefined>(undefined)
@@ -54,9 +63,9 @@ export function QuickAddEntryModal({
   const onBackdropClick = useModalDismiss(requestCancel)
 
   const submit = () => {
-    onAdd(dateKey, slotId, {
-      id: makeId("entry"),
-      category,
+    onAdd(dateKey, isSleep ? null : slotId, {
+      id: makeId(isSleep ? "sleep" : "entry"),
+      ...(isSleep ? {} : { category }),
       minutes: total,
       comment,
       ...(start ? { start } : {}),
@@ -78,7 +87,7 @@ export function QuickAddEntryModal({
         <div className="flex items-center justify-between px-5 py-4 bg-white">
           <div>
             <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
-              New entry
+              {isSleep ? "New sleep" : "New entry"}
             </h2>
             <p className="text-[10px] font-mono uppercase tracking-widest text-[#1E2A33]/50">
               {d.toLocaleDateString(undefined, {
@@ -97,7 +106,8 @@ export function QuickAddEntryModal({
         </div>
 
         <div className="p-5 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          {/* Sleep has neither, so the row is absent rather than disabled. */}
+          <div className={`grid grid-cols-2 gap-2 ${isSleep ? "hidden" : ""}`}>
             <label className="block">
               <span className="block text-[9px] font-mono uppercase tracking-widest text-[#1E2A33]/50 mb-1">
                 Slot
@@ -204,7 +214,7 @@ export function QuickAddEntryModal({
         >
           <div className={`${CARD} w-full max-w-[300px] p-5`}>
             <p className="text-xs font-mono text-[#1E2A33]/80 mb-4">
-              Discard this new entry?
+              Discard this new {isSleep ? "sleep entry" : "entry"}?
             </p>
             <div className="flex justify-end gap-2">
               <button

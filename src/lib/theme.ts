@@ -10,20 +10,43 @@
 import type { CSSProperties } from "react"
 import type { GoalOutcome } from "../types/model"
 
+/**
+ * Slot and category colours, ordered around the wheel so neighbours in the
+ * grid are neighbours in hue and the whole set can be scanned at once.
+ *
+ * Two of the old ten were dropped for being indistinguishable at the size
+ * these are actually seen — a 10px icon and a 2px rail: `#4AA5A0` against
+ * `#2F9E8F`, and `#C98A2E` against `#E29A3E`. **Removing a colour does not
+ * touch saved data**: slots and categories store their own hex, so anything
+ * already using one keeps it and simply cannot be re-picked from the grid.
+ */
 export const PALETTE = [
-  "#E29A3E",
-  "#4C8FBD",
-  "#2F9E8F",
-  "#8B6FB3",
-  "#C1595B",
-  "#5C8A3A",
-  "#B0559E",
-  "#4AA5A0",
-  "#C98A2E",
-  "#6B7FD7",
+  "#C1595B", // red
+  "#D2703A", // burnt orange
+  "#E29A3E", // amber
+  "#B8912F", // mustard
+  "#8A9A3B", // olive
+  "#5C8A3A", // green
+  "#3F8F63", // forest
+  "#2F9E8F", // teal
+  "#35A7B8", // cyan
+  "#4C8FBD", // blue
+  "#3E6FA8", // deep blue
+  "#6B7FD7", // indigo
+  "#8B6FB3", // purple
+  "#B0559E", // magenta
+  "#C4577F", // rose
+  "#8C5A3C", // chocolate
+  "#7A6A5D", // taupe
+  "#5E7A86", // slate
 ]
 
-export const SLEEP_COLOR = PALETTE[3]
+/**
+ * Spelled out rather than indexed into `PALETTE`. It used to be `PALETTE[3]`,
+ * which quietly made every sleep chart a different colour the moment the list
+ * was reordered.
+ */
+export const SLEEP_COLOR = "#8B6FB3"
 
 export const ACCENT = "#2F5FBF" // bluish active-state accent
 export const EXAM_COLOR = "#C1595B"
@@ -94,5 +117,39 @@ const FIELD_BASE =
 export const FIELD_ON_WHITE = `${FIELD_BASE} w-full rounded-xl bg-[#F4F5F7] px-2.5 py-2 text-xs`
 export const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-white px-2.5 py-2 text-[11px]`
 export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-white border border-[#1E2A33]/15 px-2 py-1.5 text-xs`
+
+/**
+ * The exception to the rule above, for editing something in the middle of the
+ * text that displays it — an entry on a day card, where the whole point is
+ * that the line barely changes when it becomes editable. A filled box there
+ * would redraw the row into a form and lose the thread.
+ *
+ * It carries no fill and no border; the dotted underline is the entire
+ * affordance, and hover and focus deepen it. What says "you are editing" is
+ * the wash and outline around the row as a whole, not the state of each field
+ * — see `EntryEditRow`.
+ */
+export const FIELD_BARE =
+  "font-mono bg-transparent border-0 p-0 appearance-none cursor-pointer " +
+  "underline decoration-dotted decoration-[#1E2A33]/30 underline-offset-[3px] " +
+  "hover:decoration-[#1E2A33]/60 focus:outline-none focus:decoration-solid " +
+  "placeholder:text-[#1E2A33]/30"
+
+/**
+ * Type inside a day card, in two sizes.
+ *
+ * The 9–10px it used to be everywhere was a concession to seven cards sharing
+ * a row, and it was paid for by every card that does not — a phone (one
+ * column), the Day view, and the dialog. So the readable size is the default
+ * and the cramped one only comes in from `md`, where the grid reaches three
+ * across; `roomy` opts out of even that.
+ *
+ * Both branches are written out as literal strings because Tailwind scans
+ * source text and cannot see a class name assembled at runtime.
+ */
+export const cardTiny = (roomy?: boolean) =>
+  roomy ? "text-[11px]" : "text-[11px] md:text-[9px]"
+export const cardSmall = (roomy?: boolean) =>
+  roomy ? "text-[13px]" : "text-[13px] md:text-[10px]"
 
 export const btnBase = "transition-colors duration-150 ease-out"

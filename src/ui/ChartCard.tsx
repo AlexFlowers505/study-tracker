@@ -14,9 +14,13 @@ export function ChartCard({
   children: ReactNode
 }) {
   return (
-    <div className={`${CARD} p-4`}>
+    // `min-w-0` because this is a grid item wrapping a Recharts container: a
+    // grid item will not shrink below its content, and a chart's own minimum
+    // was enough to push the card wider than the column and the page sideways
+    // with it on a narrow phone.
+    <div className={`${CARD} p-4 min-w-0`}>
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-        <div>
+        <div className="min-w-0">
           <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm">
             {title}
           </h3>

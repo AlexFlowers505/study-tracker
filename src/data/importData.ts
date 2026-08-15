@@ -103,6 +103,9 @@ export async function importIntoTables(
       settings: p.settings,
       slots: p.slots,
       categories: p.categories,
+      // Already rebuilt from the old fields by `normalizeProject` if the file
+      // predates counter units, so by the time it reaches here it is real.
+      counter_units: p.counterUnits || [],
       updated_at: stamp,
     })),
     "id",

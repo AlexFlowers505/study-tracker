@@ -3,8 +3,15 @@
    below a summary strip.
 --------------------------------------------------------------- */
 
-import { Award, EyeOff, Moon, Snowflake } from "lucide-react"
-import type { Category, Day, DayKey, Settings, Slot } from "../types/model"
+import { EyeOff, Moon, Snowflake } from "lucide-react"
+import type {
+  Category,
+  CounterUnit,
+  Day,
+  DayKey,
+  Settings,
+  Slot,
+} from "../types/model"
 import type { PeriodState } from "../lib/freezes"
 import {
   fromKey,
@@ -33,6 +40,8 @@ import {
   cellSurface,
   dayStateSurface,
 } from "../lib/theme"
+import { unitDayTotal } from "../lib/counters"
+import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 
 const WEEKDAY_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -116,6 +125,7 @@ function CompactDayCell({
   isBeforeStart,
   ignored,
   todayKey,
+  counterUnits,
   onEdit,
 }: {
   date: Date
@@ -123,6 +133,7 @@ function CompactDayCell({
   slots: Slot[]
   categories: Category[]
   settings: Settings
+  counterUnits: CounterUnit[]
   goal: number
   isToday: boolean
   isFuture: boolean
@@ -146,10 +157,8 @@ function CompactDayCell({
 
   const { bySlot, total } = dayBreakdown(entry, slots)
   const tooltip = ignored
-    ? `${buildTooltip(entry, slots, categories, settings)}\n\nIgnored in statistics`
-    : buildTooltip(entry, slots, categories, settings)
-  const lessonsEnabled = settings?.lessonsEnabled !== false
-  const examsEnabled = settings?.examsEnabled !== false
+    ? `${buildTooltip(entry, slots, categories, counterUnits)}\n\nIgnored in statistics`
+    : buildTooltip(entry, slots, categories, counterUnits)
   const metGoal = !ignored && goal > 0 && total >= goal
   const state = dayState(entry, date, settings, slots, todayKey)
   const goalOutcome = ignored || state === "pending" ? null : state
@@ -195,16 +204,28 @@ function CompactDayCell({
                   <Moon size={11} style={{ color: SLEEP_COLOR }} />
                 </Tip>
               )}
-            {entry?.exam && examsEnabled && (
-              <Tip text="Exam passed">
-                <span
-                  className="flex items-center justify-center w-4 h-4 rounded-full"
-                  style={{ backgroundColor: EXAM_COLOR }}
+            {/* A dot per unit the day touched, in the unit's own colour. A
+                month cell has no room for numbers, so the count is in the
+                tooltip and the presence is the signal. */}
+            {counterUnits
+              .filter((u) => unitDayTotal(entry?.counters, u.id) > 0)
+              .map((u) => (
+                <Tip
+                  key={u.id}
+                  text={`${unitDayTotal(entry?.counters, u.id)} × ${u.label}`}
                 >
-                  <Award size={10} className="text-white" />
-                </span>
-              </Tip>
-            )}
+                  <span
+                    className="flex items-center justify-center w-4 h-4 rounded-full"
+                    style={{ backgroundColor: u.color }}
+                  >
+                    <RenderIcon
+                      name={u.iconName}
+                      size={9}
+                      className="text-white"
+                    />
+                  </span>
+                </Tip>
+              ))}
           </div>
         </div>
 
@@ -246,9 +267,7 @@ function CompactDayCell({
               </span>
             )}
           </span>
-          {(entry?.lessons ?? 0) > 0 && lessonsEnabled && (
-            <span className="shrink-0">{entry?.lessons}L</span>
-          )}
+
         </div>
       </div>
     </Tip>
@@ -265,12 +284,14 @@ export function MonthGrid({
   onEditDay,
   weekIgnore = {},
   monthIgnore = {},
+  counterUnits,
 }: {
   cursor: Date
   days: Record<DayKey, Day>
   slots: Slot[]
   categories: Category[]
   settings: Settings
+  counterUnits: CounterUnit[]
   todayKey: DayKey
   onEditDay: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
@@ -362,6 +383,7 @@ export function MonthGrid({
                     slots={slots}
                     categories={categories}
                     settings={settings}
+                    counterUnits={counterUnits}
                     goal={goalForDate(settings, date)}
                     isToday={toKey(date) === todayKey}
                     isFuture={date > new Date()}

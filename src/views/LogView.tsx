@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EyeOff, MessageSquare } from 'lucide-react'
-import type { DateRange, PeriodId, Project } from '../types/model'
+import type { DateRange, Day, PeriodId, Project } from '../types/model'
 import {
   addDays,
   datesInRange,
@@ -41,8 +41,11 @@ export function LogView({
   onUpdateWeekIgnore,
   onUpdateMonthIgnore,
   onQuickAddDay,
+  onQuickAddSleepDay,
+  onQuickAddCounterDay,
   canFreezeDay,
   onFreezeDay,
+  onUpdateDay,
   sleepSection,
 }: {
   data: Project
@@ -56,8 +59,12 @@ export function LogView({
   onUpdateWeekIgnore: (key: string, next: boolean) => void
   onUpdateMonthIgnore: (key: string, next: boolean) => void
   onQuickAddDay: (key: string) => void
+  onQuickAddSleepDay?: (key: string) => void
+  onQuickAddCounterDay?: (key: string) => void
   canFreezeDay?: (key: string) => boolean
   onFreezeDay?: (key: string) => void
+  /** Lets the day cards edit an entry in place, without the day dialog. */
+  onUpdateDay?: (key: string, patch: Partial<Day>) => void
   /** The sleep panel, rendered by the shell so it can read the unfiltered
    *  project — sleep has no slots or categories for the filter to act on. */
   sleepSection?: ReactNode
@@ -69,6 +76,7 @@ export function LogView({
   const {
     slots,
     categories,
+    counterUnits = [],
     days,
     settings,
     weekNotes = {},
@@ -122,8 +130,13 @@ export function LogView({
 
   return (
     <div>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      {/* Deliberately `flex-nowrap`: the menu button is narrow and there is
+          always room for it, but as a wrappable sibling of a long heading it
+          jumped to a line of its own the moment the title got wide. The
+          heading block wraps internally instead — `min-w-0` is what lets it,
+          since a flex item will not shrink below its content otherwise. */}
+      <div className="flex items-baseline justify-between gap-x-3 mb-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 min-w-0">
           {periodIgnored && (
             <Tip text={`This ${granularity} is excluded from every statistic`}>
               <EyeOff size={14} className="text-[#1E2A33]/45" />
@@ -164,6 +177,9 @@ export function LogView({
         {(granularity === "week" ||
           granularity === "month" ||
           granularity === "day") && (
+          // `inline-flex` rather than a block so it keeps the baseline the
+          // trigger had when it was the flex item itself.
+          <span className="shrink-0 inline-flex">
           <PopoverMenu label={`${granularity} settings`}>
             {granularity !== "day" && (
               <MenuToggle
@@ -186,6 +202,7 @@ export function LogView({
               onChange={setCommentsOpen}
             />
           </PopoverMenu>
+          </span>
         )}
       </div>
 
@@ -226,6 +243,7 @@ export function LogView({
           slots={slots}
           categories={categories}
           settings={settings}
+          counterUnits={counterUnits}
           todayKey={todayKey}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
@@ -239,6 +257,7 @@ export function LogView({
           slots={slots}
           categories={categories}
           settings={settings}
+          counterUnits={counterUnits}
           todayKey={todayKey}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
@@ -246,8 +265,15 @@ export function LogView({
           big={granularity === "day"}
           commentsOpen={commentsOpen}
           onQuickAddDay={granularity === "week" ? onQuickAddDay : undefined}
+          onQuickAddSleepDay={
+            granularity === "week" ? onQuickAddSleepDay : undefined
+          }
+          onQuickAddCounterDay={
+            granularity === "week" ? onQuickAddCounterDay : undefined
+          }
           canFreezeDay={canFreezeDay}
           onFreezeDay={onFreezeDay}
+          onUpdateDay={onUpdateDay}
         />
       )}
       {/* Anything longer than a month — including all-time and custom — is
@@ -259,6 +285,7 @@ export function LogView({
           days={days}
           slots={slots}
           categories={categories}
+          counterUnits={counterUnits}
           settings={settings}
           todayKey={todayKey}
           onSelectDay={onEditDay}
