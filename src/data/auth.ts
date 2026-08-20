@@ -51,6 +51,11 @@ export function useCloudAuth(): CloudAuth {
   useEffect(() => {
     if (!CLOUD_ENABLED) return
     let unsub = () => {}
+    // Safety net. `INITIAL_SESSION` is what actually ends the wait below, so
+    // if a future GoTrue ever stopped emitting it the app would sit on a blank
+    // screen forever — a worse failure than the flash this replaced. Four
+    // seconds is long enough that a slow refresh wins the race honestly.
+    const settle = setTimeout(() => setReady(true), 4000)
     ;(async () => {
       const fromUrl = recoveryInUrl()
       try {
@@ -58,21 +63,41 @@ export function useCloudAuth(): CloudAuth {
         const sb = mod.createClient(NORMALIZED_SUPABASE_URL, SUPABASE_KEY)
         setClient(sb)
         if (fromUrl) setRecovery(true)
-        const { data } = await sb.auth.getSession()
-        setSession(data?.session || null)
+        // Subscribe *before* asking, so the first thing GoTrue says is heard.
+        // The other order has a gap: a stored token that needs refreshing
+        // makes `getSession()` resolve null, `ready` flips with no session,
+        // and the app decides you are signed out — it draws the sign-in form
+        // for the moment it takes the refresh to land, which is exactly the
+        // "couldn't log you in" flash on first load.
         const { data: sub } = sb.auth.onAuthStateChange((evt, sess) => {
           if (evt === "PASSWORD_RECOVERY") setRecovery(true)
           setSession(sess)
+          // `INITIAL_SESSION` is GoTrue saying it has finished looking, with
+          // or without a session, and it is the only honest moment to call
+          // the question. Everything after it is a real change.
+          if (evt === "INITIAL_SESSION") {
+            clearTimeout(settle)
+            setReady(true)
+          }
         })
         unsub = () => sub.subscription.unsubscribe()
+        const { data } = await sb.auth.getSession()
+        setSession(data?.session || null)
       } catch (e) {
         console.error("Cloud sync unavailable.", e)
         setLoadError(e)
-      } finally {
+        clearTimeout(settle)
         setReady(true)
       }
+      // No `finally` flipping `ready` here: on the happy path the
+      // `INITIAL_SESSION` listener above owns that, and flipping it as soon as
+      // the import resolved is what re-opened the same gap from the other end.
+      // The failure path still has to end somewhere, so it flips in `catch`.
     })()
-    return () => unsub()
+    return () => {
+      clearTimeout(settle)
+      unsub()
+    }
   }, [])
 
   return {

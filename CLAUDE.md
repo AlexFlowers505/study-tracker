@@ -70,7 +70,24 @@ which are Node config and get their own lint block.
     "Stats" hands it the period, and the returned `OverviewTotals` is the same
     shape either way, so the two can't disagree about what a number means.
   - `freezes.ts` — `dayState` / `periodState` (what colour a day, week or
-    month is) and `freezeLedger`. **Earning is a ledger of events, not a
+    month is), `isEditableDay` and `freezeLedger`. **The log can only be
+    written for today and yesterday** (`EDIT_HORIZON_DAYS`), and everything
+    else follows from that one rule: a week seals when its last day passes out
+    of the window — the Tuesday after — because a day you can still change is a
+    day whose verdict is not yet a fact. `isSealable` is written against
+    `isEditableDay` so the two cannot drift, and it checks the week is *over*
+    first: `isEditableDay` also says no to a future day, so without that the
+    week you are living in would seal on its first morning. Spending a freeze
+    uses the same window. `ledger.open` is what the streaks panel shows — a
+    green week that has not paid out yet looks like a bug and is a rule, so
+    the panel says which weeks are still in play and when they seal.
+    **Lowering the weekly goal total forfeits that week's freeze**
+    (`weekWasCut`, backed by `settings.goalCuts`). Every other edit makes a
+    week harder or leaves it alone; this is the only one that could buy a green
+    week outright. It is an append-only log for the same reason the verdicts
+    are — putting the number back does not undo having lowered it — and the
+    streaks panel reads it back with the figures, because a freeze that simply
+    fails to appear is indistinguishable from a bug. **Earning is a ledger of events, not a
     recomputation**: each finished week gets one verdict, written once, so
     re-breaking and re-fixing a past week can never mint a second freeze.
     `spec 007` is the full design.
@@ -91,7 +108,12 @@ which are Node config and get their own lint block.
   - `load.ts` — `loadFromTables`, which reassembles the in-memory document.
   - `ops.ts` — the `WriteOp` union, its constructors, and `applyWriteOp`.
   - `auth.ts` — `useCloudAuth`, which lazily imports the Supabase package and
-    flags password recovery. A reset link arrives *with* a session, so without
+    flags password recovery. It **subscribes before it asks**: `ready` flips on
+    GoTrue's `INITIAL_SESSION`, not when `getSession()` resolves. The other
+    order has a gap — a stored token that needs refreshing resolves null, the
+    app decides you are signed out, and the sign-in form flashes up for as long
+    as the refresh takes. A 4s timer is the safety net so a missing event can
+    never leave the app on a blank screen instead. A reset link arrives *with* a session, so without
     that flag the logbook would open over the form; `App` therefore checks
     `recovery` before it checks `session`.
   - `importData.ts` — the bulk counterpart to Export JSON, and `admin.ts`,
@@ -124,6 +146,11 @@ which are Node config and get their own lint block.
   - **A module here exports components or plain values, never both** —
     mixing them fails `react-refresh/only-export-components`. That is why the
     hooks, the icon list and the button styles each have their own file.
+- `src/ui/useModalDismiss.ts` — Escape, backdrop clicks, **and the page scroll
+  lock**, which lives here because every modal already calls it. The lock is a
+  counter, not a flag: the quick-add dialog opens over the day dialog, and the
+  inner one closing must not free the page under the outer one. It pads the
+  body by the scrollbar width so nothing shifts sideways as it engages.
 - `src/views/` — the page's own sections.
   - `PanelSection.tsx` — the shell every panel the period bar opens is built
     from: a wash of one tint, a round icon badge, a title, an optional
@@ -409,6 +436,39 @@ API that does not exist in a browser (left over from the app's origin as a
 Claude artifact). Offline mode is therefore non-functional — add a
 `localStorage` shim if it's needed.
 
+## Adding things to a day
+
+One "+" per card, and the choice of *what* lives inside the dialog it opens —
+a tab row, `Time entry` or `Counter`. There used to be a "+" and a "#" a pixel
+apart, told apart only by their glyph, which made you decide what you were
+recording before you had opened anything. Sleep keeps its own moon button: it
+is a different axis, not a different kind of study.
+
+Each slot heading in the readout carries its own "+", which opens the same
+dialog with that slot already chosen. It follows the card's rules exactly —
+absent on a read-only readout and on a day that has not happened — because the
+readout must never invent a way in that the card withheld.
+
+**The dialog has no minutes box.** Typing "90" is the arithmetic the app exists
+to do, and two ways of saying the same duration have to be stopped from
+disagreeing. Times are the only input; the duration underneath is the answer.
+`Start now` and `End now` are what make that practical — begin one when you sit
+down, end it when you stop — and a start with no end saves as zero minutes
+rather than being refused, because "I have started" is a real thing to record.
+
+## Editing the past
+
+**The log can only be written for today and yesterday.** Everything else about
+freezes follows from that one rule rather than being set separately — see
+`freezes.ts`. A day past the window still *opens* and reads; what goes is every
+way to change it. A future day is inert altogether, because the dialog behind
+it is only good for editing.
+
+Daily goals are the exception to write-through editing: they sit behind an
+explicit Edit, with Cancel and Confirm, and lowering the weekly total asks a
+second time and names what it costs. Seven numbers that decide what counts as a
+kept day should not move because a scroll wheel passed over them.
+
 ## Theming
 
 Light and dark, chosen in Setup's **App** tab — the one tab there that is not
@@ -491,9 +551,15 @@ Match the existing file:
   area and the month grid. `Tip`, `DateField`, `DateRangeField` and
   `PopoverMenu` all do this; follow suit rather than adding a fourth
   hand-rolled bubble.
-- Design leans on fills, not outlines: white cards on the page tint, tinted
-  headers, filled inputs. Keep a border only where it carries meaning (small
-  selects and number inputs — `FIELD_BOXED`).
+- **Design leans on fills, not outlines.** `FIELD_SOFT` and `BTN_SOFT` are the
+  default for controls: ink at 6%, no border anywhere. An outline draws a hard
+  edge around every control, and a form of six of them reads as a grid of boxes
+  rather than as a few things you can change; a step in tone says "control" and
+  nothing more. The same rule governs list rows in Setup — a slot, a category,
+  a counter unit is a raised surface, not a boxed one. `FIELD_BOXED` survives
+  for the few places that genuinely need an edge, and floating panels swap the
+  border for a `ring-1` plus a shadow, because a thing lifted off the page does
+  need its own outline.
 - A translucent wash needs its own opaque base — use `cellSurface()`. Setting
   a semi-transparent `backgroundColor` alone lets whatever is behind bleed
   through, which made the month grid render different colours on desktop and

@@ -12,6 +12,7 @@
 import { useState } from "react"
 import type { CounterRelation, CounterUnit } from "../types/model"
 import type { Palette } from "../lib/theme"
+import { FIELD_SOFT } from "../lib/theme"
 
 import { EditableList } from "../ui/EditableList"
 import { SegmentedControl } from "../ui/controls"
@@ -78,7 +79,7 @@ function TotalField({
       // stored value: an empty field is a half-typed number, not a total of
       // nothing.
       onBlur={() => setDraft(null)}
-      className="w-20 border border-ink/20 rounded-lg px-2 py-1 text-[11px] font-mono"
+      className={`${FIELD_SOFT} w-20 rounded-lg py-1 text-[11px]`}
     />
   )
 }

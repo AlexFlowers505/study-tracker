@@ -15,24 +15,12 @@ import { createPortal } from "react-dom"
 import { Clock } from "lucide-react"
 import type { TimeOfDay } from "../types/model"
 import { pad } from "../lib/date"
-import { fmtHours, spanMinutes, timeToMinutes } from "../lib/time"
-import { FIELD_BARE, FIELD_BOXED, btnBase } from "../lib/theme"
+import { fmtHours, nowTime, spanMinutes, timeToMinutes } from "../lib/time"
+import { BTN_SOFT, FIELD_BARE, FIELD_BOXED, btnBase } from "../lib/theme"
 import { DATE_PANEL_CLASS, useDatePopover } from "./datePopover"
 
 import { usePalette } from "./useTheme"
 type Step = "start-hour" | "start-minute" | "end-hour" | "end-minute"
-
-/**
- * The clock right now, snapped to the dial's own 5-minute grid. Rounding up
- * past 55 carries into the next hour, and 23:xx wraps to 00 — the field holds
- * a time of day, not a moment, so there is no date to carry into.
- */
-const nowTime = (): TimeOfDay => {
-  const d = new Date()
-  const snapped = Math.round(d.getMinutes() / 5) * 5
-  const hour = (d.getHours() + (snapped === 60 ? 1 : 0)) % 24
-  return `${pad(hour)}:${pad(snapped % 60)}`
-}
 
 const FIELDS = ["start", "end"] as const
 type Field = (typeof FIELDS)[number]
@@ -184,7 +172,7 @@ export function TimeRangeField({
         className={
           bare
             ? `${FIELD_BARE} ${btnBase} flex items-center gap-1 text-left text-[10px] text-ink/70`
-            : `${FIELD_BOXED} ${btnBase} flex items-center gap-1.5 text-left hover:bg-ink/[0.03]`
+            : `${BTN_SOFT} ${btnBase} flex items-center gap-1.5 text-left normal-case tracking-normal text-xs py-1.5`
         }
       >
         <Clock
@@ -356,6 +344,11 @@ export function TimeRangeField({
                 </>
               )}
             </div>
+            {/* Three buttons, and all three act on **the field the dial is
+                currently driving** — the same one the ring and the line above
+                point at. Clear used to wipe both halves, which is a different
+                gesture wearing the same word: you reach for it to fix the end
+                you just mistyped, not to start the row again. */}
             <div className="flex gap-1 pt-1">
               {/* Rounded to the same 5 minutes the dial itself snaps to, so
                   what it fills in is a value you could have picked by hand. */}
@@ -369,12 +362,27 @@ export function TimeRangeField({
               <button
                 type="button"
                 onClick={() => {
-                  onClear()
-                  setOpen(false)
+                  // Both gone means the entry has no times at all, which is a
+                  // real state with its own handler — it is what puts the row
+                  // back on plain minutes.
+                  if (editingStart ? !end : !start) onClear()
+                  else if (editingStart) onChange(undefined, end)
+                  else onChange(start, undefined)
                 }}
                 className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
               >
-                Clear
+                Clear {editingStart ? "start" : "end"}
+              </button>
+              {/* The way out. Without it the only way to keep a start and no
+                  end was to click somewhere harmless outside the panel and
+                  hope that counted as agreeing. */}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
+                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest font-bold hover:opacity-80`}
+              >
+                Done
               </button>
             </div>
           </div>,

@@ -155,6 +155,26 @@ export interface Settings {
    * or switching the feature on would pay out the whole history at once.
    */
   freezeStart?: DayKey | null
+  /**
+   * Every time the weekly goal total was *lowered*, in order.
+   *
+   * A ledger rather than a flag, and for the same reason the freeze verdicts
+   * are: it records what happened at a moment, so it cannot be undone by
+   * putting the number back. Lowering the bar is the one edit that would let
+   * you buy a green week, so the week it lands in earns no freeze — and the
+   * streaks panel can say so, with the figures, instead of a freeze quietly
+   * failing to appear.
+   */
+  goalCuts?: GoalCut[]
+}
+
+export interface GoalCut {
+  /** Monday of the week the cut landed in — the week that forfeits. */
+  weekKey: DayKey
+  at: string
+  /** Weekly goal in minutes, before and after. */
+  from: number
+  to: number
 }
 
 export interface ChangeLogEntry {

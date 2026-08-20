@@ -202,6 +202,30 @@ export const FIELD_ON_TINT = `${FIELD_BASE} w-full rounded-xl bg-card px-2.5 py-
 export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-card border border-ink/15 px-2 py-1.5 text-xs`
 
 /**
+ * Fields and buttons that separate themselves from the surface by **fill
+ * alone** — no outline anywhere.
+ *
+ * An outline draws a hard edge around every control, and a form of six of them
+ * reads as a grid of boxes rather than as a few things you can change. A step
+ * in tone does the same job with none of the noise: on a card the control goes
+ * slightly darker (or lighter, in dark mode — it is ink at an alpha either
+ * way), which is enough to say "this is a control" and nothing more.
+ *
+ * `FIELD_BOXED` is still there for the places that genuinely need an edge, but
+ * new forms should reach for these first.
+ */
+export const FIELD_SOFT =
+  "font-mono w-full rounded-xl bg-ink/[0.06] px-2.5 py-2 text-xs " +
+  "border-0 appearance-none placeholder:text-ink/30 " +
+  "focus:outline-none focus:ring-2 focus:ring-ink/15"
+
+/** The same surface as a button — a "now", a time trigger, a small action. */
+export const BTN_SOFT =
+  "font-mono rounded-xl bg-ink/[0.06] px-2.5 py-2 text-[10px] uppercase " +
+  "tracking-widest text-ink/70 hover:bg-ink/[0.10] hover:text-ink " +
+  "focus:outline-none focus:ring-2 focus:ring-ink/15"
+
+/**
  * The exception to the rule above, for editing something in the middle of the
  * text that displays it — an entry on a day card, where the whole point is
  * that the line barely changes when it becomes editable. A filled box there

@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import type { Labeled } from "../types/model"
 import { makeId } from "../lib/id"
-import { PALETTE, btnBase } from "../lib/theme"
+import { FIELD_SOFT, PALETTE, btnBase } from "../lib/theme"
 import { ICON_LIBRARY } from "./iconLibrary"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
@@ -89,7 +89,7 @@ export function EditableList<T extends Labeled>({
       {items.map((item, index) => (
         <div
           key={item.id}
-          className="border border-ink/15 rounded-xl p-2 bg-card"
+          className="rounded-xl p-2.5 bg-ink/[0.04]"
         >
           {confirmDeleteId === item.id ? (
             <div className="flex items-center justify-between gap-3 text-xs font-mono">
@@ -97,7 +97,7 @@ export function EditableList<T extends Labeled>({
               <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setConfirmDeleteId(null)}
-                  className={`${btnBase} px-2 py-1 rounded-md border border-ink/20 hover:bg-ink/5 uppercase tracking-widest text-[10px]`}
+                  className={`${btnBase} px-2 py-1 rounded-md bg-ink/[0.06] hover:bg-ink/[0.10] uppercase tracking-widest text-[10px]`}
                 >
                   Keep
                 </button>
@@ -139,7 +139,7 @@ export function EditableList<T extends Labeled>({
                     <RenderIcon name={item.iconName} size={15} />
                   </button>
                   {openPickerId === item.id && (
-                    <div className="absolute z-30 top-10 left-0 bg-card border border-ink/15 rounded-xl shadow-lg p-2.5 w-56">
+                    <div className="absolute z-30 top-10 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-56">
                       <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Icon
                       </p>
@@ -205,7 +205,7 @@ export function EditableList<T extends Labeled>({
                   onChange={(e) =>
                     updateItem(item.id, { label: e.target.value })
                   }
-                  className="flex-1 border border-ink/20 rounded-xl px-2 py-1.5 text-xs font-mono"
+                  className={`${FIELD_SOFT} flex-1 py-1.5`}
                 />
                 <Tip
                   text={
@@ -236,7 +236,7 @@ export function EditableList<T extends Labeled>({
                   placeholder={`What counts as this ${noun}? (optional)`}
                   rows={1}
                   maxHeight={100}
-                  className="flex-1 border border-ink/10 rounded-lg px-2 py-1 text-[10px] font-mono bg-page/50"
+                  className={`${FIELD_SOFT} flex-1 rounded-lg py-1 text-[10px]`}
                 />
               </div>
               {extra?.(item, (patch) => updateItem(item.id, patch))}

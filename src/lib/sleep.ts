@@ -13,7 +13,7 @@
 --------------------------------------------------------------- */
 
 import type { Day, DayKey, DateRange, IsIgnored, TimeOfDay } from "../types/model"
-import { datesInRange, fromKey, pad, toKey } from "./date"
+import { datesInRange, fromKey, pad, startOfWeek, toKey } from "./date"
 import {
   DAY_START_HOUR,
   fromRotated,
@@ -69,6 +69,9 @@ export interface HourShare {
 export interface NightRow {
   label: string
   labelLong: string
+  /** Monday of the week this night belongs to — what the row chart rules
+   *  between, so a run of nights reads as weeks rather than as a list. */
+  weekKey: string
   offset: number
   span: number
   hours: number
@@ -133,6 +136,7 @@ export function sleepStats(
         day: "numeric",
         month: "short",
       }),
+      weekKey: toKey(startOfWeek(fromKey(n.key))),
       offset: n.start,
       span: n.duration,
       hours: Number((n.duration / 60).toFixed(2)),

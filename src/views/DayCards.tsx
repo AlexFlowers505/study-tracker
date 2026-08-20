@@ -7,7 +7,6 @@ import { useState } from "react"
 import type { ReactNode } from "react"
 import {
   EyeOff,
-  Hash,
   MessageSquare,
   Moon,
   Plus,
@@ -27,7 +26,7 @@ import type {
 import { fromKey, pad, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import { dayBreakdown, goalForDate } from "../lib/stats"
-import { dayState } from "../lib/freezes"
+import { dayState, isEditableDay } from "../lib/freezes"
 import { btnBase, cardTiny, dayStateSurface } from "../lib/theme"
 import { setSlotCount } from "../lib/counters"
 import {
@@ -64,7 +63,7 @@ function FullDayCard({
   onEdit,
   onQuickAdd,
   onQuickAddSleep,
-  onQuickAddCounter,
+  onQuickAddSlot,
   longDate,
   titleActions,
   onClose,
@@ -102,7 +101,8 @@ function FullDayCard({
   onEdit?: () => void
   onQuickAdd?: () => void
   onQuickAddSleep?: () => void
-  onQuickAddCounter?: () => void
+  /** The "+" on each slot heading in the readout. */
+  onQuickAddSlot?: (slotId: string) => void
   /** "Saturday, 15 August" instead of "Sat 15" — for the dialog, which has room. */
   longDate?: boolean
   /** Buttons that belong beside the date rather than in the action row. */
@@ -362,19 +362,6 @@ function FullDayCard({
               </button>
             </Tip>
           )}
-          {onQuickAddCounter && (
-            <Tip text="Add to a counter">
-              <button
-                onClick={(ev) => {
-                  ev.stopPropagation()
-                  onQuickAddCounter()
-                }}
-                className={`${btnBase} p-1 rounded-lg text-ink/45 hover:text-ink hover:bg-ink/10`}
-              >
-                <Hash size={14} />
-              </button>
-            </Tip>
-          )}
           {onQuickAdd && (
             <Tip text="Add an entry">
               <button
@@ -492,6 +479,7 @@ function FullDayCard({
         </p>
       )}
       <EntriesReadout
+        onSlotAdd={onQuickAddSlot}
         // Remounts when the card-wide toggle flips, which drops the per-entry
         // overrides so the toggle always means what it says.
         key={commentsOpen ? "comments-open" : "comments-closed"}
@@ -555,7 +543,7 @@ export function FullCardGrid({
   commentsOpen = true,
   onQuickAddDay,
   onQuickAddSleepDay,
-  onQuickAddCounterDay,
+  onQuickAddSlotDay,
   longDate,
   titleActions,
   onClose,
@@ -578,8 +566,7 @@ export function FullCardGrid({
   onQuickAddDay?: (key: DayKey) => void
   /** Absent when sleep tracking is off — there is nothing to log. */
   onQuickAddSleepDay?: (key: DayKey) => void
-  /** Absent when the project has no counter units to add to. */
-  onQuickAddCounterDay?: (key: DayKey) => void
+  onQuickAddSlotDay?: (key: DayKey, slotId: string) => void
   /** Forwarded to the card — used when the dialog renders a single day. */
   longDate?: boolean
   titleActions?: ReactNode
@@ -630,15 +617,21 @@ export function FullCardGrid({
         const wk = toKey(startOfWeek(date))
         const mk = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
         const ignored = !!weekIgnore[wk] || !!monthIgnore[mk] || !!entry?.ignore
-        // There is nothing to record about a day that has not happened yet, so
-        // every way in is withheld rather than disabled — the card, the three
-        // quick-adds, the freeze and editing in place. A "+" that refuses when
-        // pressed and a "+" that works are both wrong here; an absent one says
-        // "not yet" without needing an error message. `onEdit` going means the
-        // card is inert too, since the dialog behind it is where the day-level
-        // fields live.
+        // Two different kinds of "you cannot write here", and they withhold
+        // different things.
+        //
+        // A day that has not happened yet is inert altogether — even the card
+        // click goes, because the dialog behind it is only good for editing.
+        //
+        // A day that has passed out of the editing window is still worth
+        // *reading*: the card opens, the dialog opens, and everything that
+        // would change it — the quick-adds, the freeze, editing in place, the
+        // note — is simply absent. Writing is withheld rather than disabled for
+        // the same reason as ever: a button that refuses when pressed and one
+        // that works are both wrong, and an absent one needs no error message.
         const isFuture = key > todayKey
-        const editDay = isFuture ? undefined : onUpdateDay
+        const locked = !isEditableDay(key, todayKey)
+        const editDay = locked ? undefined : onUpdateDay
         return (
           <FullDayCard
             key={key}
@@ -654,9 +647,9 @@ export function FullCardGrid({
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             todayKey={todayKey}
-            canFreeze={!isFuture && canFreezeDay ? canFreezeDay(key) : false}
+            canFreeze={!locked && canFreezeDay ? canFreezeDay(key) : false}
             onFreeze={
-              !isFuture && onFreezeDay ? () => onFreezeDay(key) : undefined
+              !locked && onFreezeDay ? () => onFreezeDay(key) : undefined
             }
             onEdit={
               !isFuture && onEditDay ? () => onEditDay(key) : undefined
@@ -665,16 +658,16 @@ export function FullCardGrid({
             titleActions={titleActions}
             onClose={onClose}
             onQuickAdd={
-              !isFuture && onQuickAddDay ? () => onQuickAddDay(key) : undefined
+              !locked && onQuickAddDay ? () => onQuickAddDay(key) : undefined
             }
             onQuickAddSleep={
-              !isFuture && onQuickAddSleepDay
+              !locked && onQuickAddSleepDay
                 ? () => onQuickAddSleepDay(key)
                 : undefined
             }
-            onQuickAddCounter={
-              !isFuture && onQuickAddCounterDay
-                ? () => onQuickAddCounterDay(key)
+            onQuickAddSlot={
+              !locked && onQuickAddSlotDay
+                ? (slotId) => onQuickAddSlotDay(key, slotId)
                 : undefined
             }
             big={big}

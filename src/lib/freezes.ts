@@ -21,12 +21,30 @@ import type {
   Slot,
   WeekVerdict,
 } from "../types/model"
-import { addDays, fromKey, startOfWeek, toKey, weekDates } from "./date"
+import {
+  WEEKDAY_ORDER,
+  addDays,
+  fromKey,
+  startOfWeek,
+  toKey,
+  weekDates,
+} from "./date"
 import { dayBreakdown, goalForDate } from "./stats"
 
 /** Unused freezes pile up to here and no further. Shown in the UI, never
  *  silently discarded without saying so. */
 export const FREEZE_CAP = 15
+
+/** Total minutes a full week asks for, across the seven per-weekday goals. */
+export function weeklyGoalTotal(dailyGoals: Record<number, number>): number {
+  return WEEKDAY_ORDER.reduce((sum, wd) => sum + (dailyGoals[wd] || 0), 0)
+}
+
+/** Was the weekly goal lowered during this week? Then it forfeits its freeze. */
+export function weekWasCut(settings: Settings, weekStart: Date): boolean {
+  const wk = toKey(weekStart)
+  return (settings.goalCuts || []).some((g) => g.weekKey === wk)
+}
 
 export type DayState = "met" | "frozen" | "missed" | "pending"
 export type PeriodState = "met" | "frozen" | "missed" | "pending"
@@ -105,23 +123,66 @@ function weekEarned(
   // An ignored week earns nothing. Not inconsistent with "ignoring is
   // invisible to streaks": it can only cost you, so there is nothing to game.
   if (weekIgnore[toKey(weekStart)]) return false
+  // Neither does a week in which the bar was lowered. Every other edit makes
+  // the week harder or leaves it alone; this is the only one that could buy a
+  // green week outright, so it costs the week's freeze.
+  if (weekWasCut(settings, weekStart)) return false
   const state = periodState(weekDates(weekStart), days, settings, slots, todayKey)
   return state === "met" || state === "frozen"
 }
 
 /**
- * A week is sealed once the *following* week has ended, not the moment it
- * does itself. Logging a past date is normal in this app, so that leaves a
- * full week to fill one in honestly; after that the verdict is fixed forever.
- * The same one-week horizon governs spending, so the whole system has one.
+ * How far back the log can be written at all: **today and yesterday**.
+ *
+ * One rule, and everything else is a consequence of it. A day you can still
+ * change is a day whose verdict is not yet a fact, so the editable window is
+ * also the window in which a week is still open — the two cannot drift,
+ * because there is only one of them.
+ */
+export const EDIT_HORIZON_DAYS = 1
+
+export function isEditableDay(key: DayKey, todayKey: DayKey): boolean {
+  if (key > todayKey) return false
+  return key >= toKey(addDays(fromKey(todayKey), -EDIT_HORIZON_DAYS))
+}
+
+/**
+ * A week is sealed once **every one of its days has passed out of the editing
+ * window** — nothing in it can be changed any more, so its verdict is finally
+ * a fact about a finished week rather than about a half-filled one.
+ *
+ * That lands on the Tuesday after: the Sunday is editable through Monday, and
+ * stops being so on Tuesday. Written against `isEditableDay` rather than as
+ * its own arithmetic, so changing the horizon moves both together.
  */
 export function isSealable(weekStart: Date, today: Date): boolean {
-  return addDays(weekStart, 13) < today
+  const lastDay = toKey(addDays(weekStart, 6))
+  const todayKey = toKey(today)
+  // Over first, out of reach second. `isEditableDay` says no to a *future*
+  // day as well as to an old one, so without this the week you are currently
+  // living in would seal — and pay out — on its first day.
+  if (lastDay >= todayKey) return false
+  return !isEditableDay(lastDay, todayKey)
+}
+
+/** The week whose verdict has not been written yet — what is still in play. */
+export interface OpenWeek {
+  weekStart: DayKey
+  /** What it would earn if it sealed as it stands right now. */
+  wouldEarn: boolean
+  /** The day it stops being editable, which is the day it seals. */
+  sealsOn: DayKey
 }
 
 export interface FreezeLedger {
   /** Verdicts that should exist but do not yet — write these, once. */
   pending: WeekVerdict[]
+  /**
+   * Weeks still open, newest first. Not a number anyone can spend — it is the
+   * answer to "my week is green, where is my freeze", which the ledger used to
+   * keep entirely to itself.
+   */
+  open: OpenWeek[]
   earned: number
   spent: number
   /** Capped at `FREEZE_CAP`. */
@@ -153,17 +214,31 @@ export function freezeLedger(project: Project, today = new Date()): FreezeLedger
     ? fromKey(settings.freezeStart)
     : null
 
+  const open: OpenWeek[] = []
   if (firstKey && settings.goalsEnabled !== false && accountingStart) {
     const from = startOfWeek(
       accountingStart > fromKey(firstKey) ? accountingStart : fromKey(firstKey),
     )
-    for (let w = from; isSealable(w, today); w = addDays(w, 7)) {
+    let w = from
+    for (; isSealable(w, today); w = addDays(w, 7)) {
       const wk = toKey(w)
       if (weekVerdicts[wk]) continue
       pending.push({
         weekKey: wk,
         earned: weekEarned(w, days, settings, slots, todayKey, weekIgnore),
         sealedAt: new Date().toISOString(),
+      })
+    }
+    // Whatever the loop stopped on is the first week still open, plus this one
+    // if they differ. Two at most — the horizon is a day, so nothing older can
+    // still be in play.
+    for (const s2 of [w, addDays(w, 7)]) {
+      if (s2 > startOfWeek(today)) break
+      open.push({
+        weekStart: toKey(s2),
+        wouldEarn: weekEarned(s2, days, settings, slots, todayKey, weekIgnore),
+        // The day after the last editable day of that week.
+        sealsOn: toKey(addDays(s2, 6 + EDIT_HORIZON_DAYS + 1)),
       })
     }
   }
@@ -174,6 +249,7 @@ export function freezeLedger(project: Project, today = new Date()): FreezeLedger
   const raw = earned - spent
   return {
     pending,
+    open: open.reverse(),
     earned,
     spent,
     balance: Math.max(0, Math.min(raw, FREEZE_CAP)),
@@ -201,7 +277,7 @@ export function canFreeze(
   // Red days, or today while it is still short.
   if (state !== "missed" && !(state === "pending" && toKey(date) === todayKey))
     return false
-  const thisWeek = startOfWeek(today)
-  const earliest = addDays(thisWeek, -7)
-  return date >= earliest
+  // The same window again: a freeze can only be put on a day you could still
+  // be editing, because a sealed week's verdict is already written.
+  return isEditableDay(toKey(date), todayKey)
 }

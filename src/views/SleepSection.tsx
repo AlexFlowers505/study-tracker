@@ -23,6 +23,7 @@ import {
 import type { DateRange, Day, DayKey } from "../types/model"
 import { pad } from "../lib/date"
 import { makeIsIgnored } from "../lib/stats"
+import type { NightRow } from "../lib/sleep"
 import { sleepStats } from "../lib/sleep"
 import { DAY_START_HOUR, HOUR_TICKS, fmtAxisHours, fmtHours } from "../lib/time"
 
@@ -31,6 +32,62 @@ import { StatTile } from "../ui/StatTile"
 import { PanelSection } from "./PanelSection"
 
 import { usePalette } from "../ui/useTheme"
+/**
+ * The row chart's Y axis: the label, plus a rule above any night that starts a
+ * new week.
+ *
+ * Drawn from the tick rather than as a `ReferenceLine` because a category axis
+ * positions a reference line *on* a category, never between two — and between
+ * is the only place a week boundary exists. `band` is the row pitch, which the
+ * chart knows because it sets its own height from the row count.
+ */
+function NightTick({
+  x,
+  y,
+  payload,
+  rows,
+  band,
+  ink,
+}: {
+  x?: number
+  y?: number
+  payload?: { value?: string; index?: number }
+  rows: NightRow[]
+  band: number
+  ink: string
+}) {
+  const i = payload?.index ?? 0
+  const row = rows[i]
+  const prev = i > 0 ? rows[i - 1] : null
+  const startsWeek = !!prev && !!row && prev.weekKey !== row.weekKey
+  return (
+    <g>
+      <text
+        x={x}
+        y={y}
+        dy={3}
+        textAnchor="end"
+        className="font-mono"
+        style={{ fontSize: 9, fill: `${ink}A0` }}
+      >
+        {payload?.value}
+      </text>
+      {startsWeek && (
+        // Runs off to the right and is clipped by the chart's own edge, which
+        // is exactly as far as it should go.
+        <line
+          x1={(x ?? 0) - 64}
+          x2={3000}
+          y1={(y ?? 0) - band / 2}
+          y2={(y ?? 0) - band / 2}
+          stroke={`${ink}40`}
+          strokeWidth={1}
+        />
+      )}
+    </g>
+  )
+}
+
 export function SleepSection({
   days,
   range,
@@ -50,6 +107,13 @@ export function SleepSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [days, range.start, range.end, weekIgnore, monthIgnore],
   )
+
+  // The chart sets its own height from the row count, so it also knows the
+  // row pitch — which is what the week rules are positioned against.
+  const rowsHeight = Math.max(140, (stats?.perNight.length ?? 0) * 18 + 40)
+  const rowBand = stats?.perNight.length
+    ? (rowsHeight - 40) / stats.perNight.length
+    : 18
 
   // One tick per hour. Left to itself Recharts picks ticks like 2.5 and 7.5
   // for a nights-long domain, and `fmtAxisHours` rounds those to "3" and "8" —
@@ -108,10 +172,7 @@ export function SleepSection({
               title="Nights, one row each"
               subtitle="Same clock as below — every logged night on its own line"
             >
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(140, stats.perNight.length * 18 + 40)}
-              >
+              <ResponsiveContainer width="100%" height={rowsHeight}>
                 <BarChart
                   data={stats.perNight}
                   layout="vertical"
@@ -126,11 +187,22 @@ export function SleepSection({
                     tickFormatter={(v) => pad((v / 60 + DAY_START_HOUR) % 24)}
                     tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   />
+                  {/* The weekday earns its place: "was I sleeping badly on
+                      weeknights" is the question this chart gets asked, and a
+                      column of bare dates cannot answer it. The rule above the
+                      first night of each week does the rest of that work —
+                      seven rows read as a week, not as a list. */}
                   <YAxis
                     type="category"
-                    dataKey="label"
-                    width={42}
-                    tick={{ fontSize: 9, fontFamily: "monospace", fill: `${c.ink}A0` }}
+                    dataKey="labelLong"
+                    width={68}
+                    tick={
+                      <NightTick
+                        rows={stats.perNight}
+                        band={rowBand}
+                        ink={c.ink}
+                      />
+                    }
                   />
                   <Tooltip
                     cursor={{ fill: `${c.ink}08` }}

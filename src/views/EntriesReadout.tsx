@@ -4,7 +4,7 @@
 
 import { useState } from "react"
 import type { CSSProperties, ReactNode } from "react"
-import { MessageSquare, Moon } from "lucide-react"
+import { MessageSquare, Moon, Plus, Square } from "lucide-react"
 import type {
   Category,
   CounterUnit,
@@ -14,7 +14,7 @@ import type {
 } from "../types/model"
 import type { DayCounters } from "../lib/counters"
 import { getById } from "../lib/id"
-import { fmtHours, startedPreviousDay } from "../lib/time"
+import { fmtHours, nowTime, startedPreviousDay } from "../lib/time"
 import { btnBase, cardSmall, cardTiny } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
@@ -62,6 +62,7 @@ function ReadoutEntry({
   defaultOpen,
   isLast,
   onEdit,
+  onEndNow,
   roomy,
 }: {
   timeLabel: string
@@ -75,8 +76,17 @@ function ReadoutEntry({
   isLast?: boolean
   /** Turns the line into an edit form in place. Absent where that isn't on. */
   onEdit?: () => void
+  /**
+   * Only for a session with a start and no end. In practice both ends of a
+   * timing are set with "now": the start goes in through the add dialog you
+   * were opening anyway, but the end catches you mid-stop, and making that a
+   * click on the line itself is the whole difference between recording it and
+   * meaning to.
+   */
+  onEndNow?: () => void
   roomy?: boolean
 }) {
+  const c = usePalette()
   const [open, setOpen] = useState(defaultOpen)
   const showComment = !!comment && open
   const rail = { borderLeftColor: borderColor }
@@ -114,6 +124,20 @@ function ReadoutEntry({
       >
         <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-ink/70`}>
           <span className="text-ink/45 shrink-0">{timeLabel}</span>
+          {onEndNow && (
+            <Tip text="End this session now">
+              <button
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onEndNow()
+                }}
+                className={`${btnBase} shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full ${cardTiny(roomy)} font-mono uppercase tracking-wide`}
+                style={{ color: c.goalMet, backgroundColor: `${c.goalMet}1F` }}
+              >
+                <Square size={7} /> End now
+              </button>
+            </Tip>
+          )}
           {icon}
           {label && (
             <Tip className="truncate" text={label}>
@@ -211,6 +235,7 @@ export function EntriesReadout({
   commentsOpen = true,
   editing,
   slotCounters,
+  onSlotAdd,
   roomy,
 }: {
   slots: Slot[]
@@ -223,6 +248,12 @@ export function EntriesReadout({
   commentsOpen?: boolean
   editing?: ReadoutEditing
   slotCounters?: ReadoutCounters
+  /**
+   * A "+" on each slot heading. Absent on a read-only readout and on a day
+   * that has not happened, which is the same rule the card's own buttons
+   * follow — the readout never invents a way in that the card withheld.
+   */
+  onSlotAdd?: (slotId: string) => void
   /** Full-width card — see `cardTiny` / `cardSmall`. */
   roomy?: boolean
 }) {
@@ -305,6 +336,11 @@ export function EntriesReadout({
                   timeLabel={entryTimeLabel(e)}
                   comment={e.comment}
                   borderColor={`${c.sleep}30`}
+                  onEndNow={
+                    editing && e.start && !e.end
+                      ? () => editing.onChangeSleep(e.id, { end: nowTime() })
+                      : undefined
+                  }
                   sticky={capped}
                   surface={stickyStyle}
                   defaultOpen={commentsOpen}
@@ -359,6 +395,25 @@ export function EntriesReadout({
               >
                 {slot.label}
               </span>
+              {/* Hard right, so it lands in the same place on every slot
+                  however long the label is. Adding to the morning is the
+                  commonest thing there is, and reaching it used to mean the
+                  card's own "+" and then correcting the slot in the dialog. */}
+              {onSlotAdd && (
+                <span className="ml-auto flex items-center">
+                  <Tip text={`Add to ${slot.label}`}>
+                    <button
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        onSlotAdd(slot.id)
+                      }}
+                      className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10`}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </Tip>
+                </span>
+              )}
             </div>
             {/* Under the slot's heading and above its entries: a count
                 recorded against the morning describes the morning, so it
@@ -424,6 +479,14 @@ export function EntriesReadout({
                     label={cat.label}
                     comment={e.comment}
                     borderColor={`${slot.color}30`}
+                    onEndNow={
+                      editing && e.start && !e.end
+                        ? () =>
+                            editing.onChangeStudy(slot.id, e.id, {
+                              end: nowTime(),
+                            })
+                        : undefined
+                    }
                     sticky={capped}
                     surface={stickyStyle}
                     defaultOpen={commentsOpen}

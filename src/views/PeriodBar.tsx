@@ -16,6 +16,7 @@ import {
   Flame,
   History,
   Moon,
+  Snowflake,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { DateRange, DayKey, PeriodId } from "../types/model"
@@ -77,6 +78,10 @@ function PanelToggle({
   badge,
   count,
   countColor,
+  countIcon: CountIcon,
+  sub,
+  subColor,
+  subIcon: SubIcon,
 }: {
   icon: LucideIcon
   tip: ReactNode
@@ -87,6 +92,13 @@ function PanelToggle({
    *  broken streak is exactly the thing you want to notice. */
   count?: number | null
   countColor?: string
+  countIcon?: LucideIcon
+  /** A second count, opposite corner. Streaks carry two numbers that mean
+   *  different things — days running, freezes banked — and one of them being
+   *  low is the reason to care about the other. */
+  sub?: number | null
+  subColor?: string
+  subIcon?: LucideIcon
 }) {
   const c = usePalette()
   return (
@@ -108,10 +120,20 @@ function PanelToggle({
         )}
         {count != null && (
           <span
-            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
             style={{ backgroundColor: countColor, color: c.onFill }}
           >
+            {CountIcon && <CountIcon size={7} strokeWidth={3} />}
             {count}
+          </span>
+        )}
+        {sub != null && (
+          <span
+            className="absolute -bottom-1 -right-1 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            style={{ backgroundColor: subColor, color: c.onFill }}
+          >
+            {SubIcon && <SubIcon size={7} strokeWidth={3} />}
+            {sub}
           </span>
         )}
       </button>
@@ -140,6 +162,7 @@ export function PeriodBar({
   showStreaks,
   onToggleStreaks,
   currentStreak,
+  freezeBalance = 0,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -162,6 +185,9 @@ export function PeriodBar({
   onToggleStreaks: () => void
   /** Null when the effectiveness meter is off — no metric, no streak. */
   currentStreak?: number | null
+  /** Freezes in hand. Drawn under the day count, because the reason to care
+   *  about one is usually the other. */
+  freezeBalance?: number
 }) {
   const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
@@ -234,12 +260,16 @@ export function PeriodBar({
             onClick={onToggleStreaks}
             count={currentStreak}
             countColor={c.project}
+            countIcon={Flame}
+            sub={currentStreak == null ? null : freezeBalance}
+            subColor={c.freeze}
+            subIcon={Snowflake}
             tip={
               currentStreak == null
                 ? showStreaks
                   ? "Hide streaks"
                   : "Show streaks"
-                : `${currentStreak} day${currentStreak === 1 ? "" : "s"} in a row`
+                : `${currentStreak} day${currentStreak === 1 ? "" : "s"} in a row · ${freezeBalance} freeze${freezeBalance === 1 ? "" : "s"} banked`
             }
           />
           {/* Absent rather than disabled when sleep tracking is off: there is

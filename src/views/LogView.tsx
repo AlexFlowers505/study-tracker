@@ -42,7 +42,7 @@ export function LogView({
   onUpdateMonthIgnore,
   onQuickAddDay,
   onQuickAddSleepDay,
-  onQuickAddCounterDay,
+  onQuickAddSlotDay,
   canFreezeDay,
   onFreezeDay,
   onUpdateDay,
@@ -60,7 +60,7 @@ export function LogView({
   onUpdateMonthIgnore: (key: string, next: boolean) => void
   onQuickAddDay: (key: string) => void
   onQuickAddSleepDay?: (key: string) => void
-  onQuickAddCounterDay?: (key: string) => void
+  onQuickAddSlotDay?: (key: string, slotId: string) => void
   canFreezeDay?: (key: string) => boolean
   onFreezeDay?: (key: string) => void
   /** Lets the day cards edit an entry in place, without the day dialog. */
@@ -269,8 +269,8 @@ export function LogView({
           onQuickAddSleepDay={
             granularity === "week" ? onQuickAddSleepDay : undefined
           }
-          onQuickAddCounterDay={
-            granularity === "week" ? onQuickAddCounterDay : undefined
+          onQuickAddSlotDay={
+            granularity === "week" ? onQuickAddSlotDay : undefined
           }
           canFreezeDay={canFreezeDay}
           onFreezeDay={onFreezeDay}

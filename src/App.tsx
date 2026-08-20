@@ -67,7 +67,6 @@ import { TopBar } from "./views/TopBar"
 import { AuthScreen, SetPasswordScreen } from "./views/AuthScreen"
 import { EnvBadge } from "./views/EnvBadge"
 import { AnalyticsView } from "./views/AnalyticsView"
-import { QuickAddCounterModal } from "./views/QuickAddCounterModal"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
 import { DayQuickviewModal } from "./views/DayEditor"
 import { usePalette } from "./ui/useTheme"
@@ -106,8 +105,9 @@ export default function StudyTrackerApp() {
   const [quickAdd, setQuickAdd] = useState<{
     key: DayKey
     variant: "study" | "sleep"
+    /** Preselected when the dialog was opened from a slot's own "+". */
+    slotId?: string
   } | null>(null)
-  const [counterAddKey, setCounterAddKey] = useState<DayKey | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   // Set when the initial read threw. While true the app is read-only: it holds
   // placeholder state that must never be written back over the real row.
@@ -165,7 +165,21 @@ export default function StudyTrackerApp() {
     ;(async () => {
       try {
         if (canUseCloud) {
-          const assembled = await loadFromTables(cloudClient)
+          // One silent retry before giving up. The read can fail for reasons
+          // that are over by the time you notice — a token being refreshed
+          // underneath it, or a machine clock far enough ahead that PostgREST
+          // rejects the JWT as "issued at future". Both clear on a second
+          // attempt, and both used to land on the dead-end screen, which reads
+          // as data loss when nothing is wrong. A genuine failure still gets
+          // there, one second later.
+          let assembled
+          try {
+            assembled = await loadFromTables(cloudClient)
+          } catch (first) {
+            console.warn("First read failed, retrying once.", first)
+            await new Promise((r) => setTimeout(r, 900))
+            assembled = await loadFromTables(cloudClient)
+          }
           if (assembled) setData(assembled)
           else setShowSetup(true)
           // Never throws — a failed check reads as "not an admin" — so it
@@ -526,14 +540,18 @@ export default function StudyTrackerApp() {
     window.location.reload()
   }
 
-  // All-time starts at the first logged day, falling back to the project's
-  // configured start — computed here because it needs the saved data.
+  // All-time starts at the **configured project start**, and only falls back to
+  // the first logged day when there isn't one.
+  //
+  // It used to be the other way round, which meant a single stray row — an old
+  // import, a day touched before the start date was set — silently dragged the
+  // range back months and filled the difference with "empty days". The rest of
+  // the app already treats the start date as the authority (a card before it
+  // reads "Before project start"), so all-time has to agree with it.
   const allTimeStart = useMemo(() => {
+    if (project.settings.startDate) return fromKey(project.settings.startDate)
     const firstLogged = Object.keys(project.days).sort()[0]
-    if (firstLogged) return fromKey(firstLogged)
-    return project.settings.startDate
-      ? fromKey(project.settings.startDate)
-      : new Date()
+    return firstLogged ? fromKey(firstLogged) : new Date()
   }, [project.days, project.settings.startDate])
 
   const range = useMemo(
@@ -710,6 +728,7 @@ export default function StudyTrackerApp() {
           showStreaks={showStreaks}
           onToggleStreaks={() => setShowStreaks((v) => !v)}
           currentStreak={streaks?.currentDays ?? null}
+          freezeBalance={ledger.balance}
         />
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
@@ -765,11 +784,11 @@ export default function StudyTrackerApp() {
               ? (key) => setQuickAdd({ key, variant: "sleep" })
               : undefined
           }
-          // Absent with no units defined: there would be nothing to pick.
-          onQuickAddCounterDay={
-            (project.counterUnits || []).length
-              ? setCounterAddKey
-              : undefined
+          // The "+" beside a slot heading: same dialog, that slot already
+          // chosen. Adding to the morning is the commonest thing there is, and
+          // it used to mean opening the dialog and then correcting the slot.
+          onQuickAddSlotDay={(key, slotId) =>
+            setQuickAdd({ key, variant: "study", slotId })
           }
           canFreezeDay={canFreezeDay}
           onFreezeDay={setFreezeCandidate}
@@ -861,36 +880,29 @@ export default function StudyTrackerApp() {
         </div>
       )}
 
-      {counterAddKey && (
-        <QuickAddCounterModal
-          dateKey={counterAddKey}
-          units={project.counterUnits || []}
+      {quickAdd && (
+        <QuickAddEntryModal
+          dateKey={quickAdd.key}
+          variant={quickAdd.variant}
+          initialSlotId={quickAdd.slotId}
           slots={project.slots}
-          counters={project.days[counterAddKey]?.counters || {}}
-          onCancel={() => setCounterAddKey(null)}
-          onAdd={(unitId, slotId, amount) => {
+          categories={project.categories}
+          units={project.counterUnits || []}
+          counters={project.days[quickAdd.key]?.counters || {}}
+          onCancel={() => setQuickAdd(null)}
+          onAddCounter={(dateKey, unitId, slotId, amount) => {
             // Adds to what is there rather than replacing it — that is the
             // whole difference between this and the day editor's fields.
-            updateDay(counterAddKey, {
+            updateDay(dateKey, {
               counters: addSlotCount(
-                project.days[counterAddKey]?.counters,
+                project.days[dateKey]?.counters,
                 unitId,
                 slotId,
                 amount,
               ),
             })
-            setCounterAddKey(null)
+            setQuickAdd(null)
           }}
-        />
-      )}
-
-      {quickAdd && (
-        <QuickAddEntryModal
-          dateKey={quickAdd.key}
-          variant={quickAdd.variant}
-          slots={project.slots}
-          categories={project.categories}
-          onCancel={() => setQuickAdd(null)}
           onAdd={(dateKey, slotId, entry) => {
             const day = project.days[dateKey] || {}
             // A null slot means sleep — the day's other list, which no study
@@ -926,8 +938,8 @@ export default function StudyTrackerApp() {
               ? (key) => setQuickAdd({ key, variant: "sleep" })
               : undefined
           }
-          onQuickAddCounter={
-            (project.counterUnits || []).length ? setCounterAddKey : undefined
+          onQuickAddSlot={(key, slotId) =>
+            setQuickAdd({ key, variant: "study", slotId })
           }
           canFreeze={canFreezeDay}
           onFreeze={setFreezeCandidate}
@@ -950,6 +962,12 @@ export default function StudyTrackerApp() {
           categories={project.categories}
           onClose={() => setShowSetup(false)}
           onSaveSettings={updateSettings}
+          onRecordGoalCut={(cut) =>
+            updateSettings({
+              ...project.settings,
+              goalCuts: [...(project.settings.goalCuts || []), cut],
+            })
+          }
           onUpdateSlots={updateSlots}
           onUpdateCategories={updateCategories}
           counterUnits={project.counterUnits || []}

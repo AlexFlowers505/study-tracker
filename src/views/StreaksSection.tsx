@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import {
+  AlertTriangle,
   CalendarCheck,
   CalendarDays,
   Flame,
@@ -9,6 +10,8 @@ import {
 import type { Project } from "../types/model"
 import { FREEZE_CAP, freezeLedger } from "../lib/freezes"
 import { computeStreaks } from "../lib/streaks"
+import { fmtDateLong } from "../lib/date"
+import { fmtHours } from "../lib/time"
 
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
@@ -23,7 +26,7 @@ const HOW_IT_WORKS = [
   "The count filter does not affect it either: streaks always cover every slot and category, whatever the page is showing.",
   "Weeks and months are judged by their days, not by summed hours.",
   `A week with no missed day earns one freeze, up to ${FREEZE_CAP}. Spend one on a red day and it counts as kept — the day turns blue, not green: the goal was still missed.`,
-  "A verdict is sealed once the following week ends. Editing a week after that changes its colours but never its freeze.",
+  "The log can only be written for today and yesterday. A week therefore seals on the Tuesday after it ends, when its last day passes out of reach — and only then does it pay out, because only then is it finished.",
 ].join("\n\n")
 
 export function StreaksSection({
@@ -37,6 +40,13 @@ export function StreaksSection({
   const streaks = useMemo(() => computeStreaks(project), [project])
   const ledger = useMemo(() => freezeLedger(project), [project])
   const goalsOff = project.settings.goalsEnabled === false
+  // Newest first, and only the ones still worth explaining — a cut from months
+  // ago is history, not an answer to "where is my freeze".
+  const cuts = useMemo(() => {
+    const all = project.settings.goalCuts || []
+    const openKeys = new Set(ledger.open.map((w) => w.weekStart))
+    return all.filter((g) => openKeys.has(g.weekKey)).slice(-3).reverse()
+  }, [project.settings.goalCuts, ledger.open])
 
   return (
     <PanelSection
@@ -91,6 +101,66 @@ export function StreaksSection({
           Nothing to measure yet.
         </p>
       ) : (
+        <>
+        {/* Where the next freeze is. A green week that has not paid out yet is
+            the single most confusing thing about this feature — it looks like
+            a bug and it is a rule, so the rule says itself here rather than
+            living only in a tooltip. */}
+        {ledger.open.length > 0 && (
+          <div className="mb-3 space-y-1.5">
+            {ledger.open.map((w) => (
+              <div
+                key={w.weekStart}
+                className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-mono bg-ink/[0.04]"
+              >
+                <Snowflake
+                  size={12}
+                  className="shrink-0"
+                  style={{ color: w.wouldEarn ? c.freeze : `${c.ink}40` }}
+                />
+                <span className="text-ink/70">
+                  Week of {fmtDateLong(w.weekStart)} is still open —{" "}
+                  {w.wouldEarn ? (
+                    <>
+                      on track for{" "}
+                      <strong style={{ color: c.freeze }}>+1 freeze</strong>
+                    </>
+                  ) : (
+                    <strong className="text-ink/50">no freeze as it stands</strong>
+                  )}
+                  , sealing {fmtDateLong(w.sealsOn)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Why a week you expected to pay out did not. Without this the freeze
+            simply fails to appear, which is indistinguishable from a bug — and
+            the whole point of recording the cut was to be able to say so. */}
+        {cuts.length > 0 && (
+          <div className="mb-3 space-y-1.5">
+            {cuts.map((g) => (
+              <div
+                key={g.at}
+                className="flex items-start gap-2 rounded-xl px-3 py-2 text-[11px] font-mono"
+                style={{ backgroundColor: `${c.exam}14` }}
+              >
+                <AlertTriangle
+                  size={12}
+                  className="shrink-0 mt-0.5"
+                  style={{ color: c.exam }}
+                />
+                <span className="text-ink/70">
+                  On {fmtDateLong(g.at.slice(0, 10))} you lowered the weekly
+                  goal from <strong>{fmtHours(g.from)}</strong> to{" "}
+                  <strong>{fmtHours(g.to)}</strong>, so the week of{" "}
+                  {fmtDateLong(g.weekKey)} earns no freeze.
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatTile
             label="Current day streak"
@@ -117,6 +187,7 @@ export function StreaksSection({
             icon={Trophy}
           />
         </div>
+        </>
       )}
     </PanelSection>
   )

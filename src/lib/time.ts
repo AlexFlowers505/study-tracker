@@ -34,6 +34,19 @@ export const startedPreviousDay = (entry: TimeEntry): boolean =>
   !!entry.end &&
   timeToMinutes(entry.end) < timeToMinutes(entry.start)
 
+/**
+ * The clock right now, snapped to the 5-minute grid the dial itself uses, so
+ * what it fills in is always a value you could have picked by hand. Rounding
+ * up past 55 carries into the next hour, and 23:xx wraps to 00 — this is a
+ * time of day, not a moment, so there is no date to carry into.
+ */
+export const nowTime = (): TimeOfDay => {
+  const d = new Date()
+  const snapped = Math.round(d.getMinutes() / 5) * 5
+  const hour = (d.getHours() + (snapped === 60 ? 1 : 0)) % 24
+  return `${pad(hour)}:${pad(snapped % 60)}`
+}
+
 /* ---- Minutes as hours ---- */
 
 /**
