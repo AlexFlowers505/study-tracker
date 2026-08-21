@@ -25,7 +25,7 @@ import type {
   TimeOfDay,
 } from "../types/model"
 import type { DayCounters } from "../lib/counters"
-import { slotUnitValue } from "../lib/counters"
+import { slotUnitValue, unitDayTotal } from "../lib/counters"
 import { fromKey } from "../lib/date"
 import { makeId } from "../lib/id"
 import { fmtHours, nowTime, spanMinutes } from "../lib/time"
@@ -80,6 +80,11 @@ export function QuickAddEntryModal({
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
   const [unitId, setUnitId] = useState(units[0]?.id)
   const [amount, setAmount] = useState(1)
+  // A once-a-day unit records the fact, not a quantity — and it cannot be
+  // recorded twice, whichever slot the second one would land in.
+  const onceUnit = units.find((u) => u.id === unitId)?.oncePerDay === true
+  const alreadyToday = unitId ? unitDayTotal(counters, unitId) : 0
+  const blocked = counting && onceUnit && alreadyToday > 0
   const [category, setCategory] = useState(categories[0]?.id)
   const [start, setStart] = useState<TimeOfDay | undefined>(undefined)
   const [end, setEnd] = useState<TimeOfDay | undefined>(undefined)
@@ -283,13 +288,19 @@ export function QuickAddEntryModal({
             <button
               onClick={() =>
                 counting
-                  ? onAddCounter?.(dateKey, unitId, slotId, amount)
+                  ? onAddCounter?.(
+                      dateKey,
+                      unitId,
+                      slotId,
+                      onceUnit ? 1 : amount,
+                    )
                   : submit()
               }
-              className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
+              disabled={blocked}
+              className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
               style={{ backgroundColor: c.accent, color: c.onFill }}
             >
-              Add
+              {blocked ? "Already recorded" : "Add"}
             </button>
           </div>
         </div>
@@ -358,6 +369,11 @@ function CounterFields({
   const unit = units.find((u) => u.id === unitId)
   const already = slotUnitValue(counters, unitId, slotId)
   const after = already + amount
+  // A once-a-day unit tops out across the whole day, not per slot: it either
+  // happened or it did not, and which slot it is filed under does not buy you
+  // a second one.
+  const once = unit?.oncePerDay === true
+  const dayAlready = unitDayTotal(counters, unitId)
 
   return (
     <>
@@ -396,6 +412,13 @@ function CounterFields({
         </label>
       </div>
 
+      {once ? (
+        <div className="text-[11px] font-mono text-ink/55 leading-relaxed">
+          {dayAlready > 0
+            ? "Already recorded for this day."
+            : "Recorded once for the day — no amount to pick."}
+        </div>
+      ) : (
       <label className="block">
         <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
           How many
@@ -408,6 +431,7 @@ function CounterFields({
           className={`${FIELD_SOFT} w-24`}
         />
       </label>
+      )}
 
       {/* Both numbers, before and after. The whole point of this half is that
           it adds to a running count, so the count it adds to has to show. */}
@@ -420,9 +444,21 @@ function CounterFields({
           />
         )}
         <span className="text-ink/60">
-          This slot has <strong className="text-ink">{already}</strong>
-          {" → will have "}
-          <strong style={{ color: c.accent }}>{after}</strong>
+          {once ? (
+            <>
+              This day is{" "}
+              <strong className="text-ink">
+                {dayAlready > 0 ? "already marked" : "not marked"}
+              </strong>
+              {dayAlready > 0 ? "" : " → will be marked"}
+            </>
+          ) : (
+            <>
+              This slot has <strong className="text-ink">{already}</strong>
+              {" → will have "}
+              <strong style={{ color: c.accent }}>{after}</strong>
+            </>
+          )}
         </span>
       </div>
     </>

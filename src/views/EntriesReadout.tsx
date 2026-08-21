@@ -60,7 +60,6 @@ function ReadoutEntry({
   sticky,
   surface,
   defaultOpen,
-  isLast,
   onEdit,
   onEndNow,
   roomy,
@@ -73,7 +72,6 @@ function ReadoutEntry({
   sticky?: boolean
   surface?: CSSProperties
   defaultOpen?: boolean
-  isLast?: boolean
   /** Turns the line into an edit form in place. Absent where that isn't on. */
   onEdit?: () => void
   /**
@@ -90,7 +88,6 @@ function ReadoutEntry({
   const [open, setOpen] = useState(defaultOpen)
   const showComment = !!comment && open
   const rail = { borderLeftColor: borderColor }
-  const divider = "border-b border-b-ink/10"
   return (
     <>
       <div
@@ -115,9 +112,9 @@ function ReadoutEntry({
               }
             : undefined
         }
-        className={`pl-3 border-l-2 pt-1 ${
-          showComment ? "" : `pb-1 ${isLast ? "" : divider}`
-        } ${sticky ? "sticky top-6 z-[1]" : ""} ${
+        className={`pl-3 border-l-2 pt-1 ${showComment ? "" : "pb-1.5"} ${
+          sticky ? "sticky top-6 z-[1]" : ""
+        } ${
           onEdit ? "cursor-pointer hover:bg-ink/[0.05] rounded-r" : ""
         }`}
         style={{ ...rail, ...(sticky ? surface : {}) }}
@@ -165,7 +162,7 @@ function ReadoutEntry({
       </div>
       {showComment && (
         <div
-          className={`pl-3 border-l-2 pb-1 ${isLast ? "" : divider}`}
+          className="pl-3 border-l-2 pb-1.5"
           style={rail}
         >
           <div className={`${cardSmall(roomy)} font-mono text-ink/50 italic mt-0.5 whitespace-pre-wrap`}>
@@ -315,7 +312,7 @@ export function EntriesReadout({
             </span>
           </div>
           <div>
-            {sleepEntries.map((e, i) =>
+            {sleepEntries.map((e) =>
               editing?.entryId === e.id ? (
                 <EntryEditRow
                   key={e.id}
@@ -332,7 +329,6 @@ export function EntriesReadout({
               ) : (
                 <ReadoutEntry
                   key={e.id}
-                  isLast={i === sleepEntries.length - 1}
                   timeLabel={entryTimeLabel(e)}
                   comment={e.comment}
                   borderColor={`${c.sleep}30`}
@@ -438,7 +434,7 @@ export function EntriesReadout({
               />
             )}
             <div>
-              {entries.map((e, i) => {
+              {entries.map((e) => {
                 if (editing?.entryId === e.id) {
                   return (
                     <EntryEditRow
@@ -467,7 +463,6 @@ export function EntriesReadout({
                 return (
                   <ReadoutEntry
                     key={e.id}
-                    isLast={i === entries.length - 1}
                     timeLabel={entryTimeLabel(e)}
                     icon={
                       <RenderIcon

@@ -56,8 +56,8 @@ export function SegmentedControl({
 }) {
   const c = usePalette()
   return (
-    <div className="inline-flex rounded-xl border border-ink/20 overflow-hidden bg-card">
-      {items.map((it, i) => {
+    <div className="inline-flex items-center gap-1 rounded-full bg-card p-1 shadow-sm">
+      {items.map((it) => {
         const active = activeId === it.id
         return (
           <button
@@ -65,8 +65,7 @@ export function SegmentedControl({
             onClick={() => onChange(it.id)}
             style={segBtnStyle(active, c)}
             className={
-              segBtn(active) +
-              ` border-0 ${i > 0 ? "border-l border-l-ink/10" : ""} ${size === "lg" ? "px-4 py-2" : ""}`
+              segBtn(active) + (size === "lg" ? " px-4 py-2" : "")
             }
           >
             {it.label}

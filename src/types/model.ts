@@ -44,8 +44,46 @@ export interface CounterUnit extends Labeled {
    * opposite of the idea.
    */
   total?: number
-  relation: CounterRelation
+  /**
+   * The tags on this unit. Many, because that is what a tag is — "good" and
+   * "health" are not competing answers to one question the way the old fixed
+   * `relation` was.
+   */
+  tagIds?: string[]
+  /**
+   * Tops out at one a day: oversleeping, or anything else that either happened
+   * or did not.
+   *
+   * A **limit**, not a switch turning counting off — which is why it can sit
+   * on a thing called a counter without contradicting it. It still counts; it
+   * just cannot get past one. (`exam` arrived here the same way: it was a
+   * boolean, and a boolean is a counter that stops at one.)
+   *
+   * What it changes is the question the add dialog asks. "How many times did
+   * you oversleep today" has no sensible answer, so the field goes and the
+   * dialog records the fact instead.
+   */
+  oncePerDay?: boolean
+  /**
+   * @deprecated Replaced by `tagIds`. Never read; left in the type so old
+   * rows still parse, and left in the data so nothing anybody typed is thrown
+   * away by an upgrade.
+   */
+  relation?: CounterRelation
 }
+
+/**
+ * A tag — a user-defined tag on a counter unit.
+ *
+ * It replaces a fixed three-way `relation` (positive / neutral / negative),
+ * which was the app deciding in advance what the only interesting thing about
+ * a counter could be. Those three are still a perfectly good set of tags;
+ * the difference is that they are now yours to name, colour, describe and
+ * extend, and a unit can carry several.
+ *
+ * Same shape as a slot or a category, so it edits through the same list.
+ */
+export type Tag = Labeled
 
 /** `"HH:MM"`, zero-padded. Compared as text in places, so the padding matters. */
 export type TimeOfDay = string
@@ -166,6 +204,12 @@ export interface Settings {
    * failing to appear.
    */
   goalCuts?: GoalCut[]
+  /**
+   * The project's tags. In `settings` rather than a column of its own
+   * because `settings` is already one jsonb blob read as a unit — which is
+   * what lets the whole feature ship without a migration.
+   */
+  tags?: Tag[]
 }
 
 export interface GoalCut {

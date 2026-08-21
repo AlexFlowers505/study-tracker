@@ -10,23 +10,13 @@
 --------------------------------------------------------------- */
 
 import { useState } from "react"
-import type { CounterRelation, CounterUnit } from "../types/model"
-import type { Palette } from "../lib/theme"
-import { FIELD_SOFT } from "../lib/theme"
-
+import type { CounterUnit, Tag } from "../types/model"
+import { FIELD_SOFT, btnBase } from "../lib/theme"
 import { EditableList } from "../ui/EditableList"
-import { SegmentedControl } from "../ui/controls"
+import { RenderIcon } from "../ui/icons"
 import { SwitchToggle } from "../ui/toggles"
 import { Tip } from "../ui/Tip"
-import { usePalette } from "../ui/useTheme"
 
-const relations = (
-  c: Palette,
-): { id: CounterRelation; label: string; color: string }[] => [
-  { id: "positive", label: "Good", color: c.goalMet },
-  { id: "neutral", label: "Neutral", color: c.ink },
-  { id: "negative", label: "Bad", color: c.exam },
-]
 
 /**
  * Deliberately "total", not "target" or "goal". A unit can count something you
@@ -40,10 +30,18 @@ const TOTAL_HELP =
   "gym. Not a goal — a negative unit has a total too, and reaching it is not " +
   "the idea."
 
-const RELATION_HELP =
-  "Whether going up is a good thing, a bad thing, or neither.\n\n" +
-  "Recorded now and used later: the statistics that read it are being " +
-  "redesigned around units, so today it changes nothing on screen."
+const ONCE_HELP =
+  "For anything that either happened or did not: overslept, took a rest day, " +
+  "missed a dose." + String.fromCharCode(10, 10) +
+  "A limit rather than a switch — it still counts, it just stops at one. What " +
+  "changes is the dialog: \"how many times did you oversleep\" is not a " +
+  "question with an answer, so the field goes and you record the fact instead."
+
+const TAG_HELP =
+  "Tags for this counter. A unit can carry several — they are not competing " +
+  "answers to one question." + String.fromCharCode(10, 10) +
+  "Their use today is the filter: hiding a tag hides every counter wearing " +
+  "it, everywhere on the page at once. Define them in the Tags tab."
 
 /**
  * The total, with an empty box allowed while you retype it.
@@ -86,15 +84,16 @@ function TotalField({
 
 export function CounterUnitsTab({
   units,
+  tags,
   progress,
   onChange,
 }: {
   units: CounterUnit[]
+  tags: Tag[]
   /** Everything tallied so far, per unit — see `counterTotals`. */
   progress: Record<string, number>
   onChange: (next: CounterUnit[]) => void
 }) {
-  const c = usePalette()
   return (
     <div className="space-y-3">
       <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
@@ -107,7 +106,7 @@ export function CounterUnitsTab({
         onChange={onChange}
         noun="unit"
         minItems={0}
-        newItem={() => ({ relation: "positive" as CounterRelation })}
+        newItem={() => ({ tagIds: [] })}
         warningNote={(label) =>
           `Remove "${label}"? Counts already recorded against it stay in the data but stop being shown.`
         }
@@ -151,16 +150,61 @@ export function CounterUnitsTab({
             </div>
 
             <div className="flex items-center gap-1.5">
-              <Tip multiline text={RELATION_HELP}>
+              <Tip multiline text={ONCE_HELP}>
                 <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
-                  Counting up is
+                  Once a day
                 </span>
               </Tip>
-              <SegmentedControl
-                items={relations(c)}
-                activeId={unit.relation}
-                onChange={(id) => update({ relation: id as CounterRelation })}
+              <SwitchToggle
+                checked={unit.oncePerDay === true}
+                onChange={(on) => update({ oncePerDay: on || undefined })}
+                label="This happens at most once a day"
               />
+            </div>
+
+            {/* Chips rather than a segmented control: these are tags, and a
+                unit can wear several. A segmented control would be promising
+                that exactly one of them is true. */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Tip multiline text={TAG_HELP}>
+                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
+                  Tags
+                </span>
+              </Tip>
+              {tags.length === 0 ? (
+                <span className="text-[10px] font-mono text-ink/35">
+                  None defined yet — add them in the Tags tab.
+                </span>
+              ) : (
+                tags.map((h) => {
+                  const on = (unit.tagIds || []).includes(h.id)
+                  return (
+                    <Tip key={h.id} text={h.description || h.label}>
+                      <button
+                        onClick={() =>
+                          update({
+                            tagIds: on
+                              ? (unit.tagIds || []).filter((x) => x !== h.id)
+                              : [...(unit.tagIds || []), h.id],
+                          })
+                        }
+                        aria-pressed={on}
+                        style={
+                          on
+                            ? { backgroundColor: `${h.color}24`, color: h.color }
+                            : undefined
+                        }
+                        className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono ${
+                          on ? "font-bold" : "text-ink/40 hover:text-ink/70"
+                        }`}
+                      >
+                        <RenderIcon name={h.iconName} size={10} />
+                        {h.label}
+                      </button>
+                    </Tip>
+                  )
+                })
+              )}
             </div>
           </div>
         )}

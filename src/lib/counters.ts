@@ -14,6 +14,7 @@
 --------------------------------------------------------------- */
 
 import type { CounterUnit, Day, DayKey, Settings } from "../types/model"
+import { toKey } from "./date"
 
 /** `unitId -> slotId -> value`. See `Day.counters`. */
 export type DayCounters = Record<string, Record<string, number>>
@@ -105,6 +106,31 @@ export function counterTotals(
 ): Record<string, number> {
   const out: Record<string, number> = {}
   Object.values(days).forEach((day) => {
+    Object.entries(dayTotals(day.counters)).forEach(([id, value]) => {
+      out[id] = (out[id] || 0) + value
+    })
+  })
+  return out
+}
+
+/**
+ * The same sum, but over a chosen set of dates rather than the whole project —
+ * what a week or a month header reports.
+ *
+ * Ignored days are left out, the same predicate every other figure on the page
+ * runs through: a day excluded from the hours cannot still contribute its
+ * counts, or the two halves of one header would disagree.
+ */
+export function counterTotalsIn(
+  dates: Date[],
+  days: Record<DayKey, Day>,
+  isIgnored: (key: DayKey, day: Day | undefined) => boolean,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  dates.forEach((d) => {
+    const key = toKey(d)
+    const day = days[key]
+    if (!day || isIgnored(key, day)) return
     Object.entries(dayTotals(day.counters)).forEach(([id, value]) => {
       out[id] = (out[id] || 0) + value
     })

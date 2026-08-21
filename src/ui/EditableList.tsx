@@ -9,16 +9,10 @@
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import {
-  ChevronDown,
-  ChevronUp,
-  MessageSquare,
-  Plus,
-  Trash2,
-} from "lucide-react"
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react"
 import type { Labeled } from "../types/model"
 import { makeId } from "../lib/id"
-import { FIELD_SOFT, PALETTE, btnBase } from "../lib/theme"
+import { PALETTE, btnBase } from "../lib/theme"
 import { ICON_LIBRARY } from "./iconLibrary"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
@@ -110,31 +104,26 @@ export function EditableList<T extends Labeled>({
               </div>
             </div>
           ) : (
-            <div className="space-y-1.5">
+            /* Two rows sharing one left gutter, `w-8` wide on both: the icon
+               over the reorder arrows, the name over the description. That is
+               what makes the name and the description line up down the left —
+               they are the content column, and everything that acts on the row
+               sits beside it rather than in front of it. */
+            <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <div className="flex flex-col shrink-0">
-                  <button
-                    disabled={index === 0}
-                    onClick={() => moveItem(index, -1)}
-                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
-                  >
-                    <ChevronUp size={13} />
-                  </button>
-                  <button
-                    disabled={index === items.length - 1}
-                    onClick={() => moveItem(index, 1)}
-                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
-                  >
-                    <ChevronDown size={13} />
-                  </button>
-                </div>
-                <div className="relative">
+                <div className="relative shrink-0">
                   <button
                     onClick={() =>
                       setOpenPickerId(openPickerId === item.id ? null : item.id)
                     }
-                    style={{ borderColor: item.color, color: item.color }}
-                    className={`${btnBase} w-8 h-8 rounded-xl flex items-center justify-center border-2 hover:opacity-75 shrink-0`}
+                    // Filled with its own colour rather than outlined in it.
+                    // The swatch is the point of this button, and a tint shows
+                    // it over a larger area than a 2px ring did.
+                    style={{
+                      backgroundColor: `${item.color}24`,
+                      color: item.color,
+                    }}
+                    className={`${btnBase} w-8 h-8 rounded-xl flex items-center justify-center hover:opacity-75 shrink-0`}
                   >
                     <RenderIcon name={item.iconName} size={15} />
                   </button>
@@ -200,12 +189,16 @@ export function EditableList<T extends Labeled>({
                     </div>
                   )}
                 </div>
+                {/* No fill. It is the row's title, not a form control you
+                    hunt for — and at this size, on its own line, nothing else
+                    could be mistaken for it. The focus ring is what confirms
+                    it is editable once you are in it. */}
                 <input
                   value={item.label}
                   onChange={(e) =>
                     updateItem(item.id, { label: e.target.value })
                   }
-                  className={`${FIELD_SOFT} flex-1 py-1.5`}
+                  className="flex-1 min-w-0 bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-sm font-bold placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
                 />
                 <Tip
                   text={
@@ -223,11 +216,29 @@ export function EditableList<T extends Labeled>({
                   </button>
                 </Tip>
               </div>
-              <div className="flex items-start gap-1.5 pl-1">
-                <MessageSquare
-                  size={12}
-                  className="text-ink/25 shrink-0 mt-1.5"
-                />
+              <div className="flex items-start gap-2">
+                {/* The arrows live where the comment icon used to, filling the
+                    same gutter the icon holds above. Side by side rather than
+                    stacked: 32px is exactly two of them, and stacking would
+                    make the row twice as tall as the line it belongs to. */}
+                <div className="w-8 shrink-0 flex items-center justify-between pt-0.5">
+                  <button
+                    disabled={index === 0}
+                    onClick={() => moveItem(index, -1)}
+                    aria-label="Move up"
+                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                  >
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    disabled={index === items.length - 1}
+                    onClick={() => moveItem(index, 1)}
+                    aria-label="Move down"
+                    className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
                 <AutoTextarea
                   value={item.description || ""}
                   onChange={(e) =>
@@ -236,7 +247,7 @@ export function EditableList<T extends Labeled>({
                   placeholder={`What counts as this ${noun}? (optional)`}
                   rows={1}
                   maxHeight={100}
-                  className={`${FIELD_SOFT} flex-1 rounded-lg py-1 text-[10px]`}
+                  className="flex-1 min-w-0 bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-[11px] text-ink/70 placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
                 />
               </div>
               {extra?.(item, (patch) => updateItem(item.id, patch))}

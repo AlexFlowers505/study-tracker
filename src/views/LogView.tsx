@@ -18,6 +18,7 @@ import {
 } from '../lib/date'
 import { fmtHours } from '../lib/time'
 import { makeIsIgnored, rangeStats } from '../lib/stats'
+import { counterTotalsIn } from '../lib/counters'
 import { WIDE_PERIODS, rangeLabel } from '../lib/period'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import { MenuToggle } from '../ui/toggles'
@@ -27,6 +28,7 @@ import { FullCardGrid } from './DayCards'
 import { Heatmap } from './Heatmap'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
+import { CounterTotals } from './CounterTotals'
 
 import { usePalette } from "../ui/useTheme"
 export function LogView({
@@ -43,6 +45,7 @@ export function LogView({
   onQuickAddDay,
   onQuickAddSleepDay,
   onQuickAddSlotDay,
+  onExpandDay,
   canFreezeDay,
   onFreezeDay,
   onUpdateDay,
@@ -61,6 +64,7 @@ export function LogView({
   onQuickAddDay: (key: string) => void
   onQuickAddSleepDay?: (key: string) => void
   onQuickAddSlotDay?: (key: string, slotId: string) => void
+  onExpandDay?: (key: string) => void
   canFreezeDay?: (key: string) => boolean
   onFreezeDay?: (key: string) => void
   /** Lets the day cards edit an entry in place, without the day dialog. */
@@ -107,6 +111,14 @@ export function LogView({
       return rangeStats(monthDates(cursor), days, slots, settings, isIgnored)
     return null
   }, [granularity, cursor, days, slots, settings, isIgnored])
+
+  // Every period, not just week and month: the day view and the wide ranges
+  // report their counters too, because "how many" is as much a fact about a
+  // period as "how long" is.
+  const headerCounters = useMemo(
+    () => counterTotalsIn(visibleDates, days, isIgnored),
+    [visibleDates, days, isIgnored],
+  )
 
   const monthPast =
     granularity === "month" &&
@@ -207,6 +219,15 @@ export function LogView({
         )}
       </div>
 
+      {/* Under the heading rather than inside it: the hours line answers "how
+          long" and this answers "how many", and stacking them keeps a long row
+          of counters from pushing the date out of its own row. */}
+      <CounterTotals
+        units={counterUnits}
+        totals={headerCounters}
+        className="-mt-1 mb-3"
+      />
+
       {granularity === "day" && (
         <NoteCard
           key={dayKey}
@@ -272,6 +293,7 @@ export function LogView({
           onQuickAddSlotDay={
             granularity === "week" ? onQuickAddSlotDay : undefined
           }
+          onExpandDay={onExpandDay}
           canFreezeDay={canFreezeDay}
           onFreezeDay={onFreezeDay}
           onUpdateDay={onUpdateDay}

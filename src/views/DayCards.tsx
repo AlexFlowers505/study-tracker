@@ -7,6 +7,7 @@ import { useState } from "react"
 import type { ReactNode } from "react"
 import {
   EyeOff,
+  Maximize2,
   MessageSquare,
   Moon,
   Plus,
@@ -64,6 +65,7 @@ function FullDayCard({
   onQuickAdd,
   onQuickAddSleep,
   onQuickAddSlot,
+  onExpand,
   longDate,
   titleActions,
   onClose,
@@ -103,6 +105,11 @@ function FullDayCard({
   onQuickAddSleep?: () => void
   /** The "+" on each slot heading in the readout. */
   onQuickAddSlot?: (slotId: string) => void
+  /**
+   * Opens this same card in the dialog, with room to work in. Absent there,
+   * because it is already as big as it gets.
+   */
+  onExpand?: () => void
   /** "Saturday, 15 August" instead of "Sat 15" — for the dialog, which has room. */
   longDate?: boolean
   /** Buttons that belong beside the date rather than in the action row. */
@@ -218,21 +225,19 @@ function FullDayCard({
 
   return (
     <div
-      role={onEdit ? "button" : undefined}
-      tabIndex={onEdit ? 0 : undefined}
-      // A week card opens the day dialog on click — there is no further
-      // drill-down below it, so the whole block is the button. Inside that
-      // dialog there is nowhere left to go, and a whole-card target you can
-      // hit by aiming slightly wide of an entry is a hazard rather than a
-      // shortcut, so the card is inert there and the pencil does the job.
-      onClick={onEdit}
-      onKeyDown={onEdit ? (e) => e.key === "Enter" && onEdit() : undefined}
+      // **The card body is not a button.** It used to be — the whole block
+      // opened the day dialog — and that was fine while the card was a
+      // read-only summary. It is not one now: every entry, counter and note on
+      // it edits in place, so a full-card target you can hit by aiming wide of
+      // an entry opens a window you did not ask for. The expand button beside
+      // the date does that job, and says so.
+
       // No outline: white (or goal-tinted) against the page tint is what
       // separates the card. Today is called out by colour and a badge instead
       // of a border, so a card never has two competing emphasis signals.
       className={`${btnBase} text-left w-full rounded-2xl flex flex-col ${
-        onEdit ? "hover:shadow-md cursor-pointer" : ""
-      } ${big ? "p-5 gap-4" : "p-3 gap-3"} ${
+        big ? "p-5 gap-4" : "p-3 gap-3"
+      } ${
         ignored ? "grayscale opacity-60" : ""
       }`}
       // `outline` rather than a ring: it draws inside the box, follows the
@@ -269,6 +274,19 @@ function FullDayCard({
                   : { weekday: "short", day: "numeric" },
               )}
             </div>
+            {onExpand && (
+              <Tip text="Open this day in a larger view">
+                <button
+                  onClick={(ev) => {
+                    ev.stopPropagation()
+                    onExpand()
+                  }}
+                  className={`${btnBase} p-1 rounded-lg text-ink/35 hover:text-ink hover:bg-ink/10 shrink-0`}
+                >
+                  <Maximize2 size={13} />
+                </button>
+              </Tip>
+            )}
             {titleActions}
           {/* Up here rather than on the note itself: hiding removes the note
               block outright, and a button cannot be the thing that hides
@@ -544,6 +562,7 @@ export function FullCardGrid({
   onQuickAddDay,
   onQuickAddSleepDay,
   onQuickAddSlotDay,
+  onExpandDay,
   longDate,
   titleActions,
   onClose,
@@ -567,6 +586,8 @@ export function FullCardGrid({
   /** Absent when sleep tracking is off — there is nothing to log. */
   onQuickAddSleepDay?: (key: DayKey) => void
   onQuickAddSlotDay?: (key: DayKey, slotId: string) => void
+  /** Absent inside the dialog — the card is already expanded there. */
+  onExpandDay?: (key: DayKey) => void
   /** Forwarded to the card — used when the dialog renders a single day. */
   longDate?: boolean
   titleActions?: ReactNode
@@ -606,9 +627,10 @@ export function FullCardGrid({
       className={
         big
           ? "w-full"
-          : // Capped at five across: a seven-column row leaves each day too
-            // narrow for its entries, so the last two wrap onto a second row.
-            "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3"
+          : // Four across, so a week falls 4 + 3 rather than 5 + 2. Seven in a
+            // row leaves each day far too narrow for its entries, and 5 + 2
+            // left a stranded pair rather than reading as one week.
+            "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"
       }
     >
       {dates.map((date) => {
@@ -654,6 +676,7 @@ export function FullCardGrid({
             onEdit={
               !isFuture && onEditDay ? () => onEditDay(key) : undefined
             }
+            onExpand={onExpandDay ? () => onExpandDay(key) : undefined}
             longDate={longDate}
             titleActions={titleActions}
             onClose={onClose}

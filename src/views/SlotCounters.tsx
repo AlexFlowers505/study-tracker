@@ -10,21 +10,14 @@
    left, cancel and done on the right. Cancel is an undo rather than a
    discard, since every keystroke has already been written.
 
-   `AddCounterForm` is the "+" for counters. Units already recorded in this
-   slot are **disabled** in its picker, not hidden: hiding them would leave you
-   wondering where Lessons went, while a disabled row with a reason attached
-   says "that one exists, go and edit it" — which is a click away, directly
-   above.
 --------------------------------------------------------------- */
 
-import { useState } from "react"
 import { Ban, Check, Trash2 } from "lucide-react"
 import type { CounterUnit } from "../types/model"
 import type { DayCounters } from "../lib/counters"
 import { setSlotCount, slotUnitValue, unitsInSlot } from "../lib/counters"
 import {
   FIELD_BARE,
-  FIELD_BOXED,
   btnBase,
   cardSmall,
   cardTiny,
@@ -162,90 +155,6 @@ export function SlotCounterRows({
           </Tip>
         )
       })}
-    </div>
-  )
-}
-
-export function AddCounterForm({
-  units,
-  counters,
-  slotId,
-  onAdd,
-  onCancel,
-}: {
-  units: CounterUnit[]
-  counters: DayCounters
-  slotId: string
-  onAdd: (unitId: string, amount: number) => void
-  onCancel: () => void
-}) {
-  const c = usePalette()
-  const taken = new Set(unitsInSlot(units, counters, slotId).map((u) => u.id))
-  const firstFree = units.find((u) => !taken.has(u.id))
-  const [unitId, setUnitId] = useState(firstFree?.id ?? units[0]?.id)
-  const [amount, setAmount] = useState(1)
-
-  if (!units.length) return null
-  const allTaken = taken.size === units.length
-
-  return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="flex flex-wrap items-center gap-1.5 mb-1 rounded-lg bg-ink/[0.04] px-2 py-1.5"
-    >
-      {allTaken ? (
-        <span className="text-[10px] font-mono text-ink/50">
-          Every counter is already in this slot — edit one above.
-        </span>
-      ) : (
-        <>
-          <select
-            value={unitId}
-            onChange={(e) => setUnitId(e.target.value)}
-            className={`${FIELD_BOXED} text-[11px]`}
-          >
-            {units.map((u) => (
-              <option
-                key={u.id}
-                value={u.id}
-                disabled={taken.has(u.id)}
-                // Native selects cannot carry a tooltip on an option, so the
-                // reason rides along in the label. Disabled and unexplained
-                // would just look broken.
-                title={
-                  taken.has(u.id)
-                    ? "Already in this slot — edit the existing one instead"
-                    : undefined
-                }
-              >
-                {u.label}
-                {taken.has(u.id) ? " — already here" : ""}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={1}
-            value={amount}
-            onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))}
-            className={`${FIELD_BOXED} w-14 text-[11px]`}
-          />
-          <button
-            onClick={() => onAdd(unitId, amount)}
-            disabled={taken.has(unitId)}
-            className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest disabled:opacity-40`}
-            style={{ backgroundColor: c.goalMet, color: c.onFill }}
-          >
-            Add
-          </button>
-        </>
-      )}
-      <button
-        onClick={onCancel}
-        className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink`}
-      >
-        Cancel
-      </button>
     </div>
   )
 }

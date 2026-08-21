@@ -6,11 +6,15 @@ import type { CSSProperties } from "react"
 import type { Palette } from "../lib/theme"
 import { btnBase } from "../lib/theme"
 
+/**
+ * The same shape as the period pills at the top of the page: a rounded track
+ * with the active one filled. They were two different-looking controls doing
+ * the same job — pick one of these — and the page reads as fewer kinds of
+ * thing when the answer to "how do I switch something" always looks the same.
+ */
 export const segBtn = (active: boolean): string =>
-  `${btnBase} text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 ${
-    active
-      ? "border-transparent"
-      : "bg-card hover:bg-ink/5 hover:border-ink/35"
+  `${btnBase} rounded-full px-3 py-1.5 text-[11px] font-mono whitespace-nowrap ${
+    active ? "" : "text-ink/60 hover:text-ink hover:bg-ink/5"
   }`
 
 // The foreground comes from the palette rather than a `text-white` class:

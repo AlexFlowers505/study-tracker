@@ -59,7 +59,9 @@ function PeriodPills({
                 ? ""
                 : "text-ink/60 hover:text-ink hover:bg-ink/5"
             }`}
-            style={active ? { backgroundColor: c.accent } : undefined}
+            style={
+              active ? { backgroundColor: c.accent, color: c.onFill } : undefined
+            }
           >
             {p.label}
           </button>

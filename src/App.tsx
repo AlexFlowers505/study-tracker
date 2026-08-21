@@ -129,6 +129,13 @@ export default function StudyTrackerApp() {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
     () => new Set(),
   )
+  // Tags strike out counter units rather than study time, so they hide a
+  // different kind of thing from the other two — but they belong to the same
+  // panel and the same "not saved, not period-scoped" rule.
+  const [hiddenTags, setHiddenTags] = useState<Set<string>>(() => new Set())
+  const [hiddenCounters, setHiddenCounters] = useState<Set<string>>(
+    () => new Set(),
+  )
 
   const toggleIn =
     (setter: Dispatch<SetStateAction<Set<string>>>) => (id: string) =>
@@ -567,7 +574,13 @@ export default function StudyTrackerApp() {
   // the day cards, the heatmap and every chart can't disagree about what
   // counts — they are all reading the same already-filtered days.
   const visibleProject = useMemo(() => {
-    if (!hiddenSlots.size && !hiddenCategories.size) return project
+    if (
+      !hiddenSlots.size &&
+      !hiddenCategories.size &&
+      !hiddenCounters.size &&
+      !hiddenTags.size
+    )
+      return project
     const slots = project.slots.filter((s) => !hiddenSlots.has(s.id))
     const days: Record<DayKey, Day> = {}
     Object.entries(project.days).forEach(([key, day]) => {
@@ -585,9 +598,17 @@ export default function StudyTrackerApp() {
       ...project,
       slots,
       categories: project.categories.filter((c) => !hiddenCategories.has(c.id)),
+      // Dropping the *unit* is enough: every badge and row maps over this
+      // list, so a hidden tag takes its counters off the page without the
+      // recorded numbers being touched.
+      counterUnits: (project.counterUnits || []).filter(
+        (u) =>
+          !hiddenCounters.has(u.id) &&
+          !(u.tagIds || []).some((t) => hiddenTags.has(t)),
+      ),
       days,
     }
-  }, [project, hiddenSlots, hiddenCategories])
+  }, [project, hiddenSlots, hiddenCategories, hiddenCounters, hiddenTags])
 
   // No env vars, no database. A dead end rather than the signed-out local
   // fallback, because that path calls `window.storage` — an API browsers do
@@ -719,7 +740,12 @@ export default function StudyTrackerApp() {
           setCustomEnd={setCustomEnd}
           showFilter={showFilter}
           onToggleFilter={() => setShowFilter((v) => !v)}
-          filteredOutCount={hiddenSlots.size + hiddenCategories.size}
+          filteredOutCount={
+            hiddenSlots.size +
+            hiddenCategories.size +
+            hiddenCounters.size +
+            hiddenTags.size
+          }
           sleepEnabled={project.settings.sleepEnabled === true}
           showSleep={showSleep}
           onToggleSleep={() => setShowSleep((v) => !v)}
@@ -737,13 +763,21 @@ export default function StudyTrackerApp() {
           <CountFilter
             slots={project.slots}
             categories={project.categories}
+            counters={project.counterUnits || []}
+            tags={project.settings.tags || []}
             hiddenSlots={hiddenSlots}
             hiddenCategories={hiddenCategories}
+            hiddenCounters={hiddenCounters}
+            hiddenTags={hiddenTags}
             onToggleSlot={toggleIn(setHiddenSlots)}
             onToggleCategory={toggleIn(setHiddenCategories)}
+            onToggleCounter={toggleIn(setHiddenCounters)}
+            onToggleTag={toggleIn(setHiddenTags)}
             onReset={() => {
               setHiddenSlots(new Set())
               setHiddenCategories(new Set())
+              setHiddenCounters(new Set())
+              setHiddenTags(new Set())
             }}
             onClose={() => setShowFilter(false)}
           />
@@ -773,6 +807,7 @@ export default function StudyTrackerApp() {
           range={range}
           cursor={logCursor}
           onEditDay={setEditingKey}
+          onExpandDay={setEditingKey}
           onUpdateDayNote={(key, text) => updateDay(key, { comment: text })}
           onUpdateWeekNote={updateWeekNote}
           onUpdateMonthNote={updateMonthNote}
@@ -951,7 +986,6 @@ export default function StudyTrackerApp() {
           // there's nothing to preview and nowhere to drill down to: go
           // straight to editing, with no "back" or "go to day view" escape
           // hatches pointing at where we already are.
-          startInEditMode={period === "day"}
         />
       )}
 

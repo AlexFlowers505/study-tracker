@@ -159,6 +159,13 @@ which are Node config and get their own lint block.
     component wearing different tints.
     All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
     `StreaksSection.tsx`, `ChangeLogSection.tsx`.
+  - `CounterTotals.tsx` — a period's counters as a row of chips, under the
+    week or month heading and to the right of each week's strip in the month
+    grid. Hours answer "how long" and these answer "how many"; a period that
+    had both was reporting half of itself. **Only totals above zero appear** —
+    a unit untouched in this period has nothing to say about it, and a row of
+    zeroes pushes the ones that matter off the end. The units arrive already
+    filtered, so the count filter reaches them for free.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
     **The donuts sort biggest first**, ring and legend alike, and the sort
@@ -205,18 +212,37 @@ which are Node config and get their own lint block.
     what the dialog is for. Reimplementing it there is how the same day used
     to look different depending on how deep you had clicked. It has **no
     dialog chrome of its own**: the card takes `longDate`, `titleActions` (the
-    pencil and the go-to-day arrow, beside the date) and `onClose`, so nothing
-    repeats the date above a card that already states it. The close X sits in
+    go-to-day arrow, beside the date) and `onClose`, so nothing repeats the
+    date above a card that already states it.
+    **There is no editor mode.** There used to be: a read-only preview that a
+    pencil flipped into a form — two drawings of one day, where the form was
+    the only way to add or delete anything from inside the dialog, which the
+    week view has never needed a mode to do. It was also a hole in the editing
+    horizon, since the form wrote to days the cards themselves had sealed. The
+    dialog is now the card, with the same buttons and the same in-place
+    editing, and `DayEditor.tsx` is 119 lines instead of 764. The close X sits in
     the action corner where people reach for it, divided from the day's own
     buttons by a hairline — everything left of the rule acts on the day, the
     one right of it acts on the window. `onEdit` is omitted there, so the card
     body is inert: inside the dialog there is nowhere further to go, and a
     full-card target you can hit by aiming wide of an entry is a hazard rather
     than a shortcut.
-  - Editing an entry happens on the card, not in a dialog. The day dialog is
-    still where the day-level things live (lessons, exam, ignore, the note),
-    but the path card → dialog → editor showed the same entry three different
-    ways to change one time, so the entry rows now edit where they are read.
+  - A card is opened in the dialog by the **expand button beside its date**,
+    and by nothing else — **the card body is not a button.** It was one while
+    the card was a read-only summary; it is not one now that every entry,
+    counter and note on it edits in place, because a full-card target you can
+    hit by aiming wide of an entry opens a window you did not ask for. The
+    button is absent inside the dialog: the card is already as big as it gets.
+  - **Entries carry no rule between them.** The coloured slot rail, the time at
+    the head of every line and the space around them already say where one ends
+    — a divider on top of that was a fourth signal for something nobody was
+    confused about.
+  - The week grid is **four across, so seven days fall 4 + 3**. Seven in a row
+    leaves each day far too narrow for its entries, and the five-column version
+    left a stranded pair rather than reading as one week.
+  - Editing an entry happens on the card, not in a dialog. The path
+    card → dialog → editor showed the same entry three different ways to change
+    one time, so the entry rows now edit where they are read.
     Every keystroke writes straight through, as in the day editor; quick-add
     is the one place that stages a whole entry before saving, because a
     half-composed new entry has nowhere to live yet.
@@ -339,6 +365,64 @@ One page, not tabs. A single period drives everything:
     what makes its averages correct — the plain mean of 23:30 and 00:30 is
     midday, not midnight.
 
+## Tags
+
+Labels on counter units — a name, a colour, an icon and a description, edited
+through the same `EditableList` as slots and categories.
+
+They replace `CounterUnit.relation`, a fixed positive/neutral/negative, which
+was the app deciding in advance what the only interesting thing about a counter
+could be. Those three are still a perfectly good set of tags; the difference is
+that they are now yours to name and extend, and **a unit can carry several** —
+which is why they are toggle chips rather than a segmented control. The old
+field is left in the type and in the data, deprecated and unread, so an upgrade
+throws nothing away. Deleting a tag strips its id off every unit wearing it: a
+dangling id is harmless to the filter, which only walks tags that exist, but
+the moment it becomes rubbish is the only moment anyone can tidy it.
+
+**They live in `settings.tags`, not a column of their own.** `settings` is
+already one jsonb blob read as a unit, and `tagIds` rides inside the existing
+`counter_units` jsonb, so the whole feature shipped without a migration.
+
+Two things read them:
+
+- **The count filter**, which strikes out counters two ways: one at a time in
+  its own group, or by the handful through a tag. Both drop units from
+  `visibleProject.counterUnits`, and since every badge, row and total maps over
+  that list, the counters leave the page together without a single recorded
+  number being touched.
+- **The Trends charts**, through the `Tags` and `Counters` modes. Those plot
+  counts rather than minutes, so they format their axis and tooltip as plain
+  numbers; `lib/counterSeries.ts` turns the choice into the same "coloured
+  series plus a number per row" shape the slot and category splits already
+  use, so the charts needed no new drawing code for it.
+
+  Tag mode carries a second choice — **by tag** (one series per tag, summing
+  every unit that wears it) or **by counter** (one series per *tagged* unit,
+  which is counter mode filtered down to what carries a tag). Counter mode does
+  not offer it: grouping counters by counter is the mode itself.
+
+  The two sub-questions share **one recessed track with a hairline down the
+  middle**, and that shape does two jobs. Against the mode control it reads as
+  subordinate — that one is raised off the card, this one is sunk into it —
+  where a second identical row of pills read as the same control drawn twice,
+  the same trap `TabbedSection` sidesteps by not being pills at all. The
+  hairline separates the two questions from each other, which no amount of gap
+  between two identical tracks was going to do. Counter mode has only one
+  question, so it has no hairline.
+
+  Both offer **split by slot**, which turns each series into one per
+  `thing × slot` — keeping *what* was counted while adding *when*. Splitting
+  multiplies the series, so every slot of one thing shares that thing's colour
+  and steps down in opacity: a stack reads as one block subdivided rather than
+  as a dozen unrelated bands.
+
+  The count series for each chart are memoised **before** the row builders that
+  read them, and the row builder returns a fresh object rather than filling one
+  in place. Both are for React Compiler: a callback called inside four separate
+  memos, or one that mutates what it is handed, costs the whole component its
+  memoization and fails `react-hooks/preserve-manual-memoization`.
+
 ## Data model
 
 In memory, all state is one object — every view below `StudyTrackerApp`
@@ -449,6 +533,16 @@ dialog with that slot already chosen. It follows the card's rules exactly —
 absent on a read-only readout and on a day that has not happened — because the
 readout must never invent a way in that the card withheld.
 
+**A counter can top out at one a day** (`oncePerDay`). Deliberately framed as
+a *limit* rather than as a switch turning counting off — the second reads as a
+contradiction on a thing called a counter, and it is not one: it still counts,
+it just cannot get past one. `exam` arrived the same way, as a boolean, and a
+boolean is a counter that stops at one. What it changes is the question the
+dialog asks: "how many times did you oversleep today" has no answer, so the
+amount field goes, the preview says marked / not marked, and a second attempt
+finds the button reading "Already recorded". The cap is per *day*, not per
+slot — filing the second one under a different slot must not buy you one.
+
 **The dialog has no minutes box.** Typing "90" is the arithmetic the app exists
 to do, and two ways of saying the same duration have to be stopped from
 disagreeing. Times are the only input; the duration underneath is the answer.
@@ -551,6 +645,14 @@ Match the existing file:
   area and the month grid. `Tip`, `DateField`, `DateRangeField` and
   `PopoverMenu` all do this; follow suit rather than adding a fourth
   hand-rolled bubble.
+- **One shape for "pick one of these".** `SegmentedControl` and the period
+  pills are the same control drawn the same way — a rounded track with the
+  active one filled — because they do the same job, and the page reads as
+  fewer kinds of thing when the answer to "how do I switch this" always looks
+  alike. The active fill takes `c.onFill` for its text, never `text-white`.
+  Where two of them sit side by side, **the subordinate one is recessed rather
+  than raised**: identical tracks a gap apart read as one control, and no
+  amount of extra gap fixes that — the fix is that they stop being identical.
 - **Design leans on fills, not outlines.** `FIELD_SOFT` and `BTN_SOFT` are the
   default for controls: ink at 6%, no border anywhere. An outline draws a hard
   edge around every control, and a form of six of them reads as a grid of boxes

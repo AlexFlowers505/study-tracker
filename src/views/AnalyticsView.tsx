@@ -6,7 +6,7 @@
    shows them lives above, next to the log.
 --------------------------------------------------------------- */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -20,6 +20,8 @@ import {
 } from 'recharts'
 import type { Project } from '../types/model'
 import { computeOverviewStats } from '../lib/analytics'
+import type { CounterGroupBy, CounterSeries } from '../lib/counterSeries'
+import { counterSeries, seriesValue } from '../lib/counterSeries'
 import {
   WEEKDAY_LABELS,
   addDays,
@@ -36,6 +38,7 @@ import { dayBreakdown, goalForDate, makeIsIgnored } from '../lib/stats'
 import { PALETTE, chartTooltip } from '../lib/theme'
 import { ChartCard } from '../ui/ChartCard'
 import { SegmentedControl } from '../ui/controls'
+import { segBtn, segBtnStyle } from '../ui/buttonStyles'
 import { ToggleChips } from '../ui/ToggleChips'
 import { bulkToggleFor, useSeriesToggle } from '../ui/useSeriesToggle'
 import { AveragesStats } from './AveragesStats'
@@ -62,7 +65,31 @@ const CHART_MODES = [
   { id: "hours", label: "Hours" },
   { id: "category", label: "Categories" },
   { id: "slot", label: "Slots" },
+  { id: "tag", label: "Tags" },
+  { id: "counter", label: "Counters" },
 ]
+
+/** Counts, not minutes — a different axis, so it formats differently too. */
+const isCount = (mode: string) => mode === "tag" || mode === "counter"
+
+/** Count series carry their own; slots and categories all share one. */
+const seriesOpacity = (s: object) =>
+  "fillOpacity" in s ? (s as CounterSeries).fillOpacity : 0.55
+
+const countSubtitle = (
+  mode: string,
+  groupBy: CounterGroupBy,
+  bySlot: boolean,
+  per: string,
+) => {
+  const what =
+    mode === "counter"
+      ? "Counts per counter"
+      : groupBy === "tag"
+        ? "Counts summed per tag"
+        : "Counts per tagged counter"
+  return `${what}, per ${per}${bySlot ? ", split by slot" : ""}`
+}
 
 /* The two sections this half of the page is made of.
  *
@@ -99,10 +126,77 @@ const TREND_TABS = [
 const TRENDS_HELP =
   "The same period spread over time: hours per day, how the weekdays compare " +
   "with one another, and totals week by week and month by month. Each chart " +
-  "can be split by time slot or by category."
+  "can be split by slot or by category."
 
 // Bounds come in from the shared period bar — analytics no longer owns a
 // range picker of its own.
+/**
+ * The two extra questions a counter chart raises, and only it.
+ *
+ * "By tag or by counter" is absent in counter mode: grouping counters by
+ * counter is the mode itself, so offering it would be a control with one
+ * answer. "Split by slot" applies to both, because when in the day something
+ * happened is a fair question about any count.
+ */
+/**
+ * The two extra questions a counter chart raises, and only it.
+ *
+ * "By tag or by counter" is absent in counter mode: grouping counters by
+ * counter is the mode itself, so offering it would be a control with one
+ * answer. "Split by slot" applies to both, because when in the day something
+ * happened is a fair question about any count.
+ *
+ * **One recessed track, divided down the middle**, and that shape is doing two
+ * separate jobs. Against the mode control it reads as subordinate — that one
+ * is raised off the card, this one is sunk into it — where a second identical
+ * row of pills read as the same control drawn twice, which is the same trap
+ * `TabbedSection` avoids by not being pills at all. And the hairline inside
+ * separates the two questions from each other, which no amount of gap between
+ * two identical tracks was ever going to do.
+ */
+function CountOptions({
+  mode,
+  groupBy,
+  onGroupBy,
+  bySlot,
+  onBySlot,
+}: {
+  mode: string
+  groupBy: CounterGroupBy
+  onGroupBy: (g: CounterGroupBy) => void
+  bySlot: boolean
+  onBySlot: (v: boolean) => void
+}) {
+  const c = usePalette()
+  const pill = (active: boolean, label: string, onClick: () => void) => (
+    <button
+      key={label}
+      onClick={onClick}
+      aria-pressed={active}
+      style={segBtnStyle(active, c)}
+      className={segBtn(active)}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full bg-ink/[0.07] p-1">
+      {mode === "tag" && (
+        <>
+          {pill(groupBy === "tag", "By tag", () => onGroupBy("tag"))}
+          {pill(groupBy === "counter", "By counter", () =>
+            onGroupBy("counter"),
+          )}
+          <span className="self-stretch w-px my-1 mx-1 bg-ink/20" />
+        </>
+      )}
+      {pill(!bySlot, "Whole day", () => onBySlot(false))}
+      {pill(bySlot, "By slot", () => onBySlot(true))}
+    </div>
+  )
+}
+
 export function AnalyticsView({
   data,
   rangeStart,
@@ -118,9 +212,14 @@ export function AnalyticsView({
     categories,
     days,
     settings,
+    counterUnits = [],
     weekIgnore = {},
     monthIgnore = {},
   } = data
+  // Memoised because `seriesFor` depends on it: `settings.tags || []` is a
+  // fresh array every render, which would rebuild every chart's series on
+  // every keystroke anywhere on the page.
+  const tags = useMemo(() => settings.tags || [], [settings.tags])
 
   // Applied once, up front, so every downstream stat and chart respects it.
   // Same predicate the log above uses — see makeIsIgnored.
@@ -151,10 +250,73 @@ export function AnalyticsView({
   const weeklyMode = known(rawWeeklyMode, 'hours')
   const monthlyMode = known(rawMonthlyMode, 'hours')
 
+  // Shared by all four charts rather than one pair each. They are not a
+  // property of a chart, they are how you want counters read — and answering
+  // the same question four times over is how two controls become eight.
+  const [countGroupBy, setCountGroupBy] = useState<CounterGroupBy>("tag")
+  const [countBySlot, setCountBySlot] = useState(false)
+
+  const seriesFor = useCallback(
+    (mode: string) =>
+      isCount(mode)
+        ? counterSeries(
+            mode as "tag" | "counter",
+            countGroupBy,
+            countBySlot,
+            counterUnits,
+            tags,
+            slots,
+          )
+        : [],
+    [countGroupBy, countBySlot, counterUnits, tags, slots],
+  )
+
+  /**
+   * Sums a set of days into one row's worth of keys, one per series.
+   *
+   * Returns a fresh object rather than filling one in place: React Compiler
+   * cannot keep a `useMemo` when a callback it depends on mutates something
+   * passed into it, and the whole file loses its memoization to that.
+   */
+  const countRow = useCallback(
+    (keys: string[], series: CounterSeries[]): ChartRow => {
+      const out: ChartRow = {}
+      let total = 0
+      series.forEach((se) => {
+        const n = keys.reduce((sum, k) => sum + seriesValue(days[k], se), 0)
+        out[se.id] = n
+        total += n
+      })
+      out.total = total
+      return out
+    },
+    [days],
+  )
+
   const dailyToggle = useSeriesToggle()
   const weekdayToggle = useSeriesToggle()
   const weeklyToggle = useSeriesToggle()
   const monthlyToggle = useSeriesToggle()
+
+  // One per chart, declared before the rows that read them: a stable array is
+  // something React Compiler can keep a memo around, where a callback called
+  // inside four different memos is not.
+  const dailyCountSeries = useMemo(
+    () => (isCount(dailyMode) ? seriesFor(dailyMode) : []),
+    [dailyMode, seriesFor],
+  )
+  const weekdayCountSeries = useMemo(
+    () => (isCount(weekdayMode) ? seriesFor(weekdayMode) : []),
+    [weekdayMode, seriesFor],
+  )
+  const weeklyCountSeries = useMemo(
+    () => (isCount(weeklyMode) ? seriesFor(weeklyMode) : []),
+    [weeklyMode, seriesFor],
+  )
+  const monthlyCountSeries = useMemo(
+    () => (isCount(monthlyMode) ? seriesFor(monthlyMode) : []),
+    [monthlyMode, seriesFor],
+  )
 
   const dayKeysSorted = useMemo(
     () =>
@@ -259,13 +421,24 @@ export function AnalyticsView({
           categories.forEach(
             (c) => (row[c.id] = toHours(byCategory[c.id] || 0)),
           )
+        } else if (isCount(dailyMode)) {
+          return { ...row, ...countRow([k], dailyCountSeries) }
         }
         return row
       }),
-    [rangedKeys, days, slots, categories, dailyMode, settings],
+    [rangedKeys, days, slots, categories, dailyMode, settings, dailyCountSeries, countRow],
   )
-  const dailySeries =
-    dailyMode === "slot" ? slots : dailyMode === "category" ? categories : []
+  const dailySeries = useMemo(
+    () =>
+      dailyMode === "slot"
+        ? slots
+        : dailyMode === "category"
+          ? categories
+          : isCount(dailyMode)
+            ? dailyCountSeries
+            : [],
+    [dailyMode, slots, categories, dailyCountSeries],
+  )
 
   const weeklyBuckets = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -277,11 +450,26 @@ export function AnalyticsView({
     return [...map.entries()].sort((a, b) => (a[0] > b[0] ? 1 : -1))
   }, [rangedKeys])
 
-  const weeklySeries =
-    weeklyMode === "slot" ? slots : weeklyMode === "category" ? categories : []
+  const weeklySeries = useMemo(
+    () =>
+      weeklyMode === "slot"
+        ? slots
+        : weeklyMode === "category"
+          ? categories
+          : isCount(weeklyMode)
+            ? weeklyCountSeries
+            : [],
+    [weeklyMode, slots, categories, weeklyCountSeries],
+  )
 
   const weeklyModeData = useMemo(() => {
     return weeklyBuckets.map(([wk, keys]) => {
+      if (isCount(weeklyMode)) {
+        return {
+          week: fmtShort(wk),
+          ...countRow(keys, weeklyCountSeries),
+        }
+      }
       const row: ChartRow = { week: fmtShort(wk) }
       if (weeklyMode === "slot" || weeklyMode === "category") {
         const list = weeklyMode === "slot" ? slots : categories
@@ -296,11 +484,6 @@ export function AnalyticsView({
           )
         })
         list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
-      } else if (weeklyMode === "lessons") {
-        row.lessons = keys.reduce(
-          (sum: number, k: string) => sum + (Number(days[k].lessons) || 0),
-          0,
-        )
       } else {
         let minutes = 0
         keys.forEach((k) => {
@@ -320,7 +503,7 @@ export function AnalyticsView({
       }
       return row
     })
-  }, [weeklyBuckets, days, slots, categories, weeklyMode, settings])
+  }, [weeklyBuckets, days, slots, categories, weeklyMode, settings, weeklyCountSeries, countRow])
 
   const monthlyBuckets = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -341,15 +524,26 @@ export function AnalyticsView({
     })
   }
 
-  const monthlySeries =
-    monthlyMode === "slot"
-      ? slots
-      : monthlyMode === "category"
-        ? categories
-        : []
+  const monthlySeries = useMemo(
+    () =>
+      monthlyMode === "slot"
+        ? slots
+        : monthlyMode === "category"
+          ? categories
+          : isCount(monthlyMode)
+            ? monthlyCountSeries
+            : [],
+    [monthlyMode, slots, categories, monthlyCountSeries],
+  )
 
   const monthlyModeData = useMemo(() => {
     return monthlyBuckets.map(([mk, keys]) => {
+      if (isCount(monthlyMode)) {
+        return {
+          month: fmtMonthLabel(mk),
+          ...countRow(keys, monthlyCountSeries),
+        }
+      }
       const row: ChartRow = { month: fmtMonthLabel(mk) }
       if (monthlyMode === "slot" || monthlyMode === "category") {
         const list = monthlyMode === "slot" ? slots : categories
@@ -364,11 +558,6 @@ export function AnalyticsView({
           )
         })
         list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
-      } else if (monthlyMode === "lessons") {
-        row.lessons = keys.reduce(
-          (sum: number, k: string) => sum + (Number(days[k].lessons) || 0),
-          0,
-        )
       } else {
         let minutes = 0
         keys.forEach((k) => {
@@ -389,7 +578,7 @@ export function AnalyticsView({
       }
       return row
     })
-  }, [monthlyBuckets, days, slots, categories, monthlyMode, settings])
+  }, [monthlyBuckets, days, slots, categories, monthlyMode, settings, monthlyCountSeries, countRow])
 
   // Weekday effectiveness — compares the same weekday (Mon, Tue, …) across the
   // different weeks in range. In Slot/Category mode we instead show the hours
@@ -403,15 +592,25 @@ export function AnalyticsView({
   const weekdaySeries = useMemo(() => {
     if (weekdayMode === "slot") return slots
     if (weekdayMode === "category") return categories
+    if (isCount(weekdayMode)) return weekdayCountSeries
     return weeklyBuckets.map(([,], idx) => ({
       id: `w${idx}`,
       label: `Wk of ${weekLabelsList[idx]}`,
       color: PALETTE[idx % PALETTE.length],
     }))
-  }, [weekdayMode, slots, categories, weeklyBuckets, weekLabelsList])
+  }, [weekdayMode, slots, categories, weeklyBuckets, weekLabelsList, weekdayCountSeries])
 
   const weekdayData = useMemo(() => {
     return WEEKDAY_ORDER.map((wd) => {
+      if (isCount(weekdayMode)) {
+        return {
+          weekday: WEEKDAY_LABELS[wd],
+          ...countRow(
+            rangedKeys.filter((k) => fromKey(k).getDay() === wd),
+            weekdayCountSeries,
+          ),
+        }
+      }
       const row: ChartRow = { weekday: WEEKDAY_LABELS[wd] }
       if (weekdayMode === "slot" || weekdayMode === "category") {
         const matching = rangedKeys.filter((k) => fromKey(k).getDay() === wd)
@@ -437,12 +636,8 @@ export function AnalyticsView({
       } else {
         weeklyBuckets.forEach(([, keys], idx) => {
           const dayKey = keys.find((k) => fromKey(k).getDay() === wd)
-          if (weekdayMode === "lessons") {
-            row[`w${idx}`] = dayKey ? Number(days[dayKey].lessons) || 0 : 0
-          } else {
-            const { total } = dayBreakdown(dayKey ? days[dayKey] : undefined, slots)
-            row[`w${idx}`] = toHours(total)
-          }
+          const { total } = dayBreakdown(dayKey ? days[dayKey] : undefined, slots)
+          row[`w${idx}`] = toHours(total)
         })
         if (weekdayMode === "hours") {
           row.goal = goalsEnabled
@@ -461,6 +656,8 @@ export function AnalyticsView({
     weekdayMode,
     settings,
     goalsEnabled,
+    weekdayCountSeries,
+    countRow,
   ])
 
   return (
@@ -505,16 +702,27 @@ export function AnalyticsView({
           subtitle={
             dailyMode === "hours"
               ? "Total hours logged per day"
-              : dailyMode === "lessons"
-                ? "Lessons completed per day"
+              : isCount(dailyMode)
+                ? countSubtitle(dailyMode, countGroupBy, countBySlot, "day")
                 : `Hours logged per day, split by ${dailyMode} — dashed line is the day's total`
           }
           action={
-            <SegmentedControl
-              items={CHART_MODES}
-              activeId={dailyMode}
-              onChange={setDailyMode}
-            />
+            <div className="flex flex-wrap items-center gap-1.5 justify-end">
+              <SegmentedControl
+                items={CHART_MODES}
+                activeId={dailyMode}
+                onChange={setDailyMode}
+              />
+              {isCount(dailyMode) && (
+                <CountOptions
+                  mode={dailyMode}
+                  groupBy={countGroupBy}
+                  onGroupBy={setCountGroupBy}
+                  bySlot={countBySlot}
+                  onBySlot={setCountBySlot}
+                />
+              )}
+            </div>
           }
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -526,13 +734,13 @@ export function AnalyticsView({
               />
               <YAxis
                 tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
-                tickFormatter={dailyMode === "lessons" ? undefined : fmtAxisHours}
+                tickFormatter={isCount(dailyMode) ? undefined : fmtAxisHours}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={chartTooltip(c)}
                 formatter={(value, name) =>
-                  dailyMode === "lessons"
+                  isCount(dailyMode)
                     ? [`${value}`, name]
                     : [fmtHoursChart(Number(value)), name]
                 }
@@ -565,17 +773,6 @@ export function AnalyticsView({
                       ]
                     : []),
                 ]
-              ) : dailyMode === "lessons" ? (
-                <Area
-                  type="monotone"
-                  dataKey="lessons"
-                  stroke={c.goalMet}
-                  fill={c.goalMet}
-                  fillOpacity={0.25}
-                  strokeWidth={2}
-                  name="Lessons"
-                  dot={{ r: 3 }}
-                />
               ) : (
                 // NOTE: recharts inspects its direct children by type — wrapping these in a
                 // <Fragment> hides them from it entirely, so we return a flat array instead.
@@ -590,7 +787,7 @@ export function AnalyticsView({
                         stackId="a"
                         stroke={s.color}
                         fill={s.color}
-                        fillOpacity={0.55}
+                        fillOpacity={seriesOpacity(s)}
                         name={s.label}
                       />
                     )),
@@ -608,7 +805,7 @@ export function AnalyticsView({
               )}
             </ComposedChart>
           </ResponsiveContainer>
-          {(dailyMode === "slot" || dailyMode === "category") && (
+          {dailyMode !== "hours" && (
             <ToggleChips
               items={dailySeries}
               hidden={dailyToggle.hidden}
@@ -626,16 +823,27 @@ export function AnalyticsView({
               ? goalsEnabled
                 ? "Hours studied per weekday, compared week over week"
                 : "Hours studied per weekday"
-              : weekdayMode === "lessons"
-                ? "Lessons completed per weekday, compared week over week"
+              : isCount(weekdayMode)
+                ? countSubtitle(weekdayMode, countGroupBy, countBySlot, "weekday")
                 : `Hours per weekday in this range, split by ${weekdayMode}`
           }
           action={
-            <SegmentedControl
-              items={CHART_MODES}
-              activeId={weekdayMode}
-              onChange={setWeekdayMode}
-            />
+            <div className="flex flex-wrap items-center gap-1.5 justify-end">
+              <SegmentedControl
+                items={CHART_MODES}
+                activeId={weekdayMode}
+                onChange={setWeekdayMode}
+              />
+              {isCount(weekdayMode) && (
+                <CountOptions
+                  mode={weekdayMode}
+                  groupBy={countGroupBy}
+                  onGroupBy={setCountGroupBy}
+                  bySlot={countBySlot}
+                  onBySlot={setCountBySlot}
+                />
+              )}
+            </div>
           }
         >
           <ResponsiveContainer width="100%" height={280}>
@@ -648,14 +856,14 @@ export function AnalyticsView({
               <YAxis
                 tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                 tickFormatter={
-                  weekdayMode === "lessons" ? undefined : fmtAxisHours
+                  isCount(weekdayMode) ? undefined : fmtAxisHours
                 }
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={chartTooltip(c)}
                 formatter={(value, name) =>
-                  weekdayMode === "lessons"
+                  isCount(weekdayMode)
                     ? [`${value}`, name]
                     : [fmtHoursChart(Number(value)), name]
                 }
@@ -671,7 +879,7 @@ export function AnalyticsView({
                       stackId="a"
                       stroke={s.color}
                       fill={s.color}
-                      fillOpacity={0.55}
+                      fillOpacity={seriesOpacity(s)}
                       name={s.label}
                     />
                   ) : (
@@ -717,16 +925,27 @@ export function AnalyticsView({
               ? goalsEnabled
                 ? "Total hours studied, aggregated per week"
                 : "Total hours studied per week"
-              : weeklyMode === "lessons"
-                ? "Lessons completed per week"
+              : isCount(weeklyMode)
+                ? countSubtitle(weeklyMode, countGroupBy, countBySlot, "week")
                 : `Hours per week, split by ${weeklyMode}`
           }
           action={
-            <SegmentedControl
-              items={CHART_MODES}
-              activeId={weeklyMode}
-              onChange={setWeeklyMode}
-            />
+            <div className="flex flex-wrap items-center gap-1.5 justify-end">
+              <SegmentedControl
+                items={CHART_MODES}
+                activeId={weeklyMode}
+                onChange={setWeeklyMode}
+              />
+              {isCount(weeklyMode) && (
+                <CountOptions
+                  mode={weeklyMode}
+                  groupBy={countGroupBy}
+                  onGroupBy={setCountGroupBy}
+                  bySlot={countBySlot}
+                  onBySlot={setCountBySlot}
+                />
+              )}
+            </div>
           }
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -739,25 +958,19 @@ export function AnalyticsView({
               <YAxis
                 tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                 tickFormatter={
-                  weeklyMode === "slot" ||
-                  weeklyMode === "category" ||
-                  weeklyMode === "hours"
-                    ? fmtAxisHours
-                    : undefined
+                  isCount(weeklyMode) ? undefined : fmtAxisHours
                 }
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={chartTooltip(c)}
                 formatter={(value, name) =>
-                  weeklyMode === "slot" ||
-                  weeklyMode === "category" ||
-                  weeklyMode === "hours"
-                    ? [fmtHoursChart(Number(value)), name]
-                    : [`${value}`, name]
+                  isCount(weeklyMode)
+                    ? [`${value}`, name]
+                    : [fmtHoursChart(Number(value)), name]
                 }
               />
-              {weeklyMode === "slot" || weeklyMode === "category"
+              {weeklyMode !== "hours"
                 ? weeklySeries
                     .filter((s) => !weeklyToggle.hidden.has(s.id))
                     .map((s) => (
@@ -768,7 +981,7 @@ export function AnalyticsView({
                         stackId="a"
                         stroke={s.color}
                         fill={s.color}
-                        fillOpacity={0.55}
+                        fillOpacity={seriesOpacity(s)}
                         name={s.label}
                       />
                     ))
@@ -776,12 +989,12 @@ export function AnalyticsView({
                     <Area
                       key="value"
                       type="monotone"
-                      dataKey={weeklyMode === "lessons" ? "lessons" : "hours"}
-                      stroke={weeklyMode === "lessons" ? c.goalMet : c.accent}
-                      fill={weeklyMode === "lessons" ? c.goalMet : c.accent}
+                      dataKey="hours"
+                      stroke={c.accent}
+                      fill={c.accent}
                       fillOpacity={0.15}
                       strokeWidth={2}
-                      name={weeklyMode === "lessons" ? "Lessons" : "Hours"}
+                      name="Hours"
                       dot={{ r: 3 }}
                     />,
                     goalsEnabled && weeklyMode === "hours" && (
@@ -799,7 +1012,7 @@ export function AnalyticsView({
                   ]}
             </AreaChart>
           </ResponsiveContainer>
-          {(weeklyMode === "slot" || weeklyMode === "category") && (
+          {weeklyMode !== "hours" && (
             <ToggleChips
               items={weeklySeries}
               hidden={weeklyToggle.hidden}
@@ -817,16 +1030,27 @@ export function AnalyticsView({
                 ? goalsEnabled
                   ? "Total hours studied, aggregated per month"
                   : "Total hours studied per month"
-                : monthlyMode === "lessons"
-                  ? "Lessons completed per month"
+                : isCount(monthlyMode)
+                  ? countSubtitle(monthlyMode, countGroupBy, countBySlot, "month")
                   : `Hours per month, split by ${monthlyMode}`
             }
             action={
-              <SegmentedControl
-                items={CHART_MODES}
-                activeId={monthlyMode}
-                onChange={setMonthlyMode}
-              />
+              <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                <SegmentedControl
+                  items={CHART_MODES}
+                  activeId={monthlyMode}
+                  onChange={setMonthlyMode}
+                />
+                {isCount(monthlyMode) && (
+                  <CountOptions
+                    mode={monthlyMode}
+                    groupBy={countGroupBy}
+                    onGroupBy={setCountGroupBy}
+                    bySlot={countBySlot}
+                    onBySlot={setCountBySlot}
+                  />
+                )}
+              </div>
             }
           >
             <ResponsiveContainer width="100%" height={260}>
@@ -839,25 +1063,19 @@ export function AnalyticsView({
                 <YAxis
                   tick={{ fontSize: 10, fontFamily: "monospace", fill: `${c.ink}A0` }}
                   tickFormatter={
-                    monthlyMode === "slot" ||
-                    monthlyMode === "category" ||
-                    monthlyMode === "hours"
-                      ? fmtAxisHours
-                      : undefined
+                    isCount(monthlyMode) ? undefined : fmtAxisHours
                   }
                   allowDecimals={false}
                 />
                 <Tooltip
                   contentStyle={chartTooltip(c)}
                   formatter={(value, name) =>
-                    monthlyMode === "slot" ||
-                    monthlyMode === "category" ||
-                    monthlyMode === "hours"
-                      ? [fmtHoursChart(Number(value)), name]
-                      : [`${value}`, name]
+                    isCount(monthlyMode)
+                      ? [`${value}`, name]
+                      : [fmtHoursChart(Number(value)), name]
                   }
                 />
-                {monthlyMode === "slot" || monthlyMode === "category"
+                {monthlyMode !== "hours"
                   ? monthlySeries
                       .filter((s) => !monthlyToggle.hidden.has(s.id))
                       .map((s) => (
@@ -868,7 +1086,7 @@ export function AnalyticsView({
                           stackId="a"
                           stroke={s.color}
                           fill={s.color}
-                          fillOpacity={0.55}
+                          fillOpacity={seriesOpacity(s)}
                           name={s.label}
                         />
                       ))
@@ -877,14 +1095,12 @@ export function AnalyticsView({
                       <Area
                         key="value"
                         type="monotone"
-                        dataKey={monthlyMode === "lessons" ? "lessons" : "hours"}
-                        stroke={
-                          monthlyMode === "lessons" ? c.goalMet : c.accent
-                        }
-                        fill={monthlyMode === "lessons" ? c.goalMet : c.accent}
+                        dataKey="hours"
+                        stroke={c.accent}
+                        fill={c.accent}
                         fillOpacity={0.15}
                         strokeWidth={2}
-                        name={monthlyMode === "lessons" ? "Lessons" : "Hours"}
+                        name="Hours"
                         dot={{ r: 3 }}
                       />,
                       goalsEnabled && monthlyMode === "hours" && (
@@ -902,7 +1118,7 @@ export function AnalyticsView({
                     ]}
               </AreaChart>
             </ResponsiveContainer>
-            {(monthlyMode === "slot" || monthlyMode === "category") && (
+            {monthlyMode !== "hours" && (
               <ToggleChips
                 items={monthlySeries}
                 hidden={monthlyToggle.hidden}

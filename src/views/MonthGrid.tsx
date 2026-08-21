@@ -30,10 +30,12 @@ import {
   makeIsIgnored,
   rangeStats,
 } from "../lib/stats"
+import { counterTotalsIn } from "../lib/counters"
 import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
+import { CounterTotals } from "./CounterTotals"
 import { usePalette } from "../ui/useTheme"
 
 const WEEKDAY_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -63,6 +65,8 @@ function WeekSummaryStrip({
   ignored,
   state,
   ordinal,
+  units,
+  counters,
 }: {
   total: number
   goal: number
@@ -70,6 +74,8 @@ function WeekSummaryStrip({
   /** By days, not by summed hours — see lib/freezes. */
   state: PeriodState
   ordinal: number
+  units: CounterUnit[]
+  counters: Record<string, number>
 }) {
   const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
@@ -103,7 +109,10 @@ function WeekSummaryStrip({
           />
         </Tip>
       )}
+      {/* The rule does the separating: hours on its left, counts on its right,
+          and the gap between them is however much room the row has. */}
       <span className="flex-1 border-b border-dotted border-ink/15" />
+      <CounterTotals units={units} totals={counters} className="shrink-0" />
     </div>
   )
 }
@@ -345,12 +354,18 @@ export function MonthGrid({
           monthIgnored || (weekKey ? !!weekIgnore[weekKey] : false)
         // Only the days of this month that fall in the row, so a row split
         // across two months is judged on what it actually shows.
+        const weekDatesInRow = row.filter(Boolean) as Date[]
         const weekState = periodState(
-          row.filter(Boolean) as Date[],
+          weekDatesInRow,
           days,
           settings,
           slots,
           todayKey,
+        )
+        const weekCounters = counterTotalsIn(
+          weekDatesInRow,
+          days,
+          makeIsIgnored(weekIgnore, monthIgnore),
         )
         return (
           <div key={ri}>
@@ -360,6 +375,8 @@ export function MonthGrid({
               ignored={weekIgnored}
               state={weekState}
               ordinal={ri + 1}
+              units={counterUnits}
+              counters={weekCounters}
             />
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real

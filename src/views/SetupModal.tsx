@@ -6,10 +6,17 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  FolderOpen,
   Gauge,
+  Hash,
+  LayoutGrid,
   Moon,
+  Palette,
   Pencil,
   Plus,
+  Shapes,
+  SlidersHorizontal,
+  Tags,
   Trash2,
   X,
 } from "lucide-react"
@@ -43,6 +50,7 @@ import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
 import { AppearanceTab } from './AppearanceTab'
+import { TagsTab } from './TagsTab'
 import { DataTransfer } from './DataTransfer'
 
 import { usePalette } from "../ui/useTheme"
@@ -116,15 +124,19 @@ export function SetupModal({
           style={{ backgroundColor: c.card }}
           className="flex border-b border-ink/10 shrink-0"
         >
+          {/* An icon each. Seven tabs of small uppercase type is a wall of
+              words to read every time; a glyph is what the eye actually aims
+              at once you know where a thing lives. */}
           {[
-            { id: "details", label: "Project details" },
-            { id: "slots", label: "Time slots" },
-            { id: "categories", label: "Categories" },
-            { id: "units", label: "Counters" },
-            { id: "projects", label: "Projects" },
+            { id: "details", label: "Project", icon: SlidersHorizontal },
+            { id: "slots", label: "Slots", icon: LayoutGrid },
+            { id: "categories", label: "Categories", icon: Shapes },
+            { id: "units", label: "Counters", icon: Hash },
+            { id: "tags", label: "Tags", icon: Tags },
+            { id: "projects", label: "Projects", icon: FolderOpen },
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
-            { id: "app", label: "App" },
+            { id: "app", label: "App", icon: Palette },
           ].map((t) => {
             const active = tab === t.id
             return (
@@ -134,12 +146,13 @@ export function SetupModal({
                 style={
                   active ? { borderColor: c.accent, color: c.accent } : undefined
                 }
-                className={`${btnBase} flex-1 text-[10px] font-mono uppercase tracking-widest px-3 py-2.5 border-b-2 ${
+                className={`${btnBase} flex-1 flex flex-col items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-2 py-2 border-b-2 ${
                   active
                     ? ""
                     : "border-transparent text-ink/50 hover:text-ink hover:bg-ink/5"
                 }`}
               >
+                <t.icon size={14} />
                 {t.label}
               </button>
             )
@@ -150,6 +163,14 @@ export function SetupModal({
           style={{ backgroundColor: c.card }}
           className="p-5 overflow-y-auto rounded-b-xl"
         >
+          {tab === "tags" && (
+            <TagsTab
+              tags={settings.tags || []}
+              units={counterUnits}
+              onChange={(tags) => onSaveSettings({ ...settings, tags })}
+              onUpdateUnits={onUpdateUnits}
+            />
+          )}
           {tab === "app" && <AppearanceTab />}
           {tab === "details" && (
             <ProjectDetailsTab
@@ -181,6 +202,7 @@ export function SetupModal({
           {tab === "units" && (
             <CounterUnitsTab
               units={counterUnits}
+              tags={settings.tags || []}
               progress={counterProgress}
               onChange={onUpdateUnits}
             />
