@@ -790,11 +790,22 @@ Claude artifact). Offline mode is therefore non-functional — add a
 
 ## Adding things to a day
 
-One "+" per card, and the choice of *what* lives inside the dialog it opens —
-a tab row, `Time entry` or `Counter`. There used to be a "+" and a "#" a pixel
-apart, told apart only by their glyph, which made you decide what you were
-recording before you had opened anything. Sleep keeps its own moon button: it
-is a different axis, not a different kind of study.
+**One "+" per card, and the choice of *what* lives inside the dialog it
+opens** — a tab row of `Entry`, `Counter` and `Sleep`, each with its own icon,
+because three words of small uppercase type is a sentence to parse where a
+glyph is something the eye aims at.
+
+There used to be a "+" and a "#" a pixel apart, told apart only by their glyph,
+which made you decide what you were recording before you had opened anything.
+Sleep kept a moon of its own for a while longer — it is a different axis, not a
+different kind of study — and that stopped being worth its place once checks, a
+freeze, counter badges and a note were all competing for the same line: a
+second way in was the thing the card could least afford, and *what* you are
+recording belongs inside the thing you record it in.
+
+A tab is **absent, not disabled**, for anything the project does not have —
+no counters, no `Counter`; sleep tracking off, no `Sleep` — and with one option
+left the row goes entirely, since there is no choice to offer.
 
 Each slot heading in the readout carries its own "+", which opens the same
 dialog with that slot already chosen. It follows the card's rules exactly —

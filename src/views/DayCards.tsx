@@ -9,7 +9,6 @@ import {
   EyeOff,
   Maximize2,
   MessageSquare,
-  Moon,
   Plus,
   Snowflake,
   X,
@@ -65,7 +64,6 @@ function FullDayCard({
   onFreeze,
   onEdit,
   onQuickAdd,
-  onQuickAddSleep,
   onQuickAddSlot,
   onExpand,
   longDate,
@@ -104,7 +102,6 @@ function FullDayCard({
   onFreeze?: () => void
   onEdit?: () => void
   onQuickAdd?: () => void
-  onQuickAddSleep?: () => void
   /** The "+" on each slot heading in the readout. */
   onQuickAddSlot?: (slotId: string) => void
   /**
@@ -368,24 +365,16 @@ function FullDayCard({
                 : undefined
             }
           />
-          {/* The action buttons close the row, always in this order — sleep,
-              freeze, counter, add — so each one keeps the same place on every
-              day of the week however many badges appear to their left. All of
-              them stop the click: the card itself opens the day dialog. */}
-          {onQuickAddSleep && (
-            <Tip text="Log sleep">
-              <button
-                onClick={(ev) => {
-                  ev.stopPropagation()
-                  onQuickAddSleep()
-                }}
-                className={`${btnBase} p-1 rounded-lg hover:bg-ink/10`}
-                style={{ color: c.sleep }}
-              >
-                <Moon size={14} />
-              </button>
-            </Tip>
-          )}
+          {/* The action buttons close the row, always in this order — freeze,
+              counter, add — so each one keeps the same place on every day of
+              the week however many badges appear to their left. All of them
+              stop the click: the card itself opens the day dialog.
+
+              Sleep used to have a moon of its own here. It moved into the "+"
+              dialog beside Entry and Counter: with badges, checks, a freeze
+              and a note all competing for this line, a second way in was the
+              thing the card could least afford — and choosing what you are
+              recording belongs inside the thing you are recording it in. */}
           {canFreeze && onFreeze && (
             <Tip text="Use a streak freeze on this day">
               <button
@@ -407,9 +396,10 @@ function FullDayCard({
                   ev.stopPropagation()
                   onQuickAdd()
                 }}
-                // Full-strength accent, not muted ink. It sat at 35% opacity
-                // next to a fully saturated sleep icon, which made the more
-                // important of the two the harder one to find.
+                // Full-strength accent, not muted ink: it is the way in to
+                // everything the day can gain, and it used to sit at 35%
+                // opacity beside a fully saturated sleep icon — the more
+                // important of the two being the harder one to find.
                 className={`${btnBase} p-1 rounded-lg hover:bg-ink/10`}
                 style={{ color: c.accent }}
               >
@@ -584,7 +574,6 @@ export function FullCardGrid({
   big,
   commentsOpen = true,
   onQuickAddDay,
-  onQuickAddSleepDay,
   onQuickAddSlotDay,
   onExpandDay,
   longDate,
@@ -608,7 +597,6 @@ export function FullCardGrid({
   commentsOpen?: boolean
   onQuickAddDay?: (key: DayKey) => void
   /** Absent when sleep tracking is off — there is nothing to log. */
-  onQuickAddSleepDay?: (key: DayKey) => void
   onQuickAddSlotDay?: (key: DayKey, slotId: string) => void
   /** Absent inside the dialog — the card is already expanded there. */
   onExpandDay?: (key: DayKey) => void
@@ -706,11 +694,6 @@ export function FullCardGrid({
             onClose={onClose}
             onQuickAdd={
               !locked && onQuickAddDay ? () => onQuickAddDay(key) : undefined
-            }
-            onQuickAddSleep={
-              !locked && onQuickAddSleepDay
-                ? () => onQuickAddSleepDay(key)
-                : undefined
             }
             onQuickAddSlot={
               !locked && onQuickAddSlotDay

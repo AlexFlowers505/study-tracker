@@ -110,7 +110,6 @@ export default function StudyTrackerApp() {
   // of state so the two can never both be open.
   const [quickAdd, setQuickAdd] = useState<{
     key: DayKey
-    variant: "study" | "sleep"
     /** Preselected when the dialog was opened from a slot's own "+". */
     slotId?: string
   } | null>(null)
@@ -895,17 +894,12 @@ export default function StudyTrackerApp() {
           onUpdateMonthNote={updateMonthNote}
           onUpdateWeekIgnore={updateWeekIgnore}
           onUpdateMonthIgnore={updateMonthIgnore}
-          onQuickAddDay={(key) => setQuickAdd({ key, variant: "study" })}
-          onQuickAddSleepDay={
-            project.settings.sleepEnabled === true
-              ? (key) => setQuickAdd({ key, variant: "sleep" })
-              : undefined
-          }
+          onQuickAddDay={(key) => setQuickAdd({ key })}
           // The "+" beside a slot heading: same dialog, that slot already
           // chosen. Adding to the morning is the commonest thing there is, and
           // it used to mean opening the dialog and then correcting the slot.
           onQuickAddSlotDay={(key, slotId) =>
-            setQuickAdd({ key, variant: "study", slotId })
+            setQuickAdd({ key, slotId })
           }
           canFreezeDay={canFreezeDay}
           onFreezeDay={setFreezeCandidate}
@@ -1003,11 +997,11 @@ export default function StudyTrackerApp() {
            which is where you are already looking at it. */
         <QuickAddEntryModal
           dateKey={quickAdd.key}
-          variant={quickAdd.variant}
           initialSlotId={quickAdd.slotId}
           slots={project.slots}
           categories={project.categories}
           units={(project.counterUnits || []).filter((u) => !isCheck(u))}
+          sleepEnabled={project.settings.sleepEnabled === true}
           counters={project.days[quickAdd.key]?.counters || {}}
           onCancel={() => setQuickAdd(null)}
           onAddCounter={(dateKey, unitId, slotId, amount) => {
@@ -1052,14 +1046,9 @@ export default function StudyTrackerApp() {
           onChange={(patch) => updateDay(editingKey, patch)}
           // The dialog draws the same card the week does, so it keeps the
           // card's own actions rather than losing them one level down.
-          onQuickAdd={(key) => setQuickAdd({ key, variant: "study" })}
-          onQuickAddSleep={
-            project.settings.sleepEnabled === true
-              ? (key) => setQuickAdd({ key, variant: "sleep" })
-              : undefined
-          }
+          onQuickAdd={(key) => setQuickAdd({ key })}
           onQuickAddSlot={(key, slotId) =>
-            setQuickAdd({ key, variant: "study", slotId })
+            setQuickAdd({ key, slotId })
           }
           canFreeze={canFreezeDay}
           onFreeze={setFreezeCandidate}

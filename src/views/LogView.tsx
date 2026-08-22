@@ -43,7 +43,6 @@ export function LogView({
   onUpdateWeekIgnore,
   onUpdateMonthIgnore,
   onQuickAddDay,
-  onQuickAddSleepDay,
   onQuickAddSlotDay,
   onExpandDay,
   canFreezeDay,
@@ -62,7 +61,6 @@ export function LogView({
   onUpdateWeekIgnore: (key: string, next: boolean) => void
   onUpdateMonthIgnore: (key: string, next: boolean) => void
   onQuickAddDay: (key: string) => void
-  onQuickAddSleepDay?: (key: string) => void
   onQuickAddSlotDay?: (key: string, slotId: string) => void
   onExpandDay?: (key: string) => void
   canFreezeDay?: (key: string) => boolean
@@ -294,9 +292,6 @@ export function LogView({
           big={granularity === "day"}
           commentsOpen={commentsOpen}
           onQuickAddDay={granularity === "week" ? onQuickAddDay : undefined}
-          onQuickAddSleepDay={
-            granularity === "week" ? onQuickAddSleepDay : undefined
-          }
           onQuickAddSlotDay={
             granularity === "week" ? onQuickAddSlotDay : undefined
           }

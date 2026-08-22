@@ -50,7 +50,6 @@ export function DayQuickviewModal({
   onChange,
   onGoToDayView,
   onQuickAdd,
-  onQuickAddSleep,
   onQuickAddSlot,
   canFreeze,
   onFreeze,
@@ -58,7 +57,6 @@ export function DayQuickviewModal({
   onGoToDayView: (key: DayKey) => void
   /** The card's own quick actions, forwarded so the dialog keeps them. */
   onQuickAdd?: (key: DayKey) => void
-  onQuickAddSleep?: (key: DayKey) => void
   onQuickAddSlot?: (key: DayKey, slotId: string) => void
   canFreeze?: (key: DayKey) => boolean
   onFreeze?: (key: DayKey) => void
@@ -106,7 +104,6 @@ export function DayQuickviewModal({
               }
               onClose={onClose}
               onQuickAddDay={onQuickAdd}
-              onQuickAddSleepDay={onQuickAddSleep}
               onQuickAddSlotDay={onQuickAddSlot}
               canFreezeDay={canFreeze}
               onFreezeDay={onFreeze}

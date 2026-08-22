@@ -15,7 +15,7 @@
 --------------------------------------------------------------- */
 
 import { useCallback, useState } from "react"
-import { Play, Square, X } from "lucide-react"
+import { Clock, Hash, Moon, Play, Square, X } from "lucide-react"
 import type {
   Category,
   CounterUnit,
@@ -41,6 +41,7 @@ export function QuickAddEntryModal({
   slots,
   categories,
   units = [],
+  sleepEnabled,
   counters = {},
   initialSlotId,
   variant = "study",
@@ -53,6 +54,9 @@ export function QuickAddEntryModal({
   categories: Category[]
   /** Empty when the project defines no counters — then there is no tab row. */
   units?: CounterUnit[]
+  /** Whether sleep is tracked at all. Off, the option is absent rather
+   *  than disabled — there is nothing behind it. */
+  sleepEnabled?: boolean
   counters?: DayCounters
   /** Set when the dialog was opened from a particular slot's own "+". */
   initialSlotId?: string
@@ -73,10 +77,22 @@ export function QuickAddEntryModal({
   ) => void
 }) {
   const c = usePalette()
-  const isSleep = variant === "sleep"
-  const canCount = !isSleep && units.length > 0 && !!onAddCounter
-  const [kind, setKind] = useState<"entry" | "counter">("entry")
+  /* What is being added is chosen *here*, not before the dialog opens.
+     The day card had a "+" and a moon a few pixels apart, which made you
+     decide what you were recording before you had opened anything — and with
+     badges, checks, a freeze and a note all wanting room on the same line,
+     the second button was also the one the card could least afford. */
+  const canCount = units.length > 0 && !!onAddCounter
+  const [kind, setKind] = useState<"entry" | "counter" | "sleep">(
+    variant === "sleep" && sleepEnabled ? "sleep" : "entry",
+  )
+  const isSleep = kind === "sleep"
   const counting = canCount && kind === "counter"
+  const KINDS = [
+    { id: "entry" as const, label: "Entry", icon: Clock, on: true },
+    { id: "counter" as const, label: "Counter", icon: Hash, on: canCount },
+    { id: "sleep" as const, label: "Sleep", icon: Moon, on: !!sleepEnabled },
+  ].filter((k) => k.on)
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
   const [unitId, setUnitId] = useState(units[0]?.id)
   const [amount, setAmount] = useState(1)
@@ -139,27 +155,33 @@ export function QuickAddEntryModal({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Absent, not disabled, when the project has no counters — there is
-              nothing behind the second tab to show. */}
-          {canCount && (
+          {/* Absent, not disabled, for anything the project does not have —
+              there is nothing behind a tab for counters you never made.
+              Below two options there is no choice left to offer. */}
+          {KINDS.length > 1 && (
             <div className="flex gap-1 rounded-xl bg-ink/[0.06] p-1">
-              {(["entry", "counter"] as const).map((id) => {
-                const active = kind === id
+              {KINDS.map((k) => {
+                const active = kind === k.id
                 return (
                   <button
-                    key={id}
-                    onClick={() => setKind(id)}
+                    key={k.id}
+                    onClick={() => setKind(k.id)}
                     aria-pressed={active}
                     style={
                       active
                         ? { backgroundColor: c.accent, color: c.onFill }
                         : undefined
                     }
-                    className={`${btnBase} flex-1 rounded-lg py-2 text-[10px] font-mono uppercase tracking-widest ${
+                    /* An icon each. Three words of small uppercase type read
+                       as a sentence to parse; a glyph is what the eye aims at
+                       once you know which is which — the same reason Setup's
+                       tabs carry them. */
+                    className={`${btnBase} flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[10px] font-mono uppercase tracking-widest ${
                       active ? "font-bold" : "text-ink/55 hover:text-ink"
                     }`}
                   >
-                    {id === "entry" ? "Entry" : "Counter"}
+                    <k.icon size={12} />
+                    {k.label}
                   </button>
                 )
               })}
