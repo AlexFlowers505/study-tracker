@@ -29,6 +29,44 @@ export type Category = Labeled
 export type CounterRelation = "positive" | "neutral" | "negative"
 
 /**
+ * The two questions a counter can answer, which are not the same question.
+ *
+ * - `tally` — *how many?* Three lessons, eleven pages, none. A number per slot.
+ * - `check` — *did it happen?* Not a number, and not a plain yes/no either: at
+ *   nine in the morning you do not yet know whether you overslept, and a "no"
+ *   recorded then is a claim about the rest of the day you are not entitled to
+ *   make. So a check has four states — see `CheckState`.
+ *
+ * `spec 008` said a boolean is a counter that stops at one, and that was true
+ * enough to ship `oncePerDay` on. It stopped being true the moment "I do not
+ * know yet" and "it did not happen" had to be told apart.
+ */
+export type CounterKind = "tally" | "check"
+
+/**
+ * What a check says about one day.
+ *
+ * `unknown` is the resting state of a day still in progress, and it resolves
+ * to `no` the moment the day is over — which is what makes the common case
+ * cost nothing to record. `no` exists so a day inside the editing window can
+ * be closed deliberately; nothing downstream tells it apart from an unrecorded
+ * day that has ended.
+ */
+export type CheckState = "unknown" | "yes" | "no" | "skip"
+
+/**
+ * The two marks a count cannot express, and therefore the only two that get
+ * stored. `yes` is a count of one, in `Day.counters` where it already lived;
+ * `unknown` is the absence of everything.
+ *
+ * Keeping `yes` as a count is what lets every existing reader of counts — the
+ * badges, the period chips, the filter, both counter chart modes — go on
+ * working without knowing checks exist, and keeps "how many times did I
+ * oversleep in July" a question with an answer.
+ */
+export type CheckMark = "no" | "skip"
+
+/**
  * A thing you tally per day, against a total when one is known.
  *
  * Replaces `lessons` (a number) and `exam` (a boolean), which were never two
@@ -37,6 +75,13 @@ export type CounterRelation = "positive" | "neutral" | "negative"
  * 0 or 1 and nothing downstream has to know which kind it started as.
  */
 export interface CounterUnit extends Labeled {
+  /**
+   * Which question this counter answers — see `CounterKind`. Absent on
+   * anything written before the split, and read as `"tally"` unless
+   * `oncePerDay` says otherwise; `counterKind()` is the only place that rule
+   * lives.
+   */
+  kind?: CounterKind
   /**
    * How many there are in all, when that is known. Absent for anything
    * open-ended. Deliberately not called a target or a goal: a unit can count
@@ -54,14 +99,16 @@ export interface CounterUnit extends Labeled {
    * Tops out at one a day: oversleeping, or anything else that either happened
    * or did not.
    *
+   * @deprecated Superseded by `kind: "check"`, which says the same thing and
+   * more. Still read by `counterKind()` as the default for a unit written
+   * before the split — that reading is exact, since this was only ever set on
+   * things that either happened or did not — and left in the data so an
+   * upgrade throws nothing away.
+   *
    * A **limit**, not a switch turning counting off — which is why it can sit
    * on a thing called a counter without contradicting it. It still counts; it
    * just cannot get past one. (`exam` arrived here the same way: it was a
    * boolean, and a boolean is a counter that stops at one.)
-   *
-   * What it changes is the question the add dialog asks. "How many times did
-   * you oversleep today" has no sensible answer, so the field goes and the
-   * dialog records the fact instead.
    */
   oncePerDay?: boolean
   /**
@@ -134,6 +181,23 @@ export interface Day {
    */
   counters?: Record<string, Record<string, number>>
   /**
+   * The custom-streak rules a freeze has been spent on for this day.
+   *
+   * Permanent once set, like `frozen`. A **weekly** rule's freeze is recorded
+   * on the Monday of the week it covers — the week has no row of its own, and
+   * its first day is the one place both halves of the app can agree to look.
+   */
+  ruleFreezes?: string[]
+  /**
+   * `unitId -> "no" | "skip"` for the check counters — the two states a count
+   * cannot carry. See `CheckMark`; `checkState()` is the only place the four
+   * states are worked out from these two plus the count.
+   *
+   * A unit with no key here is `yes` when it has a count, `unknown` while its
+   * day is still running, and `no` once that day is over.
+   */
+  checks?: Record<string, CheckMark>
+  /**
    * Superseded by `counters` in `spec 008`, kept so the columns behind them
    * stay readable until the new shape has been trusted for a while. Nothing
    * should add a new read of either.
@@ -161,6 +225,75 @@ export interface WeekVerdict {
   /** The Monday of the week. */
   weekKey: DayKey
   earned: boolean
+  sealedAt: string
+}
+
+/** A rule judges a day, or a whole week. */
+export type StreakScope = "day" | "week"
+
+/** Which way the comparison runs. `atMost 0` is "never"; `atLeast 1` is "always". */
+export type StreakOp = "atLeast" | "atMost"
+
+/**
+ * A streak of your own making — `spec 009`.
+ *
+ * One shape covers every rule the feature was designed against: never
+ * oversleep, always get to bed on time, no youtube after the evening starts,
+ * three trips to the gym a week, and the gym specifically on Mondays,
+ * Wednesdays and Fridays. If a sixth kind of rule will not fit here, the shape
+ * is wrong rather than the rule.
+ *
+ * Read as a sentence, which is how the form writes it: *judge every
+ * [scope/weekdays], keeping [unit] in [slots] [op] [value], with
+ * [freezesPerWeek] freezes a week.*
+ */
+export interface StreakRule extends Labeled {
+  scope: StreakScope
+  /**
+   * Day scope only. Empty means every day. A weekday left out is **not
+   * judged** — the one honest "does not apply", and honest because it is
+   * declared in advance and cannot be changed on the morning it would help.
+   */
+  weekdays?: number[]
+  /** The counter being measured — a tally or a check. */
+  unitId: string
+  /** Tallies only. Empty means the whole day. */
+  slotIds?: string[]
+  op: StreakOp
+  value: number
+  /**
+   * Granted at the start of every week and **lost unused at the end of it**.
+   * The allowance you set yourself, knowing you will not manage seven out of seven.
+   */
+  freezesPerWeek: number
+  /** The ceiling on banked rewards, as `FREEZE_CAP` is the main streak's. */
+  freezeCap: number
+  /**
+   * When this rule came into force. Days before it are not judged.
+   *
+   * Without it, writing a rule would hand you whatever streak your existing
+   * data happens to contain — a sixty-day streak for a promise made this
+   * morning, which is not a promise. `settings.freezeStart` exists for exactly
+   * the same reason.
+   */
+  startedOn: DayKey
+  /**
+   * No **loosening** before this date; narrowing the rule is free at any time.
+   * See `canLoosen` and `isNarrowing` in `lib/customStreaks.ts`.
+   */
+  lockedUntil: DayKey
+}
+
+/**
+ * One rule's verdict on one finished week, written once and never revisited —
+ * an append-only ledger for the same reason `WeekVerdict` is. Re-breaking and
+ * re-fixing a past week must not mint a second reward.
+ */
+export interface RuleVerdict {
+  ruleId: string
+  /** The Monday of the week. */
+  weekKey: DayKey
+  kept: boolean
   sealedAt: string
 }
 
@@ -210,6 +343,8 @@ export interface Settings {
    * what lets the whole feature ship without a migration.
    */
   tags?: Tag[]
+  /** Custom streaks. In `settings` for the same reason `tags` is. */
+  streakRules?: StreakRule[]
 }
 
 export interface GoalCut {
@@ -246,6 +381,8 @@ export interface Project {
   changeLog?: ChangeLogEntry[]
   /** Sealed week verdicts, keyed by the Monday. Append-only. */
   weekVerdicts?: Record<DayKey, WeekVerdict>
+  /** Sealed custom-streak verdicts, keyed `${ruleId}::${weekKey}`. Append-only. */
+  ruleVerdicts?: Record<string, RuleVerdict>
 }
 
 export interface AppData {

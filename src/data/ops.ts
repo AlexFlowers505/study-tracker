@@ -28,6 +28,13 @@ export type WriteOp =
       noteKey: string
     }
   | { key: string; kind: "verdict"; projectId: string; weekKey: DayKey }
+  | {
+      key: string
+      kind: "ruleVerdict"
+      projectId: string
+      ruleId: string
+      weekKey: DayKey
+    }
   | { key: string; kind: "prefs" }
   | { key: string; kind: "deleteProject"; projectId: string }
   | {
@@ -61,6 +68,18 @@ export const opNote = (
   projectId,
   noteKind,
   noteKey,
+})
+
+export const opRuleVerdict = (
+  projectId: string,
+  ruleId: string,
+  weekKey: DayKey,
+): WriteOp => ({
+  key: `ruleVerdict:${projectId}:${ruleId}:${weekKey}`,
+  kind: "ruleVerdict",
+  projectId,
+  ruleId,
+  weekKey,
 })
 
 /**
@@ -199,6 +218,30 @@ export async function applyWriteOp(
             sealed_at: verdict.sealedAt,
           },
           { onConflict: "project_id,week_key", ignoreDuplicates: true },
+        ),
+      )
+    }
+
+    case "ruleVerdict": {
+      if (!project) return
+      const verdict = project.ruleVerdicts?.[`${op.ruleId}::${op.weekKey}`]
+      if (!verdict) return
+      // ignoreDuplicates, exactly as above: a verdict already in the table is
+      // the authority, and re-deciding it from today's data is the one thing
+      // this must never do.
+      return run(
+        client.from("streak_verdicts").upsert(
+          {
+            project_id: project.id,
+            rule_id: verdict.ruleId,
+            week_key: verdict.weekKey,
+            kept: verdict.kept,
+            sealed_at: verdict.sealedAt,
+          },
+          {
+            onConflict: "project_id,rule_id,week_key",
+            ignoreDuplicates: true,
+          },
         ),
       )
     }

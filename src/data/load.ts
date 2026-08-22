@@ -26,6 +26,7 @@ import type {
   DayRow,
   NoteRow,
   ProjectRow,
+  RuleVerdictRow,
   WeekVerdictRow,
 } from "./schema"
 
@@ -47,7 +48,7 @@ async function fetchAllRows<T>(makeQuery: () => Query): Promise<T[]> {
  * a `user_id` filter of its own.
  */
 export async function loadFromTables(client: Client): Promise<AppData | null> {
-  const [projectRows, dayRows, noteRows, verdictRows, prefs] =
+  const [projectRows, dayRows, noteRows, verdictRows, ruleVerdictRows, prefs] =
     await Promise.all([
     fetchAllRows<ProjectRow>(() =>
       client
@@ -60,6 +61,11 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     ),
     fetchAllRows<WeekVerdictRow>(() =>
       client.from("week_verdicts").select("project_id,week_key,earned,sealed_at"),
+    ),
+    fetchAllRows<RuleVerdictRow>(() =>
+      client
+        .from("streak_verdicts")
+        .select("project_id,rule_id,week_key,kept,sealed_at"),
     ),
     client.from("user_prefs").select("active_project_id").maybeSingle(),
   ])
@@ -86,6 +92,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       monthIgnore: {},
       changeLog: [],
       weekVerdicts: {},
+      ruleVerdicts: {},
     }),
   )
 
@@ -126,6 +133,8 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       cells: r.cells || {},
       ...(sleep.length ? { sleep } : {}),
       counters: r.counters || {},
+      checks: r.checks || {},
+      ruleFreezes: r.rule_freezes || [],
       lessons: Number(r.lessons) || 0,
       exam: !!r.exam,
       ignore: !!r.ignored,
@@ -140,6 +149,17 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     p.weekVerdicts[r.week_key] = {
       weekKey: r.week_key,
       earned: !!r.earned,
+      sealedAt: r.sealed_at,
+    }
+  })
+
+  ruleVerdictRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p?.ruleVerdicts) return
+    p.ruleVerdicts[`${r.rule_id}::${r.week_key}`] = {
+      ruleId: r.rule_id,
+      weekKey: r.week_key,
+      kept: !!r.kept,
       sealedAt: r.sealed_at,
     }
   })

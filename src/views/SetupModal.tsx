@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  Flame,
   FolderOpen,
   Gauge,
   Hash,
@@ -49,6 +50,7 @@ import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
+import { StreakRulesTab } from './StreakRulesTab'
 import { AppearanceTab } from './AppearanceTab'
 import { TagsTab } from './TagsTab'
 import { DataTransfer } from './DataTransfer'
@@ -133,6 +135,7 @@ export function SetupModal({
             { id: "categories", label: "Categories", icon: Shapes },
             { id: "units", label: "Counters", icon: Hash },
             { id: "tags", label: "Tags", icon: Tags },
+            { id: "streaks", label: "Streaks", icon: Flame },
             { id: "projects", label: "Projects", icon: FolderOpen },
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
@@ -197,6 +200,14 @@ export function SetupModal({
               warningNote={(label) =>
                 `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
               }
+            />
+          )}
+          {tab === "streaks" && (
+            <StreakRulesTab
+              settings={settings}
+              units={counterUnits}
+              slots={slots}
+              onSave={onSaveSettings}
             />
           )}
           {tab === "units" && (

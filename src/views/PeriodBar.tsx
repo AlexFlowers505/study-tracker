@@ -13,10 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  Flame,
   History,
   Moon,
-  Snowflake,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { DateRange, DayKey, PeriodId } from "../types/model"
@@ -161,10 +159,6 @@ export function PeriodBar({
   onToggleSleep,
   showLog,
   onToggleLog,
-  showStreaks,
-  onToggleStreaks,
-  currentStreak,
-  freezeBalance = 0,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -183,15 +177,7 @@ export function PeriodBar({
   onToggleSleep: () => void
   showLog: boolean
   onToggleLog: () => void
-  showStreaks: boolean
-  onToggleStreaks: () => void
-  /** Null when the effectiveness meter is off — no metric, no streak. */
-  currentStreak?: number | null
-  /** Freezes in hand. Drawn under the day count, because the reason to care
-   *  about one is usually the other. */
-  freezeBalance?: number
 }) {
-  const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-card shadow-sm hover:bg-ink/5 disabled:opacity-35 disabled:hover:bg-card disabled:cursor-not-allowed`
   const visible = useRevealOnScrollUp()
@@ -235,7 +221,7 @@ export function PeriodBar({
               a narrow screen this strip scrolls and the navigation beside it
               keeps its place. */}
           {/* `p-1 -m-1` is not decoration: `overflow-x-auto` makes the other
-              axis compute to `auto` too, and the streak count sits a couple of
+              axis compute to `auto` too, and the filter's dot sits a couple of
               pixels outside its button, so without padding inside the scroll
               box the badge was shaved off. The negative margin keeps the row
               the height it was. */}
@@ -254,24 +240,6 @@ export function PeriodBar({
                 : showFilter
                   ? "Hide the filter"
                   : "Filter what counts"
-            }
-          />
-          <PanelToggle
-            icon={Flame}
-            active={showStreaks}
-            onClick={onToggleStreaks}
-            count={currentStreak}
-            countColor={c.project}
-            countIcon={Flame}
-            sub={currentStreak == null ? null : freezeBalance}
-            subColor={c.freeze}
-            subIcon={Snowflake}
-            tip={
-              currentStreak == null
-                ? showStreaks
-                  ? "Hide streaks"
-                  : "Show streaks"
-                : `${currentStreak} day${currentStreak === 1 ? "" : "s"} in a row · ${freezeBalance} freeze${freezeBalance === 1 ? "" : "s"} banked`
             }
           />
           {/* Absent rather than disabled when sleep tracking is off: there is

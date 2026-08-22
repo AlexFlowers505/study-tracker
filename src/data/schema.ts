@@ -21,6 +21,8 @@ export const DAY_COLUMNS = {
   cells: "cells",
   sleep: "sleep",
   counters: "counters",
+  checks: "checks",
+  ruleFreezes: "rule_freezes",
   // Superseded by `counters`, still read and written so the pre-migration
   // columns stay usable until the new shape has been trusted for a while.
   lessons: "lessons",
@@ -69,6 +71,8 @@ export function dayUpsertRow(
     cells: day.cells || {},
     sleep: day.sleep || [],
     counters: day.counters || {},
+    checks: day.checks || {},
+    rule_freezes: day.ruleFreezes || [],
     lessons: Number(day.lessons) || 0,
     exam: !!day.exam,
     ignored: !!day.ignore,
@@ -84,6 +88,8 @@ export interface DayRow {
   cells: Day["cells"]
   sleep: Day["sleep"]
   counters: Day["counters"]
+  checks: Day["checks"]
+  rule_freezes: Day["ruleFreezes"]
   lessons: number
   exam: boolean
   ignored: boolean
@@ -106,6 +112,14 @@ export interface NoteRow {
   key: string
   note: string | null
   ignored: boolean | null
+}
+
+export interface RuleVerdictRow {
+  project_id: string
+  rule_id: string
+  week_key: string
+  kept: boolean
+  sealed_at: string
 }
 
 export interface WeekVerdictRow {

@@ -18,10 +18,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { Project } from '../types/model'
+import type { CounterUnit, Project, Slot, Tag } from '../types/model'
 import { computeOverviewStats } from '../lib/analytics'
-import type { CounterGroupBy, CounterSeries } from '../lib/counterSeries'
-import { counterSeries, seriesValue } from '../lib/counterSeries'
+import type {
+  CounterGroupBy,
+  CounterPick,
+  CounterSeries,
+} from '../lib/counterSeries'
+import { counterSeries, counterThings, seriesValue } from '../lib/counterSeries'
 import {
   WEEKDAY_LABELS,
   addDays,
@@ -39,8 +43,11 @@ import { PALETTE, chartTooltip } from '../lib/theme'
 import { ChartCard } from '../ui/ChartCard'
 import { SegmentedControl } from '../ui/controls'
 import { segBtn, segBtnStyle } from '../ui/buttonStyles'
+import type { ChipItem } from '../ui/ToggleChips'
 import { ToggleChips } from '../ui/ToggleChips'
+import type { SeriesToggle } from '../ui/useSeriesToggle'
 import { bulkToggleFor, useSeriesToggle } from '../ui/useSeriesToggle'
+import { CountSeriesPicker } from './CountSeriesPicker'
 import { AveragesStats } from './AveragesStats'
 import { OverviewStats } from './OverviewStats'
 import { PeriodTotals } from './PeriodTotals'
@@ -197,6 +204,60 @@ function CountOptions({
   )
 }
 
+/**
+ * What sits under a chart: its legend, and the control that shapes it.
+ *
+ * Two different controls, because the two modes ask opposite questions. A
+ * whole-day chart draws every series there is, so the legend's job is taking
+ * some away — chips you strike out. A by-slot chart draws only what you asked
+ * for, so its job is adding — see `CountSeriesPicker` for why thirty-six chips
+ * was not a legend.
+ *
+ * The choice lives here rather than at each of the four charts, which would be
+ * the same three lines written four times and drifting apart on the fifth.
+ */
+function SeriesLegend({
+  mode,
+  series,
+  toggle,
+  groupBy,
+  bySlot,
+  units,
+  tags,
+  slots,
+  picks,
+  onPicks,
+}: {
+  mode: string
+  series: ChipItem[]
+  toggle: SeriesToggle
+  groupBy: CounterGroupBy
+  bySlot: boolean
+  units: CounterUnit[]
+  tags: Tag[]
+  slots: Slot[]
+  picks: CounterPick[]
+  onPicks: (next: CounterPick[]) => void
+}) {
+  if (isCount(mode) && bySlot)
+    return (
+      <CountSeriesPicker
+        things={counterThings(mode as "tag" | "counter", groupBy, units, tags)}
+        slots={slots}
+        picks={picks}
+        onChange={onPicks}
+      />
+    )
+  return (
+    <ToggleChips
+      items={series}
+      hidden={toggle.hidden}
+      onToggle={toggle.toggle}
+      onBulk={bulkToggleFor(series, toggle)}
+    />
+  )
+}
+
 export function AnalyticsView({
   data,
   rangeStart,
@@ -255,6 +316,17 @@ export function AnalyticsView({
   // the same question four times over is how two controls become eight.
   const [countGroupBy, setCountGroupBy] = useState<CounterGroupBy>("tag")
   const [countBySlot, setCountBySlot] = useState(false)
+  /**
+   * Which `thing × slot` pairs the by-slot charts draw, in the order they were
+   * added. Shared with the two controls above for the same reason they are:
+   * this is how you want counters read, not a property of one chart.
+   *
+   * One flat list across both modes. Tag ids and unit ids cannot collide, so a
+   * pick simply does not apply to a mode that has no such thing, and switching
+   * between Tags and Counters shows the half that does rather than starting
+   * over.
+   */
+  const [countPicks, setCountPicks] = useState<CounterPick[]>([])
 
   const seriesFor = useCallback(
     (mode: string) =>
@@ -266,9 +338,10 @@ export function AnalyticsView({
             counterUnits,
             tags,
             slots,
+            countPicks,
           )
         : [],
-    [countGroupBy, countBySlot, counterUnits, tags, slots],
+    [countGroupBy, countBySlot, counterUnits, tags, slots, countPicks],
   )
 
   /**
@@ -806,11 +879,17 @@ export function AnalyticsView({
             </ComposedChart>
           </ResponsiveContainer>
           {dailyMode !== "hours" && (
-            <ToggleChips
-              items={dailySeries}
-              hidden={dailyToggle.hidden}
-              onToggle={dailyToggle.toggle}
-              onBulk={bulkToggleFor(dailySeries, dailyToggle)}
+            <SeriesLegend
+              mode={dailyMode}
+              series={dailySeries}
+              toggle={dailyToggle}
+              groupBy={countGroupBy}
+              bySlot={countBySlot}
+              units={counterUnits}
+              tags={tags}
+              slots={slots}
+              picks={countPicks}
+              onPicks={setCountPicks}
             />
           )}
         </ChartCard>
@@ -909,11 +988,17 @@ export function AnalyticsView({
               )}
             </AreaChart>
           </ResponsiveContainer>
-          <ToggleChips
-            items={weekdaySeries}
-            hidden={weekdayToggle.hidden}
-            onToggle={weekdayToggle.toggle}
-            onBulk={bulkToggleFor(weekdaySeries, weekdayToggle)}
+          <SeriesLegend
+            mode={weekdayMode}
+            series={weekdaySeries}
+            toggle={weekdayToggle}
+            groupBy={countGroupBy}
+            bySlot={countBySlot}
+            units={counterUnits}
+            tags={tags}
+            slots={slots}
+            picks={countPicks}
+            onPicks={setCountPicks}
           />
         </ChartCard>
         )}
@@ -1013,11 +1098,17 @@ export function AnalyticsView({
             </AreaChart>
           </ResponsiveContainer>
           {weeklyMode !== "hours" && (
-            <ToggleChips
-              items={weeklySeries}
-              hidden={weeklyToggle.hidden}
-              onToggle={weeklyToggle.toggle}
-              onBulk={bulkToggleFor(weeklySeries, weeklyToggle)}
+            <SeriesLegend
+              mode={weeklyMode}
+              series={weeklySeries}
+              toggle={weeklyToggle}
+              groupBy={countGroupBy}
+              bySlot={countBySlot}
+              units={counterUnits}
+              tags={tags}
+              slots={slots}
+              picks={countPicks}
+              onPicks={setCountPicks}
             />
           )}
         </ChartCard>
@@ -1119,11 +1210,17 @@ export function AnalyticsView({
               </AreaChart>
             </ResponsiveContainer>
             {monthlyMode !== "hours" && (
-              <ToggleChips
-                items={monthlySeries}
-                hidden={monthlyToggle.hidden}
-                onToggle={monthlyToggle.toggle}
-                onBulk={bulkToggleFor(monthlySeries, monthlyToggle)}
+              <SeriesLegend
+                mode={monthlyMode}
+                series={monthlySeries}
+                toggle={monthlyToggle}
+                groupBy={countGroupBy}
+                bySlot={countBySlot}
+                units={counterUnits}
+                tags={tags}
+                slots={slots}
+                picks={countPicks}
+                onPicks={setCountPicks}
               />
             )}
           </ChartCard>

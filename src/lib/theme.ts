@@ -214,10 +214,21 @@ export const FIELD_BOXED = `${FIELD_BASE} rounded-xl bg-card border border-ink/1
  * `FIELD_BOXED` is still there for the places that genuinely need an edge, but
  * new forms should reach for these first.
  */
-export const FIELD_SOFT =
-  "font-mono w-full rounded-xl bg-ink/[0.06] px-2.5 py-2 text-xs " +
+/**
+ * The same surface without a width, for a control that sits *inside a
+ * sentence* — a number in the middle of a line, a dropdown between two words.
+ *
+ * Its own constant rather than `FIELD_SOFT` plus a `w-14` after it: both are
+ * width utilities in the same Tailwind layer, so which one wins is decided by
+ * the order Tailwind emits them in and not by the order they were written. It
+ * looked right until it didn't.
+ */
+export const FIELD_SOFT_INLINE =
+  "font-mono rounded-xl bg-ink/[0.06] px-2.5 py-2 text-xs " +
   "border-0 appearance-none placeholder:text-ink/30 " +
   "focus:outline-none focus:ring-2 focus:ring-ink/15"
+
+export const FIELD_SOFT = `${FIELD_SOFT_INLINE} w-full`
 
 /** The same surface as a button — a "now", a time trigger, a small action. */
 export const BTN_SOFT =

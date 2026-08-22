@@ -3,6 +3,15 @@
 
    Portalled to <body> like the tooltips and date fields, so a scroll
    container or a modal can't clip it.
+
+   The trigger is an icon by default and can be anything: a "+ Tag" pill wants
+   the same anchored, portalled, click-outside-to-close panel as the row's
+   three-dot menu, and hand-rolling a second one is how a bubble ends up
+   clipped by the modal it opens in.
+
+   `children` may be a function, which is handed a `close`. A menu whose items
+   pick something has to shut when one is picked, and the alternative — the
+   panel reaching in to guess which of its children was a choice — is worse.
 --------------------------------------------------------------- */
 
 import { useEffect, useRef, useState } from "react"
@@ -15,14 +24,34 @@ import { Tip } from "./Tip"
 
 const MENU_WIDTH = 220
 
+/** Space under the trigger, and over it. */
+const below = (box: DOMRect) => window.innerHeight - box.bottom - 12
+const above = (box: DOMRect) => box.top - 12
+
+/**
+ * Flip up only when down is genuinely cramped *and* up is better. A menu that
+ * changes sides on a few pixels of scroll is worse than one that is a little
+ * short, so the test has a floor rather than being a plain comparison.
+ */
+const placeAbove = (box: DOMRect) => below(box) < 180 && above(box) > below(box)
+const roomFor = (box: DOMRect) =>
+  placeAbove(box) ? above(box) : below(box)
+
 export function PopoverMenu({
   label,
   icon: Icon = MoreVertical,
+  width = MENU_WIDTH,
+  trigger,
+  triggerClassName,
   children,
 }: {
   label?: string
   icon?: LucideIcon
-  children: ReactNode
+  width?: number
+  /** Replaces the icon inside the trigger button — a pill, a label, anything. */
+  trigger?: ReactNode
+  triggerClassName?: string
+  children: ReactNode | ((close: () => void) => ReactNode)
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -67,11 +96,14 @@ export function PopoverMenu({
           ref={triggerRef}
           type="button"
           onClick={toggle}
-          className={`${btnBase} p-1.5 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5 ${
-            open ? "bg-ink/5 text-ink" : ""
-          }`}
+          className={
+            triggerClassName ??
+            `${btnBase} p-1.5 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5 ${
+              open ? "bg-ink/5 text-ink" : ""
+            }`
+          }
         >
-          <Icon size={16} />
+          {trigger ?? <Icon size={16} />}
         </button>
       </Tip>
       {open &&
@@ -81,21 +113,27 @@ export function PopoverMenu({
             ref={panelRef}
             style={{
               position: "fixed",
-              top: box.bottom + 6,
+              // Below by default, above when there isn't room — this menu is
+              // used at the foot of a chart card, where "below" is off the
+              // bottom of the window and a panel you cannot see reads as a
+              // button that does nothing.
+              ...(placeAbove(box)
+                ? { bottom: window.innerHeight - box.top + 6 }
+                : { top: box.bottom + 6 }),
+              maxHeight: roomFor(box) - 8,
               // Right-aligned to the trigger, which lives at the right edge of
               // its row; clamped so it can't slip off a narrow screen.
               left: Math.max(
-                Math.min(
-                  box.right - MENU_WIDTH,
-                  window.innerWidth - MENU_WIDTH - 8,
-                ),
+                Math.min(box.right - width, window.innerWidth - width - 8),
                 8,
               ),
-              width: MENU_WIDTH,
+              width,
             }}
-            className="z-[110] rounded-2xl bg-card shadow-2xl p-1.5"
+            className="z-[110] rounded-2xl bg-card shadow-2xl p-1.5 overflow-y-auto"
           >
-            {children}
+            {typeof children === "function"
+              ? children(() => setOpen(false))
+              : children}
           </div>,
           document.body,
         )}

@@ -127,6 +127,12 @@ which are Node config and get their own lint block.
   `document.body`. Nothing outside `src/ui/` imports `createPortal`, and it
   should stay that way — a hand-rolled bubble inside the tree gets clipped by
   the modal shell, its scroll area or the month grid.
+  - `PopoverMenu.tsx` takes any `trigger` — an icon by default, a "+ Tag" or
+    "+ Add" pill where a menu is how you pick something — and hands its
+    children a `close`, since a menu whose items choose has to shut when one is
+    chosen. It **flips above the trigger when there is no room below**: it is
+    used at the foot of a chart card, where "below" is off the bottom of the
+    window, and a panel you cannot see reads as a button that does nothing.
   - `TimeRangeField.tsx` walks four steps on one dial (start hour, start
     minutes, end hour, end minutes) and the panel looks identical at each, so
     **which field the dial is driving is stated three times over**: the active
@@ -346,16 +352,19 @@ One page, not tabs. A single period drives everything:
   been two names for one thing — both halves are statistics, and how they are
   drawn is not a distinction worth a heading. Each section's `?` says what it
   holds; each Summary tab's caption says what that tab covers.
-- Three panels open from `PeriodBar` and render between it and `LogView`, the
-  filter first because it governs everything below it:
+- Under the period bar sits `StreakBar`, its own row — see **Custom streaks**.
+- Panels render between it and `LogView`, the filter first because it governs
+  everything below it. The streak panels open from the streak row rather than
+  from `PeriodBar`, and only one of them at a time:
   - `CountFilter` — which slots/categories count. Not period-scoped; switching
     periods leaves it alone, so its toggle carries a dot while anything is
     struck out, or a live filter would silently shrink every figure.
-  - `StreaksSection` — project-wide, and the only panel that is. Its
-    how-it-works bubble opens **downwards** (`side="bottom"`): it is the
-    tallest tooltip in the app and the panel sits just under the sticky period
-    bar, so anchored above its trigger the opening lines — the ones that say
-    what a streak is — ran off the top of the viewport.
+  - `StreaksSection` — the goal streak, project-wide. Its how-it-works bubble
+    opens **downwards** (`side="bottom"`): it is the tallest tooltip in the app
+    and the panel sits just under the sticky period bar, so anchored above its
+    trigger the opening lines — the ones that say what a streak is — ran off
+    the top of the viewport.
+  - `CustomStreakSection` — one per rule, project-wide as well.
   - `SleepSection` — only when `settings.sleepEnabled`; its toggle is absent,
     not disabled, when the feature is off. Unlike the other two it *is*
     period-scoped, and it reads `project.days` rather than `visibleProject`,
@@ -374,7 +383,11 @@ They replace `CounterUnit.relation`, a fixed positive/neutral/negative, which
 was the app deciding in advance what the only interesting thing about a counter
 could be. Those three are still a perfectly good set of tags; the difference is
 that they are now yours to name and extend, and **a unit can carry several** —
-which is why they are toggle chips rather than a segmented control. The old
+which is why they are chips rather than a segmented control. A counter's row in
+Setup draws **only the tags it wears**, each with a cross, plus one "+ Tag"
+offering what is left: the whole set on every row meant a dozen chips per
+counter of which two were true, and what a unit *is* got told by what was
+missing. The old
 field is left in the type and in the data, deprecated and unread, so an upgrade
 throws nothing away. Deleting a tag strips its id off every unit wearing it: a
 dangling id is harmless to the filter, which only walks tags that exist, but
@@ -412,16 +425,192 @@ Two things read them:
   question, so it has no hairline.
 
   Both offer **split by slot**, which turns each series into one per
-  `thing × slot` — keeping *what* was counted while adding *when*. Splitting
-  multiplies the series, so every slot of one thing shares that thing's colour
-  and steps down in opacity: a stack reads as one block subdivided rather than
-  as a dozen unrelated bands.
+  `thing × slot` — keeping *what* was counted while adding *when*. Every slot
+  of one thing shares that thing's colour and steps down in opacity **by the
+  slot's own position**, not by the order it was added: a stack reads as one
+  block subdivided rather than as a dozen unrelated bands, and morning is the
+  same shade on every chart.
+
+  **The two modes' legends are opposite controls, and deliberately so.** Whole
+  day draws every series there is, so its legend takes some away —
+  `ToggleChips`, struck out. By slot draws only what was asked for, so its
+  legend adds: `CountSeriesPicker`, which asks *which counter* and then *which
+  slot*, one pair at a time. Six counters across six slots is thirty-six chips
+  all switched on under a chart nobody can read, and getting from there to
+  "youtube in the evening" is thirty-five clicks of removal; building it up is
+  two, and the chart is legible at every step. It is also the only way to plot
+  one counter in two slots and nothing else, which is the question people
+  actually have. The picks are **one flat list shared by all four charts and
+  both modes** — tag ids and unit ids cannot collide, so a pick simply does not
+  apply to a mode that has no such thing, and `counterSeries` drops it rather
+  than drawing it empty.
 
   The count series for each chart are memoised **before** the row builders that
   read them, and the row builder returns a fresh object rather than filling one
   in place. Both are for React Compiler: a callback called inside four separate
   memos, or one that mutates what it is handed, costs the whole component its
   memoization and fails `react-hooks/preserve-manual-memoization`.
+
+## Counter kinds
+
+A counter answers one of two questions, and they are not the same question —
+`spec 009`. Setup's Counters tab is two sub-tabs because of it, on a **recessed
+track**: Setup's own tabs are two rows above, and a second set of underlines
+there would read as the same control drawn twice.
+
+- **Tallies** answer *how many*. A number per slot, an optional known total,
+  and everything counters already were.
+- **Checks** answer *whether or not*. Day-level, no slots, no total, and
+  **four** states rather than two: at nine in the morning you do not yet know
+  whether you overslept, and a "no" recorded then is a claim about the rest of
+  the day you are not entitled to make.
+
+`lib/checks.ts` owns all of it. `counterKind()` falls back to the deprecated
+`oncePerDay`, and that reading is exact rather than a guess — the flag was only
+ever set on things that either happened or did not — so an Overslept unit
+written before the split lands in the right tab with nothing to migrate. The
+kind is stamped explicitly the moment a unit is touched in Setup, and a row
+carries a "Make a check" / "Make a tally" button because otherwise a counter
+filed under the wrong kind could only be deleted and retyped, throwing away
+everything recorded against it.
+
+**`yes` is not a stored state. It is a count of one**, in `counters` where it
+already lived, and `days.checks` (`migrations/011_check_marks.sql`) carries only
+the two a count cannot express — `"no"` and `"skip"`. `unknown` is the absence
+of both and resolves to `no` once the day is over, so an ordinary day writes
+nothing at all, exactly like a tally that stayed at zero.
+
+That split is what makes the feature cheap rather than clever: every existing
+reader of counts — the day badges, the period chips, the count filter, both
+counter chart modes — goes on working on checks without knowing they exist, and
+"how many times did I oversleep in July" stays a question with an answer.
+Storing `yes` in both places was the alternative, and it is the shortest road
+to two fields disagreeing about the same Tuesday. `checkState()` is the one
+place the four states are worked out; nothing else may read `day.checks`
+directly.
+
+`CheckChips` draws them on a day card, beside the count badges rather than in a
+row of their own — same question about the same day, and a second row would
+claim they were a different sort of fact. **The state is a shape, never a good
+or bad colour**: filled for yes, hollow for no, dashed and struck through for
+skipped, dotted for not yet said. Yes is bad for Overslept and good for Went to
+bed on time, and nothing on the card can tell which — that is a streak rule's
+job. While a day can still be written every check appears, because that is the
+day's checklist and the unanswered ones are the point of looking; once it
+cannot, only yes and skipped do.
+
+## Custom streaks
+
+Streaks of your own making — `spec 009`, part 2. `lib/customStreaks.ts` holds
+all of it; `settings.streakRules` holds the rules, riding in the same jsonb
+`tags` does.
+
+A rule is **a sentence**: *judge every [day / week / these weekdays], keeping
+[a counter] in [these slots] [at least / at most] [n], with [k] freezes a
+week.* One shape covers never-oversleep, always-in-bed-on-time, no-youtube-in-
+the-evening, three-gym-trips-a-week and gym-on-Mon-Wed-Fri. If a sixth kind of
+rule will not fit it, the shape is wrong rather than the rule.
+
+Setup's Streaks tab writes that sentence with dropdowns in it, and
+`ruleSentence` reads it back in the panel — **the same function**, because the
+only way to check that what you built is what you meant is to read it back, and
+two sentences that can drift check nothing. A grid of labelled fields would
+store the same eight values and say nothing: `op: atMost, value: 0` is correct
+and unreadable.
+
+Three ideas carry the whole feature:
+
+- **Failure has a size.** Not "the day broke" but the *deficit* — how far over
+  or short. A freeze pays for one unit of it, and a period is frozen only if
+  the whole deficit can be paid, so two youtube slips in one evening cost two
+  freezes, one is not enough, nothing is spent and the streak breaks. That
+  falls out of the arithmetic rather than being a special case. Partial
+  spending is refused on purpose: a day that breaks anyway should not also cost
+  you the freeze.
+- **Two pools of freezes, behaving differently.** `freezesPerWeek` is granted
+  every week and **lost unused**; a week kept clean banks **+1**, carried over
+  until spent, capped at the rule's own `freezeCap`. Spending takes the weekly
+  one first, since it is the one that expires. A week carried entirely by
+  freezes still earns its reward — freezes are part of the rule you wrote, not
+  a failure to keep it.
+- **Earning is a ledger**, exactly as in `freezes.ts`: one verdict per rule per
+  finished week, written once, so re-breaking and re-fixing a past week cannot
+  mint a second reward. Sealing is the existing `isSealable` — the Tuesday
+  after — and spending stays inside `isEditableDay`, today and yesterday. Two
+  windows would have to be explained separately every time either appeared.
+
+**`skip` on a check costs a freeze.** It is a miss with a deficit of one, not
+an exemption, for the same reason ignoring a day does not affect the main
+streak: a free per-day escape hatch would make every custom streak decorative.
+What it buys is honesty in the record. The genuine "does not apply" is
+`weekdays`, and it is genuine because it was declared in advance — Saturday is
+not a gym day because you said so last Tuesday, not because Saturday went
+badly. `startedOn` is the same idea over the whole history: a rule judges the
+days it was in force, or writing one this morning would hand you whatever
+streak your existing data happens to contain.
+
+### The lock
+
+**A change to a rule's terms waits seven days unless it can be proved that it
+cannot make the rule easier.** Label, icon, colour and description are not
+terms and change freely.
+
+The test in `isNarrowing` is deliberately **one-sided**, and that is what makes
+it safe to be clever here at all. It never sorts an edit into "loosening" and
+"tightening" — that sort is not always possible, and a rule that guesses wrong
+in the wrong direction is worse than no rule. It asks one question: *is every
+period that passes under the new rule also one that passed under the old?* If
+yes, the change can only cost you and goes through at once. If no — **or if the
+answer is not decidable** — it waits. So "never do X this week" becoming
+"always do X this week" needs no classification: it is incomparable, therefore
+unprovable, therefore locked. Same for swapping the counter or switching
+between judging a day and judging a week.
+
+Every dimension must be no-easier; one easier dimension locks the whole edit,
+since they are not a currency you can trade between. The two slot rules point
+in opposite directions for the same edit, and that is not a bug: under `atMost`
+a slot is a place you can be caught, so adding one narrows the ways through;
+under `atLeast` a slot is a place the count can come from, so adding one widens
+them.
+
+**Narrowing does not reset the clock; loosening does.** The lock exists to stop
+you buying your way out of a bad week, and raising the bar never does that —
+charging a week of flexibility for raising it would only discourage raising it.
+Nor is it a way in: to end up easier than you started you still need a
+loosening, still gated on the clock the last loosening set.
+
+**The day a rule is written is yours to get it right on** — nothing is locked
+until the next day and nothing that day starts the clock. Locking from birth
+was tried and is wrong: setting a rule up takes several changes, most of them
+incomparable to the defaults, so the lock closed on the first click and left
+you with the rule the app had guessed. Nothing is at risk on that day, since
+the rule has judged no sealed week yet. That leaves delete-and-recreate open,
+deliberately: it costs the streak, which is the only thing anybody was
+protecting.
+
+The form says which it decided, every time. A clever lock nobody can predict is
+worse than a blunt one they can.
+
+### Where they are shown
+
+`StreakBar` is **its own row under the period bar**, and the main goal streak
+moved into it as the first button — same sort of thing, and leaving it behind
+would have made "your streaks" two places. Each button carries its numbers
+inline rather than as corner badges, because a custom streak has three:
+days running, the weekly allowance, and the bank. **The two freeze counts must
+be tellable apart at a glance**, since one is gone on Sunday night and the
+other is not: the allowance is bare and dim, the bank sits in a tinted pill in
+the freeze colour.
+
+One panel at a time (`openStreak`), built from `PanelSection` in the rule's own
+colour. **Freezes are spent from that panel's week strip, never from the day
+card**: a day can break three rules at once, and a snowflake per rule on a card
+that already carries badges, sleep, a note and an add button is how a card
+stops being readable. The main streak keeps its snowflake on the card, because
+it is about the day's hours and that is what the card is about.
+
+Storage: `days.rule_freezes` and the `streak_verdicts` table, both in
+`migrations/012_custom_streaks.sql`.
 
 ## Data model
 
@@ -460,8 +649,10 @@ unit), `days` keyed `(project_id, date)`, `period_notes` keyed
 ownership from their project. See `migrations/001_normalize_schema.sql`, then
 `002_sleep.sql` (the `sleep` column on `days`), `003_change_log.sql` (the
 `change_log` table), `004_sleep_night_end.sql` (a one-shot data move, guarded
-by `applied_migrations`) and `005_freezes.sql` (`days.frozen` and the
-`week_verdicts` ledger).
+by `applied_migrations`), `005_freezes.sql` (`days.frozen` and the
+`week_verdicts` ledger), `011_check_marks.sql` (`days.checks`) and
+`012_custom_streaks.sql` (`days.rule_freezes` and the `streak_verdicts`
+ledger).
 
 `change_log` is the one exception to everything below. It records what an edit
 changed — old value and new — capped at `CHANGE_LOG_LIMIT`, oldest dropped. It
@@ -533,15 +724,10 @@ dialog with that slot already chosen. It follows the card's rules exactly —
 absent on a read-only readout and on a day that has not happened — because the
 readout must never invent a way in that the card withheld.
 
-**A counter can top out at one a day** (`oncePerDay`). Deliberately framed as
-a *limit* rather than as a switch turning counting off — the second reads as a
-contradiction on a thing called a counter, and it is not one: it still counts,
-it just cannot get past one. `exam` arrived the same way, as a boolean, and a
-boolean is a counter that stops at one. What it changes is the question the
-dialog asks: "how many times did you oversleep today" has no answer, so the
-amount field goes, the preview says marked / not marked, and a second attempt
-finds the button reading "Already recorded". The cap is per *day*, not per
-slot — filing the second one under a different slot must not buy you one.
+**The dialog offers tallies only.** A check has no amount to add and no slot to
+add it to, so it is answered from its own chip on the day card — where you are
+already looking at it. `oncePerDay` and everything the dialog did for it is
+gone; the kind replaced it.
 
 **The dialog has no minutes box.** Typing "90" is the arithmetic the app exists
 to do, and two ways of saying the same duration have to be stopped from

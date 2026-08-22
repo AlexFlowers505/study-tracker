@@ -26,6 +26,7 @@ import type {
 } from "../types/model"
 import { fromKey, pad, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
+import { setCheck, splitByKind } from "../lib/checks"
 import { dayBreakdown, goalForDate } from "../lib/stats"
 import { dayState, isEditableDay } from "../lib/freezes"
 import { btnBase, cardTiny, dayStateSurface } from "../lib/theme"
@@ -41,6 +42,7 @@ import {
 } from "../lib/entries"
 import { Tip } from "../ui/Tip"
 import { CounterBadges } from "./CounterInputs"
+import { CheckChips } from "./CheckChips"
 import { DayNoteRow } from "./DayNoteRow"
 import { EntriesReadout } from "./EntriesReadout"
 import type { EntrySnapshot, ReadoutEditing } from "./EntriesReadout"
@@ -159,6 +161,7 @@ function FullDayCard({
     )
   }
 
+  const { tallies: tallyUnits, checks: checkUnits } = splitByKind(counterUnits)
   const { total } = dayBreakdown(entry, slots)
   const metGoal = !ignored && goal > 0 && total >= goal
   // One function decides what a day is; this file only paints it.
@@ -343,10 +346,26 @@ function FullDayCard({
               showing the day figure. The per-slot breakdown is in its
               tooltip — glanceable first, detailed on ask. */}
           <CounterBadges
-            units={counterUnits}
+            units={tallyUnits}
             slots={slots}
             counters={entry?.counters || {}}
             roomy={big}
+          />
+          {/* Checks sit with the badges rather than in a row of their own:
+              they are the same question about the same day, and a second row
+              would say they were a different sort of fact. Their shape is
+              what tells them apart. */}
+          <CheckChips
+            units={checkUnits}
+            day={entry}
+            dayKey={toKey(date)}
+            todayKey={todayKey}
+            roomy={big}
+            onSet={
+              onUpdateDay
+                ? (unitId, next) => onUpdateDay(setCheck(entry, unitId, next))
+                : undefined
+            }
           />
           {/* The action buttons close the row, always in this order — sleep,
               freeze, counter, add — so each one keeps the same place on every
@@ -514,7 +533,11 @@ function FullDayCard({
         slotCounters={
           onUpdateDay && onOpenCounter && onCloseCounter
             ? {
-                units: counterUnits,
+                // Tallies only: these rows sit under a slot heading, and a
+                // check is a fact about the day rather than about any part of
+                // it. A legacy check carrying slot counts would otherwise turn
+                // up here with a number field it has no use for.
+                units: tallyUnits,
                 counters: entry?.counters || {},
                 openKey: counterEditing ?? null,
                 onOpen: onOpenCounter,

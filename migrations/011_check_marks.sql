@@ -1,0 +1,36 @@
+-- Checks: the two states a count cannot express.
+--
+-- A counter now answers one of two questions. A *tally* answers "how many" and
+-- is unchanged — a number per slot in `days.counters`. A *check* answers "did
+-- it happen", and that has four states rather than two, because at nine in the
+-- morning you do not yet know whether you overslept and a "no" recorded then
+-- is a claim about the rest of the day you are not entitled to make.
+--
+--   unknown  the day is still running and nothing has been said
+--   yes      it happened
+--   no       it did not, and you are saying so
+--   skip     this day does not count for this check
+--
+-- **`yes` is not stored here.** It stays what it already is: a count of one in
+-- `days.counters`. Storing it twice is the shortest road to two columns
+-- disagreeing about the same Tuesday, and leaving it where it is means every
+-- existing reader of counts — the day badges, the period chips, the count
+-- filter, both counter chart modes — goes on working on checks without knowing
+-- they exist. "How many times did I oversleep in July" stays a question with
+-- an answer.
+--
+-- `unknown` is not stored either: it is the absence of everything, and it
+-- resolves to `no` the moment the day is over. So the common case — a day on
+-- which nothing went wrong — writes nothing at all, exactly like a tally that
+-- stayed at zero.
+--
+-- That leaves two marks, and this column holds them: `{unitId: "no"|"skip"}`.
+--
+-- **No data moves.** A unit that was `oncePerDay` becomes a check, and its
+-- marks are already counts of one in `counters`, which read back as `yes`
+-- unchanged. The kind itself lives in `projects.counter_units`, which the app
+-- writes; nothing here has to touch it.
+--
+-- Safe to run more than once.
+
+alter table days add column if not exists checks jsonb not null default '{}';

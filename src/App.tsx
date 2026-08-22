@@ -39,6 +39,8 @@ import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
 import { canFreeze, freezeLedger } from "./lib/freezes"
 import { computeStreaks } from "./lib/streaks"
 import { addSlotCount, counterTotals } from "./lib/counters"
+import { isCheck } from "./lib/checks"
+import { ruleStatus } from "./lib/customStreaks"
 import {
   periodRange,
 } from "./lib/period"
@@ -49,6 +51,7 @@ import { fetchIsAdmin } from "./data/admin"
 import {
   applyWriteOp,
   opDay,
+  opRuleVerdict,
   opVerdict,
   opDeleteProject,
   opLog,
@@ -58,6 +61,9 @@ import {
 } from "./data/ops"
 import { CountFilter } from "./views/CountFilter"
 import { StreaksSection } from "./views/StreaksSection"
+import { StreakBar } from "./views/StreakBar"
+import type { StreakId } from "./views/StreakBar"
+import { CustomStreakSection } from "./views/CustomStreakSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { SleepSection } from "./views/SleepSection"
 import { PeriodBar } from "./views/PeriodBar"
@@ -121,7 +127,14 @@ export default function StudyTrackerApp() {
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
-  const [showStreaks, setShowStreaks] = useState(false)
+  /**
+   * Which streak's panel is open: `"main"`, a rule id, or nothing.
+   *
+   * One at a time rather than a flag each. They are five answers to the same
+   * question — "how am I doing" — and five panels stacked would push the log
+   * off the screen to say it five times.
+   */
+  const [openStreak, setOpenStreak] = useState<StreakId>(null)
   // Which slots/categories are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
@@ -407,6 +420,47 @@ export default function StudyTrackerApp() {
   // `visibleProject`: the count filter changes what the page shows, never what
   // a streak is worth.
   const streaks = useMemo(() => computeStreaks(project), [project])
+
+  /* ---- Custom streaks -------------------------------------------------
+     Same shape as above, one ledger per rule. Computed from `project` rather
+     than `visibleProject` for the same reason the main streak is: the count
+     filter changes what the page shows, never what a streak is worth. */
+  const streakRules = useMemo(
+    () => project.settings.streakRules || [],
+    [project.settings.streakRules],
+  )
+  const ruleStatuses = useMemo(
+    () => streakRules.map((rule) => ruleStatus(rule, project)),
+    [streakRules, project],
+  )
+
+  // The same once-only sealing, for every rule at once: one pass writes them
+  // all rather than one render per rule.
+  useEffect(() => {
+    if (!loaded || loadFailed) return
+    const due = ruleStatuses.flatMap((s2) => s2.pending)
+    if (!due.length) return
+    const verdicts = { ...(project.ruleVerdicts || {}) }
+    due.forEach((v) => (verdicts[`${v.ruleId}::${v.weekKey}`] = v))
+    // Recorded, not derived — see the note on the main ledger above.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    patchProject(
+      { ruleVerdicts: verdicts },
+      due.map((v) => opRuleVerdict(project.id, v.ruleId, v.weekKey)),
+    )
+  }, [loaded, loadFailed, ruleStatuses, project, patchProject])
+
+  /**
+   * Spend a freeze for one rule on one day.
+   *
+   * Append-only, like `day.frozen`: a rule already frozen on that day is left
+   * alone rather than added twice, and nothing here ever takes one back.
+   */
+  const spendRuleFreeze = (ruleId: string, key: DayKey) => {
+    const existing = project.days[key]?.ruleFreezes || []
+    if (existing.includes(ruleId)) return
+    updateDay(key, { ruleFreezes: [...existing, ruleId] })
+  }
 
   // Seal whatever is due. Runs after a load and after any edit that finishes
   // a week; the op is an ignore-on-conflict upsert, so a replay is harmless.
@@ -751,11 +805,20 @@ export default function StudyTrackerApp() {
           onToggleSleep={() => setShowSleep((v) => !v)}
           showLog={showLog}
           onToggleLog={() => setShowLog((v) => !v)}
-          showStreaks={showStreaks}
-          onToggleStreaks={() => setShowStreaks((v) => !v)}
-          currentStreak={streaks?.currentDays ?? null}
-          freezeBalance={ledger.balance}
         />
+
+        {/* Its own row under the period bar. Streaks are the one project-wide
+            thing on a page that is otherwise period-scoped, and there can now
+            be several of them — a toggle inside the bar could carry one. */}
+        <div className="mb-3">
+          <StreakBar
+            statuses={ruleStatuses}
+            mainDays={streaks?.currentDays ?? null}
+            mainFreezes={ledger.balance}
+            active={openStreak}
+            onSelect={setOpenStreak}
+          />
+        </div>
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
             it has to read as the thing governing what's below it. */}
@@ -787,12 +850,25 @@ export default function StudyTrackerApp() {
             width and scrolling with the page — on every screen size. It used
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
-        {showStreaks && (
+        {openStreak === "main" && (
           <StreaksSection
             project={visibleProject}
-            onClose={() => setShowStreaks(false)}
+            onClose={() => setOpenStreak(null)}
           />
         )}
+
+        {ruleStatuses
+          .filter((s2) => s2.rule.id === openStreak)
+          .map((s2) => (
+            <CustomStreakSection
+              key={s2.rule.id}
+              status={s2}
+              project={project}
+              today={new Date()}
+              onSpendFreeze={(key) => spendRuleFreeze(s2.rule.id, key)}
+              onClose={() => setOpenStreak(null)}
+            />
+          ))}
 
         {showLog && (
           <ChangeLogSection
@@ -916,13 +992,16 @@ export default function StudyTrackerApp() {
       )}
 
       {quickAdd && (
+        /* `units` is tallies only. A check has no amount to add and no slot
+           to add it to; it is answered from its own chip on the day card,
+           which is where you are already looking at it. */
         <QuickAddEntryModal
           dateKey={quickAdd.key}
           variant={quickAdd.variant}
           initialSlotId={quickAdd.slotId}
           slots={project.slots}
           categories={project.categories}
-          units={project.counterUnits || []}
+          units={(project.counterUnits || []).filter((u) => !isCheck(u))}
           counters={project.days[quickAdd.key]?.counters || {}}
           onCancel={() => setQuickAdd(null)}
           onAddCounter={(dateKey, unitId, slotId, amount) => {

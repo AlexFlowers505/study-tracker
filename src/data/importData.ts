@@ -50,6 +50,7 @@ export function summarize(data: AppData): ImportSummary {
     notes += noteKeys(p.weekNotes, p.weekIgnore).length
     notes += noteKeys(p.monthNotes, p.monthIgnore).length
     verdicts += Object.keys(p.weekVerdicts || {}).length
+    verdicts += Object.keys(p.ruleVerdicts || {}).length
   })
   return { projects: data.projects.length, days, notes, verdicts }
 }
@@ -145,6 +146,22 @@ export async function importIntoTables(
         sealed_at: v.sealedAt,
       })),
       "project_id,week_key",
+    )
+
+    // The custom-streak ledger travels with them. Leaving it behind would
+    // hand the imported copy a clean slate, and a clean slate is exactly what
+    // an append-only ledger exists to make impossible.
+    await writeChunks(
+      client,
+      "streak_verdicts",
+      Object.values(p.ruleVerdicts || {}).map((v) => ({
+        project_id: p.id,
+        rule_id: v.ruleId,
+        week_key: v.weekKey,
+        kept: v.kept,
+        sealed_at: v.sealedAt,
+      })),
+      "project_id,rule_id,week_key",
     )
   }
 
