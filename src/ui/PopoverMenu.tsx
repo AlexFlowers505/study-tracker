@@ -43,6 +43,7 @@ export function PopoverMenu({
   width = MENU_WIDTH,
   trigger,
   triggerClassName,
+  wrapClassName,
   children,
 }: {
   label?: string
@@ -51,6 +52,13 @@ export function PopoverMenu({
   /** Replaces the icon inside the trigger button — a pill, a label, anything. */
   trigger?: ReactNode
   triggerClassName?: string
+  /**
+   * Goes on the tooltip wrapper, which is the box the parent's layout actually
+   * sees — `Tip` puts a span between the two, so a `w-full` trigger measures
+   * itself against a shrink-wrapped span unless the span is sized as well.
+   * Only needed where the trigger has to fill a cell it did not size itself.
+   */
+  wrapClassName?: string
   children: ReactNode | ((close: () => void) => ReactNode)
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -91,7 +99,7 @@ export function PopoverMenu({
 
   return (
     <>
-      <Tip text={open ? undefined : label}>
+      <Tip text={open ? undefined : label} className={wrapClassName}>
         <button
           ref={triggerRef}
           type="button"

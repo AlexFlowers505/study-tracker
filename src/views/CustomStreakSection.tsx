@@ -167,7 +167,15 @@ export function CustomStreakSection({
           acting on the first click: a freeze is a real cost and the cost
           depends on how badly the day went. */}
       <div className="mb-3">
-        <div className="flex gap-1">
+        {/* Seven equal columns, as a grid rather than seven flex children.
+            `Tip` and `PopoverMenu` each put a wrapper span around what they
+            are given, so the flex item was the wrapper and `flex-1` never
+            reached the cell: five days shrank to the width of their own
+            three-letter label, the one freezable day kept its `flex-1` and
+            swallowed the rest of the row, and Sunday was pushed against the
+            right edge. A grid track sizes the cell whatever is wrapped
+            around it. */}
+        <div className="grid grid-cols-7 gap-1">
           {days.map((date) => {
             const key = toKey(date)
             const state = cellState(key)
@@ -193,7 +201,7 @@ export function CustomStreakSection({
 
             const cell = (
               <div
-                className="flex flex-col items-center gap-1 py-1.5 rounded-lg"
+                className="flex-1 min-w-0 flex flex-col items-center gap-1 py-1.5 rounded-lg"
                 style={{
                   backgroundColor: tint ? `${tint}24` : `${c.ink}08`,
                   color: tint || `${c.ink}55`,
@@ -214,18 +222,25 @@ export function CustomStreakSection({
               </div>
             )
 
+            // Both branches sit in the same shell: a flex grid item, so the
+            // wrapper span inside it is a flex item too and stops being an
+            // inline box — which is what dropped the freezable day half a
+            // line below its neighbours.
             if (!offer.ok)
               return (
-                <Tip key={key} text={detail}>
-                  <div className="flex-1 min-w-0">{cell}</div>
-                </Tip>
+                <div key={key} className="flex min-w-0">
+                  <Tip text={detail} className="flex-1 min-w-0">
+                    {cell}
+                  </Tip>
+                </div>
               )
 
             return (
-              <div key={key} className="flex-1 min-w-0">
+              <div key={key} className="flex min-w-0">
                 <PopoverMenu
                   width={210}
                   label={detail}
+                  wrapClassName="flex-1 min-w-0"
                   triggerClassName={`${btnBase} block w-full rounded-lg hover:brightness-110`}
                   trigger={cell}
                 >

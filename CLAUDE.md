@@ -831,6 +831,17 @@ Match the existing file:
   area and the month grid. `Tip`, `DateField`, `DateRangeField` and
   `PopoverMenu` all do this; follow suit rather than adding a fourth
   hand-rolled bubble.
+- **`Tip` puts a span between you and your child, so the parent's layout lands
+  on the span.** A `flex-1` cell wrapped in a tooltip stops being the flex item
+  and shrinks to its own content; `w-full` inside one measures against a
+  shrink-wrapped inline box; and because the span is inline-level, it sits a
+  pixel low on the text baseline. That is one bug wearing three faces, and it
+  is what made the custom streak's week strip render five hairline days, one
+  stretched day half a line below them, and Sunday against the right edge.
+  `Tip` takes `className` and `PopoverMenu` takes `wrapClassName` for exactly
+  this — size the wrapper, not only what is inside it. Where the layout is
+  fixed and known, say so with a grid (`grid-cols-7` for a week) rather than
+  with a `flex-1` that has to survive whatever gets wrapped around it.
 - **One shape for "pick one of these".** `SegmentedControl` and the period
   pills are the same control drawn the same way — a rounded track with the
   active one filled — because they do the same job, and the page reads as
