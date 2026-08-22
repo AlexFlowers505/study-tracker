@@ -491,13 +491,22 @@ directly.
 
 `CheckChips` draws them on a day card, beside the count badges rather than in a
 row of their own — same question about the same day, and a second row would
-claim they were a different sort of fact. **The state is a shape, never a good
-or bad colour**: filled for yes, hollow for no, dashed and struck through for
-skipped, dotted for not yet said. Yes is bad for Overslept and good for Went to
-bed on time, and nothing on the card can tell which — that is a streak rule's
-job. While a day can still be written every check appears, because that is the
-day's checklist and the unanswered ones are the point of looking; once it
-cannot, only yes and skipped do.
+claim they were a different sort of fact. A chip carries two glyphs: the unit's
+own icon, saying which question this is, and **the state as a mark** — a tick
+for yes, a cross for no, a ghost for skipped, a dash for not yet said. It used
+to be the chip's *outline* that said so (filled, hollow, dashed and struck
+through, dotted), and four kinds of border is a legend you have to have been
+told; nobody has to be told what a tick means. The choices in the chip's menu
+wear the same four marks, which is where they are learned.
+
+**Never a good or bad colour, which is why the tick and the cross are the same
+one.** Yes is bad for Overslept and good for Went to bed on time, and nothing
+on the card can tell which — that is a streak rule's job. Both answers are the
+unit's own colour and differ only in the glyph. The colour says one thing only:
+an answered check wears the unit's colour, an unanswered one is plain ink.
+While a day can still be written every check appears, because that is the day's
+checklist and the unanswered ones are the point of looking; once it cannot,
+only yes and skipped do.
 
 ## Custom streaks
 

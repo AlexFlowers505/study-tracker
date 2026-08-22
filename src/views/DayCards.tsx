@@ -353,8 +353,9 @@ function FullDayCard({
           />
           {/* Checks sit with the badges rather than in a row of their own:
               they are the same question about the same day, and a second row
-              would say they were a different sort of fact. Their shape is
-              what tells them apart. */}
+              would say they were a different sort of fact. A tally ends in its
+              count and a check ends in its mark, which is what tells the two
+              apart at a glance. */}
           <CheckChips
             units={checkUnits}
             day={entry}
