@@ -70,6 +70,10 @@ export function CustomStreakSection({
   const weekStart = startOfWeek(today)
   const days = weekDates(weekStart)
 
+  // "1 days" is the tell that a number was pasted next to a fixed word.
+  const unitWord = (n: number) =>
+    `${rule.scope === "week" ? "week" : "day"}${n === 1 ? "" : "s"}`
+
   const cellState = (key: string): RuleState =>
     rule.scope === "week"
       ? ruleWeekState(rule, unit, project.days, weekStart, todayKey)
@@ -266,13 +270,13 @@ export function CustomStreakSection({
         <StatTile
           label="Current streak"
           value={status.current}
-          sub={rule.scope === "week" ? "weeks" : "days"}
+          sub={unitWord(status.current)}
           icon={Flame}
         />
         <StatTile
           label="Best streak"
           value={status.best}
-          sub={rule.scope === "week" ? "weeks" : "days"}
+          sub={unitWord(status.best)}
           icon={Trophy}
         />
         <StatTile
