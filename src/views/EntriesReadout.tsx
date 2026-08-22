@@ -6,7 +6,7 @@ import { useState } from "react"
 import type { CSSProperties, ReactNode } from "react"
 import { MessageSquare, Moon, Plus, Square } from "lucide-react"
 import type {
-  Category,
+  Activity,
   CounterUnit,
   SleepEntry,
   Slot,
@@ -22,6 +22,7 @@ import { EntryEditRow } from "./EntryEditRow"
 import { SlotCounterRows } from "./SlotCounters"
 
 import { usePalette } from "../ui/useTheme"
+import { entryActivity } from "../lib/entries"
 /**
  * A timed entry says both things at once: when it happened and how long it
  * lasted. Reading one off the other in your head is the sort of arithmetic
@@ -41,7 +42,7 @@ const entryTimeLabel = (e: StudyEntry | SleepEntry) => {
 
 /**
  * One entry line. The header is the sticky half — while a long comment scrolls
- * past, the time and category it belongs to stay put. The comment folds away
+ * past, the time and activity it belongs to stay put. The comment folds away
  * on its own button, starting from whatever the card-wide toggle says.
  *
  * Header and comment are siblings rather than a wrapped pair on purpose. A
@@ -223,7 +224,7 @@ export interface ReadoutEditing {
 
 export function EntriesReadout({
   slots,
-  categories,
+  activities,
   cells,
   sleep = [],
   sleepEnabled = false,
@@ -236,7 +237,7 @@ export function EntriesReadout({
   roomy,
 }: {
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   cells: Record<string, StudyEntry[]>
   sleep?: SleepEntry[]
   sleepEnabled?: boolean
@@ -442,7 +443,7 @@ export function EntriesReadout({
                       entry={e}
                       accent={slot.color}
                       slots={slots}
-                      categories={categories}
+                      activities={activities}
                       slotId={slot.id}
                       onChange={(patch) =>
                         editing.onChangeStudy(slot.id, e.id, patch)
@@ -459,7 +460,7 @@ export function EntriesReadout({
                     />
                   )
                 }
-                const cat = getById(categories, e.category)
+                const cat = getById(activities, entryActivity(e))
                 return (
                   <ReadoutEntry
                     key={e.id}

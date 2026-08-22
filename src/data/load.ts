@@ -13,7 +13,7 @@
 
 import type { AppData, ChangeLogEntry, Project } from "../types/model"
 import {
-  DEFAULT_CATEGORIES,
+  DEFAULT_ACTIVITIES,
   DEFAULT_SETTINGS,
   DEFAULT_SLOTS,
 } from "../lib/defaults"
@@ -53,7 +53,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     fetchAllRows<ProjectRow>(() =>
       client
         .from("projects")
-        .select("id,settings,slots,categories,counter_units"),
+        .select("id,settings,slots,activities,counter_units"),
     ),
     fetchAllRows<DayRow>(() => client.from("days").select(DAY_SELECT)),
     fetchAllRows<NoteRow>(() =>
@@ -78,10 +78,10 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       id: r.id,
       settings: { ...DEFAULT_SETTINGS, ...(r.settings || {}) },
       slots: Array.isArray(r.slots) && r.slots.length ? r.slots : DEFAULT_SLOTS,
-      categories:
-        Array.isArray(r.categories) && r.categories.length
-          ? r.categories
-          : DEFAULT_CATEGORIES,
+      activities:
+        Array.isArray(r.activities) && r.activities.length
+          ? r.activities
+          : DEFAULT_ACTIVITIES,
       // No defaults to fall back on: an empty list is a real answer here,
       // meaning a project that tallies nothing.
       counterUnits: Array.isArray(r.counter_units) ? r.counter_units : [],

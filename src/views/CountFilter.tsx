@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { Filter } from "lucide-react"
-import type { Category, CounterUnit, Slot, Tag } from "../types/model"
+import type { Activity, CounterUnit, Slot, Tag } from "../types/model"
 import { btnBase } from "../lib/theme"
 import { ToggleChips } from "../ui/ToggleChips"
 import { PanelSection } from "./PanelSection"
@@ -29,37 +29,37 @@ const chipTip = (it: { label: string }, isHidden: boolean) =>
     : `Leave "${it.label}" out of every total`
 
 /**
- * Page-level filter: which slots, categories and tag-tagged counters count
+ * Page-level filter: which slots, activities and tag-tagged counters count
  * towards every figure on the page. Independent of the period — switching periods leaves it alone,
  * which is why its toggle in the period bar carries a dot while anything is
  * struck out.
  */
 export function CountFilter({
   slots,
-  categories,
+  activities,
   counters,
   tags,
   hiddenSlots,
-  hiddenCategories,
+  hiddenActivities,
   hiddenCounters,
   hiddenTags,
   onToggleSlot,
-  onToggleCategory,
+  onToggleActivity,
   onToggleCounter,
   onToggleTag,
   onReset,
   onClose,
 }: {
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   counters: CounterUnit[]
   tags: Tag[]
   hiddenSlots: Set<string>
-  hiddenCategories: Set<string>
+  hiddenActivities: Set<string>
   hiddenCounters: Set<string>
   hiddenTags: Set<string>
   onToggleSlot: (id: string) => void
-  onToggleCategory: (id: string) => void
+  onToggleActivity: (id: string) => void
   onToggleCounter: (id: string) => void
   onToggleTag: (id: string) => void
   onReset: () => void
@@ -68,7 +68,7 @@ export function CountFilter({
   const c = usePalette()
   const hiddenCount =
     hiddenSlots.size +
-    hiddenCategories.size +
+    hiddenActivities.size +
     hiddenCounters.size +
     hiddenTags.size
   return (
@@ -104,11 +104,11 @@ export function CountFilter({
             tipFor={chipTip}
           />
         </FilterGroup>
-        <FilterGroup label="Categories">
+        <FilterGroup label="Activities">
           <ToggleChips
-            items={categories}
-            hidden={hiddenCategories}
-            onToggle={onToggleCategory}
+            items={activities}
+            hidden={hiddenActivities}
+            onToggle={onToggleActivity}
             className=""
             tipFor={chipTip}
           />

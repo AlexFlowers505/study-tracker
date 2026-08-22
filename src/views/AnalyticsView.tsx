@@ -57,12 +57,12 @@ import { TabbedSection } from './TabbedSection'
 import { usePalette } from "../ui/useTheme"
 /**
  * A chart row: the fixed axis fields plus one numeric series per slot or
- * category, keyed by id. Recharts reads them by string key, so the shape is
+ * activity, keyed by id. Recharts reads them by string key, so the shape is
  * genuinely dynamic.
  */
 type ChartRow = Record<string, string | number>
 
-/** Accumulator keyed by slot or category id. */
+/** Accumulator keyed by slot or activity id. */
 type Sums = Record<string, number>
 
 /* The Lessons series left with `spec 008`: lessons became a user-defined
@@ -70,7 +70,7 @@ type Sums = Record<string, number>
    was undoing. Per-unit series come back with the new statistics. */
 const CHART_MODES = [
   { id: "hours", label: "Hours" },
-  { id: "category", label: "Categories" },
+  { id: "activity", label: "Activities" },
   { id: "slot", label: "Slots" },
   { id: "tag", label: "Tags" },
   { id: "counter", label: "Counters" },
@@ -79,7 +79,7 @@ const CHART_MODES = [
 /** Counts, not minutes — a different axis, so it formats differently too. */
 const isCount = (mode: string) => mode === "tag" || mode === "counter"
 
-/** Count series carry their own; slots and categories all share one. */
+/** Count series carry their own; slots and activities all share one. */
 const seriesOpacity = (s: object) =>
   "fillOpacity" in s ? (s as CounterSeries).fillOpacity : 0.55
 
@@ -133,7 +133,7 @@ const TREND_TABS = [
 const TRENDS_HELP =
   "The same period spread over time: hours per day, how the weekdays compare " +
   "with one another, and totals week by week and month by month. Each chart " +
-  "can be split by slot or by category."
+  "can be split by slot or by activity."
 
 // Bounds come in from the shared period bar — analytics no longer owns a
 // range picker of its own.
@@ -270,7 +270,7 @@ export function AnalyticsView({
   const c = usePalette()
   const {
     slots,
-    categories,
+    activities,
     days,
     settings,
     counterUnits = [],
@@ -294,7 +294,7 @@ export function AnalyticsView({
   )
   const [summaryTab, setSummaryTab] = useState("overview")
   const [trendTab, setTrendTab] = useState("daily")
-  // 'slot' | 'category' | 'hours'
+  // 'slot' | 'activity' | 'hours'
   const [rawDailyMode, setDailyMode] = useState('slot')
   const [rawWeekdayMode, setWeekdayMode] = useState('hours')
   const [rawWeeklyMode, setWeeklyMode] = useState('hours')
@@ -481,7 +481,7 @@ export function AnalyticsView({
     () =>
       rangedKeys.map((k) => {
         const entry = days[k]
-        const { bySlot, byCategory, total } = dayBreakdown(entry, slots)
+        const { bySlot, byActivity, total } = dayBreakdown(entry, slots)
         const row: ChartRow = {
           date: fmtShort(k),
           total: toHours(total),
@@ -490,27 +490,27 @@ export function AnalyticsView({
         }
         if (dailyMode === "slot") {
           slots.forEach((s) => (row[s.id] = toHours(bySlot[s.id])))
-        } else if (dailyMode === "category") {
-          categories.forEach(
-            (c) => (row[c.id] = toHours(byCategory[c.id] || 0)),
+        } else if (dailyMode === "activity") {
+          activities.forEach(
+            (c) => (row[c.id] = toHours(byActivity[c.id] || 0)),
           )
         } else if (isCount(dailyMode)) {
           return { ...row, ...countRow([k], dailyCountSeries) }
         }
         return row
       }),
-    [rangedKeys, days, slots, categories, dailyMode, settings, dailyCountSeries, countRow],
+    [rangedKeys, days, slots, activities, dailyMode, settings, dailyCountSeries, countRow],
   )
   const dailySeries = useMemo(
     () =>
       dailyMode === "slot"
         ? slots
-        : dailyMode === "category"
-          ? categories
+        : dailyMode === "activity"
+          ? activities
           : isCount(dailyMode)
             ? dailyCountSeries
             : [],
-    [dailyMode, slots, categories, dailyCountSeries],
+    [dailyMode, slots, activities, dailyCountSeries],
   )
 
   const weeklyBuckets = useMemo(() => {
@@ -527,12 +527,12 @@ export function AnalyticsView({
     () =>
       weeklyMode === "slot"
         ? slots
-        : weeklyMode === "category"
-          ? categories
+        : weeklyMode === "activity"
+          ? activities
           : isCount(weeklyMode)
             ? weeklyCountSeries
             : [],
-    [weeklyMode, slots, categories, weeklyCountSeries],
+    [weeklyMode, slots, activities, weeklyCountSeries],
   )
 
   const weeklyModeData = useMemo(() => {
@@ -544,16 +544,16 @@ export function AnalyticsView({
         }
       }
       const row: ChartRow = { week: fmtShort(wk) }
-      if (weeklyMode === "slot" || weeklyMode === "category") {
-        const list = weeklyMode === "slot" ? slots : categories
+      if (weeklyMode === "slot" || weeklyMode === "activity") {
+        const list = weeklyMode === "slot" ? slots : activities
         const sums: Sums = {}
         list.forEach((s) => (sums[s.id] = 0))
         keys.forEach((k) => {
-          const { bySlot, byCategory } = dayBreakdown(days[k], slots)
+          const { bySlot, byActivity } = dayBreakdown(days[k], slots)
           list.forEach(
             (s) =>
               (sums[s.id] +=
-                weeklyMode === "slot" ? bySlot[s.id] : byCategory[s.id] || 0),
+                weeklyMode === "slot" ? bySlot[s.id] : byActivity[s.id] || 0),
           )
         })
         list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
@@ -576,7 +576,7 @@ export function AnalyticsView({
       }
       return row
     })
-  }, [weeklyBuckets, days, slots, categories, weeklyMode, settings, weeklyCountSeries, countRow])
+  }, [weeklyBuckets, days, slots, activities, weeklyMode, settings, weeklyCountSeries, countRow])
 
   const monthlyBuckets = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -601,12 +601,12 @@ export function AnalyticsView({
     () =>
       monthlyMode === "slot"
         ? slots
-        : monthlyMode === "category"
-          ? categories
+        : monthlyMode === "activity"
+          ? activities
           : isCount(monthlyMode)
             ? monthlyCountSeries
             : [],
-    [monthlyMode, slots, categories, monthlyCountSeries],
+    [monthlyMode, slots, activities, monthlyCountSeries],
   )
 
   const monthlyModeData = useMemo(() => {
@@ -618,16 +618,16 @@ export function AnalyticsView({
         }
       }
       const row: ChartRow = { month: fmtMonthLabel(mk) }
-      if (monthlyMode === "slot" || monthlyMode === "category") {
-        const list = monthlyMode === "slot" ? slots : categories
+      if (monthlyMode === "slot" || monthlyMode === "activity") {
+        const list = monthlyMode === "slot" ? slots : activities
         const sums: Sums = {}
         list.forEach((s) => (sums[s.id] = 0))
         keys.forEach((k) => {
-          const { bySlot, byCategory } = dayBreakdown(days[k], slots)
+          const { bySlot, byActivity } = dayBreakdown(days[k], slots)
           list.forEach(
             (s) =>
               (sums[s.id] +=
-                monthlyMode === "slot" ? bySlot[s.id] : byCategory[s.id] || 0),
+                monthlyMode === "slot" ? bySlot[s.id] : byActivity[s.id] || 0),
           )
         })
         list.forEach((s) => (row[s.id] = toHours(sums[s.id])))
@@ -651,10 +651,10 @@ export function AnalyticsView({
       }
       return row
     })
-  }, [monthlyBuckets, days, slots, categories, monthlyMode, settings, monthlyCountSeries, countRow])
+  }, [monthlyBuckets, days, slots, activities, monthlyMode, settings, monthlyCountSeries, countRow])
 
   // Weekday effectiveness — compares the same weekday (Mon, Tue, …) across the
-  // different weeks in range. In Slot/Category mode we instead show the hours
+  // different weeks in range. In Slot/Activity mode we instead show the hours
   // breakdown per weekday, summed across the whole range (matching the toggle
   // options on the Daily study time chart above).
   const weekLabelsList = useMemo(
@@ -664,14 +664,14 @@ export function AnalyticsView({
 
   const weekdaySeries = useMemo(() => {
     if (weekdayMode === "slot") return slots
-    if (weekdayMode === "category") return categories
+    if (weekdayMode === "activity") return activities
     if (isCount(weekdayMode)) return weekdayCountSeries
     return weeklyBuckets.map(([,], idx) => ({
       id: `w${idx}`,
       label: `Wk of ${weekLabelsList[idx]}`,
       color: PALETTE[idx % PALETTE.length],
     }))
-  }, [weekdayMode, slots, categories, weeklyBuckets, weekLabelsList, weekdayCountSeries])
+  }, [weekdayMode, slots, activities, weeklyBuckets, weekLabelsList, weekdayCountSeries])
 
   const weekdayData = useMemo(() => {
     return WEEKDAY_ORDER.map((wd) => {
@@ -685,7 +685,7 @@ export function AnalyticsView({
         }
       }
       const row: ChartRow = { weekday: WEEKDAY_LABELS[wd] }
-      if (weekdayMode === "slot" || weekdayMode === "category") {
+      if (weekdayMode === "slot" || weekdayMode === "activity") {
         const matching = rangedKeys.filter((k) => fromKey(k).getDay() === wd)
         if (weekdayMode === "slot") {
           slots.forEach((s) => {
@@ -697,11 +697,11 @@ export function AnalyticsView({
             row[s.id] = toHours(sum)
           })
         } else {
-          categories.forEach((c) => {
+          activities.forEach((c) => {
             let sum = 0
             matching.forEach((k) => {
-              const { byCategory } = dayBreakdown(days[k], slots)
-              sum += byCategory[c.id] || 0
+              const { byActivity } = dayBreakdown(days[k], slots)
+              sum += byActivity[c.id] || 0
             })
             row[c.id] = toHours(sum)
           })
@@ -725,7 +725,7 @@ export function AnalyticsView({
     weeklyBuckets,
     days,
     slots,
-    categories,
+    activities,
     weekdayMode,
     settings,
     goalsEnabled,
@@ -751,7 +751,7 @@ export function AnalyticsView({
               dates={rangeDates}
               days={days}
               slots={slots}
-              categories={categories}
+              activities={activities}
               isIgnored={isDayIgnored}
             />
           </OverviewStats>
@@ -950,7 +950,7 @@ export function AnalyticsView({
               {weekdaySeries
                 .filter((s) => !weekdayToggle.hidden.has(s.id))
                 .map((s) =>
-                  weekdayMode === "slot" || weekdayMode === "category" ? (
+                  weekdayMode === "slot" || weekdayMode === "activity" ? (
                     <Area
                       key={s.id}
                       type="monotone"

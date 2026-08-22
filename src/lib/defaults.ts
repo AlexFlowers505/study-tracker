@@ -2,7 +2,7 @@
    Defaults, and the normalisers that accept anything ever saved.
 --------------------------------------------------------------- */
 
-import type { AppData, Category, Project, Settings, Slot } from "../types/model"
+import type { AppData, Activity, Project, Settings, Slot } from "../types/model"
 import { toKey } from "./date"
 import { makeId } from "./id"
 import { dayCounters, legacyUnits } from "./counters"
@@ -25,7 +25,7 @@ export const DEFAULT_SLOTS: Slot[] = [
   { id: "evening", label: "Evening", iconName: "Moon", color: "#C1595B" },
 ]
 
-export const DEFAULT_CATEGORIES: Category[] = [
+export const DEFAULT_ACTIVITIES: Activity[] = [
   {
     id: "notes",
     label: "Lesson notes",
@@ -86,7 +86,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     id: makeId("project"),
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
     slots: DEFAULT_SLOTS,
-    categories: DEFAULT_CATEGORIES,
+    activities: DEFAULT_ACTIVITIES,
     // Deliberately empty. A new project tallies nothing until you say what,
     // rather than inheriting two units somebody else's syllabus needed.
     counterUnits: [],
@@ -112,8 +112,8 @@ export function normalizeProject(p: Partial<Project>): Project {
     id: p.id || makeId("project"),
     settings,
     slots: p.slots && p.slots.length ? p.slots : DEFAULT_SLOTS,
-    categories:
-      p.categories && p.categories.length ? p.categories : DEFAULT_CATEGORIES,
+    activities:
+      p.activities && p.activities.length ? p.activities : DEFAULT_ACTIVITIES,
     counterUnits: p.counterUnits ?? legacyUnits(settings),
     days: migrated
       ? Object.fromEntries(

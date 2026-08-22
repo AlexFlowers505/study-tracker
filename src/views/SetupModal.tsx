@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Setup — project details, slots and categories, and the project switcher.
+   Setup — project details, slots and activities, and the project switcher.
 --------------------------------------------------------------- */
 
 import { useEffect, useRef, useState } from 'react'
@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import type {
   AppData,
-  Category,
+  Activity,
   CounterUnit,
   Project,
   GoalCut,
@@ -59,12 +59,12 @@ import { usePalette } from "../ui/useTheme"
 export function SetupModal({
   settings,
   slots,
-  categories,
+  activities,
   onClose,
   onSaveSettings,
   onRecordGoalCut,
   onUpdateSlots,
-  onUpdateCategories,
+  onUpdateActivities,
   counterUnits,
   counterProgress,
   onUpdateUnits,
@@ -79,12 +79,12 @@ export function SetupModal({
 }: {
   settings: Settings
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   onClose: () => void
   onSaveSettings: (next: Settings) => void
   onRecordGoalCut: (cut: GoalCut) => void
   onUpdateSlots: (next: Slot[]) => void
-  onUpdateCategories: (next: Category[]) => void
+  onUpdateActivities: (next: Activity[]) => void
   counterUnits: CounterUnit[]
   counterProgress: Record<string, number>
   onUpdateUnits: (next: CounterUnit[]) => void
@@ -132,7 +132,7 @@ export function SetupModal({
           {[
             { id: "details", label: "Project", icon: SlidersHorizontal },
             { id: "slots", label: "Slots", icon: LayoutGrid },
-            { id: "categories", label: "Categories", icon: Shapes },
+            { id: "activities", label: "Activities", icon: Shapes },
             { id: "units", label: "Counters", icon: Hash },
             { id: "tags", label: "Tags", icon: Tags },
             { id: "streaks", label: "Streaks", icon: Flame },
@@ -192,11 +192,11 @@ export function SetupModal({
               }
             />
           )}
-          {tab === "categories" && (
+          {tab === "activities" && (
             <EditableList
-              items={categories}
-              onChange={onUpdateCategories}
-              noun="category"
+              items={activities}
+              onChange={onUpdateActivities}
+              noun="activity"
               warningNote={(label) =>
                 `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
               }
@@ -260,7 +260,7 @@ function ProjectsTab({
   return (
     <div className="space-y-2 font-mono text-sm">
       <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-        Switch between separate projects, each with its own slots, categories
+        Switch between separate projects, each with its own slots, activities
         and log.
       </p>
       {projects.map((p) => {

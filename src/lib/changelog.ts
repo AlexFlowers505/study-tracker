@@ -10,7 +10,7 @@
 --------------------------------------------------------------- */
 
 import type {
-  Category,
+  Activity,
   CounterUnit,
   Day,
   Slot,
@@ -20,13 +20,15 @@ import type {
 import { UNSLOTTED } from "./counters"
 import { getById } from "./id"
 import { startedPreviousDay } from "./time"
+import { entryActivity } from "./entries"
 
 export const CHANGE_LOG_LIMIT = 200
 
 type Scalar = string | number | undefined | null
 
-export const entryLabel = (e: StudyEntry, categories: Category[]): string => {
-  const cat = e.category ? getById(categories, e.category).label : null
+export const entryLabel = (e: StudyEntry, activities: Activity[]): string => {
+  const act = entryActivity(e)
+  const cat = act ? getById(activities, act).label : null
   const when =
     e.start && e.end
       ? `${startedPreviousDay(e) ? "−1d " : ""}${e.start}–${e.end}`
@@ -38,7 +40,7 @@ export const entryLabel = (e: StudyEntry, categories: Category[]): string => {
 export function diffEntry(
   before: StudyEntry,
   after: StudyEntry,
-  categories: Category[],
+  activities: Activity[],
 ): string[] {
   const lines: string[] = []
   const field = (name: string, a: Scalar, b: Scalar) => {
@@ -48,11 +50,11 @@ export function diffEntry(
   field("start", before.start, after.start)
   field("end", before.end, after.end)
   field("minutes", before.minutes, after.minutes)
-  if (before.category !== after.category) {
+  if (entryActivity(before) !== entryActivity(after)) {
     field(
-      "category",
-      getById(categories, before.category).label,
-      getById(categories, after.category).label,
+      "activity",
+      getById(activities, entryActivity(before)).label,
+      getById(activities, entryActivity(after)).label,
     )
   }
   if ((before.comment || "") !== (after.comment || ""))
@@ -71,7 +73,7 @@ export function diffDay(
   before: Day | undefined,
   after: Day | undefined,
   slots: Slot[],
-  categories: Category[],
+  activities: Activity[],
   units: CounterUnit[] = [],
 ): string[] {
   const details: string[] = []
@@ -84,10 +86,10 @@ export function diffDay(
     b.forEach((entry, id) => {
       const prev = a.get(id)
       if (!prev) {
-        details.push(`+ ${slot.label}: ${entryLabel(entry, categories)}`)
+        details.push(`+ ${slot.label}: ${entryLabel(entry, activities)}`)
         return
       }
-      diffEntry(prev, entry, categories).forEach((line) =>
+      diffEntry(prev, entry, activities).forEach((line) =>
         details.push(`~ ${slot.label}: ${line}`),
       )
     })
@@ -95,7 +97,7 @@ export function diffDay(
     // and an add; collapsing them would hide which slot it landed in.
     a.forEach((entry, id) => {
       if (!b.has(id))
-        details.push(`− ${slot.label}: ${entryLabel(entry, categories)}`)
+        details.push(`− ${slot.label}: ${entryLabel(entry, activities)}`)
     })
   })
 
@@ -104,16 +106,16 @@ export function diffDay(
   afterSleep.forEach((entry, id) => {
     const prev = beforeSleep.get(id)
     if (!prev) {
-      details.push(`+ Sleep: ${entryLabel(entry, categories)}`)
+      details.push(`+ Sleep: ${entryLabel(entry, activities)}`)
       return
     }
-    diffEntry(prev, entry, categories).forEach((line) =>
+    diffEntry(prev, entry, activities).forEach((line) =>
       details.push(`~ Sleep: ${line}`),
     )
   })
   beforeSleep.forEach((entry, id) => {
     if (!afterSleep.has(id))
-      details.push(`− Sleep: ${entryLabel(entry, categories)}`)
+      details.push(`− Sleep: ${entryLabel(entry, activities)}`)
   })
 
   // Walks the unit list rather than naming two fields. Missing this is how a

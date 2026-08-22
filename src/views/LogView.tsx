@@ -68,7 +68,7 @@ export function LogView({
   /** Lets the day cards edit an entry in place, without the day dialog. */
   onUpdateDay?: (key: string, patch: Partial<Day>) => void
   /** The sleep panel, rendered by the shell so it can read the unfiltered
-   *  project — sleep has no slots or categories for the filter to act on. */
+   *  project — sleep has no slots or activities for the filter to act on. */
   sleepSection?: ReactNode
 }) {
   const c = usePalette()
@@ -82,7 +82,7 @@ export function LogView({
   const [countersOpen, setCountersOpen] = useState(true)
   const {
     slots,
-    categories,
+    activities,
     counterUnits = [],
     days,
     settings,
@@ -267,7 +267,7 @@ export function LogView({
           cursor={cursor}
           days={days}
           slots={slots}
-          categories={categories}
+          activities={activities}
           settings={settings}
           counterUnits={counterUnits}
           countersOpen={countersOpen}
@@ -286,7 +286,7 @@ export function LogView({
           dates={visibleDates}
           days={days}
           slots={slots}
-          categories={categories}
+          activities={activities}
           settings={settings}
           counterUnits={counterUnits}
           todayKey={todayKey}
@@ -311,7 +311,7 @@ export function LogView({
           end={range.end}
           days={days}
           slots={slots}
-          categories={categories}
+          activities={activities}
           counterUnits={counterUnits}
           settings={settings}
           todayKey={todayKey}

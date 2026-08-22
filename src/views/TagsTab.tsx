@@ -2,7 +2,7 @@
    Setup's tags — the labels a counter unit can carry.
 
    Nothing here but the shared list: a tag is a name, a colour, an icon and a
-   line saying what it means, which is exactly a slot or a category minus the
+   line saying what it means, which is exactly a slot or an activity minus the
    behaviour. Reusing `EditableList` is the point — the tabs look and reorder
    alike because they are one component.
 

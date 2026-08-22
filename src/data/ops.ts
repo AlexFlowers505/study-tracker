@@ -145,7 +145,7 @@ export async function applyWriteOp(
           user_id: userId,
           settings: project.settings,
           slots: project.slots,
-          categories: project.categories,
+          activities: project.activities,
           counter_units: project.counterUnits || [],
           updated_at: stamp,
         }),

@@ -7,7 +7,7 @@
    which made the page a long scroll past numbers nobody was looking at.
 
    The tab row deliberately does **not** reuse `SegmentedControl`. Inside
-   Trends every chart carries one of those for its own slot/category split, and
+   Trends every chart carries one of those for its own slot/activity split, and
    two identical pill rows stacked would read as one control drawn twice.
    Underlined tabs say "a level up" instead — the same shape Setup's tabs use.
 

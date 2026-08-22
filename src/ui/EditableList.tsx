@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Editable list — slots, categories and counter units in Setup.
+   Editable list — slots, activities and counter units in Setup.
 
    Generic over the item so a list can carry fields the other two do not.
    Counter units add a total and a relation; they render through `extra`
@@ -37,7 +37,7 @@ export function EditableList<T extends Labeled>({
   /** Fields this kind of item has and the others do not. */
   extra?: (item: T, update: (patch: Partial<T>) => void) => ReactNode
   /**
-   * Slots and categories need at least one — an entry has to go somewhere.
+   * Slots and activities need at least one — an entry has to go somewhere.
    * Counter units can go to zero: a project that tallies nothing is normal.
    */
   minItems?: number

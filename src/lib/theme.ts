@@ -11,13 +11,13 @@ import type { CSSProperties } from "react"
 import type { GoalOutcome } from "../types/model"
 
 /**
- * Slot and category colours, ordered around the wheel so neighbours in the
+ * Slot and activity colours, ordered around the wheel so neighbours in the
  * grid are neighbours in hue and the whole set can be scanned at once.
  *
  * Two of the old ten were dropped for being indistinguishable at the size
  * these are actually seen — a 10px icon and a 2px rail: `#4AA5A0` against
  * `#2F9E8F`, and `#C98A2E` against `#E29A3E`. **Removing a colour does not
- * touch saved data**: slots and categories store their own hex, so anything
+ * touch saved data**: slots and activities store their own hex, so anything
  * already using one keeps it and simply cannot be re-picked from the grid.
  */
 export const PALETTE = [

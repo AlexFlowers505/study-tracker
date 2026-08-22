@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------
    The icon library.
 
-   Slot and category icons are user-configurable, so they are chosen by name
+   Slot and activity icons are user-configurable, so they are chosen by name
    from this list and drawn through `RenderIcon`. Fixed UI chrome imports from
    `lucide-react` directly instead.
 

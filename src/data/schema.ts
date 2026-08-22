@@ -102,7 +102,7 @@ export interface ProjectRow {
   id: string
   settings: unknown
   slots: unknown
-  categories: unknown
+  activities: unknown
   counter_units: unknown
 }
 

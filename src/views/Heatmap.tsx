@@ -5,7 +5,7 @@
 
 import { useMemo } from "react"
 import type {
-  Category,
+  Activity,
   Day,
   DayKey,
   IsIgnored,
@@ -87,7 +87,7 @@ export function Heatmap({
   end,
   days,
   slots,
-  categories,
+  activities,
   settings,
   todayKey,
   onSelectDay,
@@ -99,7 +99,7 @@ export function Heatmap({
   end: Date
   days: Record<DayKey, Day>
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   counterUnits: CounterUnit[]
   settings: Settings
   todayKey: DayKey
@@ -172,7 +172,7 @@ export function Heatmap({
                     : goalOutcome === "missed"
                       ? `${c.exam}30`
                       : neutralCell(c)
-                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, categories, counterUnits)}`
+                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, activities, counterUnits)}`
                 return (
                   <Tip
                     key={di}

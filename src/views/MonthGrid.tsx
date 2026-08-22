@@ -5,7 +5,7 @@
 
 import { EyeOff, Moon, Snowflake } from "lucide-react"
 import type {
-  Category,
+  Activity,
   CounterUnit,
   Day,
   DayKey,
@@ -126,7 +126,7 @@ function CompactDayCell({
   date,
   entry,
   slots,
-  categories,
+  activities,
   settings,
   goal,
   isToday,
@@ -140,7 +140,7 @@ function CompactDayCell({
   date: Date
   entry?: Day
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   settings: Settings
   counterUnits: CounterUnit[]
   goal: number
@@ -169,8 +169,8 @@ function CompactDayCell({
 
   const { bySlot, total } = dayBreakdown(entry, slots)
   const tooltip = ignored
-    ? `${buildTooltip(entry, slots, categories, counterUnits)}\n\nIgnored in statistics`
-    : buildTooltip(entry, slots, categories, counterUnits)
+    ? `${buildTooltip(entry, slots, activities, counterUnits)}\n\nIgnored in statistics`
+    : buildTooltip(entry, slots, activities, counterUnits)
   const metGoal = !ignored && goal > 0 && total >= goal
   const state = dayState(entry, date, settings, slots, todayKey)
   const goalOutcome = ignored || state === "pending" ? null : state
@@ -292,7 +292,7 @@ export function MonthGrid({
   cursor,
   days,
   slots,
-  categories,
+  activities,
   settings,
   todayKey,
   onEditDay,
@@ -304,7 +304,7 @@ export function MonthGrid({
   cursor: Date
   days: Record<DayKey, Day>
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   settings: Settings
   counterUnits: CounterUnit[]
   /** Folded from the period heading — see `CounterTotals`. */
@@ -407,7 +407,7 @@ export function MonthGrid({
                     date={date}
                     entry={entry}
                     slots={slots}
-                    categories={categories}
+                    activities={activities}
                     settings={settings}
                     counterUnits={counterUnits}
                     goal={goalForDate(settings, date)}

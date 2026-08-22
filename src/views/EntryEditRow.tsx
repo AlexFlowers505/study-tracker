@@ -7,7 +7,7 @@
    ways depending on how deep you had clicked.
 
    **It has to stay recognisable as the same row.** Same rail, same 10px mono,
-   same order (time, then category, then the comment underneath). The fields
+   same order (time, then activity, then the comment underneath). The fields
    carry no box and no fill — `FIELD_BARE`, a dotted underline and nothing
    else, the way the period note card behaves. What says "this is editing" is
    the wash and outline around the whole row, not the state of each field:
@@ -22,7 +22,7 @@
 import { useEffect, useRef } from "react"
 import { Ban, Check, Trash2 } from "lucide-react"
 import type {
-  Category,
+  Activity,
   SleepEntry,
   Slot,
   StudyEntry,
@@ -37,13 +37,14 @@ import { TimeRangeField } from "../ui/TimeRangeField"
 import { Tip } from "../ui/Tip"
 
 import { usePalette } from "../ui/useTheme"
+import { entryActivity } from "../lib/entries"
 const iconBtn = `${btnBase} p-1 rounded shrink-0`
 
 export function EntryEditRow({
   entry,
   accent,
   slots,
-  categories,
+  activities,
   slotId,
   onChange,
   onMoveSlot,
@@ -54,9 +55,9 @@ export function EntryEditRow({
   entry: StudyEntry | SleepEntry
   /** The slot's own colour, at full strength, for the rail, wash and outline. */
   accent: string
-  /** Absent for a sleep entry — sleep has neither slot nor category. */
+  /** Absent for a sleep entry — sleep has neither slot nor activity. */
   slots?: Slot[]
-  categories?: Category[]
+  activities?: Activity[]
   slotId?: string
   onChange: (patch: Partial<StudyEntry>) => void
   onMoveSlot?: (toSlot: string) => void
@@ -67,10 +68,10 @@ export function EntryEditRow({
   const c = usePalette()
   const ref = useRef<HTMLDivElement>(null)
   const timed = !!(entry.start && entry.end)
-  const isStudy = !!slots && !!categories && !!slotId
+  const isStudy = !!slots && !!activities && !!slotId
   const cat =
-    isStudy && categories
-      ? getById(categories, (entry as StudyEntry).category)
+    isStudy && activities
+      ? getById(activities, entryActivity(entry as StudyEntry))
       : null
   const slot = isStudy ? slots.find((s) => s.id === slotId) : undefined
 
@@ -103,7 +104,7 @@ export function EntryEditRow({
         boxShadow: `inset 0 0 0 1px ${accent}33`,
       }}
     >
-      {/* Row one is the readout's own line: time, then category. */}
+      {/* Row one is the readout's own line: time, then activity. */}
       <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-ink/70">
         <TimeRangeField
           bare
@@ -130,7 +131,7 @@ export function EntryEditRow({
         )}
       </div>
 
-      {/* The slot, then the category, each on its own line. The slot heading
+      {/* The slot, then the activity, each on its own line. The slot heading
           outside a form is bold; this one deliberately is not, so the two are
           telling you different things — one labels a group, this one is a
           field you can change. */}
@@ -160,11 +161,11 @@ export function EntryEditRow({
         <div className="flex items-center gap-1.5">
           <RenderIcon name={cat.iconName} size={9} style={{ color: cat.color }} />
           <select
-            value={(entry as StudyEntry).category}
-            onChange={(e) => onChange({ category: e.target.value })}
+            value={entryActivity(entry as StudyEntry)}
+            onChange={(e) => onChange({ activity: e.target.value })}
             className={`${FIELD_BARE} min-w-0 text-[10px] text-ink/70`}
           >
-            {categories.map((c) => (
+            {activities.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>

@@ -7,7 +7,7 @@
    should ever see a row.
 --------------------------------------------------------------- */
 
-/** A slot or a category: both are a labelled, coloured, icon-bearing id. */
+/** A slot or an activity: both are a labelled, coloured, icon-bearing id. */
 export interface Labeled {
   id: string
   label: string
@@ -18,7 +18,7 @@ export interface Labeled {
 }
 
 export type Slot = Labeled
-export type Category = Labeled
+export type Activity = Labeled
 
 /**
  * How a unit reads when it moves. Stored and configurable from the start, but
@@ -128,7 +128,7 @@ export interface CounterUnit extends Labeled {
  * the difference is that they are now yours to name, colour, describe and
  * extend, and a unit can carry several.
  *
- * Same shape as a slot or a category, so it edits through the same list.
+ * Same shape as a slot or an activity, so it edits through the same list.
  */
 export type Tag = Labeled
 
@@ -151,8 +151,25 @@ export interface TimeEntry {
   end?: TimeOfDay
 }
 
-/** Study time carries a category; sleep has neither slot nor category. */
+/** Study time carries an activity; sleep has neither slot nor activity. */
 export interface StudyEntry extends TimeEntry {
+  /**
+   * What the time went on — an id from `Project.activities`.
+   *
+   * These were called categories until the word was needed for something
+   * else: a category is now a grouping *of* counters, and an activity is one
+   * of the three things a counter can be. Nothing about the entity changed,
+   * only its name — and the ids did not change at all, which is why the
+   * migration is a rename rather than a move.
+   */
+  activity?: string
+  /**
+   * What `activity` was called in storage. Read through `entryActivity()`
+   * until `migrations/013` has run everywhere, and left in the data after
+   * that so nothing anybody logged depends on the order two deployments
+   * happened in.
+   * @deprecated
+   */
   category?: string
 }
 
@@ -423,8 +440,8 @@ export interface Project {
   id: string
   settings: Settings
   slots: Slot[]
-  categories: Category[]
-  /** Sortable, like slots and categories. Empty on a project that tallies nothing. */
+  activities: Activity[]
+  /** Sortable, like slots and activities. Empty on a project that tallies nothing. */
   counterUnits: CounterUnit[]
   days: Record<DayKey, Day>
   /** Keyed by the Monday of the week. */
@@ -457,7 +474,7 @@ export type GoalOutcome = "met" | "frozen" | "missed" | null
 
 export interface DayTotals {
   bySlot: Record<string, number>
-  byCategory: Record<string, number>
+  byActivity: Record<string, number>
   total: number
 }
 

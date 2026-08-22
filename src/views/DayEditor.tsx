@@ -15,7 +15,7 @@
 
 import { ArrowUpRight } from "lucide-react"
 import type {
-  Category,
+  Activity,
   CounterUnit,
   Day,
   DayKey,
@@ -32,7 +32,7 @@ export interface DayDialogProps {
   dateKey: DayKey
   dayEntry?: Day
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   counterUnits: CounterUnit[]
   settings: Settings
   onClose: () => void
@@ -43,7 +43,7 @@ export function DayQuickviewModal({
   dateKey,
   dayEntry,
   slots,
-  categories,
+  activities,
   counterUnits,
   settings,
   onClose,
@@ -79,7 +79,7 @@ export function DayQuickviewModal({
               dates={[d]}
               days={{ [dateKey]: dayEntry || {} }}
               slots={slots}
-              categories={categories}
+              activities={activities}
               counterUnits={counterUnits}
               settings={settings}
               todayKey={toKey(new Date())}

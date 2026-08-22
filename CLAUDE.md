@@ -1,6 +1,6 @@
 # study-tracker
 
-Personal study-time logbook: log minutes per day across time slots and categories,
+Personal study-time logbook: log minutes per day across time slots and activities,
 track lesson/exam progress against a goal, and view week/month/heatmap analytics.
 
 Scope note: this file applies to this repository only. Keep machine-wide or
@@ -288,7 +288,7 @@ which are Node config and get their own lint block.
     tab**, never `display: none`: a Recharts `ResponsiveContainer` measures the
     box it is in, and one in a hidden parent measures zero.
     It deliberately does **not** reuse `SegmentedControl` — a chart carries one
-    of those for its own slot/category split, and two identical pill rows
+    of those for its own slot/activity split, and two identical pill rows
     stacked read as one control drawn twice. Underlined tabs, the shape Setup
     already uses, say "a level up" instead.
     `OverviewStats.tsx`, `AveragesStats.tsx` and `RemarkableStats.tsx` are the
@@ -373,7 +373,7 @@ One page, not tabs. A single period drives everything:
 - Panels render between it and `LogView`, the filter first because it governs
   everything below it. The streak panels open from the streak row rather than
   from `PeriodBar`, and only one of them at a time:
-  - `CountFilter` — which slots/categories count. Not period-scoped; switching
+  - `CountFilter` — which slots/activities count. Not period-scoped; switching
     periods leaves it alone, so its toggle carries a dot while anything is
     struck out, or a live filter would silently shrink every figure.
   - `StreaksSection` — the goal streak, project-wide. Its how-it-works bubble
@@ -385,7 +385,7 @@ One page, not tabs. A single period drives everything:
   - `SleepSection` — only when `settings.sleepEnabled`; its toggle is absent,
     not disabled, when the feature is off. Unlike the other two it *is*
     period-scoped, and it reads `project.days` rather than `visibleProject`,
-    since sleep has neither slots nor categories for the filter to act on.
+    since sleep has neither slots nor activities for the filter to act on.
     Its clock runs 18:00 → 17:00: a night spans midnight, so on a 0–23 axis
     every night is split across both ends of the chart. The same rotation is
     what makes its averages correct — the plain mean of 23:30 and 00:30 is
@@ -394,7 +394,7 @@ One page, not tabs. A single period drives everything:
 ## Tags
 
 Labels on counter units — a name, a colour, an icon and a description, edited
-through the same `EditableList` as slots and categories.
+through the same `EditableList` as slots and activities.
 
 They replace `CounterUnit.relation`, a fixed positive/neutral/negative, which
 was the app deciding in advance what the only interesting thing about a counter
@@ -424,7 +424,7 @@ Two things read them:
 - **The Trends charts**, through the `Tags` and `Counters` modes. Those plot
   counts rather than minutes, so they format their axis and tooltip as plain
   numbers; `lib/counterSeries.ts` turns the choice into the same "coloured
-  series plus a number per row" shape the slot and category splits already
+  series plus a number per row" shape the slot and activity splits already
   use, so the charts needed no new drawing code for it.
 
   Tag mode carries a second choice — **by tag** (one series per tag, summing
@@ -467,6 +467,38 @@ Two things read them:
   in place. Both are for React Compiler: a callback called inside four separate
   memos, or one that mutates what it is handed, costs the whole component its
   memoization and fails `react-hooks/preserve-manual-memoization`.
+
+## Activities, and the word "category"
+
+What a time entry is filed under — Lessons, Q&A, Polishing questions — is an
+**activity**. It was called a category until `migrations/013`, and the rename
+is worth understanding because it is not cosmetic: *category* now means a
+grouping **of** counters, and an activity is one of the three things a counter
+can be. Read down the column and the three kinds are three answers to one
+question — what do we record about the day?
+
+| kind | records | example |
+| --- | --- | --- |
+| **activity** | time | forty minutes on lessons |
+| **tally** | a count | three slips onto youtube |
+| **check** | an answer | overslept: no |
+
+Nothing about the entity changed and **no id moved**, which is why `013` is two
+renames rather than a data migration: `projects.categories` becomes
+`projects.activities`, and inside `days.cells` each entry's `category` key
+becomes `activity`. `entryActivity()` in `lib/entries.ts` reads either
+spelling, so the deploy and the migration can happen in either order; the
+deprecated `StudyEntry.category` stays in the type for exactly that reason,
+and `patchEntry` drops it the moment an activity is written.
+
+**Activities keep their own list**, `Project.activities`, rather than joining
+`counterUnits`. Merging them would make "an activity is a kind of counter" true
+in the data as well as in the head, and would also make every existing walk
+over `counterUnits` — day badges, period chips, the count filter, both chart
+modes, streak rules — start seeing them, each site needing its own answer to
+"do I want activities here". A dozen silent chances to get a number wrong is a
+steep price for a tidier type. Setup presents the two lists as one tab with
+three sub-tabs; that is a drawing decision and it belongs in the drawing.
 
 ## Counter kinds
 
@@ -701,7 +733,7 @@ In memory, all state is one object — every view below `StudyTrackerApp`
 receives this and nothing else:
 
 ```js
-{ activeProjectId, projects: [ { id, settings, slots, categories,
+{ activeProjectId, projects: [ { id, settings, slots, activities,
                                 days, weekNotes, monthNotes,
                                 weekIgnore, monthIgnore } ] }
 ```
@@ -711,7 +743,7 @@ week, month keys are `'YYYY-MM'`.
 
 A day holds two independent lists. `cells` is study time, keyed by slot, and
 every figure in the app comes from it via `dayBreakdown`. `sleep` is a flat
-list with no slot and no category, present only when sleep tracking is on
+list with no slot and no activity, present only when sleep tracking is on
 (`settings.sleepEnabled`), and **nothing in `dayBreakdown`, `rangeStats` or the
 goals may ever see it** — sleep is a separate axis, not study time.
 
@@ -725,7 +757,7 @@ the `+1d` marks.
 ## Persistence
 
 **On the server the shape is different.** Four tables, not one document:
-`projects` (settings/slots/categories as jsonb — small and always read as a
+`projects` (settings/slots/activities as jsonb — small and always read as a
 unit), `days` keyed `(project_id, date)`, `period_notes` keyed
 `(project_id, kind, key)` where the note and its ignore flag share a row, and
 `user_prefs` for `active_project_id`. RLS on all four; days and notes inherit
@@ -735,7 +767,8 @@ ownership from their project. See `migrations/001_normalize_schema.sql`, then
 by `applied_migrations`), `005_freezes.sql` (`days.frozen` and the
 `week_verdicts` ledger), `011_check_marks.sql` (`days.checks`) and
 `012_custom_streaks.sql` (`days.rule_freezes` and the `streak_verdicts`
-ledger).
+ledger) and `013_activities.sql` (the categories-to-activities rename, in the
+`projects` column and inside every day's `cells`).
 
 `change_log` is the one exception to everything below. It records what an edit
 changed — old value and new — capped at `CHANGE_LOG_LIMIT`, oldest dropped. It
@@ -892,8 +925,8 @@ Two things needed real thought rather than a straight swap:
   reads clearly over `#F4F5F7` and all but vanishes over `#10151A`, because the
   eye has far less light to compare it against.
 
-Slot, category and counter colours are **left exactly as stored**. They are the
-user's data; silently recolouring someone's categories to suit a background is
+Slot, activity and counter colours are **left exactly as stored**. They are the
+user's data; silently recolouring someone's activities to suit a background is
 a worse failure than a chip that is a shade dark.
 
 Light mode is unchanged to the byte — the light palette holds the same values
@@ -915,13 +948,13 @@ Match the existing file:
 - **Never index into `PALETTE` for a fixed role.** `SLEEP_COLOR` used to be
   `PALETTE[3]`, which silently repainted every sleep chart the first time the
   list was reordered. Retiring a colour is safe for saved data — slots and
-  categories store their own hex — and `EditableList` appends an item's own
+  activities store their own hex — and `EditableList` appends an item's own
   colour to the grid when it is no longer in the palette, so nothing that used
   a retired one shows an empty selection.
 - Use the date helpers (`toKey`, `fromKey`, `addDays`, `startOfWeek`,
   `daysBetween`) — they work in local time deliberately, to avoid UTC drift.
   Weeks start Monday (`WEEKDAY_ORDER`).
-- Icons: slot/category icons are user-configurable and go through
+- Icons: slot/activity icons are user-configurable and go through
   `ICON_LIBRARY` / `RenderIcon`. Fixed UI chrome imports from `lucide-react`
   directly (see the import block at the top).
 - **Anything that floats — tooltips, date pickers, menus — renders into a
@@ -953,7 +986,7 @@ Match the existing file:
   default for controls: ink at 6%, no border anywhere. An outline draws a hard
   edge around every control, and a form of six of them reads as a grid of boxes
   rather than as a few things you can change; a step in tone says "control" and
-  nothing more. The same rule governs list rows in Setup — a slot, a category,
+  nothing more. The same rule governs list rows in Setup — a slot, an activity,
   a counter unit is a raised surface, not a boxed one. `FIELD_BOXED` survives
   for the few places that genuinely need an edge, and floating panels swap the
   border for a `ring-1` plus a shadow, because a thing lifted off the page does

@@ -3,7 +3,7 @@
    period-scoped.
 
    It reads `project.days` rather than the filtered project: sleep has
-   neither slots nor categories, so there is nothing for the count filter to
+   neither slots nor activities, so there is nothing for the count filter to
    act on. Every number comes from `lib/sleep`; this file only draws.
 --------------------------------------------------------------- */
 
@@ -36,8 +36,9 @@ import { usePalette } from "../ui/useTheme"
  * The row chart's Y axis: the label, plus a rule above any night that starts a
  * new week.
  *
- * Drawn from the tick rather than as a `ReferenceLine` because a category axis
- * positions a reference line *on* a category, never between two — and between
+ * Drawn from the tick rather than as a `ReferenceLine` because a Recharts
+ * category axis positions a reference line *on* a band, never between two — and
+ * between
  * is the only place a week boundary exists. `band` is the row pitch, which the
  * chart knows because it sets its own height from the row count.
  */

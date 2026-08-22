@@ -4,7 +4,7 @@
    Read from raw day data. **Ignoring is invisible here**: a red ignored day
    breaks a streak like any other, or marking every bad day "ignored" would be
    the obvious way to fake one. The count-filter is invisible too — streaks
-   always cover every slot and category, whatever the page is showing.
+   always cover every slot and activity, whatever the page is showing.
 
    Weeks and months are judged by their days, not by summed hours: a streak is
    about regularity, not volume. A frozen day counts as kept, everywhere.

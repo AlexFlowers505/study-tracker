@@ -17,7 +17,7 @@
 import { useCallback, useState } from "react"
 import { Clock, Hash, Moon, Play, Square, X } from "lucide-react"
 import type {
-  Category,
+  Activity,
   CounterUnit,
   DayKey,
   Slot,
@@ -39,7 +39,7 @@ import { usePalette } from "../ui/useTheme"
 export function QuickAddEntryModal({
   dateKey,
   slots,
-  categories,
+  activities,
   units = [],
   sleepEnabled,
   counters = {},
@@ -51,7 +51,7 @@ export function QuickAddEntryModal({
 }: {
   dateKey: DayKey
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   /** Empty when the project defines no counters — then there is no tab row. */
   units?: CounterUnit[]
   /** Whether sleep is tracked at all. Off, the option is absent rather
@@ -62,7 +62,7 @@ export function QuickAddEntryModal({
   initialSlotId?: string
   /**
    * Sleep is the same dialog with the top row removed: it is a flat list on
-   * the day with no slot and no category. Sharing the component rather than
+   * the day with no slot and no activity. Sharing the component rather than
    * copying it is what keeps the two ways of adding a time the same shape.
    */
   variant?: "study" | "sleep"
@@ -96,7 +96,7 @@ export function QuickAddEntryModal({
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
   const [unitId, setUnitId] = useState(units[0]?.id)
   const [amount, setAmount] = useState(1)
-  const [category, setCategory] = useState(categories[0]?.id)
+  const [activity, setActivity] = useState(activities[0]?.id)
   const [start, setStart] = useState<TimeOfDay | undefined>(undefined)
   const [end, setEnd] = useState<TimeOfDay | undefined>(undefined)
   const [comment, setComment] = useState("")
@@ -114,7 +114,7 @@ export function QuickAddEntryModal({
   const submit = () => {
     onAdd(dateKey, isSleep ? null : slotId, {
       id: makeId(isSleep ? "sleep" : "entry"),
-      ...(isSleep ? {} : { category }),
+      ...(isSleep ? {} : { activity }),
       minutes: total,
       comment,
       ...(start ? { start } : {}),
@@ -222,14 +222,14 @@ export function QuickAddEntryModal({
             </label>
             <label className="block">
               <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
-                Category
+                Activity
               </span>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                value={activity}
+                onChange={(e) => setActivity(e.target.value)}
                 className={FIELD_SOFT}
               >
-                {categories.map((c) => (
+                {activities.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
                   </option>

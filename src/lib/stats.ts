@@ -6,7 +6,7 @@
 --------------------------------------------------------------- */
 
 import type {
-  Category,
+  Activity,
   Day,
   DayKey,
   DayTotals,
@@ -18,6 +18,7 @@ import type {
 } from "../types/model"
 import { fromKey, monthKey, startOfWeek, toKey } from "./date"
 import { getById } from "./id"
+import { entryActivity } from "./entries"
 
 export const goalForDate = (
   settings: Settings | undefined,
@@ -52,7 +53,7 @@ export function dayBreakdown(
   slots: Slot[],
 ): DayTotals {
   const bySlot: Record<string, number> = {}
-  const byCategory: Record<string, number> = {}
+  const byActivity: Record<string, number> = {}
   let total = 0
   slots.forEach((s) => (bySlot[s.id] = 0))
   if (dayEntry && dayEntry.cells) {
@@ -62,15 +63,15 @@ export function dayBreakdown(
         const m = Number(e.minutes) || 0
         bySlot[s.id] += m
         total += m
-        // An entry with no category still has to land somewhere, or the
-        // category rows stop adding up to the total. It gets its own bucket
+        // An entry with no activity still has to land somewhere, or the
+        // activity rows stop adding up to the total. It gets its own bucket
         // and renders through `getById`'s grey fallback.
-        const cat = String(e.category)
-        byCategory[cat] = (byCategory[cat] || 0) + m
+        const cat = String(entryActivity(e))
+        byActivity[cat] = (byActivity[cat] || 0) + m
       })
     })
   }
-  return { bySlot, byCategory, total }
+  return { bySlot, byActivity, total }
 }
 
 export function rangeStats(
@@ -102,11 +103,11 @@ export function periodBreakdown(
   dates: Date[],
   days: Record<DayKey, Day>,
   slots: Slot[],
-  categories: Category[],
+  activities: Activity[],
   isIgnored: IsIgnored,
-): { total: number; slotRows: BreakdownRow[]; categoryRows: BreakdownRow[] } {
+): { total: number; slotRows: BreakdownRow[]; activityRows: BreakdownRow[] } {
   const bySlot: Record<string, number> = {}
-  const byCategory: Record<string, number> = {}
+  const byActivity: Record<string, number> = {}
   let total = 0
   slots.forEach((s) => (bySlot[s.id] = 0))
   dates.forEach((d) => {
@@ -115,16 +116,16 @@ export function periodBreakdown(
     const b = dayBreakdown(days[key], slots)
     total += b.total
     slots.forEach((s) => (bySlot[s.id] += b.bySlot[s.id] || 0))
-    Object.entries(b.byCategory).forEach(([id, m]) => {
-      byCategory[id] = (byCategory[id] || 0) + m
+    Object.entries(b.byActivity).forEach(([id, m]) => {
+      byActivity[id] = (byActivity[id] || 0) + m
     })
   })
-  // Configured categories in their configured order, then any id that survives
+  // Configured activities in their configured order, then any id that survives
   // only inside old entries, so the rows always add back up to the total.
-  const categoryIds = [
-    ...categories.map((c) => c.id),
-    ...Object.keys(byCategory).filter(
-      (id) => !categories.some((c) => c.id === id),
+  const activityIds = [
+    ...activities.map((c) => c.id),
+    ...Object.keys(byActivity).filter(
+      (id) => !activities.some((c) => c.id === id),
     ),
   ]
   const toRow = (item: Labeled, minutes: number): BreakdownRow => ({
@@ -136,8 +137,8 @@ export function periodBreakdown(
     slotRows: slots
       .map((s) => toRow(s, bySlot[s.id] || 0))
       .filter((r) => r.minutes > 0),
-    categoryRows: categoryIds
-      .map((id) => toRow(getById(categories, id), byCategory[id] || 0))
+    activityRows: activityIds
+      .map((id) => toRow(getById(activities, id), byActivity[id] || 0))
       .filter((r) => r.minutes > 0),
   }
 }
@@ -163,10 +164,10 @@ export function elapsedDayCount(
 export function buildTooltip(
   dayEntry: Day | undefined,
   slots: Slot[],
-  categories: Category[],
+  activities: Activity[],
   units: CounterUnit[] = [],
 ): string {
-  const { bySlot, byCategory, total } = dayBreakdown(dayEntry, slots)
+  const { bySlot, byActivity, total } = dayBreakdown(dayEntry, slots)
   if (!dayEntry || total === 0) {
     return dayEntry?.comment
       ? `No study logged\n—\n${dayEntry.comment}`
@@ -177,8 +178,8 @@ export function buildTooltip(
     if (bySlot[s.id] > 0) lines.push(`${s.label}: ${bySlot[s.id]}m`)
   })
   lines.push("—")
-  categories.forEach((c) => {
-    if (byCategory[c.id]) lines.push(`${c.label}: ${byCategory[c.id]}m`)
+  activities.forEach((c) => {
+    if (byActivity[c.id]) lines.push(`${c.label}: ${byActivity[c.id]}m`)
   })
   units.forEach((u) => {
     const value = dayEntry.counters?.[u.id]

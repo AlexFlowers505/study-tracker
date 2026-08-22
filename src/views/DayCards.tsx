@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react"
 import type {
-  Category,
+  Activity,
   CounterUnit,
   Day,
   DayKey,
@@ -51,7 +51,7 @@ function FullDayCard({
   date,
   entry,
   slots,
-  categories,
+  activities,
   settings,
   counterUnits,
   goal,
@@ -88,7 +88,7 @@ function FullDayCard({
   date: Date
   entry?: Day
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   settings: Settings
   counterUnits: CounterUnit[]
   goal: number
@@ -529,7 +529,7 @@ function FullDayCard({
         // overrides so the toggle always means what it says.
         key={commentsOpen ? "comments-open" : "comments-closed"}
         slots={slots}
-        categories={categories}
+        activities={activities}
         cells={entry?.cells || {}}
         sleep={entry?.sleep || []}
         sleepEnabled={settings?.sleepEnabled === true}
@@ -581,7 +581,7 @@ export function FullCardGrid({
   dates,
   days,
   slots,
-  categories,
+  activities,
   settings,
   counterUnits,
   todayKey,
@@ -603,7 +603,7 @@ export function FullCardGrid({
   dates: Date[]
   days: Record<DayKey, Day>
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   settings: Settings
   counterUnits: CounterUnit[]
   todayKey: DayKey
@@ -689,7 +689,7 @@ export function FullCardGrid({
             date={date}
             entry={entry}
             slots={slots}
-            categories={categories}
+            activities={activities}
             settings={settings}
             counterUnits={counterUnits}
             goal={goalForDate(settings, date)}

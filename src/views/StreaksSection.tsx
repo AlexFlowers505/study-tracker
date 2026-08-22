@@ -28,7 +28,7 @@ const plural = (n: number) => (n === 1 ? "" : "s")
 const HOW_IT_WORKS = [
   "A day counts when it hits its goal; a goal of 0 counts as met.",
   "Ignoring a day, a week or a month does NOT affect a streak — otherwise marking the bad days ignored would be the easy way to fake one.",
-  "The count filter does not affect it either: streaks always cover every slot and category, whatever the page is showing.",
+  "The count filter does not affect it either: streaks always cover every slot and activity, whatever the page is showing.",
   "Weeks and months are judged by their days, not by summed hours.",
   `A week with no missed day earns one freeze, up to ${FREEZE_CAP}. Spend one on a red day and it counts as kept — the day turns blue, not green: the goal was still missed.`,
   "The log can only be written for today and yesterday. A week therefore seals on the Tuesday after it ends, when its last day passes out of reach — and only then does it pay out, because only then is it finished.",

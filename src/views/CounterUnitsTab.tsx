@@ -2,7 +2,7 @@
    Setup's counters tab — two lists, one per kind.
 
    The shared half — reorder, rename, icon, colour, description, delete — is
-   `EditableList`, the same component slots and categories use. Only the fields
+   `EditableList`, the same component slots and activities use. Only the fields
    a unit has of its own live here, and which of those it has depends on what
    sort of counter it is:
 
@@ -16,7 +16,7 @@
    not a second row of underlines: sitting directly under Setup's own tabs, an
    identical shape would read as the same control drawn twice.
 
-   Unlike slots and categories these lists may be empty: a project that tallies
+   Unlike slots and activities these lists may be empty: a project that tallies
    nothing is a normal project, whereas an entry has to belong to some slot.
 --------------------------------------------------------------- */
 

@@ -1,12 +1,12 @@
 /* ---------------------------------------------------------------
-   "Where the time went" — per-slot and per-category totals for whichever
+   "Where the time went" — per-slot and per-activity totals for whichever
    range is selected, each with its per-day average once the period covers
    more than one day.
 --------------------------------------------------------------- */
 
 import { useMemo } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
-import type { Category, Day, DayKey, IsIgnored, Slot } from "../types/model"
+import type { Activity, Day, DayKey, IsIgnored, Slot } from "../types/model"
 import { elapsedDayCount, periodBreakdown } from "../lib/stats"
 import { fmtHours, toHours } from "../lib/time"
 import { CARD, chartTooltip } from "../lib/theme"
@@ -68,7 +68,7 @@ export function TotalsDonut({
 
   return (
     // Side by side only once the card is genuinely wide; in the two-column
-    // grid the legend would otherwise get ~180px and chop the longer category
+    // grid the legend would otherwise get ~180px and chop the longer activity
     // names down to nothing.
     <div className="flex flex-col lg:flex-row items-center gap-4">
       <div className="relative shrink-0" style={{ width: 150, height: 150 }}>
@@ -139,18 +139,18 @@ export function PeriodTotals({
   dates,
   days,
   slots,
-  categories,
+  activities,
   isIgnored,
 }: {
   dates: Date[]
   days: Record<DayKey, Day>
   slots: Slot[]
-  categories: Category[]
+  activities: Activity[]
   isIgnored: IsIgnored
 }) {
-  const { total, slotRows, categoryRows } = useMemo(
-    () => periodBreakdown(dates, days, slots, categories, isIgnored),
-    [dates, days, slots, categories, isIgnored],
+  const { total, slotRows, activityRows } = useMemo(
+    () => periodBreakdown(dates, days, slots, activities, isIgnored),
+    [dates, days, slots, activities, isIgnored],
   )
   const divisor = useMemo(
     () => elapsedDayCount(dates, days, isIgnored),
@@ -179,10 +179,10 @@ export function PeriodTotals({
         <TotalsDonut rows={slotRows} total={total} divisor={divisor} />
       </ChartCard>
       <ChartCard
-        title="Time by category"
+        title="Time by activity"
         subtitle={`What the ${fmtHours(total)}${perDay} went on`}
       >
-        <TotalsDonut rows={categoryRows} total={total} divisor={divisor} />
+        <TotalsDonut rows={activityRows} total={total} divisor={divisor} />
       </ChartCard>
     </div>
   )

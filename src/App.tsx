@@ -4,7 +4,7 @@ import type {
   AppData,
   Day,
   StudyEntry,
-  Category,
+  Activity,
   CounterUnit,
   DayKey,
   PeriodId,
@@ -76,6 +76,7 @@ import { AnalyticsView } from "./views/AnalyticsView"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
 import { DayQuickviewModal } from "./views/DayEditor"
 import { usePalette } from "./ui/useTheme"
+import { entryActivity } from "./lib/entries"
 
 const DEFAULT_DATA = buildInitialData()
 
@@ -134,11 +135,11 @@ export default function StudyTrackerApp() {
    * off the screen to say it five times.
    */
   const [openStreak, setOpenStreak] = useState<StreakId>(null)
-  // Which slots/categories are left out of the figures. Deliberately not tied
+  // Which slots/activities are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
   const [hiddenSlots, setHiddenSlots] = useState<Set<string>>(() => new Set())
-  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
+  const [hiddenActivities, setHiddenActivities] = useState<Set<string>>(
     () => new Set(),
   )
   // Tags strike out counter units rather than study time, so they hide a
@@ -353,7 +354,7 @@ export default function StudyTrackerApp() {
     [data, project, persist],
   )
 
-  // Settings, slots and categories all live on the project row.
+  // Settings, slots and activities all live on the project row.
   const updateProject = useCallback(
     (patch: Partial<Project>) => patchProject(patch, opProject(project.id)),
     [patchProject, project],
@@ -361,8 +362,8 @@ export default function StudyTrackerApp() {
   const updateSettings = (patch: Settings) =>
     updateProject({ settings: patch })
   const updateSlots = (slots: Slot[]) => updateProject({ slots })
-  const updateCategories = (categories: Category[]) =>
-    updateProject({ categories })
+  const updateActivities = (activities: Activity[]) =>
+    updateProject({ activities })
 
   const updateCounterUnits = (counterUnits: CounterUnit[]) =>
     updateProject({ counterUnits })
@@ -389,7 +390,7 @@ export default function StudyTrackerApp() {
       existing,
       next,
       project.slots,
-      project.categories,
+      project.activities,
       project.counterUnits || [],
     )
     const ops = [opDay(project.id, key)]
@@ -629,7 +630,7 @@ export default function StudyTrackerApp() {
   const visibleProject = useMemo(() => {
     if (
       !hiddenSlots.size &&
-      !hiddenCategories.size &&
+      !hiddenActivities.size &&
       !hiddenCounters.size &&
       !hiddenTags.size
     )
@@ -641,8 +642,8 @@ export default function StudyTrackerApp() {
       slots.forEach((s) => {
         const arr = day.cells?.[s.id]
         if (!arr) return
-        cells[s.id] = hiddenCategories.size
-          ? arr.filter((e) => !hiddenCategories.has(e.category ?? ""))
+        cells[s.id] = hiddenActivities.size
+          ? arr.filter((e) => !hiddenActivities.has(entryActivity(e) ?? ""))
           : arr
       })
       days[key] = { ...day, cells }
@@ -650,7 +651,7 @@ export default function StudyTrackerApp() {
     return {
       ...project,
       slots,
-      categories: project.categories.filter((c) => !hiddenCategories.has(c.id)),
+      activities: project.activities.filter((c) => !hiddenActivities.has(c.id)),
       // Dropping the *unit* is enough: every badge and row maps over this
       // list, so a hidden tag takes its counters off the page without the
       // recorded numbers being touched.
@@ -661,7 +662,7 @@ export default function StudyTrackerApp() {
       ),
       days,
     }
-  }, [project, hiddenSlots, hiddenCategories, hiddenCounters, hiddenTags])
+  }, [project, hiddenSlots, hiddenActivities, hiddenCounters, hiddenTags])
 
   // No env vars, no database. A dead end rather than the signed-out local
   // fallback, because that path calls `window.storage` — an API browsers do
@@ -795,7 +796,7 @@ export default function StudyTrackerApp() {
           onToggleFilter={() => setShowFilter((v) => !v)}
           filteredOutCount={
             hiddenSlots.size +
-            hiddenCategories.size +
+            hiddenActivities.size +
             hiddenCounters.size +
             hiddenTags.size
           }
@@ -824,20 +825,20 @@ export default function StudyTrackerApp() {
         {showFilter && (
           <CountFilter
             slots={project.slots}
-            categories={project.categories}
+            activities={project.activities}
             counters={project.counterUnits || []}
             tags={project.settings.tags || []}
             hiddenSlots={hiddenSlots}
-            hiddenCategories={hiddenCategories}
+            hiddenActivities={hiddenActivities}
             hiddenCounters={hiddenCounters}
             hiddenTags={hiddenTags}
             onToggleSlot={toggleIn(setHiddenSlots)}
-            onToggleCategory={toggleIn(setHiddenCategories)}
+            onToggleActivity={toggleIn(setHiddenActivities)}
             onToggleCounter={toggleIn(setHiddenCounters)}
             onToggleTag={toggleIn(setHiddenTags)}
             onReset={() => {
               setHiddenSlots(new Set())
-              setHiddenCategories(new Set())
+              setHiddenActivities(new Set())
               setHiddenCounters(new Set())
               setHiddenTags(new Set())
             }}
@@ -999,7 +1000,7 @@ export default function StudyTrackerApp() {
           dateKey={quickAdd.key}
           initialSlotId={quickAdd.slotId}
           slots={project.slots}
-          categories={project.categories}
+          activities={project.activities}
           units={(project.counterUnits || []).filter((u) => !isCheck(u))}
           sleepEnabled={project.settings.sleepEnabled === true}
           counters={project.days[quickAdd.key]?.counters || {}}
@@ -1039,7 +1040,7 @@ export default function StudyTrackerApp() {
           dateKey={editingKey}
           dayEntry={project.days[editingKey]}
           slots={project.slots}
-          categories={project.categories}
+          activities={project.activities}
           counterUnits={project.counterUnits || []}
           settings={project.settings}
           onClose={() => setEditingKey(null)}
@@ -1067,7 +1068,7 @@ export default function StudyTrackerApp() {
         <SetupModal
           settings={project.settings}
           slots={project.slots}
-          categories={project.categories}
+          activities={project.activities}
           onClose={() => setShowSetup(false)}
           onSaveSettings={updateSettings}
           onRecordGoalCut={(cut) =>
@@ -1077,7 +1078,7 @@ export default function StudyTrackerApp() {
             })
           }
           onUpdateSlots={updateSlots}
-          onUpdateCategories={updateCategories}
+          onUpdateActivities={updateActivities}
           counterUnits={project.counterUnits || []}
           counterProgress={counterProgress}
           onUpdateUnits={updateCounterUnits}

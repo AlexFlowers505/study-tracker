@@ -2,7 +2,7 @@
    Turning counters into chart series.
 
    The charts already know how to draw "a list of coloured series, and a number
-   per series per row" — that is how the slot and category splits work. So the
+   per series per row" — that is how the slot and activity splits work. So the
    counter modes only have to answer two questions in that same shape: which
    series are there, and what is this day's number for each.
 

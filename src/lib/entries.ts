@@ -14,6 +14,16 @@ import { spanMinutes } from "./time"
 export type Cells = Record<string, StudyEntry[]>
 
 /**
+ * What an entry's time went on, whichever name it was stored under.
+ *
+ * The one place that knows `activity` used to be called `category`, so the
+ * app works the same whether or not `migrations/013` has run yet. Reading the
+ * field directly is the bug this exists to prevent.
+ */
+export const entryActivity = (entry: StudyEntry): string | undefined =>
+  entry.activity ?? entry.category
+
+/**
  * With both times set, the span is the truth and the stored number follows it.
  * With one or neither, whatever was typed stands — an untimed entry is a
  * perfectly good entry, and guessing a span for it would invent data.
@@ -37,6 +47,11 @@ export function patchEntry<T extends StudyEntry | SleepEntry>(
   const next = { ...entry, ...patch }
   if (patch.start === undefined && "start" in patch) delete next.start
   if (patch.end === undefined && "end" in patch) delete next.end
+  // Setting the activity retires the old spelling with it. Left behind, a
+  // stale `category` would come back the moment the activity was cleared —
+  // `entryActivity` falls through to it, and it would be a value nobody chose.
+  if ("activity" in patch && "category" in next)
+    delete (next as StudyEntry).category
   return withDerivedMinutes(next)
 }
 
