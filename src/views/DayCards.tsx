@@ -253,13 +253,17 @@ function FullDayCard({
           They used to be centred against the title-plus-month block, which
           left them floating half a line below the heading they belong to.
 
-          One line **while there is room for one**. The action group has grown
-          — badges, sleep, freeze, counter, add — and `justify-between` alone
-          let it march straight over the date, because the date's group was the
-          only shrinkable one and its text simply overflowed the box it had
-          been squeezed into. So the row wraps instead: `ml-auto` keeps the
-          actions hard right whether they sit beside the date or on a line of
-          their own, and the date itself never shrinks. */}
+          One line **while there is room for one**: the row wraps, `ml-auto`
+          keeps the actions hard right whether they sit beside the date or on a
+          line of their own, and the date itself never shrinks.
+          `justify-between` alone let the actions march straight over the date,
+          because the date's group was the only shrinkable one and its text
+          simply overflowed the box it had been squeezed into.
+
+          What stays here is the day's *status* — Today, Frozen, Ignored — and
+          the buttons. The counters moved to their own line under the month:
+          they grow with every counter and check defined, and a row that grows
+          without bound cannot share space with one that must not wrap. */}
       <div>
         <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -339,32 +343,6 @@ function FullDayCard({
               </span>
             </Tip>
           )}
-          {/* One badge per unit this day touched, in the unit's own colour,
-              showing the day figure. The per-slot breakdown is in its
-              tooltip — glanceable first, detailed on ask. */}
-          <CounterBadges
-            units={tallyUnits}
-            slots={slots}
-            counters={entry?.counters || {}}
-            roomy={big}
-          />
-          {/* Checks sit with the badges rather than in a row of their own:
-              they are the same question about the same day, and a second row
-              would say they were a different sort of fact. A tally ends in its
-              count and a check ends in its mark, which is what tells the two
-              apart at a glance. */}
-          <CheckChips
-            units={checkUnits}
-            day={entry}
-            dayKey={toKey(date)}
-            todayKey={todayKey}
-            roomy={big}
-            onSet={
-              onUpdateDay
-                ? (unitId, next) => onUpdateDay(setCheck(entry, unitId, next))
-                : undefined
-            }
-          />
           {/* The action buttons close the row, always in this order — freeze,
               counter, add — so each one keeps the same place on every day of
               the week however many badges appear to their left. All of them
@@ -435,6 +413,45 @@ function FullDayCard({
             month: "short",
             year: "numeric",
           })}
+        </div>
+
+        {/* What the day counted, on a line of its own under the date.
+            It used to sit in the title row beside Today, Frozen and the
+            buttons, and that row lost the argument: those are a handful of
+            fixed chips, while this grows with every counter and check you
+            define, and the two together pushed the date and the "+" onto
+            separate lines on a narrow card.
+
+            Left-aligned under the month rather than right with the actions,
+            because it is a reading of the day and not a thing you press —
+            the same reason the hours sit where they do. */}
+        <div className="flex flex-wrap items-center gap-1 mt-1">
+          {/* One badge per unit this day touched, in the unit's own colour,
+              showing the day figure. The per-slot breakdown is in its
+              tooltip — glanceable first, detailed on ask. */}
+          <CounterBadges
+            units={tallyUnits}
+            slots={slots}
+            counters={entry?.counters || {}}
+            roomy={big}
+          />
+          {/* Checks sit with the badges rather than in a row of their own:
+              they are the same question about the same day, and a second row
+              would say they were a different sort of fact. A tally ends in its
+              count and a check ends in its mark, which is what tells the two
+              apart at a glance. */}
+          <CheckChips
+            units={checkUnits}
+            day={entry}
+            dayKey={toKey(date)}
+            todayKey={todayKey}
+            roomy={big}
+            onSet={
+              onUpdateDay
+                ? (unitId, next) => onUpdateDay(setCheck(entry, unitId, next))
+                : undefined
+            }
+          />
         </div>
       </div>
 

@@ -278,6 +278,10 @@ export function LogView({
         />
       )}
       {(granularity === "week" || granularity === "day") && (
+        /* `onQuickAddDay` and `onQuickAddSlotDay` go to day and week alike.
+           They used to be week-only, which meant the one view built to give a
+           day room was the one view with no way to add anything to it — and
+           once logging sleep moved into that dialog, no way at all. */
         <FullCardGrid
           dates={visibleDates}
           days={days}
@@ -291,10 +295,8 @@ export function LogView({
           monthIgnore={monthIgnore}
           big={granularity === "day"}
           commentsOpen={commentsOpen}
-          onQuickAddDay={granularity === "week" ? onQuickAddDay : undefined}
-          onQuickAddSlotDay={
-            granularity === "week" ? onQuickAddSlotDay : undefined
-          }
+          onQuickAddDay={onQuickAddDay}
+          onQuickAddSlotDay={onQuickAddSlotDay}
           onExpandDay={onExpandDay}
           canFreezeDay={canFreezeDay}
           onFreezeDay={onFreezeDay}

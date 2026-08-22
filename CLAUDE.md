@@ -217,11 +217,17 @@ which are Node config and get their own lint block.
     One line *while there is room for one*: the row is `flex-wrap`, and the
     action group takes `ml-auto` so it stays hard right whether it sits beside
     the date or drops to a line of its own. `justify-between` alone let a
-    crowded day — badges plus sleep, freeze, counter and add — walk straight
-    over its own date, because the date's group was the only shrinkable one and
-    its text simply overflowed the box it had been squeezed into. The date
-    itself is `shrink-0`; it is the one thing on the card that must never be
-    clipped.
+    crowded day walk straight over its own date, because the date's group was
+    the only shrinkable one and its text simply overflowed the box it had been
+    squeezed into. The date itself is `shrink-0`; it is the one thing on the
+    card that must never be clipped.
+    **What shares that line is the day's status and its buttons, and nothing
+    else** — Today, Frozen, Ignored, then the actions. The counter badges and
+    check chips sit on **their own row under the month**, left-aligned: they
+    grow with every counter and check you define, and a row that grows without
+    bound cannot share space with one that must not wrap. It also puts them
+    where they read as a reading of the day rather than as something to press,
+    which is where the hours already are.
   - **The day dialog renders `FullCardGrid` with a single date and `big`** —
     the week's own card at full width, not a second drawing of the same day.
     The week view is where the work happens and its card is the good one; its
@@ -806,6 +812,11 @@ recording belongs inside the thing you record it in.
 A tab is **absent, not disabled**, for anything the project does not have —
 no counters, no `Counter`; sleep tracking off, no `Sleep` — and with one option
 left the row goes entirely, since there is no choice to offer.
+
+The "+" is on the card in **both the day and the week views**. It was week-only
+for a while, which meant the one view built to give a day room was the one view
+with no way to add anything to it — and once sleep moved into the dialog, no
+way at all.
 
 Each slot heading in the readout carries its own "+", which opens the same
 dialog with that slot already chosen. It follows the card's rules exactly —
