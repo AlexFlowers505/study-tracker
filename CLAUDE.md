@@ -172,6 +172,17 @@ which are Node config and get their own lint block.
     a unit untouched in this period has nothing to say about it, and a row of
     zeroes pushes the ones that matter off the end. The units arrive already
     filtered, so the count filter reaches them for free.
+    **The row folds**, from a chevron on its left. Every chip is a saturated
+    pill sitting directly under the period's title — the loudest thing on the
+    page, and loud whether or not you came to read it. Folded it leaves a
+    plain-ink stub saying how many it is holding, because a row that vanished
+    outright is indistinguishable from a period that counted nothing. One
+    switch governs the heading's row *and* every week strip in the month grid:
+    they are the same chips answering the same question, and two controls for
+    that is one too many. It is a view preference and nothing else — the
+    figures are untouched, unlike the count filter, which is why the fold has
+    no dot on the period bar. `LogView` holds it in `useState` beside
+    `commentsOpen`, so like that one it starts open again on reload.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
     **The donuts sort biggest first**, ring and legend alike, and the sort

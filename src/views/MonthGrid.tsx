@@ -67,6 +67,7 @@ function WeekSummaryStrip({
   ordinal,
   units,
   counters,
+  countersOpen,
 }: {
   total: number
   goal: number
@@ -76,6 +77,8 @@ function WeekSummaryStrip({
   ordinal: number
   units: CounterUnit[]
   counters: Record<string, number>
+  /** Folded from the period heading, which owns the switch for all of them. */
+  countersOpen: boolean
 }) {
   const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
@@ -112,7 +115,9 @@ function WeekSummaryStrip({
       {/* The rule does the separating: hours on its left, counts on its right,
           and the gap between them is however much room the row has. */}
       <span className="flex-1 border-b border-dotted border-ink/15" />
-      <CounterTotals units={units} totals={counters} className="shrink-0" />
+      {countersOpen && (
+        <CounterTotals units={units} totals={counters} className="shrink-0" />
+      )}
     </div>
   )
 }
@@ -294,6 +299,7 @@ export function MonthGrid({
   weekIgnore = {},
   monthIgnore = {},
   counterUnits,
+  countersOpen = true,
 }: {
   cursor: Date
   days: Record<DayKey, Day>
@@ -301,6 +307,8 @@ export function MonthGrid({
   categories: Category[]
   settings: Settings
   counterUnits: CounterUnit[]
+  /** Folded from the period heading — see `CounterTotals`. */
+  countersOpen?: boolean
   todayKey: DayKey
   onEditDay: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
@@ -377,6 +385,7 @@ export function MonthGrid({
               ordinal={ri + 1}
               units={counterUnits}
               counters={weekCounters}
+              countersOpen={countersOpen}
             />
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real

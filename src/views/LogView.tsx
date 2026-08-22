@@ -78,6 +78,10 @@ export function LogView({
   // Card-wide default for entry comments; each entry can still be folded on
   // its own button, and flipping this resets those.
   const [commentsOpen, setCommentsOpen] = useState(true)
+  // Folds the counter chips — the heading's and, in month view, the ones on
+  // every week strip, since they are the same chips answering the same
+  // question and two switches for that would be one too many.
+  const [countersOpen, setCountersOpen] = useState(true)
   const {
     slots,
     categories,
@@ -226,6 +230,8 @@ export function LogView({
         units={counterUnits}
         totals={headerCounters}
         className="-mt-1 mb-3"
+        open={countersOpen}
+        onToggle={setCountersOpen}
       />
 
       {granularity === "day" && (
@@ -266,6 +272,7 @@ export function LogView({
           categories={categories}
           settings={settings}
           counterUnits={counterUnits}
+          countersOpen={countersOpen}
           todayKey={todayKey}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
