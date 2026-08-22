@@ -17,6 +17,7 @@
 --------------------------------------------------------------- */
 
 import type { ReactNode } from "react"
+import { SECTION_HEADING } from "../lib/theme"
 import { HelpCircle } from "lucide-react"
 import { btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
@@ -50,7 +51,7 @@ export function TabbedSection({
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
-        <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
+        <h2 className={SECTION_HEADING}>
           {title}
         </h2>
         <Tip text={help} multiline side="bottom">

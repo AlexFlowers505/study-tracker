@@ -175,11 +175,17 @@ which are Node config and get their own lint block.
     what keeps the list readable when a project defines forty things and a week
     uses six. They arrive already filtered, so the count filter reaches them
     for free.
-    **No fill on the chips.** They used to be saturated pills directly under
-    the period's title, which made them the loudest thing on the page — louder
-    than the streaks, which are the thing you came to protect. Colour and an
-    icon tell one from another; a fill says "read me first". `StreakBar` took
-    the fill instead (`bg-card shadow-sm`), because that is where it belongs.
+    **The chips are filled, and they sit under a heading of their own.** The
+    fill came off for a while, to stop them shouting over a streak row that had
+    none — and a long list of unfilled chips turned out to have no shape at
+    all, because the fill was the only thing separating one from the next. The
+    answer was a section rather than a diet: `Counters` is a subsection of the
+    period and says so, `StreakBar` keeps the raised surface it gained
+    (`bg-card shadow-sm`), and hierarchy comes from the headings instead of
+    from who shouts loudest. Each group's heading takes the whole line with its
+    chips on the next: sharing a line put the first chip wherever the heading
+    happened to end, and with eight wrapping under it there was no left edge to
+    read down.
     **Each group folds on its own**, from a row of its own names, with By kind
     / By category beside them and one Hide all. A single chevron was a switch
     with one thing to say when the answer is usually "some of it": which six
@@ -363,6 +369,21 @@ One page, not tabs. A single period drives everything:
   overflowing strip pushes the whole page sideways instead of scrolling
   inside itself. That is one bug, and it turned up in the period bar, the
   log's heading row and `ChartCard` (a Recharts container has its own minimum).
+- **Three levels of heading, and only three.** The period's own label is the
+  page's heading (`text-lg sm:text-xl`); `Counters`, `Days`, `Summary` and
+  `Trends` are its subsections and all wear `SECTION_HEADING` from `theme.ts`;
+  a card's own title is smaller again. Everything below the period label is a
+  subsection *of that period*, and at one weight the reader has to work out
+  which contains which — which is what happened the moment `Counters` gained a
+  heading and sat directly under the date at the same size.
+  **`Days` is the name for the log itself** — the day cards, the month grid,
+  the heatmap. It needed one once `Counters` had one, because two unlabelled
+  blocks under one heading read as one block with a gap in it. "Calendar" was
+  the obvious word and is wrong in the day view; "Days" is true in every
+  period, from one to a year of them.
+  The period's **note sits directly under its heading**, above the counters. It
+  belongs to the period rather than to anything inside it, and below the
+  counters it read as a footnote to them.
 - Below it: `LogView` (notes, donut breakdowns, day cards / month grid /
   heatmap) and then `AnalyticsView` for the same range.
 - `AnalyticsView` is **two tabbed sections, not six stacked blocks**:

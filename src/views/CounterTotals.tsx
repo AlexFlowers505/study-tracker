@@ -4,12 +4,14 @@
    Hours answer "how long" and these answer "how many" and "whether", and a
    period reporting only the first was reporting a fraction of itself.
 
-   **No fill on the chips.** They used to be saturated pills sitting directly
-   under the period's title, which made them the loudest thing on the page —
-   louder than the streaks, which are the thing you actually came to protect.
-   Colour and an icon are enough to tell one from another; a fill is what says
-   "read me first", and these are a reference, not a headline. The streak row
-   took the fill instead, because that is where it belongs.
+   **The chips are filled, and they sit under a heading of their own.** The
+   fill went away for a while, to stop them shouting over the streak row that
+   had none — and a long list of unfilled chips turned out to have no shape at
+   all, because the fill was the only thing separating one from the next. The
+   answer was a section rather than a diet: `Counters` is a subsection of the
+   period, said so by a heading, and the streak row keeps the raised surface it
+   gained. Hierarchy comes from the heading; the fill goes back to doing the
+   one job it was good at.
 
    **Each group folds on its own, from a row of its own names.** One chevron
    for everything was a switch with one thing to say, and the answer was
@@ -39,18 +41,16 @@ export function CounterChips({
 }) {
   if (!chips.length) return null
   return (
-    <span className={`inline-flex flex-wrap items-center gap-x-2 gap-y-1 ${className}`}>
+    <span className={`inline-flex flex-wrap items-center gap-1.5 ${className}`}>
       {chips.map((chip) => (
         <Tip key={chip.id} text={chip.tip}>
           <span
-            className="flex items-center gap-1 text-[10px] font-mono"
-            style={{ color: chip.color }}
+            className="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+            style={{ color: chip.color, backgroundColor: `${chip.color}1F` }}
           >
             <RenderIcon name={chip.iconName} size={10} />
             <span className="font-bold">{chip.value}</span>
-            <span className="uppercase tracking-wide opacity-80">
-              {chip.label}
-            </span>
+            <span className="uppercase tracking-wide">{chip.label}</span>
           </span>
         </Tip>
       ))}
@@ -134,17 +134,21 @@ export function CounterTotals({
         </button>
       </div>
 
+      {/* The heading takes the whole line and the chips start the next one.
+          Sharing a line meant the first chip sat wherever the heading happened
+          to end, and with eight of them wrapping underneath there was no left
+          edge to read down. */}
       {groups
         .filter((g) => !hidden.has(g.id))
         .map((g) => (
-          <div key={g.id} className="flex flex-wrap items-baseline gap-x-2">
-            <span
-              className="text-[9px] font-mono uppercase tracking-widest shrink-0"
+          <div key={g.id}>
+            <div
+              className="text-[9px] font-mono uppercase tracking-widest mb-1"
               style={{ color: g.color || `${c.ink}55` }}
             >
               {g.label}
-            </span>
-            <CounterChips chips={g.chips} />
+            </div>
+            <CounterChips chips={g.chips} className="w-full" />
           </div>
         ))}
     </div>

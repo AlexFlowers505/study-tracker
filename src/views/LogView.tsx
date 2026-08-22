@@ -26,6 +26,7 @@ import { RenderIcon } from '../ui/icons'
 import { Tip } from '../ui/Tip'
 import { FullCardGrid } from './DayCards'
 import { Heatmap } from './Heatmap'
+import { SECTION_HEADING } from '../lib/theme'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
 import { CounterTotals } from './CounterTotals'
@@ -201,7 +202,11 @@ export function LogView({
               <EyeOff size={14} className="text-ink/45" />
             </Tip>
           )}
-          <h2 className="font-sans font-extrabold uppercase tracking-tight text-base">
+          {/* Bigger than the section headings below it, and that is the whole
+              job: Counters, Days, Summary and Trends are all subsections *of
+              this period*, and at one weight the reader has to work out which
+              contains which. */}
+          <h2 className="font-sans font-extrabold uppercase tracking-tight text-lg sm:text-xl">
             {rangeLabel(period, cursor, range)}
           </h2>
           {periodGoalOutcome && (
@@ -265,23 +270,9 @@ export function LogView({
         )}
       </div>
 
-      {/* Under the heading rather than inside it: the hours line answers "how
-          long" and this answers "how many", and stacking them keeps a long row
-          of counters from pushing the date out of its own row. */}
-      <CounterTotals
-        groups={counterGroups}
-        grouping={grouping}
-        onGrouping={setGrouping}
-        hidden={hiddenGroups}
-        onToggle={toggleGroup}
-        onSetAll={(hideAll) =>
-          setHiddenGroups(
-            hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
-          )
-        }
-        className="-mt-1 mb-3"
-      />
-
+      {/* The period's own note, directly under its heading. It belongs to the
+          period rather than to anything inside it, and sitting below the
+          counters it read as a footnote to them. */}
       {granularity === "day" && (
         <NoteCard
           key={dayKey}
@@ -310,7 +301,31 @@ export function LogView({
         />
       )}
 
+      {counterGroups.length > 0 && (
+        <div className="mb-4">
+          <h3 className={`${SECTION_HEADING} mb-2`}>Counters</h3>
+          <CounterTotals
+            groups={counterGroups}
+            grouping={grouping}
+            onGrouping={setGrouping}
+            hidden={hiddenGroups}
+            onToggle={toggleGroup}
+            onSetAll={(hideAll) =>
+              setHiddenGroups(
+                hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
+              )
+            }
+          />
+        </div>
+      )}
+
       {sleepSection}
+
+      {/* The days themselves. It needed a name once Counters had one — two
+          unlabelled blocks under one heading read as one block with a gap in
+          it. "Days" rather than "Calendar" because it has to be true in every
+          period: one day, seven of them, a month of them, a year of them. */}
+      <h3 className={`${SECTION_HEADING} mb-2`}>Days</h3>
 
       {granularity === "month" && (
         <MonthGrid

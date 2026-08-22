@@ -270,6 +270,17 @@ export const cardTiny = (roomy?: boolean) =>
 export const cardSmall = (roomy?: boolean) =>
   roomy ? "text-[13px]" : "text-[13px] md:text-[10px]"
 
+/**
+ * A section heading — Counters, Days, Summary, Trends.
+ *
+ * One shape so the page reads as one page: everything wearing this is a
+ * subsection *of the period* named above it, which is why the period's own
+ * heading is deliberately larger. Four headings at one weight and the reader
+ * has to work out which contains which.
+ */
+export const SECTION_HEADING =
+  "font-sans font-extrabold uppercase tracking-tight text-base text-ink"
+
 export const btnBase = "transition-colors duration-150 ease-out"
 
 /**
