@@ -165,24 +165,30 @@ which are Node config and get their own lint block.
     component wearing different tints.
     All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
     `StreaksSection.tsx`, `ChangeLogSection.tsx`.
-  - `CounterTotals.tsx` — a period's counters as a row of chips, under the
-    week or month heading and to the right of each week's strip in the month
-    grid. Hours answer "how long" and these answer "how many"; a period that
-    had both was reporting half of itself. **Only totals above zero appear** —
-    a unit untouched in this period has nothing to say about it, and a row of
-    zeroes pushes the ones that matter off the end. The units arrive already
-    filtered, so the count filter reaches them for free.
-    **The row folds**, from a chevron on its left. Every chip is a saturated
-    pill sitting directly under the period's title — the loudest thing on the
-    page, and loud whether or not you came to read it. Folded it leaves a
-    plain-ink stub saying how many it is holding, because a row that vanished
-    outright is indistinguishable from a period that counted nothing. One
-    switch governs the heading's row *and* every week strip in the month grid:
-    they are the same chips answering the same question, and two controls for
-    that is one too many. It is a view preference and nothing else — the
-    figures are untouched, unlike the count filter, which is why the fold has
-    no dot on the period bar. `LogView` holds it in `useState` beside
-    `commentsOpen`, so like that one it starts open again on reload.
+  - `CounterTotals.tsx` — **everything a period counted**, under the heading
+    and beside each week's strip in the month grid: activities in hours,
+    tallies and checks in counts. All three are counters, so all three report
+    together; hours answered "how long" and a period showing only those was
+    reporting a fraction of itself. `lib/periodCounters.ts` builds the groups.
+    **Only what actually happened appears** — an activity with no time and a
+    tally that stayed at zero have nothing to say about this period, and it is
+    what keeps the list readable when a project defines forty things and a week
+    uses six. They arrive already filtered, so the count filter reaches them
+    for free.
+    **No fill on the chips.** They used to be saturated pills directly under
+    the period's title, which made them the loudest thing on the page — louder
+    than the streaks, which are the thing you came to protect. Colour and an
+    icon tell one from another; a fill says "read me first". `StreakBar` took
+    the fill instead (`bg-card shadow-sm`), because that is where it belongs.
+    **Each group folds on its own**, from a row of its own names, with By kind
+    / By category beside them and one Hide all. A single chevron was a switch
+    with one thing to say when the answer is usually "some of it": which six
+    of the forty is exactly what the row is for. Nothing folds away from the
+    figures — a view preference, unlike the count filter, which is why neither
+    carries a dot on the period bar. One set of switches governs the heading
+    *and* every week strip in the month grid: the same chips answering the same
+    question, and two controls for that is one too many. `LogView` holds them
+    in `useState` beside `commentsOpen`, so they start open again on reload.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
     **The donuts sort biggest first**, ring and legend alike, and the sort
@@ -373,9 +379,14 @@ One page, not tabs. A single period drives everything:
 - Panels render between it and `LogView`, the filter first because it governs
   everything below it. The streak panels open from the streak row rather than
   from `PeriodBar`, and only one of them at a time:
-  - `CountFilter` — which slots/activities count. Not period-scoped; switching
-    periods leaves it alone, so its toggle carries a dot while anything is
-    struck out, or a live filter would silently shrink every figure.
+  - `CountFilter` — which slots, activities, counters, tags and categories
+    count. Not period-scoped; switching periods leaves it alone, so its toggle
+    carries a dot while anything is struck out, or a live filter would silently
+    shrink every figure. **A hidden category takes everything filed under it,
+    its activities as well as its counters** — that is what separates it from a
+    tag, which only ever reaches counters: a tag says what a thing is like, a
+    category says where it belongs, and hiding a shelf means hiding what is on
+    it.
   - `StreaksSection` — the goal streak, project-wide. Its how-it-works bubble
     opens **downwards** (`side="bottom"`): it is the tallest tooltip in the app
     and the panel sits just under the sticky period bar, so anchored above its

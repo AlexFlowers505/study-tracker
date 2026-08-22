@@ -65,8 +65,12 @@ function StreakButton({
             ? { backgroundColor: `${tint}1F`, boxShadow: `inset 0 0 0 1px ${tint}66` }
             : undefined
         }
+        /* Raised off the page, always — this row is the one thing here you
+           are trying not to lose, and it used to be the only row *without* a
+           surface while the counters under it were saturated pills. Whichever
+           has the fill reads as the headline; it belongs to this one. */
         className={`${btnBase} flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-full whitespace-nowrap ${
-          active ? "" : "hover:bg-ink/5"
+          active ? "" : "bg-card shadow-sm hover:brightness-105"
         }`}
       >
         <span style={{ color: tint }} className="flex items-center">

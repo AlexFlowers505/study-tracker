@@ -99,6 +99,30 @@ export interface BreakdownRow extends Labeled {
   minutes: number
 }
 
+/**
+ * Minutes per activity over a set of dates — the same walk `periodBreakdown`
+ * does, without building the rows nobody asked for. Ignored days count towards
+ * none of it, like everything else that reports a number.
+ */
+export function activityMinutesIn(
+  dates: Date[],
+  days: Record<DayKey, Day>,
+  slots: Slot[],
+  isIgnored: IsIgnored,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  dates.forEach((d) => {
+    const key = toKey(d)
+    if (isIgnored(key, days[key])) return
+    Object.entries(dayBreakdown(days[key], slots).byActivity).forEach(
+      ([id, m]) => {
+        out[id] = (out[id] || 0) + m
+      },
+    )
+  })
+  return out
+}
+
 export function periodBreakdown(
   dates: Date[],
   days: Record<DayKey, Day>,

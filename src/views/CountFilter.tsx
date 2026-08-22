@@ -1,6 +1,12 @@
 import type { ReactNode } from "react"
 import { Filter } from "lucide-react"
-import type { Activity, CounterUnit, Slot, Tag } from "../types/model"
+import type {
+  Activity,
+  Category,
+  CounterUnit,
+  Slot,
+  Tag,
+} from "../types/model"
 import { btnBase } from "../lib/theme"
 import { ToggleChips } from "../ui/ToggleChips"
 import { PanelSection } from "./PanelSection"
@@ -39,14 +45,17 @@ export function CountFilter({
   activities,
   counters,
   tags,
+  categories,
   hiddenSlots,
   hiddenActivities,
   hiddenCounters,
   hiddenTags,
+  hiddenCategories,
   onToggleSlot,
   onToggleActivity,
   onToggleCounter,
   onToggleTag,
+  onToggleCategory,
   onReset,
   onClose,
 }: {
@@ -54,14 +63,17 @@ export function CountFilter({
   activities: Activity[]
   counters: CounterUnit[]
   tags: Tag[]
+  categories: Category[]
   hiddenSlots: Set<string>
   hiddenActivities: Set<string>
   hiddenCounters: Set<string>
   hiddenTags: Set<string>
+  hiddenCategories: Set<string>
   onToggleSlot: (id: string) => void
   onToggleActivity: (id: string) => void
   onToggleCounter: (id: string) => void
   onToggleTag: (id: string) => void
+  onToggleCategory: (id: string) => void
   onReset: () => void
   onClose?: () => void
 }) {
@@ -70,7 +82,8 @@ export function CountFilter({
     hiddenSlots.size +
     hiddenActivities.size +
     hiddenCounters.size +
-    hiddenTags.size
+    hiddenTags.size +
+    hiddenCategories.size
   return (
     <PanelSection
       tint={c.filter}
@@ -117,6 +130,26 @@ export function CountFilter({
             same thing, which is why they sit together and below the two groups
             that strike out study time. Each row is absent when there is
             nothing in it — an empty heading only raises the question. */}
+        {/* A category strikes out everything filed under it — its counters
+            and its activities both. That is the difference from a tag, which
+            only ever reaches counters: a tag says what something is like, a
+            category says where it belongs, and hiding a shelf means hiding
+            what is on it. */}
+        {categories.length > 0 && (
+          <FilterGroup label="Categories">
+            <ToggleChips
+              items={categories}
+              hidden={hiddenCategories}
+              onToggle={onToggleCategory}
+              className=""
+              tipFor={(it, isHidden) =>
+                isHidden
+                  ? `Show everything filed under "${it.label}" again`
+                  : `Hide everything filed under "${it.label}"`
+              }
+            />
+          </FilterGroup>
+        )}
         {counters.length > 0 && (
           <FilterGroup label="Counters">
             <ToggleChips

@@ -1,83 +1,152 @@
 /* ---------------------------------------------------------------
-   A period's counters, as a row of chips.
+   What a period counted — activities, tallies and checks — under its heading.
 
-   Shown under a period's hours — the week heading, the month heading, and each
-   week's strip inside the month grid. Hours answer "how long", counters answer
-   "how many", and a period that has both was only ever reporting half of
-   itself.
+   Hours answer "how long" and these answer "how many" and "whether", and a
+   period reporting only the first was reporting a fraction of itself.
 
-   **Only what is above zero appears.** A unit that was never touched in this
-   period has nothing to say about it, and a row of zeroes would push the ones
-   that matter off the end.
+   **No fill on the chips.** They used to be saturated pills sitting directly
+   under the period's title, which made them the loudest thing on the page —
+   louder than the streaks, which are the thing you actually came to protect.
+   Colour and an icon are enough to tell one from another; a fill is what says
+   "read me first", and these are a reference, not a headline. The streak row
+   took the fill instead, because that is where it belongs.
 
-   The units come in already filtered — the caller hands it `visibleProject`'s
-   list — so striking a counter or a tag out of the filter takes it out of here
-   with everything else.
+   **Each group folds on its own, from a row of its own names.** One chevron
+   for everything was a switch with one thing to say, and the answer was
+   usually "some of it": a project defining forty things reports six in a week,
+   and which six is what the row is for. Hiding a group hides nothing from the
+   figures — this is a view preference, unlike the count filter, which is why
+   neither carries a dot on the period bar.
 
-   **The row folds**, given `onToggle`. Every chip is a saturated pill sitting
-   directly under the period's title, which is the loudest thing on the page
-   and is loud whether or not you came here to read it — and unlike the filter,
-   folding it hides nothing from the figures. Folded, it leaves a plain-ink stub
-   naming how many it is holding: a row that vanished completely would be
-   indistinguishable from a period that never counted anything.
+   The chips arrive already filtered, so striking a counter, a tag or a
+   category out of the filter takes it out of here with everything else.
 --------------------------------------------------------------- */
 
-import { ChevronDown, ChevronRight } from "lucide-react"
-import type { CounterUnit } from "../types/model"
+import type { CounterChip, CounterGroup, CounterGrouping } from "../lib/periodCounters"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
+import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { Tip } from "../ui/Tip"
+import { usePalette } from "../ui/useTheme"
+
+/** The chips alone — what a week strip inside the month grid shows. */
+export function CounterChips({
+  chips,
+  className = "",
+}: {
+  chips: CounterChip[]
+  className?: string
+}) {
+  if (!chips.length) return null
+  return (
+    <span className={`inline-flex flex-wrap items-center gap-x-2 gap-y-1 ${className}`}>
+      {chips.map((chip) => (
+        <Tip key={chip.id} text={chip.tip}>
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: chip.color }}
+          >
+            <RenderIcon name={chip.iconName} size={10} />
+            <span className="font-bold">{chip.value}</span>
+            <span className="uppercase tracking-wide opacity-80">
+              {chip.label}
+            </span>
+          </span>
+        </Tip>
+      ))}
+    </span>
+  )
+}
 
 export function CounterTotals({
-  units,
-  totals,
-  className = "",
-  open = true,
+  groups,
+  grouping,
+  onGrouping,
+  hidden,
   onToggle,
+  onSetAll,
+  className = "",
 }: {
-  units: CounterUnit[]
-  totals: Record<string, number>
+  groups: CounterGroup[]
+  grouping: CounterGrouping
+  onGrouping: (next: CounterGrouping) => void
+  /** Group ids whose chips are folded away. */
+  hidden: Set<string>
+  onToggle: (id: string) => void
+  onSetAll: (hideAll: boolean) => void
   className?: string
-  /** Ignored without `onToggle`: nothing can fold a row that has no handle. */
-  open?: boolean
-  onToggle?: (next: boolean) => void
 }) {
-  const shown = units.filter((u) => (totals[u.id] || 0) > 0)
-  if (!shown.length) return null
-  const folded = !!onToggle && !open
+  const c = usePalette()
+  if (!groups.length) return null
+  const allHidden = groups.every((g) => hidden.has(g.id))
 
   return (
-    <span className={`inline-flex flex-wrap items-center gap-1.5 ${className}`}>
-      {onToggle && (
-        <Tip text={folded ? "Show this period's counters" : "Fold the counters away"}>
-          <button
-            type="button"
-            onClick={() => onToggle(folded)}
-            aria-expanded={!folded}
-            className={`${btnBase} flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-full text-ink/40 bg-ink/[0.05] hover:text-ink/70`}
-          >
-            {folded ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-            {folded && (
-              <span className="uppercase tracking-wide">
-                {shown.length} counter{shown.length === 1 ? "" : "s"}
-              </span>
-            )}
-          </button>
-        </Tip>
-      )}
-      {!folded &&
-        shown.map((u) => (
-          <Tip key={u.id} text={`${totals[u.id]} × ${u.label}`}>
-            <span
-              className="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
-              style={{ color: u.color, backgroundColor: `${u.color}1F` }}
+    <div className={`space-y-1.5 ${className}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {/* Recessed, like Setup's: this is a sub-question about the row below
+            it, not a control of the same standing as the period pills. */}
+        <div className="inline-flex items-center gap-1 rounded-full bg-ink/[0.07] p-1">
+          {(["kind", "category"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onGrouping(id)}
+              aria-pressed={grouping === id}
+              style={segBtnStyle(grouping === id, c)}
+              className={`${segBtn(grouping === id)} !text-[10px] !px-2 !py-0.5`}
             >
-              <RenderIcon name={u.iconName} size={10} />
-              {totals[u.id]}
-              <span className="uppercase tracking-wide">{u.label}</span>
+              {id === "kind" ? "By kind" : "By category"}
+            </button>
+          ))}
+        </div>
+
+        {/* The names double as the legend. A struck-out one is a group you
+            folded, not a group with nothing in it — those are absent. */}
+        {groups.map((g) => {
+          const off = hidden.has(g.id)
+          return (
+            <Tip
+              key={g.id}
+              text={`${off ? "Show" : "Hide"} ${g.label.toLowerCase()} — ${g.chips.length} in this period`}
+            >
+              <button
+                type="button"
+                onClick={() => onToggle(g.id)}
+                aria-pressed={!off}
+                style={off ? undefined : { color: g.color }}
+                className={`${btnBase} text-[9px] font-mono uppercase tracking-widest ${
+                  off ? "text-ink/30 line-through" : "text-ink/70"
+                }`}
+              >
+                {g.label}
+                <span className="ml-1 opacity-50">{g.chips.length}</span>
+              </button>
+            </Tip>
+          )
+        })}
+
+        <button
+          type="button"
+          onClick={() => onSetAll(!allHidden)}
+          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5`}
+        >
+          {allHidden ? "Show all" : "Hide all"}
+        </button>
+      </div>
+
+      {groups
+        .filter((g) => !hidden.has(g.id))
+        .map((g) => (
+          <div key={g.id} className="flex flex-wrap items-baseline gap-x-2">
+            <span
+              className="text-[9px] font-mono uppercase tracking-widest shrink-0"
+              style={{ color: g.color || `${c.ink}55` }}
+            >
+              {g.label}
             </span>
-          </Tip>
+            <CounterChips chips={g.chips} />
+          </div>
         ))}
-    </span>
+    </div>
   )
 }

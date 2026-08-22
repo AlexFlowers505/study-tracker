@@ -6,6 +6,7 @@
 import { EyeOff, Moon, Snowflake } from "lucide-react"
 import type {
   Activity,
+  Category,
   CounterUnit,
   Day,
   DayKey,
@@ -31,11 +32,17 @@ import {
   rangeStats,
 } from "../lib/stats"
 import { counterTotalsIn } from "../lib/counters"
+import { activityMinutesIn } from "../lib/stats"
 import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
-import { CounterTotals } from "./CounterTotals"
+import { CounterChips } from "./CounterTotals"
+import { periodCounterGroups } from "../lib/periodCounters"
+import type {
+  CounterChip,
+  CounterGrouping,
+} from "../lib/periodCounters"
 import { usePalette } from "../ui/useTheme"
 
 const WEEKDAY_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -65,9 +72,7 @@ function WeekSummaryStrip({
   ignored,
   state,
   ordinal,
-  units,
-  counters,
-  countersOpen,
+  chips,
 }: {
   total: number
   goal: number
@@ -75,10 +80,8 @@ function WeekSummaryStrip({
   /** By days, not by summed hours — see lib/freezes. */
   state: PeriodState
   ordinal: number
-  units: CounterUnit[]
-  counters: Record<string, number>
   /** Folded from the period heading, which owns the switch for all of them. */
-  countersOpen: boolean
+  chips: CounterChip[]
 }) {
   const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
@@ -115,9 +118,9 @@ function WeekSummaryStrip({
       {/* The rule does the separating: hours on its left, counts on its right,
           and the gap between them is however much room the row has. */}
       <span className="flex-1 border-b border-dotted border-ink/15" />
-      {countersOpen && (
-        <CounterTotals units={units} totals={counters} className="shrink-0" />
-      )}
+      {/* The same chips as the heading's, obeying the same folds — one
+          switch for both, since they are one question asked twice. */}
+      <CounterChips chips={chips} className="shrink-0" />
     </div>
   )
 }
@@ -299,7 +302,9 @@ export function MonthGrid({
   weekIgnore = {},
   monthIgnore = {},
   counterUnits,
-  countersOpen = true,
+  grouping,
+  hiddenGroups,
+  categories,
 }: {
   cursor: Date
   days: Record<DayKey, Day>
@@ -307,8 +312,10 @@ export function MonthGrid({
   activities: Activity[]
   settings: Settings
   counterUnits: CounterUnit[]
-  /** Folded from the period heading — see `CounterTotals`. */
-  countersOpen?: boolean
+  /** All three set from the period heading — see `CounterTotals`. */
+  grouping: CounterGrouping
+  hiddenGroups: Set<string>
+  categories: Category[]
   todayKey: DayKey
   onEditDay: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
@@ -370,11 +377,22 @@ export function MonthGrid({
           slots,
           todayKey,
         )
-        const weekCounters = counterTotalsIn(
-          weekDatesInRow,
-          days,
-          makeIsIgnored(weekIgnore, monthIgnore),
-        )
+        const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
+        const weekChips = periodCounterGroups({
+          activities,
+          activityMinutes: activityMinutesIn(
+            weekDatesInRow,
+            days,
+            slots,
+            isIgnored,
+          ),
+          units: counterUnits,
+          totals: counterTotalsIn(weekDatesInRow, days, isIgnored),
+          categories,
+          grouping,
+        })
+          .filter((g) => !hiddenGroups.has(g.id))
+          .flatMap((g) => g.chips)
         return (
           <div key={ri}>
             <WeekSummaryStrip
@@ -383,9 +401,7 @@ export function MonthGrid({
               ignored={weekIgnored}
               state={weekState}
               ordinal={ri + 1}
-              units={counterUnits}
-              counters={weekCounters}
-              countersOpen={countersOpen}
+              chips={weekChips}
             />
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real

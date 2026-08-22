@@ -17,7 +17,7 @@ import {
   weekDates,
 } from '../lib/date'
 import { fmtHours } from '../lib/time'
-import { makeIsIgnored, rangeStats } from '../lib/stats'
+import { activityMinutesIn, makeIsIgnored, rangeStats } from '../lib/stats'
 import { counterTotalsIn } from '../lib/counters'
 import { WIDE_PERIODS, rangeLabel } from '../lib/period'
 import { PopoverMenu } from '../ui/PopoverMenu'
@@ -29,6 +29,8 @@ import { Heatmap } from './Heatmap'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
 import { CounterTotals } from './CounterTotals'
+import { periodCounterGroups } from '../lib/periodCounters'
+import type { CounterGrouping } from '../lib/periodCounters'
 
 import { usePalette } from "../ui/useTheme"
 export function LogView({
@@ -79,7 +81,19 @@ export function LogView({
   // Folds the counter chips — the heading's and, in month view, the ones on
   // every week strip, since they are the same chips answering the same
   // question and two switches for that would be one too many.
-  const [countersOpen, setCountersOpen] = useState(true)
+  /**
+   * How the period's counters are arranged, and which groups are folded away.
+   *
+   * View preferences and nothing else — the figures are untouched, unlike the
+   * count filter — so they live here in `useState` and start open again on a
+   * reload, like `commentsOpen`. One pair governs the heading's rows *and*
+   * every week strip in the month grid: the same chips answering the same
+   * question, and two controls for that is one too many.
+   */
+  const [grouping, setGrouping] = useState<CounterGrouping>("kind")
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(
+    () => new Set(),
+  )
   const {
     slots,
     activities,
@@ -121,6 +135,36 @@ export function LogView({
     () => counterTotalsIn(visibleDates, days, isIgnored),
     [visibleDates, days, isIgnored],
   )
+  const headerActivityMinutes = useMemo(
+    () => activityMinutesIn(visibleDates, days, slots, isIgnored),
+    [visibleDates, days, slots, isIgnored],
+  )
+  const counterGroups = useMemo(
+    () =>
+      periodCounterGroups({
+        activities,
+        activityMinutes: headerActivityMinutes,
+        units: counterUnits,
+        totals: headerCounters,
+        categories: settings.categories || [],
+        grouping,
+      }),
+    [
+      activities,
+      headerActivityMinutes,
+      counterUnits,
+      headerCounters,
+      settings.categories,
+      grouping,
+    ],
+  )
+  const toggleGroup = (id: string) =>
+    setHiddenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const monthPast =
     granularity === "month" &&
@@ -225,11 +269,17 @@ export function LogView({
           long" and this answers "how many", and stacking them keeps a long row
           of counters from pushing the date out of its own row. */}
       <CounterTotals
-        units={counterUnits}
-        totals={headerCounters}
+        groups={counterGroups}
+        grouping={grouping}
+        onGrouping={setGrouping}
+        hidden={hiddenGroups}
+        onToggle={toggleGroup}
+        onSetAll={(hideAll) =>
+          setHiddenGroups(
+            hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
+          )
+        }
         className="-mt-1 mb-3"
-        open={countersOpen}
-        onToggle={setCountersOpen}
       />
 
       {granularity === "day" && (
@@ -270,7 +320,9 @@ export function LogView({
           activities={activities}
           settings={settings}
           counterUnits={counterUnits}
-          countersOpen={countersOpen}
+          grouping={grouping}
+          hiddenGroups={hiddenGroups}
+          categories={settings.categories || []}
           todayKey={todayKey}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}

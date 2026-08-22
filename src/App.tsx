@@ -146,6 +146,9 @@ export default function StudyTrackerApp() {
   // different kind of thing from the other two — but they belong to the same
   // panel and the same "not saved, not period-scoped" rule.
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(() => new Set())
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [hiddenCounters, setHiddenCounters] = useState<Set<string>>(
     () => new Set(),
   )
@@ -632,9 +635,20 @@ export default function StudyTrackerApp() {
       !hiddenSlots.size &&
       !hiddenActivities.size &&
       !hiddenCounters.size &&
-      !hiddenTags.size
+      !hiddenTags.size &&
+      !hiddenCategories.size
     )
       return project
+    /* A hidden category takes everything filed under it — its counters *and*
+       its activities. That is what separates it from a tag, which only ever
+       reaches counters: a tag says what a thing is like, a category says
+       where it belongs, and hiding a shelf means hiding what is on it. */
+    const inHiddenCategory = (x: { categoryId?: string }) =>
+      !!x.categoryId && hiddenCategories.has(x.categoryId)
+    const hiddenActivityIds = new Set([
+      ...hiddenActivities,
+      ...project.activities.filter(inHiddenCategory).map((a) => a.id),
+    ])
     const slots = project.slots.filter((s) => !hiddenSlots.has(s.id))
     const days: Record<DayKey, Day> = {}
     Object.entries(project.days).forEach(([key, day]) => {
@@ -642,8 +656,8 @@ export default function StudyTrackerApp() {
       slots.forEach((s) => {
         const arr = day.cells?.[s.id]
         if (!arr) return
-        cells[s.id] = hiddenActivities.size
-          ? arr.filter((e) => !hiddenActivities.has(entryActivity(e) ?? ""))
+        cells[s.id] = hiddenActivityIds.size
+          ? arr.filter((e) => !hiddenActivityIds.has(entryActivity(e) ?? ""))
           : arr
       })
       days[key] = { ...day, cells }
@@ -651,18 +665,26 @@ export default function StudyTrackerApp() {
     return {
       ...project,
       slots,
-      activities: project.activities.filter((c) => !hiddenActivities.has(c.id)),
+      activities: project.activities.filter((a) => !hiddenActivityIds.has(a.id)),
       // Dropping the *unit* is enough: every badge and row maps over this
       // list, so a hidden tag takes its counters off the page without the
       // recorded numbers being touched.
       counterUnits: (project.counterUnits || []).filter(
         (u) =>
           !hiddenCounters.has(u.id) &&
-          !(u.tagIds || []).some((t) => hiddenTags.has(t)),
+          !(u.tagIds || []).some((t) => hiddenTags.has(t)) &&
+          !inHiddenCategory(u),
       ),
       days,
     }
-  }, [project, hiddenSlots, hiddenActivities, hiddenCounters, hiddenTags])
+  }, [
+    project,
+    hiddenSlots,
+    hiddenActivities,
+    hiddenCounters,
+    hiddenTags,
+    hiddenCategories,
+  ])
 
   // No env vars, no database. A dead end rather than the signed-out local
   // fallback, because that path calls `window.storage` — an API browsers do
@@ -798,7 +820,8 @@ export default function StudyTrackerApp() {
             hiddenSlots.size +
             hiddenActivities.size +
             hiddenCounters.size +
-            hiddenTags.size
+            hiddenTags.size +
+            hiddenCategories.size
           }
           sleepEnabled={project.settings.sleepEnabled === true}
           showSleep={showSleep}
@@ -828,19 +851,23 @@ export default function StudyTrackerApp() {
             activities={project.activities}
             counters={project.counterUnits || []}
             tags={project.settings.tags || []}
+            categories={project.settings.categories || []}
             hiddenSlots={hiddenSlots}
             hiddenActivities={hiddenActivities}
             hiddenCounters={hiddenCounters}
             hiddenTags={hiddenTags}
+            hiddenCategories={hiddenCategories}
             onToggleSlot={toggleIn(setHiddenSlots)}
             onToggleActivity={toggleIn(setHiddenActivities)}
             onToggleCounter={toggleIn(setHiddenCounters)}
             onToggleTag={toggleIn(setHiddenTags)}
+            onToggleCategory={toggleIn(setHiddenCategories)}
             onReset={() => {
               setHiddenSlots(new Set())
               setHiddenActivities(new Set())
               setHiddenCounters(new Set())
               setHiddenTags(new Set())
+              setHiddenCategories(new Set())
             }}
             onClose={() => setShowFilter(false)}
           />
