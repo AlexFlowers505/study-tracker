@@ -853,6 +853,10 @@ export default function StudyTrackerApp() {
         {openStreak === "main" && (
           <StreaksSection
             project={visibleProject}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            today={new Date()}
+            onFreeze={spendFreeze}
             onClose={() => setOpenStreak(null)}
           />
         )}
@@ -864,6 +868,8 @@ export default function StudyTrackerApp() {
               key={s2.rule.id}
               status={s2}
               project={project}
+              rangeStart={range.start}
+              rangeEnd={range.end}
               today={new Date()}
               onSpendFreeze={(key) => spendRuleFreeze(s2.rule.id, key)}
               onClose={() => setOpenStreak(null)}

@@ -7,15 +7,20 @@ import {
   Snowflake,
   Trophy,
 } from "lucide-react"
-import type { Project } from "../types/model"
-import { FREEZE_CAP, freezeLedger } from "../lib/freezes"
+import type { DayKey, Project } from "../types/model"
+import { FREEZE_CAP, canFreeze, dayState, freezeLedger } from "../lib/freezes"
 import { computeStreaks } from "../lib/streaks"
-import { fmtDateLong } from "../lib/date"
-import { fmtHours } from "../lib/time"
+import { dayBreakdown, goalForDate } from "../lib/stats"
+import { datesInRange, fmtDateLong, fmtShort, toKey } from "../lib/date"
+import { fmtHours, fmtHoursChart, toHours } from "../lib/time"
 
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { PanelSection } from "./PanelSection"
+import { StreakChart } from "./StreakChart"
+import type { StreakChartRow } from "./StreakChart"
+import { StreakStrip } from "./StreakStrip"
+import type { StripCell } from "./StreakStrip"
 
 import { usePalette } from "../ui/useTheme"
 const plural = (n: number) => (n === 1 ? "" : "s")
@@ -31,9 +36,19 @@ const HOW_IT_WORKS = [
 
 export function StreaksSection({
   project,
+  rangeStart,
+  rangeEnd,
+  today,
+  onFreeze,
   onClose,
 }: {
   project: Project
+  /** The period bar's range — the panel shows exactly what the page shows. */
+  rangeStart: Date
+  rangeEnd: Date
+  today: Date
+  /** Spends a freeze on that day. The strip's menu is the confirmation. */
+  onFreeze: (key: DayKey) => void
   onClose?: () => void
 }) {
   const c = usePalette()
@@ -47,6 +62,71 @@ export function StreaksSection({
     const openKeys = new Set(ledger.open.map((w) => w.weekStart))
     return all.filter((g) => openKeys.has(g.weekKey)).slice(-3).reverse()
   }, [project.settings.goalCuts, ledger.open])
+
+  /* The period as cells and as bars.
+   *
+   * Both come from the same walk so they cannot disagree, and both use the
+   * same components the custom streaks use — the two panels are one interface
+   * rather than two that happen to look alike. `dayState` is the one function
+   * that decides what a day is; this only paints it. */
+  const { cells, chartRows } = useMemo(() => {
+    const { settings, slots, days } = project
+    const todayKey = toKey(today)
+    const cellsOut: StripCell[] = []
+    const rowsOut: StreakChartRow[] = []
+    datesInRange(rangeStart, rangeEnd).forEach((date) => {
+      const key = toKey(date)
+      const day = days[key]
+      const state = dayState(day, date, settings, slots, todayKey)
+      const total = dayBreakdown(day, slots).total
+      const goal = goalForDate(settings, date)
+      const freezable = canFreeze(
+        date,
+        day,
+        settings,
+        slots,
+        today,
+        ledger.balance,
+      )
+      cellsOut.push({
+        key,
+        state,
+        // The date, not the hours: "2h 30m" does not fit a cell this size, and
+        // a bare number of hours would be a rounded figure pretending to be
+        // exact. The calendar reads as a calendar and the hours are one
+        // hover — or one glance at the chart — away.
+        value: date.getDate(),
+        tooltip: `${fmtDateLong(key)} — ${
+          state === "met"
+            ? "goal met"
+            : state === "frozen"
+              ? "frozen"
+              : state === "missed"
+                ? "goal missed"
+                : "still open"
+        }, ${fmtHours(total)} of ${goal > 0 ? fmtHours(goal) : "no goal"}`,
+        freeze: freezable
+          ? {
+              cost: 1,
+              available: ledger.balance,
+              label: fmtDateLong(key),
+              onSpend: () => onFreeze(key),
+            }
+          : undefined,
+      })
+      // A day with no goal has nothing to clear, so it is drawn without a
+      // line rather than with one at zero, which would read as "cleared it".
+      if (state === "pending" && key > todayKey) return
+      rowsOut.push({
+        label: fmtShort(key),
+        value: toHours(total),
+        limit: goal > 0 ? toHours(goal) : null,
+        broken: state === "missed",
+        frozen: state === "frozen",
+      })
+    })
+    return { cells: cellsOut, chartRows: rowsOut }
+  }, [project, rangeStart, rangeEnd, today, ledger.balance, onFreeze])
 
   return (
     <PanelSection
@@ -161,6 +241,19 @@ export function StreaksSection({
             ))}
           </div>
         )}
+        <StreakStrip
+          cells={cells}
+          note="Freezes go on today and yesterday, the same window the log is written in. One freeze covers one missed day."
+        />
+
+        <StreakChart
+          rows={chartRows}
+          tint={c.project}
+          valueName="Studied"
+          limitName="Goal"
+          formatter={fmtHoursChart}
+        />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatTile
             label="Current day streak"

@@ -623,11 +623,33 @@ other is not: the allowance is bare and dim, the bank sits in a tinted pill in
 the freeze colour.
 
 One panel at a time (`openStreak`), built from `PanelSection` in the rule's own
-colour. **Freezes are spent from that panel's week strip, never from the day
-card**: a day can break three rules at once, and a snowflake per rule on a card
-that already carries badges, sleep, a note and an add button is how a card
-stops being readable. The main streak keeps its snowflake on the card, because
-it is about the day's hours and that is what the card is about.
+colour. **The goal streak's panel and a custom one are the same three parts in
+the same order**, from the same two components — `StreakStrip` and
+`StreakChart` — because they answer the same question about different rules,
+and two panels that merely looked alike would drift.
+
+- **`StreakStrip`** is the period as a seven-column calendar grid: met green,
+  frozen blue, missed red, and the days outside the period left blank so the
+  weekday columns stay true. A rule that only judges Mondays then reads down a
+  column. One row of cells would have worked for a week and for nothing else.
+- **`StreakChart`** is the same period as bars against a dashed limit line, so
+  breaking the rule is literally crossing it. The limit is **per row**, not one
+  constant, because the goal streak's limit is that weekday's goal and seven
+  different goals is the normal case. Bars carry `minPointSize`: half these
+  rules are "at most 0", a week of keeping one is a week of zeroes, and a chart
+  of invisible bars reads as "no data" rather than "nothing happened, which was
+  the point".
+
+**Both follow the period bar**, not "this week". The panel opens directly under
+that bar and above a log showing the same range; one stuck on the current week
+while the page shows March would be answering a question nobody asked.
+
+**Freezes are spent from the strip, never from the day card**: a day can break
+three rules at once, and a snowflake per rule on a card that already carries
+badges, sleep, a note and an add button is how a card stops being readable. The
+main streak keeps its snowflake on the card as well, because it is about the
+day's hours and that is what the card is about — the strip's menu and the
+card's dialog both end at the same `spendFreeze`.
 
 Storage: `days.rule_freezes` and the `streak_verdicts` table, both in
 `migrations/012_custom_streaks.sql`.

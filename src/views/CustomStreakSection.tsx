@@ -4,21 +4,27 @@
    Built from `PanelSection` like every other panel, in the rule's own colour,
    so the five of them read as siblings rather than as five features.
 
-   Three things are here and each earns its place:
+   Four things are here and each earns its place:
 
    - **The rule, said back in words.** The same sentence the form writes, from
      the same function, because checking one against the other is the only way
      to know that what you built is what you meant.
-   - **The week as cells.** A streak is a number and a number cannot be
-     argued with; the cells are where you see *which* day it was.
+   - **The period as cells** — `StreakStrip`, shared with the goal streak, so
+     the two panels are one interface rather than two that look alike.
+   - **The rule drawn against the period** — `StreakChart`. The strip says
+     which days broke it; the chart says by how much, which is the number the
+     freeze economy actually runs on.
    - **Both freeze counts, named.** One expires on Sunday and one does not, and
      a count that quietly halves overnight with no explanation reads as a bug.
 
-   **Freezes are spent here, on the week strip** — not from the day card. A day
-   can break three rules at once, and a snowflake per rule on a card that
-   already carries badges, sleep, a note and an add button is how a card stops
-   being readable. The main streak keeps its own snowflake on the card, because
-   it is about the day's hours and that is what the card is about.
+   Everything below the heading follows **the period bar**, not "this week".
+   The panel sits directly under that bar and above a log showing the same
+   range; a panel stuck on the current week while the page shows March would be
+   answering a question nobody asked.
+
+   **Freezes are spent from the strip**, not from the day card. A day can break
+   three rules at once, and a snowflake per rule on a card that already carries
+   badges, sleep, a note and an add button is how a card stops being readable.
 --------------------------------------------------------------- */
 
 import { Flame, Snowflake, Trophy } from "lucide-react"
@@ -26,19 +32,30 @@ import type { Project } from "../types/model"
 import type { RuleState, RuleStatus } from "../lib/customStreaks"
 import {
   freezeOffer,
+  judgesDay,
   readDay,
+  readWeek,
   ruleDayState,
   ruleSentence,
   ruleWeekState,
 } from "../lib/customStreaks"
-import { WEEKDAY_LABELS, fmtDateLong, startOfWeek, toKey, weekDates } from "../lib/date"
-import { btnBase } from "../lib/theme"
-import { PopoverMenu } from "../ui/PopoverMenu"
+import {
+  addDays,
+  datesInRange,
+  fmtDateLong,
+  fmtShort,
+  startOfWeek,
+  toKey,
+} from "../lib/date"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 import { FALLBACK_ICON, ICON_MAP } from "../ui/iconLibrary"
+import { StreakChart } from "./StreakChart"
+import type { StreakChartRow } from "./StreakChart"
+import { StreakStrip } from "./StreakStrip"
+import type { StripCell } from "./StreakStrip"
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
@@ -53,12 +70,17 @@ const STATE_WORD: Record<RuleState, string> = {
 export function CustomStreakSection({
   status,
   project,
+  rangeStart,
+  rangeEnd,
   today,
   onSpendFreeze,
   onClose,
 }: {
   status: RuleStatus
   project: Project
+  /** The period bar's range — the panel shows exactly what the page shows. */
+  rangeStart: Date
+  rangeEnd: Date
   today: Date
   /** Puts the rule's id on that day. The caller owns persistence. */
   onSpendFreeze: (dayKey: string) => void
@@ -67,28 +89,91 @@ export function CustomStreakSection({
   const c = usePalette()
   const { rule, unit, freezes } = status
   const todayKey = toKey(today)
-  const weekStart = startOfWeek(today)
-  const days = weekDates(weekStart)
+  const byWeek = rule.scope === "week"
 
   // "1 days" is the tell that a number was pasted next to a fixed word.
   const unitWord = (n: number) =>
-    `${rule.scope === "week" ? "week" : "day"}${n === 1 ? "" : "s"}`
+    `${byWeek ? "week" : "day"}${n === 1 ? "" : "s"}`
 
-  const cellState = (key: string): RuleState =>
-    rule.scope === "week"
-      ? ruleWeekState(rule, unit, project.days, weekStart, todayKey)
+  const dates = datesInRange(rangeStart, rangeEnd)
+
+  const stateOf = (date: Date, key: string): RuleState =>
+    byWeek
+      ? ruleWeekState(rule, unit, project.days, startOfWeek(date), todayKey)
       : ruleDayState(rule, unit, project.days[key], key, todayKey)
 
-  // A colour per verdict, and the same three the rest of the app already uses
-  // for a day: green kept, blue frozen, red missed. Nothing new to learn.
-  const cellTint = (state: RuleState) =>
-    state === "met"
-      ? c.goalMet
-      : state === "frozen"
-        ? c.freeze
-        : state === "missed"
-          ? c.exam
-          : null
+  const cells: StripCell[] = dates.map((date) => {
+    const key = toKey(date)
+    const state = stateOf(date, key)
+    const offer = freezeOffer(rule, project, key, todayKey, status)
+    const reading = readDay(rule, unit, project.days[key], key, todayKey)
+    // A cell that offers nothing has two completely different reasons for it,
+    // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
+    // `ok` false is exactly that case: the day is freezable and the freezes
+    // are not there.
+    const short = !offer.ok && offer.cost > 0
+    return {
+      key,
+      state,
+      value: state === "unjudged" ? "·" : reading.value,
+      tooltip:
+        `${fmtDateLong(key)} — ${STATE_WORD[state]}` +
+        (state === "unjudged"
+          ? ""
+          : `, counted ${reading.value}${reading.skipped ? " (skipped)" : ""}`) +
+        (short
+          ? `. Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`
+          : ""),
+      freeze: offer.ok
+        ? {
+            cost: offer.cost,
+            available: offer.available,
+            label: fmtDateLong(key),
+            // `offer.key`, not `key`: a weekly rule's freeze is recorded on
+            // the Monday of the week it covers.
+            onSpend: () => onSpendFreeze(offer.key),
+          }
+        : undefined,
+    }
+  })
+
+  /* The chart's rows are the periods the rule actually judges — days for a
+     daily rule, weeks for a weekly one. Drawing the days of a weekly rule
+     would put seven bars under one verdict and invite you to read each of
+     them as a pass or a fail. */
+  const chartRows: StreakChartRow[] = byWeek
+    ? (() => {
+        const out: StreakChartRow[] = []
+        for (
+          let w = startOfWeek(rangeStart);
+          w <= rangeEnd;
+          w = addDays(w, 7)
+        ) {
+          const state = ruleWeekState(rule, unit, project.days, w, todayKey)
+          if (state === "unjudged") continue
+          out.push({
+            label: fmtShort(toKey(w)),
+            value: readWeek(rule, unit, project.days, w, todayKey).value,
+            limit: rule.value,
+            broken: state === "missed",
+            frozen: state === "frozen",
+          })
+        }
+        return out
+      })()
+    : dates
+        .filter((d) => judgesDay(rule, toKey(d)) && toKey(d) <= todayKey)
+        .map((d) => {
+          const key = toKey(d)
+          const state = stateOf(d, key)
+          return {
+            label: fmtShort(key),
+            value: readDay(rule, unit, project.days[key], key, todayKey).value,
+            limit: rule.value,
+            broken: state === "missed",
+            frozen: state === "frozen",
+          }
+        })
 
   return (
     <PanelSection
@@ -162,124 +247,17 @@ export function CustomStreakSection({
         </div>
       )}
 
-      {/* This week, day by day. The strip is also the only way to spend a
-          freeze, which is why an eligible cell opens a menu rather than
-          acting on the first click: a freeze is a real cost and the cost
-          depends on how badly the day went. */}
-      <div className="mb-3">
-        {/* Seven equal columns, as a grid rather than seven flex children.
-            `Tip` and `PopoverMenu` each put a wrapper span around what they
-            are given, so the flex item was the wrapper and `flex-1` never
-            reached the cell: five days shrank to the width of their own
-            three-letter label, the one freezable day kept its `flex-1` and
-            swallowed the rest of the row, and Sunday was pushed against the
-            right edge. A grid track sizes the cell whatever is wrapped
-            around it. */}
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((date) => {
-            const key = toKey(date)
-            const state = cellState(key)
-            const tint = cellTint(state)
-            const offer = freezeOffer(rule, project, key, todayKey, status)
-            const reading = readDay(rule, unit, project.days[key], key, todayKey)
-            // A cell that offers nothing has two completely different
-            // reasons for it, and "you cannot afford this" is the one nobody
-            // guesses. `cost > 0` with `ok` false is exactly that case: the
-            // day is freezable and the freezes are not there.
-            const short = !offer.ok && offer.cost > 0
-            const detail = `${fmtDateLong(key)} — ${STATE_WORD[state]}${
-              state === "unjudged"
-                ? ""
-                : `, ${rule.scope === "week" ? "week" : "counted"} ${reading.value}${
-                    reading.skipped ? " (skipped)" : ""
-                  }`
-            }${
-              short
-                ? `. Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`
-                : ""
-            }`
+      <StreakStrip
+        cells={cells}
+        note="Freezes go on today and yesterday, the same window the log is written in. A day costs one freeze for every unit it fell short by."
+      />
 
-            const cell = (
-              <div
-                className="flex-1 min-w-0 flex flex-col items-center gap-1 py-1.5 rounded-lg"
-                style={{
-                  backgroundColor: tint ? `${tint}24` : `${c.ink}08`,
-                  color: tint || `${c.ink}55`,
-                }}
-              >
-                <span className="text-[9px] font-mono uppercase tracking-widest">
-                  {WEEKDAY_LABELS[date.getDay()]}
-                </span>
-                <span className="text-[11px] font-mono font-bold">
-                  {state === "frozen" ? (
-                    <Snowflake size={11} strokeWidth={3} />
-                  ) : state === "unjudged" ? (
-                    "·"
-                  ) : (
-                    reading.value
-                  )}
-                </span>
-              </div>
-            )
-
-            // Both branches sit in the same shell: a flex grid item, so the
-            // wrapper span inside it is a flex item too and stops being an
-            // inline box — which is what dropped the freezable day half a
-            // line below its neighbours.
-            if (!offer.ok)
-              return (
-                <div key={key} className="flex min-w-0">
-                  <Tip text={detail} className="flex-1 min-w-0">
-                    {cell}
-                  </Tip>
-                </div>
-              )
-
-            return (
-              <div key={key} className="flex min-w-0">
-                <PopoverMenu
-                  width={210}
-                  label={detail}
-                  wrapClassName="flex-1 min-w-0"
-                  triggerClassName={`${btnBase} block w-full rounded-lg hover:brightness-110`}
-                  trigger={cell}
-                >
-                  {(close) => (
-                    <div>
-                      <p className="px-2.5 pt-1 pb-2 text-[9px] font-mono uppercase tracking-widest text-ink/40">
-                        {fmtDateLong(key)}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // `offer.key`, not `key`: a weekly rule's freeze is
-                          // recorded on the Monday of the week it covers.
-                          onSpendFreeze(offer.key)
-                          close()
-                        }}
-                        className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono hover:bg-ink/5`}
-                        style={{ color: c.freeze }}
-                      >
-                        Freeze this day
-                        <span className="block text-[10px] text-ink/45">
-                          costs {plural(offer.cost, "freeze")} of{" "}
-                          {offer.available} available
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </PopoverMenu>
-              </div>
-            )
-          })}
-        </div>
-        {/* Why a red day offers nothing. Silence there reads as a broken
-            button, and the two reasons are completely different problems. */}
-        <p className="mt-1.5 text-[10px] font-mono text-ink/35">
-          Freezes go on today and yesterday, the same window the log is written
-          in. A day costs one freeze for every unit it fell short by.
-        </p>
-      </div>
+      <StreakChart
+        rows={chartRows}
+        tint={rule.color}
+        valueName={unit?.label || "Counted"}
+        limitName={rule.op === "atLeast" ? "At least" : "At most"}
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatTile
