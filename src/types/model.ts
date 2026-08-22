@@ -18,7 +18,33 @@ export interface Labeled {
 }
 
 export type Slot = Labeled
-export type Activity = Labeled
+
+/**
+ * A thing time is logged against — Lessons, Q&A, Polishing questions.
+ *
+ * One of the three kinds a counter can be: an activity records **time**, a
+ * tally records a count, a check records an answer. It keeps its own list
+ * rather than joining `counterUnits`, so nothing that walks the counters has
+ * to learn to skip it — see the note in CLAUDE.md.
+ */
+export interface Activity extends Labeled {
+  /** The category grouping it, if any. See `Category`. */
+  categoryId?: string
+}
+
+/**
+ * A grouping of counters — one per counter, unlike a tag.
+ *
+ * That is the whole difference, and it is what each is for. A tag answers
+ * "what else is this like", so a counter wears as many as are true. A category
+ * answers "where does this belong", and a thing that belongs in two places
+ * does not have a place — which is why Setup can lay every counter out under
+ * category headings and be sure each appears exactly once.
+ *
+ * Same shape as a slot or a tag, so it edits through the same list, and it
+ * lives in `settings` for the same reason tags do: no migration.
+ */
+export type Category = Labeled
 
 /**
  * How a unit reads when it moves. Stored and configurable from the start, but
@@ -95,6 +121,11 @@ export interface CounterUnit extends Labeled {
    * `relation` was.
    */
   tagIds?: string[]
+  /**
+   * The category grouping this counter, if any. One at most — see `Category`
+   * for why that is the point rather than a limitation.
+   */
+  categoryId?: string
   /**
    * Tops out at one a day: oversleeping, or anything else that either happened
    * or did not.
@@ -418,6 +449,8 @@ export interface Settings {
   tags?: Tag[]
   /** Custom streaks. In `settings` for the same reason `tags` is. */
   streakRules?: StreakRule[]
+  /** The project's counter categories. In `settings`, like `tags`. */
+  categories?: Category[]
 }
 
 export interface GoalCut {

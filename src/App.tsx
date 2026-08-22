@@ -1082,6 +1082,7 @@ export default function StudyTrackerApp() {
           counterUnits={project.counterUnits || []}
           counterProgress={counterProgress}
           onUpdateUnits={updateCounterUnits}
+          onUpdateProject={updateProject}
           projects={data.projects}
           activeProjectId={data.activeProjectId}
           onSwitchProject={switchProject}

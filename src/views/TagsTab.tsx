@@ -12,19 +12,30 @@
    the only moment anyone can tidy it is the moment it becomes rubbish.
 --------------------------------------------------------------- */
 
-import type { CounterUnit, Tag } from "../types/model"
+import type {
+  CounterUnit,
+  Project,
+  Settings,
+  Tag,
+} from "../types/model"
 import { EditableList } from "../ui/EditableList"
 
 export function TagsTab({
+  settings,
   tags,
   units,
-  onChange,
-  onUpdateUnits,
+  onApply,
 }: {
+  settings: Settings
   tags: Tag[]
   units: CounterUnit[]
-  onChange: (next: Tag[]) => void
-  onUpdateUnits: (next: CounterUnit[]) => void
+  /**
+   * One patch, not two calls. Deleting a tag changes the list in `settings`
+   * and strips the id off every unit wearing it; two updates in one tick both
+   * read the same project and the last one wins, which quietly threw the
+   * cleanup away and left the dangling ids this exists to prevent.
+   */
+  onApply: (patch: Partial<Project>) => void
 }) {
   return (
     <div className="space-y-3">
@@ -39,15 +50,21 @@ export function TagsTab({
           const gone = tags
             .filter((t) => !next.some((n) => n.id === t.id))
             .map((t) => t.id)
-          if (gone.length) {
-            const cleaned = units.map((u) =>
-              (u.tagIds || []).some((id) => gone.includes(id))
-                ? { ...u, tagIds: (u.tagIds || []).filter((id) => !gone.includes(id)) }
-                : u,
-            )
-            onUpdateUnits(cleaned)
-          }
-          onChange(next)
+          onApply({
+            settings: { ...settings, tags: next },
+            counterUnits: gone.length
+              ? units.map((u) =>
+                  (u.tagIds || []).some((id) => gone.includes(id))
+                    ? {
+                        ...u,
+                        tagIds: (u.tagIds || []).filter(
+                          (id) => !gone.includes(id),
+                        ),
+                      }
+                    : u,
+                )
+              : units,
+          })
         }}
         noun="tag"
         minItems={0}

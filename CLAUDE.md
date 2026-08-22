@@ -500,6 +500,44 @@ modes, streak rules — start seeing them, each site needing its own answer to
 steep price for a tidier type. Setup presents the two lists as one tab with
 three sub-tabs; that is a drawing decision and it belongs in the drawing.
 
+## Categories
+
+A grouping of counters, one per counter — `settings.categories`, riding in the
+same jsonb `tags` does, and `categoryId` on both `CounterUnit` and `Activity`.
+
+**The one-per-counter rule is the whole difference from a tag, and it is what
+each is for.** A tag answers *what else is this like*, so you wear as many as
+are true and they are chips. A category answers *where does this belong*, and a
+thing that belongs in two places does not have a place — which is exactly what
+lets Setup lay every counter out under headings with each appearing once. So it
+is a dropdown with one answer, and "No category" is one of the answers rather
+than the absence of one.
+
+Setup's Counters tab is therefore **two arrangements of the same things**:
+
+- **By kind** is the editor. Three sub-tabs — Activities, Tallies, Checks — one
+  list at a time with everything a row can carry, since the three differ in
+  what they have: a tally has a total and slots, a check has neither, an
+  activity has neither and no tags either, because nothing counts it.
+- **By category** is the shelf. Every counter under its heading whatever kind
+  it is, with a kind badge and the category picker. It edits only the
+  shelving and says where the rest lives — two full editors for one row is two
+  places for the same edit to go wrong. A `categoryId` pointing at a category
+  that no longer exists reads as *not filed*: deleting a category strips the id
+  everywhere, so it should never happen, and a row that silently disappears
+  from every heading would be a far worse failure than one filed under nothing.
+
+Both toggles are **recessed** tracks — Setup's own tabs are two rows up, and an
+identical shape there would read as the same control drawn twice.
+
+**An edit that touches more than one of a project's arrays must be one write.**
+Deleting a category changes `settings` *and* strips the id off `activities`
+*and* off `counterUnits`; three calls to `updateProject` in one tick all close
+over the same `project` and the last one wins, so two of the three vanish. That
+is why `CategoriesTab` and `TagsTab` take a single `onApply(patch)` rather than
+one callback per array — and it is a bug the tag cleanup shipped with, which is
+how the shape was found.
+
 ## Counter kinds
 
 A counter answers one of two questions, and they are not the same question —

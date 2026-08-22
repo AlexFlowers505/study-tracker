@@ -51,6 +51,7 @@ import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
 import { StreakRulesTab } from './StreakRulesTab'
+import { CategoriesTab } from './CategoriesTab'
 import { AppearanceTab } from './AppearanceTab'
 import { TagsTab } from './TagsTab'
 import { DataTransfer } from './DataTransfer'
@@ -68,6 +69,7 @@ export function SetupModal({
   counterUnits,
   counterProgress,
   onUpdateUnits,
+  onUpdateProject,
   projects,
   activeProjectId,
   onSwitchProject,
@@ -88,6 +90,8 @@ export function SetupModal({
   counterUnits: CounterUnit[]
   counterProgress: Record<string, number>
   onUpdateUnits: (next: CounterUnit[]) => void
+  /** One write for an edit that touches more than one of the arrays. */
+  onUpdateProject: (patch: Partial<Project>) => void
   projects: Project[]
   activeProjectId: string
   onSwitchProject: (id: string) => void
@@ -132,8 +136,11 @@ export function SetupModal({
           {[
             { id: "details", label: "Project", icon: SlidersHorizontal },
             { id: "slots", label: "Slots", icon: LayoutGrid },
-            { id: "activities", label: "Activities", icon: Shapes },
+            // Activities live inside Counters now — they are one of the three
+            // kinds a counter can be, and a tab of their own said they were a
+            // different sort of thing.
             { id: "units", label: "Counters", icon: Hash },
+            { id: "categories", label: "Categories", icon: Shapes },
             { id: "tags", label: "Tags", icon: Tags },
             { id: "streaks", label: "Streaks", icon: Flame },
             { id: "projects", label: "Projects", icon: FolderOpen },
@@ -168,10 +175,10 @@ export function SetupModal({
         >
           {tab === "tags" && (
             <TagsTab
+              settings={settings}
               tags={settings.tags || []}
               units={counterUnits}
-              onChange={(tags) => onSaveSettings({ ...settings, tags })}
-              onUpdateUnits={onUpdateUnits}
+              onApply={onUpdateProject}
             />
           )}
           {tab === "app" && <AppearanceTab />}
@@ -192,14 +199,13 @@ export function SetupModal({
               }
             />
           )}
-          {tab === "activities" && (
-            <EditableList
-              items={activities}
-              onChange={onUpdateActivities}
-              noun="activity"
-              warningNote={(label) =>
-                `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
-              }
+          {tab === "categories" && (
+            <CategoriesTab
+              settings={settings}
+              categories={settings.categories || []}
+              activities={activities}
+              units={counterUnits}
+              onApply={onUpdateProject}
             />
           )}
           {tab === "streaks" && (
@@ -213,6 +219,9 @@ export function SetupModal({
           {tab === "units" && (
             <CounterUnitsTab
               units={counterUnits}
+              activities={activities}
+              categories={settings.categories || []}
+              onChangeActivities={onUpdateActivities}
               tags={settings.tags || []}
               progress={counterProgress}
               onChange={onUpdateUnits}
