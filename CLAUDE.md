@@ -525,11 +525,27 @@ Streaks of your own making — `spec 009`, part 2. `lib/customStreaks.ts` holds
 all of it; `settings.streakRules` holds the rules, riding in the same jsonb
 `tags` does.
 
-A rule is **a sentence**: *judge every [day / week / these weekdays], keeping
-[a counter] in [these slots] [at least / at most] [n], with [k] freezes a
+A rule is **a sentence**: *judge every [day / week], keeping [a counter] in
+[these slots] [at least / at most] [n] on [these weekdays], with [k] freezes a
 week.* One shape covers never-oversleep, always-in-bed-on-time, no-youtube-in-
-the-evening, three-gym-trips-a-week and gym-on-Mon-Wed-Fri. If a sixth kind of
-rule will not fit it, the shape is wrong rather than the rule.
+the-evening, three-gym-trips-a-week and gym-on-Mon-Wed-Fri. If a further kind
+of rule will not fit it, the shape is wrong rather than the rule.
+
+**A rule is one promise with as many conditions as it needs**, and all of them
+must hold — `StreakClause`, and `ruleClauses()` is the only thing that knows a
+rule ever had exactly one (it fills one in from the flat fields old rules
+carry, which are deprecated and stay in the data). "No Pinterest on a weekday
+morning, and no YouTube in the evening or at night" is one streak: breaking
+either half breaks the same week. Two separate rules would be two streaks to
+keep and two allowances to spend, which is a weaker promise wearing the same
+name.
+
+**The weekdays are the clause's, not the rule's.** That is what makes the
+compound case work at all — one half a weekday condition, the other an
+every-day one, inside one promise. A day is judged when *any* clause covers it,
+and its deficit is the **sum** across the clauses that did: a day that broke
+two of your conditions cost you twice, and a freeze covering both for the price
+of one would make the second condition free.
 
 Setup's Streaks tab writes that sentence with dropdowns in it, and
 `ruleSentence` reads it back in the panel — **the same function**, because the
@@ -541,7 +557,8 @@ and unreadable.
 Three ideas carry the whole feature:
 
 - **Failure has a size.** Not "the day broke" but the *deficit* — how far over
-  or short. A freeze pays for one unit of it, and a period is frozen only if
+  or short, summed across the conditions that applied. A freeze pays for one
+  unit of it, and a period is frozen only if
   the whole deficit can be paid, so two youtube slips in one evening cost two
   freezes, one is not enough, nothing is spent and the streak breaks. That
   falls out of the arithmetic rather than being a special case. Partial
@@ -585,6 +602,13 @@ answer is not decidable** — it waits. So "never do X this week" becoming
 "always do X this week" needs no classification: it is incomparable, therefore
 unprovable, therefore locked. Same for swapping the counter or switching
 between judging a day and judging a week.
+
+With several conditions it is the same argument one level up: every condition
+that was there must still be there and no easier, matched **by id** so that
+reordering is not an edit and a rewritten condition is not read as a drop plus
+an add. **Conditions that were only added are free** — a further thing to keep
+can only ever cost you — so building a compound rule out of a simple one never
+waits, while dropping one does.
 
 Every dimension must be no-easier; one easier dimension locks the whole edit,
 since they are not a currency you can trade between. The two slot rules point
@@ -635,7 +659,11 @@ and two panels that merely looked alike would drift.
 - **`StreakChart`** is the same period as bars against a dashed limit line, so
   breaking the rule is literally crossing it. The limit is **per row**, not one
   constant, because the goal streak's limit is that weekday's goal and seven
-  different goals is the normal case. Bars carry `minPointSize`: half these
+  different goals is the normal case. A rule with one condition plots that
+  condition's own count; a rule with several plots the **deficit** against a
+  limit of nought, since Pinterest and YouTube have no shared axis to share.
+  The strip's cells follow the same split, and the tooltip lists every
+  condition either way. Bars carry `minPointSize`: half these
   rules are "at most 0", a week of keeping one is a week of zeroes, and a chart
   of invisible bars reads as "no data" rather than "nothing happened, which was
   the point".
@@ -643,6 +671,13 @@ and two panels that merely looked alike would drift.
 **Both follow the period bar**, not "this week". The panel opens directly under
 that bar and above a log showing the same range; one stuck on the current week
 while the page shows March would be answering a question nobody asked.
+
+The panel's subtitle is the rule read back — `clauseSentence` per condition, as
+a **list** when there is more than one, because two conditions are two things
+to check and an "and" in the middle of a line is not a checklist. The
+description written in Setup sits under them on its own line: it is *why* you
+set the rule, not part of the rule, and run together with the terms it read as
+one more clause.
 
 **Freezes are spent from the strip, never from the day card**: a day can break
 three rules at once, and a snowflake per rule on a card that already carries

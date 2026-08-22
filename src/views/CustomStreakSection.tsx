@@ -29,15 +29,21 @@
 
 import { Flame, Snowflake, Trophy } from "lucide-react"
 import type { Project } from "../types/model"
-import type { RuleState, RuleStatus } from "../lib/customStreaks"
+import type {
+  ClauseReading,
+  RuleState,
+  RuleStatus,
+} from "../lib/customStreaks"
 import {
+  clauseSentence,
   freezeOffer,
   judgesDay,
   readDay,
   readWeek,
+  ruleClauses,
   ruleDayState,
-  ruleSentence,
   ruleWeekState,
+  totalDeficit,
 } from "../lib/customStreaks"
 import {
   addDays,
@@ -87,9 +93,17 @@ export function CustomStreakSection({
   onClose?: () => void
 }) {
   const c = usePalette()
-  const { rule, unit, freezes } = status
+  const { rule, freezes } = status
   const todayKey = toKey(today)
   const byWeek = rule.scope === "week"
+  const units = project.counterUnits || []
+  const clauses = ruleClauses(rule)
+  // A rule with one condition reports that condition's own number, which is
+  // the thing you were counting. A rule with several has no single number —
+  // Pinterest and YouTube are not the same unit — so it reports the deficit
+  // instead: how far off the whole promise was, which is also exactly what a
+  // freeze is priced in.
+  const compound = clauses.length > 1
 
   // "1 days" is the tell that a number was pasted next to a fixed word.
   const unitWord = (n: number) =>
@@ -99,14 +113,28 @@ export function CustomStreakSection({
 
   const stateOf = (date: Date, key: string): RuleState =>
     byWeek
-      ? ruleWeekState(rule, unit, project.days, startOfWeek(date), todayKey)
-      : ruleDayState(rule, unit, project.days[key], key, todayKey)
+      ? ruleWeekState(rule, units, project.days, startOfWeek(date), todayKey)
+      : ruleDayState(rule, units, project.days[key], key, todayKey)
+
+  /** Every condition that had something to say, in the form "Youtube 2". */
+  const breakdown = (readings: ClauseReading[]) =>
+    readings
+      .filter((r) => r.applies)
+      .map(
+        (r) =>
+          `${units.find((u) => u.id === r.clause.unitId)?.label || "?"} ${r.value}` +
+          (r.skipped ? " (skipped)" : ""),
+      )
+      .join(" · ")
+
+  const figure = (readings: ClauseReading[]) =>
+    compound ? totalDeficit(readings) : (readings[0]?.value ?? 0)
 
   const cells: StripCell[] = dates.map((date) => {
     const key = toKey(date)
     const state = stateOf(date, key)
     const offer = freezeOffer(rule, project, key, todayKey, status)
-    const reading = readDay(rule, unit, project.days[key], key, todayKey)
+    const readings = readDay(rule, units, project.days[key], key, todayKey)
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
     // `ok` false is exactly that case: the day is freezable and the freezes
@@ -115,12 +143,10 @@ export function CustomStreakSection({
     return {
       key,
       state,
-      value: state === "unjudged" ? "·" : reading.value,
+      value: state === "unjudged" ? "·" : figure(readings),
       tooltip:
         `${fmtDateLong(key)} — ${STATE_WORD[state]}` +
-        (state === "unjudged"
-          ? ""
-          : `, counted ${reading.value}${reading.skipped ? " (skipped)" : ""}`) +
+        (state === "unjudged" ? "" : `. ${breakdown(readings)}`) +
         (short
           ? `. Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`
           : ""),
@@ -140,24 +166,37 @@ export function CustomStreakSection({
   /* The chart's rows are the periods the rule actually judges — days for a
      daily rule, weeks for a weekly one. Drawing the days of a weekly rule
      would put seven bars under one verdict and invite you to read each of
-     them as a pass or a fail. */
+     them as a pass or a fail.
+
+     A compound rule plots its deficit against a limit of nought, because two
+     conditions in two different units have no shared axis to share. That
+     chart says the same thing either way: a bar above the line is a day you
+     have to pay for. */
+  const rowFor = (
+    label: string,
+    readings: ClauseReading[],
+    state: RuleState,
+  ): StreakChartRow => ({
+    label,
+    value: figure(readings),
+    limit: compound ? 0 : (clauses[0]?.value ?? null),
+    broken: state === "missed",
+    frozen: state === "frozen",
+  })
+
   const chartRows: StreakChartRow[] = byWeek
     ? (() => {
         const out: StreakChartRow[] = []
-        for (
-          let w = startOfWeek(rangeStart);
-          w <= rangeEnd;
-          w = addDays(w, 7)
-        ) {
-          const state = ruleWeekState(rule, unit, project.days, w, todayKey)
+        for (let w = startOfWeek(rangeStart); w <= rangeEnd; w = addDays(w, 7)) {
+          const state = ruleWeekState(rule, units, project.days, w, todayKey)
           if (state === "unjudged") continue
-          out.push({
-            label: fmtShort(toKey(w)),
-            value: readWeek(rule, unit, project.days, w, todayKey).value,
-            limit: rule.value,
-            broken: state === "missed",
-            frozen: state === "frozen",
-          })
+          out.push(
+            rowFor(
+              fmtShort(toKey(w)),
+              readWeek(rule, units, project.days, w, todayKey),
+              state,
+            ),
+          )
         }
         return out
       })()
@@ -165,14 +204,11 @@ export function CustomStreakSection({
         .filter((d) => judgesDay(rule, toKey(d)) && toKey(d) <= todayKey)
         .map((d) => {
           const key = toKey(d)
-          const state = stateOf(d, key)
-          return {
-            label: fmtShort(key),
-            value: readDay(rule, unit, project.days[key], key, todayKey).value,
-            limit: rule.value,
-            broken: state === "missed",
-            frozen: state === "frozen",
-          }
+          return rowFor(
+            fmtShort(key),
+            readDay(rule, units, project.days[key], key, todayKey),
+            stateOf(d, key),
+          )
         })
 
   return (
@@ -181,9 +217,23 @@ export function CustomStreakSection({
       icon={(rule.iconName && ICON_MAP[rule.iconName]) || FALLBACK_ICON}
       title={rule.label}
       subtitle={
-        <span>
-          {ruleSentence(rule, unit, project.slots)}
-          {rule.description ? ` ${rule.description}` : ""}
+        /* The conditions as a list rather than one run-on sentence: a rule
+           with two of them is two things to check, and "and" in the middle of
+           a line is not a checklist. The description sits under them on its
+           own line — it is why you set the rule, not part of the rule, and
+           run together with the terms it read as a fourth clause. */
+        <span className="block">
+          {clauses.map((clause) => (
+            <span key={clause.id} className="block">
+              {compound ? "· " : ""}
+              {clauseSentence(clause, units, project.slots, rule.scope)}
+            </span>
+          ))}
+          {rule.description && (
+            <span className="block mt-1 normal-case text-ink/45">
+              {rule.description}
+            </span>
+          )}
         </span>
       }
       closeLabel={`Hide ${rule.label}`}
@@ -255,8 +305,14 @@ export function CustomStreakSection({
       <StreakChart
         rows={chartRows}
         tint={rule.color}
-        valueName={unit?.label || "Counted"}
-        limitName={rule.op === "atLeast" ? "At least" : "At most"}
+        valueName={
+          compound
+            ? "Over the limit by"
+            : units.find((u) => u.id === clauses[0]?.unitId)?.label || "Counted"
+        }
+        limitName={
+          compound || clauses[0]?.op === "atMost" ? "At most" : "At least"
+        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">

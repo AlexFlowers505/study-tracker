@@ -247,14 +247,19 @@ export type StreakOp = "atLeast" | "atMost"
  * [scope/weekdays], keeping [unit] in [slots] [op] [value], with
  * [freezesPerWeek] freezes a week.*
  */
-export interface StreakRule extends Labeled {
-  scope: StreakScope
-  /**
-   * Day scope only. Empty means every day. A weekday left out is **not
-   * judged** — the one honest "does not apply", and honest because it is
-   * declared in advance and cannot be changed on the morning it would help.
-   */
-  weekdays?: number[]
+/**
+ * One condition inside a rule. A rule is kept on a period when **every** one
+ * of its clauses is.
+ *
+ * Its own entity rather than a second set of fields on the rule, because the
+ * useful rules are compound: *no Pinterest on a weekday morning, and no
+ * YouTube in the evening or at night, any day.* That is one promise with two
+ * conditions, not two streaks — breaking either one breaks the week, and
+ * splitting it into two rules would give you two streaks to keep and two
+ * allowances to spend, which is a different and weaker thing.
+ */
+export interface StreakClause {
+  id: string
   /** The counter being measured — a tally or a check. */
   unitId: string
   /** Tallies only. Empty means the whole day. */
@@ -262,8 +267,43 @@ export interface StreakRule extends Labeled {
   op: StreakOp
   value: number
   /**
+   * Which weekdays this condition applies on. Empty means all of them.
+   *
+   * Per clause rather than per rule, which is what makes the compound case
+   * work at all: the Pinterest half is a weekday rule and the YouTube half is
+   * an every-day one, inside the same promise.
+   *
+   * A weekday left out is **not judged** by this clause — the one honest
+   * "does not apply" the feature has, and honest because it is declared in
+   * advance and cannot be changed on the morning it would help.
+   */
+  weekdays?: number[]
+}
+
+/**
+ * A streak of your own making — `spec 009`.
+ *
+ * One shape covers every rule the feature was designed against: never
+ * oversleep, always get to bed on time, no youtube after the evening starts,
+ * three trips to the gym a week, the gym specifically on Mondays, Wednesdays
+ * and Fridays, and any of those combined. If a further kind of rule will not
+ * fit here, the shape is wrong rather than the rule.
+ *
+ * Read as a sentence, which is how the form writes it and how `ruleSentence`
+ * reads it back: *judge every [day / week], keeping [this] and [this].*
+ */
+export interface StreakRule extends Labeled {
+  scope: StreakScope
+  /**
+   * The conditions, all of which must hold. Absent on a rule written before
+   * rules could have more than one — `ruleClauses()` is the only place that
+   * fallback lives.
+   */
+  clauses?: StreakClause[]
+  /**
    * Granted at the start of every week and **lost unused at the end of it**.
-   * The allowance you set yourself, knowing you will not manage seven out of seven.
+   * The allowance you set yourself, knowing you will not manage seven out of
+   * seven.
    */
   freezesPerWeek: number
   /** The ceiling on banked rewards, as `FREEZE_CAP` is the main streak's. */
@@ -279,9 +319,25 @@ export interface StreakRule extends Labeled {
   startedOn: DayKey
   /**
    * No **loosening** before this date; narrowing the rule is free at any time.
-   * See `canLoosen` and `isNarrowing` in `lib/customStreaks.ts`.
+   * See `ruleEdit` and `isNarrowing` in `lib/customStreaks.ts`.
    */
   lockedUntil: DayKey
+
+  /**
+   * The single condition a rule used to be, before it could carry several.
+   * Read only through `ruleClauses()`, and left in the data so nothing anybody
+   * wrote is thrown away by an upgrade.
+   * @deprecated
+   */
+  unitId?: string
+  /** @deprecated see `unitId` */
+  slotIds?: string[]
+  /** @deprecated see `unitId` */
+  op?: StreakOp
+  /** @deprecated see `unitId` */
+  value?: number
+  /** @deprecated see `unitId` — weekdays are a clause's own now. */
+  weekdays?: number[]
 }
 
 /**
