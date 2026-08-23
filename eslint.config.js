@@ -6,7 +6,11 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // `.claude` holds agent scratch space, including git worktrees — a whole
+  // second checkout of this repo with its own tsconfig.json. Linting it is
+  // pointless, and leaving it visible makes typescript-eslint refuse to run at
+  // all: two candidate tsconfig roots and no way to choose between them.
+  globalIgnores(['dist', '.claude']),
   // The app is TypeScript throughout; the only JavaScript left is this file
   // and vite.config.js, which are Node config and carry no JSX or React.
   {
