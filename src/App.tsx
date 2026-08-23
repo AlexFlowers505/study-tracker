@@ -41,6 +41,7 @@ import { computeStreaks } from "./lib/streaks"
 import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
 import { ruleStatus } from "./lib/customStreaks"
+import { mainRisk, ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
 } from "./lib/period"
@@ -437,6 +438,23 @@ export default function StudyTrackerApp() {
   const ruleStatuses = useMemo(
     () => streakRules.map((rule) => ruleStatus(rule, project)),
     [streakRules, project],
+  )
+
+  /**
+   * Which streaks are in trouble right now — `spec 010`, part 3.
+   *
+   * Computed here beside the statuses it reads, because the row itself must
+   * stay a drawing: sorting five streaks by danger is a judgement about the
+   * data, and judgements live in `lib`.
+   */
+  const streakRisks = useMemo(
+    () => [
+      ...(streaks
+        ? [mainRisk(project, ledger.balance, streaks.currentDays)]
+        : []),
+      ...ruleStatuses.map((s2) => ruleRisk(s2, project)),
+    ],
+    [streaks, project, ledger.balance, ruleStatuses],
   )
 
   // The same once-only sealing, for every rule at once: one pass writes them
@@ -868,6 +886,7 @@ export default function StudyTrackerApp() {
             statuses={ruleStatuses}
             mainDays={streaks?.currentDays ?? null}
             mainFreezes={ledger.balance}
+            risks={streakRisks}
             active={openStreak}
             onSelect={setOpenStreak}
           />

@@ -19,7 +19,14 @@ before touching the drawing:
 Build in this order. Each stage stands on its own and can ship alone; the
 dependencies are real, not preference.
 
-- [ ] **Stage 1 — The risk bar.** Part 3. Touches no data. Ship first.
+- [x] **Stage 1 — The risk bar.** Part 3. Touches no data. Ship first.
+      *Landed. `lib/streakRisk.ts` classifies every streak `danger` /
+      `warning` / `safe`; `StreakBar` grows the troubled ones into blocks and
+      collapses the rest into one line that opens on a click. The weekly
+      reachability test in `weeklyRisk` is the first piece of Stage 3 and is
+      where the rest of pace will go. Not yet seen against real data — the
+      browser session had expired, so it was verified headlessly against
+      synthetic days.*
 - [ ] **Stage 2 — The day verdict, and the end of the main streak.** Part 1.
       One piece of work: the moment the main streak goes, nothing colours a day
       card, so the composite has to arrive in the same change. Migration `014`.
