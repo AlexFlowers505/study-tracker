@@ -114,6 +114,33 @@ export interface NoteRow {
   ignored: boolean | null
 }
 
+export interface MemberRow {
+  project_id: string
+  user_id: string
+  role: string
+}
+
+export interface ProposalRow {
+  id: string
+  project_id: string
+  owner_id: string
+  supervisor_id: string
+  rule_id: string
+  project_name: string
+  rule_label: string
+  before_text: string
+  after_text: string
+  reason: string
+  next_rule: unknown
+  state: string
+  created_at: string
+  decided_at: string | null
+}
+
+export const PROPOSAL_SELECT =
+  "id,project_id,owner_id,supervisor_id,rule_id,project_name,rule_label," +
+  "before_text,after_text,reason,next_rule,state,created_at,decided_at"
+
 export interface PurchaseRow {
   project_id: string
   purchase_id: string

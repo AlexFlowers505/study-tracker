@@ -94,29 +94,18 @@ dependencies are real, not preference.
 
       *Applied to achievement thresholds and shop prices as well — the same
       one-sided lock, the same refusal, the same `looseningLog` on the item.*
-- [ ] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
-      only stage that touches RLS. Optional, and deliberately last.
+- [x] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
+      only stage that touches RLS.
+      *Built. The supervisor **approves rather than edits**: two gates in
+      series, so the clock still has to run out before a request can even be
+      sent. `migrations/018` adds membership, token invites and proposals, and
+      **changes no existing policy** — which only holds because the proposal
+      row is self-describing. Which side may make which transition is enforced
+      by a trigger, not by a policy: RLS cannot say "this column, by this
+      person", and pretending it can is how a check gets skipped.*
 
-      *Not started, and one thing has to be settled first: it cannot be
-      verified from here. A second party needs a second account, and the agent
-      building it can neither create one nor sign in — so the two-account path
-      would ship untested, which is exactly the risk this stage was flagged
-      for.*
-
-      *One design note found while scoping it, worth keeping either way: the
-      claim in Part 7 that "existing policies do not change" only holds if the
-      **proposal row is self-describing**. If the supervisor has to read the
-      project to see what they are approving, the `projects` policy has to open
-      up and the blast radius is back. So the row must carry the project's
-      name, the rule's label, the old terms and the new ones as text, plus the
-      whole proposed rule as jsonb to apply on approval. Then membership
-      governs one table and nothing else.*
-
-      *The invite is the other unsolved half: the owner does not know the
-      supervisor's user id, and Supabase does not expose `auth.users` to the
-      client. That means either a `profiles` table (and a decision about who
-      may read an email) or a token plus a narrow `SECURITY DEFINER` function —
-      which is the footgun this document already names.*
+      ***Not verified end to end by the agent** — a second party needs a second
+      account. The test sequence is at the foot of `migrations/018`.*
 
 **Keeping this document true.** Tick a stage when it lands. If a decision
 changes, do not quietly rewrite the prose — amend the *Decisions* section at

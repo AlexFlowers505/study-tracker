@@ -18,9 +18,10 @@ import {
   DEFAULT_SLOTS,
 } from "../lib/defaults"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
+import type { RuleProposal } from "../types/model"
 import type { Client } from "./supabase"
 import { PAGE_SIZE } from "./supabase"
-import { DAY_SELECT } from "./schema"
+import { DAY_SELECT, PROPOSAL_SELECT } from "./schema"
 import type {
   ChangeLogRow,
   DayRow,
@@ -28,6 +29,8 @@ import type {
   ProjectRow,
   DayMarkRow,
   EarnedRow,
+  MemberRow,
+  ProposalRow,
   PurchaseRow,
   RuleVerdictRow,
   WeekVerdictRow,
@@ -59,6 +62,8 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     ruleVerdictRows,
     dayMarkRows,
     earnedRows,
+    memberRows,
+    proposalRows,
     purchaseRows,
     prefs,
   ] =
@@ -87,6 +92,12 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       client
         .from("achievements")
         .select("project_id,achievement_id,earned_at,value"),
+    ),
+    fetchAllRows<MemberRow>(() =>
+      client.from("project_members").select("project_id,user_id,role"),
+    ),
+    fetchAllRows<ProposalRow>(() =>
+      client.from("rule_proposals").select(PROPOSAL_SELECT),
     ),
     fetchAllRows<PurchaseRow>(() =>
       client
@@ -122,6 +133,8 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       dayLedger: {},
       earned: {},
       purchases: {},
+      supervisors: [],
+      proposals: {},
     }),
   )
 
@@ -225,6 +238,42 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     }
   })
 
+  memberRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    // A membership row for a project not among these is one where *you* are
+    // the supervisor; nothing there is needed beyond the proposals themselves.
+    if (!p?.supervisors || r.role !== "supervisor") return
+    p.supervisors.push(r.user_id)
+  })
+
+  /**
+   * Which side of a proposal you are on needs no user id to work out: the
+   * `projects` policy only ever returns projects you own, so a proposal whose
+   * project is not among them is one you were asked to decide.
+   */
+  const supervising: RuleProposal[] = []
+  proposalRows.forEach((r) => {
+    const proposal: RuleProposal = {
+      id: r.id,
+      projectId: r.project_id,
+      ownerId: r.owner_id,
+      supervisorId: r.supervisor_id,
+      ruleId: r.rule_id,
+      projectName: r.project_name || "",
+      ruleLabel: r.rule_label || "",
+      beforeText: r.before_text || "",
+      afterText: r.after_text || "",
+      reason: r.reason || "",
+      nextRule: r.next_rule as RuleProposal["nextRule"],
+      state: r.state as RuleProposal["state"],
+      createdAt: r.created_at,
+      decidedAt: r.decided_at,
+    }
+    const p = byId.get(r.project_id)
+    if (p?.proposals) p.proposals[r.id] = proposal
+    else supervising.push(proposal)
+  })
+
   noteRows.forEach((r) => {
     const p = byId.get(r.project_id)
     if (!p) return
@@ -242,5 +291,6 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       ? activeId
       : projects[0].id,
     projects,
+    supervising,
   }
 }

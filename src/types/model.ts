@@ -600,6 +600,47 @@ export interface DayMark {
  * an append-only ledger for the same reason `WeekVerdict` is. Re-breaking and
  * re-fixing a past week must not mint a second reward.
  */
+/** Where a request to loosen a rule has got to. */
+export type ProposalState =
+  | "pending"
+  | "approved"
+  | "refused"
+  | "withdrawn"
+  | "closed"
+
+/**
+ * A loosening waiting on somebody else — `spec 010`, part 7.
+ *
+ * The supervisor **approves rather than edits**: you still author your own
+ * rules, you simply cannot weaken one alone. Two gates in series, not one
+ * instead of the other — the clock still has to run out before a request can
+ * even be sent.
+ *
+ * **Self-describing, and that is what keeps it safe.** It carries the project
+ * name, the rule label and the terms before and after as plain text, so the
+ * decision can be made without reading the project at all. Every other table
+ * therefore keeps the policy it has always had: yours, and nobody else's. If
+ * this ever stops being true, the blast radius comes back.
+ */
+export interface RuleProposal {
+  id: string
+  projectId: string
+  ownerId: string
+  supervisorId: string
+  ruleId: string
+  projectName: string
+  ruleLabel: string
+  /** The rule as it reads now, and as it would read. */
+  beforeText: string
+  afterText: string
+  reason: string
+  /** Applied verbatim by the owner's app once allowed. */
+  nextRule: StreakRule
+  state: ProposalState
+  createdAt: string
+  decidedAt?: string | null
+}
+
 /** One loosening, with the reason that had to be given for it. */
 export interface Loosening {
   at: DayKey
@@ -720,11 +761,23 @@ export interface Project {
   earned?: Record<string, EarnedAchievement>
   /** Rewards taken, keyed by the purchase's own id. Append-only. */
   purchases?: Record<string, Purchase>
+  /**
+   * The user ids allowed to decide this project's loosenings. Empty is the
+   * ordinary case, and then the clock is the only gate.
+   */
+  supervisors?: string[]
+  /** Loosenings raised against this project, keyed by proposal id. */
+  proposals?: Record<string, RuleProposal>
 }
 
 export interface AppData {
   activeProjectId: string
   projects: Project[]
+  /**
+   * Loosenings waiting on **you**, in projects you do not own and cannot see.
+   * Everything needed to decide one is on the proposal itself.
+   */
+  supervising?: RuleProposal[]
 }
 
 /**

@@ -43,6 +43,8 @@ export type WriteOp =
       achievementId: string
     }
   | { key: string; kind: "purchase"; projectId: string; purchaseId: string }
+  | { key: string; kind: "proposalNew"; projectId: string; proposalId: string }
+  | { key: string; kind: "proposalState"; proposalId: string }
   | { key: string; kind: "prefs" }
   | { key: string; kind: "deleteProject"; projectId: string }
   | {
@@ -141,6 +143,34 @@ export const opPurchase = (
   kind: "purchase",
   projectId,
   purchaseId,
+})
+
+/**
+ * A loosening sent for approval. An insert rather than an upsert, because the
+ * insert policy is what says only an owner may raise one — and an upsert would
+ * have PostgREST evaluate that policy for the supervisor too, on a row that
+ * already exists.
+ */
+export const opProposalNew = (
+  projectId: string,
+  proposalId: string,
+): WriteOp => ({
+  key: `proposalNew:${projectId}:${proposalId}`,
+  kind: "proposalNew",
+  projectId,
+  proposalId,
+})
+
+/**
+ * A decision, a withdrawal, or an approved proposal being applied. Updates the
+ * state and nothing else: which transitions each side may make is enforced in
+ * the database by a trigger, because row-level security cannot say "this
+ * column, by this person" and pretending it can is how a check gets skipped.
+ */
+export const opProposalState = (proposalId: string): WriteOp => ({
+  key: `proposalState:${proposalId}`,
+  kind: "proposalState",
+  proposalId,
 })
 
 export const opPrefs = (): WriteOp => ({ key: "prefs", kind: "prefs" })
@@ -325,6 +355,50 @@ export async function applyWriteOp(
           },
           { onConflict: "project_id,purchase_id", ignoreDuplicates: true },
         ),
+      )
+    }
+
+    case "proposalNew": {
+      if (!project) return
+      const proposal = project.proposals?.[op.proposalId]
+      if (!proposal) return
+      return run(
+        client.from("rule_proposals").insert({
+          id: proposal.id,
+          project_id: proposal.projectId,
+          owner_id: proposal.ownerId,
+          supervisor_id: proposal.supervisorId,
+          rule_id: proposal.ruleId,
+          project_name: proposal.projectName,
+          rule_label: proposal.ruleLabel,
+          before_text: proposal.beforeText,
+          after_text: proposal.afterText,
+          reason: proposal.reason,
+          next_rule: proposal.nextRule,
+          state: proposal.state,
+          created_at: proposal.createdAt,
+        }),
+      )
+    }
+
+    case "proposalState": {
+      // Either side may be the one writing, so it is looked for on both.
+      const mine = data.projects
+        .flatMap((p) => Object.values(p.proposals || {}))
+        .find((x) => x.id === op.proposalId)
+      const theirs = (data.supervising || []).find(
+        (x) => x.id === op.proposalId,
+      )
+      const proposal = mine || theirs
+      if (!proposal) return
+      return run(
+        client
+          .from("rule_proposals")
+          .update({
+            state: proposal.state,
+            decided_at: proposal.decidedAt || null,
+          })
+          .eq("id", proposal.id),
       )
     }
 

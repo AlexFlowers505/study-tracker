@@ -1205,6 +1205,11 @@ export interface RuleEdit {
   /** Still the day it was written: anything goes and nothing starts the clock. */
   settingUp: boolean
   /**
+   * A loosening the clock and the reason both permit, waiting on the second
+   * person. The change is sent rather than applied — see `lib/supervisor`.
+   */
+  needsApproval: boolean
+  /**
    * A loosening the clock permits, waiting only on a written reason.
    *
    * Separate from `allowed` because the two refusals are completely different
@@ -1234,6 +1239,7 @@ export function ruleEdit(
   ctx: StreakContext,
   today = new Date(),
   reason = "",
+  supervised = false,
 ): RuleEdit {
   const todayKey = toKey(today)
   const changed = termsChanged(prev, draft, ctx)
@@ -1246,7 +1252,13 @@ export function ruleEdit(
   // has judged nothing yet, so there is no verdict a kinder version could
   // rescue.
   const settingUp = todayKey === prev.startedOn
-  const base = { changed, narrowing, settingUp, needsReason: false }
+  const base = {
+    changed,
+    narrowing,
+    settingUp,
+    needsReason: false,
+    needsApproval: false,
+  }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing) return { ...base, allowed: true, next: draft }
   if (settingUp) return { ...base, allowed: true, next: draft }
@@ -1257,6 +1269,11 @@ export function ruleEdit(
   // same operation as the new lock date, so a reason cannot go missing from a
   // loosening that happened.
   if (!written) return { ...base, needsReason: true, allowed: false, next: prev }
+  // With a supervisor the clock is only the first gate. The change is not
+  // refused — it is sent, and `allowed` stays false because nothing may be
+  // written into the rule until somebody else has said yes.
+  if (supervised)
+    return { ...base, needsApproval: true, allowed: false, next: prev }
   return {
     ...base,
     allowed: true,

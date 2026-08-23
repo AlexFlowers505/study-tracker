@@ -48,7 +48,15 @@
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { Lock, Pencil, Plus, ShieldCheck, TriangleAlert, X } from "lucide-react"
+import {
+  Hourglass,
+  Lock,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import type {
   Activity,
   Category,
@@ -65,6 +73,7 @@ import type {
 } from "../types/model"
 import { isCheck, splitByKind } from "../lib/checks"
 import type { StreakContext, StreakMeasure } from "../lib/customStreaks"
+import type { RuleProposal } from "../types/model"
 import {
   clauseSentence,
   clauseTarget,
@@ -674,11 +683,19 @@ function RuleForm({
   rule,
   ctx,
   onChange,
+  onPropose,
+  pending,
+  supervised,
   today,
 }: {
   rule: StreakRule
   ctx: StreakContext
   onChange: (next: StreakRule) => void
+  /** Sends the change for approval instead of applying it. */
+  onPropose: (next: StreakRule, reason: string) => void
+  /** The request already waiting on this rule, if any. */
+  pending?: RuleProposal
+  supervised: boolean
   today: Date
 }) {
   const c = usePalette()
@@ -701,6 +718,26 @@ function RuleForm({
   // Normalised on both sides, so a rule being written through for the first
   // time — flat fields becoming clauses — is not itself read as an edit.
   const base: StreakRule = { ...rule, clauses: ruleClauses(rule) }
+
+  // While something is waiting on somebody else, this rule is not yours to
+  // edit: a second draft on top of an undecided one is two answers to a
+  // question nobody has answered once.
+  if (pending)
+    return (
+      <div className="space-y-1.5 pl-1 pt-1">
+        <p className="text-[11px] font-mono text-ink/70">{pending.afterText}</p>
+        <p className="text-[10px] font-mono text-ink/45 italic">
+          “{pending.reason}”
+        </p>
+        <p
+          className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest"
+          style={{ color: c.sleep }}
+        >
+          <Hourglass size={10} />
+          Sent for approval — the old rule stands until it is answered
+        </p>
+      </div>
+    )
 
   if (!draft)
     return (
@@ -725,7 +762,7 @@ function RuleForm({
 
   const clauses = ruleClauses(draft)
   const byWeek = draft.scope === "week"
-  const edit = ruleEdit(base, draft, ctx, today, reason)
+  const edit = ruleEdit(base, draft, ctx, today, reason, supervised)
   const patch = (next: Partial<StreakRule>) =>
     setDraft({ ...draft, ...next })
   const patchClause = (id: string, next: Partial<StreakClause>) =>
@@ -865,8 +902,13 @@ function RuleForm({
         </button>
         <button
           type="button"
-          disabled={!edit.allowed}
+          disabled={!edit.allowed && !edit.needsApproval}
           onClick={() => {
+            if (edit.needsApproval) {
+              onPropose(draft, reason)
+              setDraft(null)
+              return
+            }
             // The date is stamped here rather than in the form, so it records
             // when the vote actually started counting rather than when the
             // switch was first clicked in a draft that might be thrown away.
@@ -879,9 +921,12 @@ function RuleForm({
             setDraft(null)
           }}
           className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
-          style={{ backgroundColor: c.accent, color: c.onFill }}
+          style={{
+            backgroundColor: edit.needsApproval ? c.sleep : c.accent,
+            color: c.onFill,
+          }}
         >
-          Done
+          {edit.needsApproval ? "Send for approval" : "Done"}
         </button>
 
         {!edit.changed && (
@@ -909,6 +954,15 @@ function RuleForm({
             <TriangleAlert size={11} />
             This could make the rule easier — saving locks it until{" "}
             {fmtDateLong(lockFrom(today))}.
+          </span>
+        )}
+        {edit.needsApproval && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: c.sleep }}
+          >
+            <Hourglass size={11} />
+            The clock is clear — now somebody else has to agree.
           </span>
         )}
         {edit.needsReason && (
@@ -944,6 +998,10 @@ export function StreakRulesTab({
   activities,
   slots,
   onSave,
+  supervised = false,
+  proposals = [],
+  onPropose,
+  supervisorBlock,
   today = new Date(),
 }: {
   settings: Settings
@@ -951,6 +1009,13 @@ export function StreakRulesTab({
   activities: Activity[]
   slots: Slot[]
   onSave: (next: Settings) => void
+  /** Whether a loosening has to be agreed by somebody else. */
+  supervised?: boolean
+  /** Requests already waiting, so a rule with one is not edited twice. */
+  proposals?: RuleProposal[]
+  onPropose?: (prev: StreakRule, next: StreakRule, reason: string) => void
+  /** The invite and the list of supervisors, drawn by the shell. */
+  supervisorBlock?: ReactNode
   today?: Date
 }) {
   const rules = settings.streakRules || []
@@ -995,10 +1060,17 @@ export function StreakRulesTab({
             rule={rule}
             ctx={ctx}
             today={today}
+            supervised={supervised}
+            pending={proposals.find(
+              (p) => p.ruleId === rule.id && p.state === "pending",
+            )}
+            onPropose={(next, reason) => onPropose?.(rule, next, reason)}
             onChange={(next) => update(next)}
           />
         )}
       />
+
+      {supervisorBlock}
     </div>
   )
 }

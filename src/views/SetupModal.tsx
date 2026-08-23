@@ -28,6 +28,7 @@ import type {
   Activity,
   CounterUnit,
   Project,
+  RuleProposal,
   StreakRule,
   Settings,
   Slot,
@@ -56,6 +57,7 @@ import { AutoTextarea } from '../ui/controls'
 import { StreakRulesTab } from './StreakRulesTab'
 import { AchievementsTab } from './AchievementsTab'
 import { ShopTab } from './ShopTab'
+import { SupervisorBlock } from './SupervisorBlock'
 import { CategoriesTab } from './CategoriesTab'
 import { AppearanceTab } from './AppearanceTab'
 import { TagsTab } from './TagsTab'
@@ -68,6 +70,13 @@ export function SetupModal({
   activities,
   onClose,
   onSaveSettings,
+  supervised,
+  proposals,
+  onPropose,
+  inviteUrl,
+  inviteNote,
+  onMakeInvite,
+  supervisorCount,
   onCutGoals,
   onUpdateSlots,
   onUpdateActivities,
@@ -89,6 +98,14 @@ export function SetupModal({
   activities: Activity[]
   onClose: () => void
   onSaveSettings: (next: Settings) => void
+  /** The second person — `spec 010` part 7. */
+  supervised: boolean
+  proposals: RuleProposal[]
+  onPropose: (prev: StreakRule, next: StreakRule, reason: string) => void
+  inviteUrl: string | null
+  inviteNote: string | null
+  onMakeInvite: () => void
+  supervisorCount: number
   onCutGoals: (reason: string) => void
   onUpdateSlots: (next: Slot[]) => void
   onUpdateActivities: (next: Activity[]) => void
@@ -230,6 +247,17 @@ export function SetupModal({
           )}
           {tab === "streaks" && (
             <StreakRulesTab
+              supervised={supervised}
+              proposals={proposals}
+              onPropose={onPropose}
+              supervisorBlock={
+                <SupervisorBlock
+                  count={supervisorCount}
+                  url={inviteUrl}
+                  note={inviteNote}
+                  onMake={onMakeInvite}
+                />
+              }
               settings={settings}
               units={counterUnits}
               activities={activities}

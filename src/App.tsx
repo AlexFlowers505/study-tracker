@@ -10,7 +10,9 @@ import type {
   PeriodId,
   Project,
   Settings,
+  RuleProposal,
   ShopItem,
+  StreakRule,
   Slot,
 } from "./types/model"
 import type { WriteOp } from "./data/ops"
@@ -39,11 +41,18 @@ import { makeId } from "./lib/id"
 import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
 import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
-import { afterGoalCut, ruleStatus, streakContext } from "./lib/customStreaks"
+import {
+  afterGoalCut,
+  lockFrom,
+  ruleStatus,
+  streakContext,
+} from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
 import { purchaseOf } from "./lib/shop"
+import { applyProposal, hasSupervisor, proposalFor } from "./lib/supervisor"
+import { claimInvite, createInvite, inviteLink } from "./data/invites"
 import { ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
@@ -57,6 +66,8 @@ import {
   opDay,
   opDayMark,
   opEarned,
+  opProposalNew,
+  opProposalState,
   opPurchase,
   opRuleVerdict,
   opDeleteProject,
@@ -72,6 +83,7 @@ import { CustomStreakSection } from "./views/CustomStreakSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
 import { ShopSection } from "./views/ShopSection"
+import { SupervisorSection } from "./views/SupervisorSection"
 import { SleepSection } from "./views/SleepSection"
 import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
@@ -547,6 +559,72 @@ export default function StudyTrackerApp() {
     )
   }, [loaded, loadFailed, badgesDue, project, patchProject])
 
+  /* ---- The second person, `spec 010` part 7 ---------------------------- */
+
+  const supervised = hasSupervisor(project)
+  const toDecide = (data.supervising || []).filter((x) => x.state === "pending")
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteNote, setInviteNote] = useState<string | null>(null)
+
+  const makeInvite = async () => {
+    if (!cloudClient || !session) return
+    setInviteNote(null)
+    try {
+      const token = await createInvite(cloudClient, project, session.user.id)
+      setInviteUrl(inviteLink(token))
+    } catch (e) {
+      setInviteNote(e instanceof Error ? e.message : "Could not make a link")
+    }
+  }
+
+  /**
+   * A loosening sent rather than applied. The rule is untouched until somebody
+   * answers — which is the whole difference between this and the clock.
+   */
+  const proposeChange = (
+    prev: StreakRule,
+    next: StreakRule,
+    reason: string,
+  ) => {
+    const supervisorId = (project.supervisors || [])[0]
+    if (!supervisorId || !session) return
+    const proposal = proposalFor({
+      project,
+      ctx: verdictCtx,
+      prev,
+      next,
+      reason,
+      ownerId: session.user.id,
+      supervisorId,
+    })
+    patchProject(
+      { proposals: { ...(project.proposals || {}), [proposal.id]: proposal } },
+      [opProposalNew(project.id, proposal.id)],
+    )
+  }
+
+  /**
+   * The supervisor's answer. Which side may make which transition is enforced
+   * in the database by the trigger in `018`, not here: a check that lives only
+   * in the client is a check anybody can skip.
+   */
+  const decideProposal = (proposal: RuleProposal, allow: boolean) => {
+    const next: RuleProposal = {
+      ...proposal,
+      state: allow ? "approved" : "refused",
+      decidedAt: new Date().toISOString(),
+    }
+    persist(
+      {
+        ...data,
+        supervising: (data.supervising || []).map((x) =>
+          x.id === proposal.id ? next : x,
+        ),
+      },
+      [opProposalState(proposal.id)],
+    )
+  }
+
   /**
    * Taking a reward. Append-only and never refunded — the ledger is what makes
    * the promise cost something, and something you can undo costs nothing.
@@ -558,6 +636,55 @@ export default function StudyTrackerApp() {
       [opPurchase(project.id, bought.id)],
     )
   }
+
+  // An invite link opened. Handled once and then scrubbed from the address
+  // bar, because a token left in history is a key left in a door.
+  useEffect(() => {
+    if (!loaded || !cloudClient || !session) return
+    const token = new URLSearchParams(window.location.search).get("supervise")
+    if (!token) return
+    window.history.replaceState({}, "", window.location.pathname)
+    claimInvite(cloudClient, token)
+      .then((name) => setInviteNote(`You are now supervising ${name}.`))
+      .catch((e) =>
+        setInviteNote(e instanceof Error ? e.message : "That link did not work"),
+      )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, !!cloudClient, session?.user.id])
+
+  /**
+   * Answered requests, folded back into the rules.
+   *
+   * An approval writes the new terms and starts the clock **from today**, not
+   * from the day it was asked for — a slow answer must not shorten the wait. A
+   * refusal restarts it too, which is what stops the request being re-sent the
+   * same evening.
+   */
+  useEffect(() => {
+    if (!loaded || loadFailed) return
+    const answered = Object.values(project.proposals || {}).filter(
+      (p) => p.state === "approved" || p.state === "refused",
+    )
+    if (!answered.length) return
+    const rules = [...(project.settings.streakRules || [])]
+    const proposals = { ...(project.proposals || {}) }
+    const ops: WriteOp[] = []
+    answered.forEach((p) => {
+      const i = rules.findIndex((r) => r.id === p.ruleId)
+      if (i >= 0)
+        rules[i] =
+          p.state === "approved"
+            ? applyProposal(p, rules[i])
+            : { ...rules[i], lockedUntil: lockFrom(new Date()) }
+      proposals[p.id] = { ...p, state: "closed" }
+      ops.push(opProposalState(p.id))
+    })
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    patchProject(
+      { settings: { ...project.settings, streakRules: rules }, proposals },
+      ops,
+    )
+  }, [loaded, loadFailed, project, patchProject])
 
   /**
    * The freeze waiting to be confirmed, from whichever streak asked.
@@ -868,6 +995,10 @@ export default function StudyTrackerApp() {
       />
 
       <main className="max-w-6xl mx-auto px-4 pb-24 pt-6">
+        {/* Above everything, and only when there is something: a request
+            nobody looks at is a lock nobody has. */}
+        <SupervisorSection proposals={toDecide} onDecide={decideProposal} />
+
         <PeriodBar
           period={period}
           setPeriod={setPeriod}
@@ -1173,6 +1304,13 @@ export default function StudyTrackerApp() {
           activities={project.activities}
           onClose={() => setShowSetup(false)}
           onSaveSettings={updateSettings}
+          supervised={supervised}
+          proposals={Object.values(project.proposals || {})}
+          onPropose={proposeChange}
+          inviteUrl={inviteUrl}
+          inviteNote={inviteNote}
+          onMakeInvite={makeInvite}
+          supervisorCount={(project.supervisors || []).length}
           onCutGoals={(reason) =>
             // Every rule whose limit comes from the goal is locked again and
             // told why, in the same write as the number itself.
