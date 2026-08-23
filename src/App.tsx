@@ -41,6 +41,7 @@ import { setCheck } from "./lib/checks"
 import { ruleStatus, streakContext } from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
 import { balanceOf, dueMarks } from "./lib/balance"
+import { dueAchievements } from "./lib/achievements"
 import { ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
@@ -53,6 +54,7 @@ import {
   applyWriteOp,
   opDay,
   opDayMark,
+  opEarned,
   opRuleVerdict,
   opDeleteProject,
   opLog,
@@ -65,6 +67,7 @@ import { StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
+import { AchievementsSection } from "./views/AchievementsSection"
 import { SleepSection } from "./views/SleepSection"
 import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
@@ -129,6 +132,7 @@ export default function StudyTrackerApp() {
   const [showFilter, setShowFilter] = useState(false)
   const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   /**
    * Which streak's panel is open: `"main"`, a rule id, or nothing.
    *
@@ -454,6 +458,8 @@ export default function StudyTrackerApp() {
    */
   const balance = useMemo(() => balanceOf(project), [project])
   const marksDue = useMemo(() => dueMarks(project), [project])
+  /** Achievements reached but not yet written down. */
+  const badgesDue = useMemo(() => dueAchievements(project), [project])
 
   /**
    * Which streaks are in trouble right now — `spec 010`, part 3.
@@ -521,6 +527,20 @@ export default function StudyTrackerApp() {
       marksDue.map((m) => opDayMark(project.id, m.date)),
     )
   }, [loaded, loadFailed, marksDue, project, patchProject])
+
+  // Seal whatever achievements have been reached. Written once and never
+  // recomputed: what was reached was reached, and the ignore-on-conflict
+  // upsert makes a replay harmless.
+  useEffect(() => {
+    if (!loaded || loadFailed || !badgesDue.length) return
+    const earned = { ...(project.earned || {}) }
+    badgesDue.forEach((b) => (earned[b.achievementId] = b))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    patchProject(
+      { earned },
+      badgesDue.map((b) => opEarned(project.id, b.achievementId)),
+    )
+  }, [loaded, loadFailed, badgesDue, project, patchProject])
 
   /**
    * The freeze waiting to be confirmed, from whichever streak asked.
@@ -855,6 +875,8 @@ export default function StudyTrackerApp() {
           onToggleSleep={() => setShowSleep((v) => !v)}
           showLog={showLog}
           onToggleLog={() => setShowLog((v) => !v)}
+          showHistory={showHistory}
+          onToggleHistory={() => setShowHistory((v) => !v)}
         />
 
         {/* Its own row under the period bar. Streaks are the one project-wide
@@ -943,6 +965,14 @@ export default function StudyTrackerApp() {
               onClose={() => setOpenStreak(null)}
             />
           ))}
+
+        {showHistory && (
+          <AchievementsSection
+            project={project}
+            today={new Date()}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
 
         {showLog && (
           <ChangeLogSection

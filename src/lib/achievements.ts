@@ -124,6 +124,17 @@ export const fmtProgress = (n: number, measure: "time" | "count"): string =>
   measure === "time" ? fmtHours(n) : String(n)
 
 /**
+ * The local day an achievement was earned on.
+ *
+ * `earnedAt` is an instant in UTC, and slicing the first ten characters off it
+ * is a day in UTC — which is the wrong day for anything logged in the evening
+ * west of Greenwich or after midnight east of it. Every date in this app is a
+ * local one on purpose; this is how the instant becomes one.
+ */
+export const earnedOn = (earnedAt: string): string =>
+  toKey(new Date(earnedAt))
+
+/**
  * The achievements reached but not yet written — write these, once.
  *
  * Returns rather than writes, exactly as `dueMarks` and `ruleStatus` do: the

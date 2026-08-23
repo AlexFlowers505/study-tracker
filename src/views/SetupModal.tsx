@@ -18,6 +18,7 @@ import {
   Shapes,
   SlidersHorizontal,
   Tags,
+  Trophy,
   Trash2,
   X,
 } from "lucide-react"
@@ -51,6 +52,7 @@ import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
 import { StreakRulesTab } from './StreakRulesTab'
+import { AchievementsTab } from './AchievementsTab'
 import { CategoriesTab } from './CategoriesTab'
 import { AppearanceTab } from './AppearanceTab'
 import { TagsTab } from './TagsTab'
@@ -143,6 +145,7 @@ export function SetupModal({
             { id: "categories", label: "Categories", icon: Shapes },
             { id: "tags", label: "Tags", icon: Tags },
             { id: "streaks", label: "Streaks", icon: Flame },
+            { id: "achievements", label: "History", icon: Trophy },
             { id: "projects", label: "Projects", icon: FolderOpen },
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
@@ -206,6 +209,15 @@ export function SetupModal({
               activities={activities}
               units={counterUnits}
               onApply={onUpdateProject}
+            />
+          )}
+          {tab === "achievements" && (
+            <AchievementsTab
+              project={
+                projects.find((p) => p.id === activeProjectId) || projects[0]
+              }
+              settings={settings}
+              onSave={onSaveSettings}
             />
           )}
           {tab === "streaks" && (
