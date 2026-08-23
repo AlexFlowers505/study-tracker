@@ -41,10 +41,12 @@ dependencies are real, not preference.
       (`useDailyGoal`) and a rule can be told whether it votes
       (`inDayVerdict`).*
 
-      ***Migration `014` still has to be run.** Until it does, no rule has a
-      vote, so days have no colour and the composite streak is absent — the
-      app is correct but empty-handed. Run it on dev, then on prod with the
-      deploy.*
+      *Migration `014` run on dev and verified end to end: the goal rule reads
+      "Study time at least the day's goal", the day cells take their colour
+      from the composite, the frozen day carried across as blue, and the run
+      that ended on the 23rd reports as 14 days lost. **Still to run on prod,
+      with the deploy** — until it does, that project has no rule with a vote
+      and its days have no colour.*
 - [ ] **Stage 3 — Pace.** Part 2. Lets weekly rules join the verdict.
 - [ ] **Stage 4 — The balance.** Part 4. Migration `015`.
 - [ ] **Stage 5 — Achievements.** Part 5. Migration `016`.

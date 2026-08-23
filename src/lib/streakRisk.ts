@@ -40,6 +40,7 @@
 import type { Day, DayKey, Project, StreakRule } from "../types/model"
 import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
+  clauseLimit,
   clauseTarget,
   freezeOffer,
   readDay,
@@ -111,7 +112,11 @@ function runIfKept(
  * hold one about hours and one about slips, and a shared format would be wrong
  * for one of them.
  */
-function shortfall(readings: ClauseReading[], ctx: StreakContext): string {
+function shortfall(
+  readings: ClauseReading[],
+  ctx: StreakContext,
+  dayKey: DayKey,
+): string {
   return readings
     .filter((r) => r.applies && r.deficit > 0)
     .map((r) => {
@@ -124,8 +129,13 @@ function shortfall(readings: ClauseReading[], ctx: StreakContext): string {
           : r.clause.op === "atLeast"
             ? `${info.label} is not yes yet`
             : `${info.label} is already yes`
-      const limit = r.clause.op === "atMost" ? "at most" : "at least"
-      return `${info.label} ${fmt(r.value)} against ${limit} ${fmt(r.clause.value)}`
+      const word = r.clause.op === "atMost" ? "at most" : "at least"
+      // The *resolved* limit, not `clause.value`. A condition reading the
+      // daily goal keeps a placeholder there, and printing it says "0m
+      // against at least 0m" about a day that was three hours short.
+      return `${info.label} ${fmt(r.value)} against ${word} ${fmt(
+        clauseLimit(r.clause, ctx, dayKey),
+      )}`
     })
     .join(" · ")
 }
@@ -261,7 +271,7 @@ export function ruleRisk(
     return {
       id,
       level,
-      headline: shortfall(readings, ctx) || "this week is short",
+      headline: shortfall(readings, ctx, todayKey) || "this week is short",
       detail:
         level === "danger"
           ? offer.ok
@@ -283,7 +293,7 @@ export function ruleRisk(
     return {
       id,
       level: "danger",
-      headline: `Yesterday — ${shortfall(readings, ctx)}`,
+      headline: `Yesterday — ${shortfall(readings, ctx, yesterdayKey)}`,
       detail: offer.ok
         ? `${freezes(offer.cost)} · keeps ${plural(restores, "day")} · ${offer.available} available`
         : offer.cost > 0
@@ -304,7 +314,7 @@ export function ruleRisk(
     return {
       id,
       level,
-      headline: `Today — ${shortfall(readings, ctx)}`,
+      headline: `Today — ${shortfall(readings, ctx, todayKey)}`,
       detail:
         level === "danger"
           ? offer.ok
