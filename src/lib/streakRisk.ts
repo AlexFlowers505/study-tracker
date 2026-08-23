@@ -12,8 +12,20 @@
 
    - `danger` — it is already broken, or it can no longer be reached. A freeze
      is the only thing left, and only for as long as the day stays writable.
-   - `warning` — still fixable today, by doing the thing.
+   - `warning` — still fixable, and the time to fix it is running out.
    - `safe` — nothing to say, and it should therefore say nothing.
+
+   **Loud when acting is urgent, not merely possible.** That distinction is the
+   whole difference between this and the row it replaced. "At least three hours"
+   is unmet at nine in the morning and that is not news — it is the ordinary
+   state of every day before you have done anything, and a row that says so is
+   back to shouting. So an unmet *at least* is measured against the time left
+   in the day, exactly as a weekly rule is measured against the days left in
+   the week.
+
+   An *at most* that has been exceeded is the opposite case and jumps straight
+   to `danger`: you cannot un-watch the video, so no amount of doing fixes it
+   and only a freeze is left.
 
    Weekly rules are the interesting case, because a week's verdict does not
    exist until the week ends. What does exist every day is **how much is left
@@ -39,6 +51,7 @@ import {
 } from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey, weekDates } from "./date"
 import { canFreeze, dayState } from "./freezes"
+import { dayBreakdown, goalForDate } from "./stats"
 import { fmtHours } from "./time"
 
 export type RiskLevel = "danger" | "warning" | "safe"
@@ -108,16 +121,74 @@ function shortfall(readings: ClauseReading[], ctx: StreakContext): string {
       const fmt = (n: number) =>
         info.measure === "time" ? fmtHours(n) : String(n)
       if (info.check)
-        return `${info.label} is ${r.skipped ? "skipped" : "not what you asked"}`
+        return r.skipped
+          ? `${info.label} is skipped`
+          : r.clause.op === "atLeast"
+            ? `${info.label} is not yes yet`
+            : `${info.label} is already yes`
       const limit = r.clause.op === "atMost" ? "at most" : "at least"
       return `${info.label} ${fmt(r.value)} against ${limit} ${fmt(r.clause.value)}`
     })
     .join(" · ")
 }
 
+/** Minutes between now and midnight — what is left to act in. */
+const minutesLeftToday = (now: Date) =>
+  24 * 60 - (now.getHours() * 60 + now.getMinutes())
+
+/** Past this much of the day gone, an unmet count starts to matter. */
+const EVENING_MINUTES = 6 * 60
+
 /** How much of this condition is still owed, in its own unit. */
 const owed = (r: ClauseReading): number =>
   r.clause.op === "atLeast" ? Math.max(0, r.clause.value - r.value) : 0
+
+/**
+ * How much trouble today is in, condition by condition.
+ *
+ * An exceeded *at most* is already spent and can only be frozen. An unmet *at
+ * least* is judged against the hours left: needing two of the three hours you
+ * have left is worth saying, and needing two of the twelve you have left is
+ * the ordinary shape of a morning.
+ */
+function todayUrgency(
+  readings: ClauseReading[],
+  ctx: StreakContext,
+  now: Date,
+): { level: RiskLevel; spent: boolean } {
+  const left = minutesLeftToday(now)
+  let level: RiskLevel = "safe"
+  // Whether the damage is already done, as opposed to merely running late.
+  // The two are different sentences: one cannot be undone, the other cannot
+  // be reached, and telling someone the wrong one is telling them to give up
+  // when they could still act.
+  let spent = false
+  const worse = (next: RiskLevel) => {
+    if (RANK[next] < RANK[level]) level = next
+  }
+
+  readings.forEach((r) => {
+    if (!r.applies || r.deficit === 0) return
+    if (r.clause.op === "atMost") {
+      spent = true
+      return worse("danger")
+    }
+    const need = owed(r)
+    if (need <= 0) return
+    const info = targetInfo(clauseTarget(r.clause), ctx)
+    if (info.measure === "time" && !info.check) {
+      if (need > left) return worse("danger")
+      // More than half of what is left would have to go on this one thing.
+      if (need * 2 > left) return worse("warning")
+      return
+    }
+    // A count or a check has no rate to fall behind, so the day itself is the
+    // clock: nothing to say until the evening.
+    if (left <= EVENING_MINUTES) return worse("warning")
+  })
+
+  return { level, spent }
+}
 
 /**
  * A rule that judges a week, read against the days it has left.
@@ -227,12 +298,21 @@ export function ruleRisk(
   const tState = ruleDayState(rule, ctx, days[todayKey], todayKey, todayKey)
   if (tState === "pending") {
     const readings = readDay(rule, ctx, days[todayKey], todayKey, todayKey)
+    const { level, spent } = todayUrgency(readings, ctx, today)
+    if (level === "safe") return { id, level }
     const offer = freezeOffer(rule, project, todayKey, todayKey, status)
+    const restores = runIfKept(rule, ctx, days, todayKey, todayKey)
+    const lost = spent ? "Nothing undoes it" : "No longer reachable today"
     return {
       id,
-      level: "warning",
+      level,
       headline: `Today — ${shortfall(readings, ctx)}`,
-      detail: `${plural(status.current, "day")} at stake · the day is not over`,
+      detail:
+        level === "danger"
+          ? offer.ok
+            ? `${lost} · ${freezes(offer.cost)} and keeps ${plural(restores, "day")}`
+            : `${lost} · ${plural(offer.cost, "freeze")} needed and you have ${offer.available}`
+          : `${plural(restores, "day")} at stake · the day is running out`,
       freezeDay: offer.ok ? offer.key : undefined,
     }
   }
@@ -277,12 +357,23 @@ export function mainRisk(
 
   const tState = dayState(days[todayKey], today, settings, slots, todayKey)
   if (tState === "pending") {
+    // The same clock the custom rules run on: hours still owed against hours
+    // still left. Short at nine in the morning is not news.
+    const need =
+      goalForDate(settings, today) - dayBreakdown(days[todayKey], slots).total
+    const left = minutesLeftToday(today)
+    if (need <= 0 || need * 2 <= left) return { id, level: "safe" }
     const can = canFreeze(today, days[todayKey], settings, slots, today, balance)
     return {
       id,
-      level: "warning",
-      headline: "Today is short of its goal",
-      detail: `${plural(currentDays, "day")} at stake · the day is not over`,
+      level: need > left ? "danger" : "warning",
+      headline: `Today — ${fmtHours(need)} short of its goal`,
+      detail:
+        need > left
+          ? can
+            ? "No longer reachable · a freeze covers it"
+            : "No longer reachable, and no freeze to cover it"
+          : `${plural(currentDays, "day")} at stake · ${fmtHours(left)} of the day left`,
       freezeDay: can ? todayKey : undefined,
     }
   }

@@ -24,9 +24,16 @@ dependencies are real, not preference.
       `warning` / `safe`; `StreakBar` grows the troubled ones into blocks and
       collapses the rest into one line that opens on a click. The weekly
       reachability test in `weeklyRisk` is the first piece of Stage 3 and is
-      where the rest of pace will go. Not yet seen against real data — the
-      browser session had expired, so it was verified headlessly against
-      synthetic days.*
+      where the rest of pace will go.*
+
+      *Seen against real data afterwards, which caught the thing the synthetic
+      test could not: every "at least" rule is unmet at nine in the morning, so
+      the row shouted from midnight — the same noise it was built to remove. An
+      unmet* at least *is now measured against the hours left in the day, the
+      way a weekly rule is measured against the days left in the week, while an
+      exceeded* at most *goes straight to `danger` because nothing undoes it.
+      Quiet all morning, loud when acting is urgent rather than merely
+      possible.*
 - [ ] **Stage 2 — The day verdict, and the end of the main streak.** Part 1.
       One piece of work: the moment the main streak goes, nothing colours a day
       card, so the composite has to arrive in the same change. Migration `014`.
