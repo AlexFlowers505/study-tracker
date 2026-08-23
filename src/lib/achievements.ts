@@ -175,6 +175,8 @@ export interface AchievementEdit {
   narrowing: boolean
   /** Still the day it was written: anything goes and nothing starts the clock. */
   settingUp: boolean
+  /** The clock permits it; only the written reason is missing. */
+  needsReason: boolean
   allowed: boolean
   next: Achievement
 }
@@ -188,21 +190,32 @@ export function achievementEdit(
   draft: Achievement,
   lockDays: number,
   today = new Date(),
+  reason = "",
 ): AchievementEdit {
   const todayKey = toKey(today)
   const changed = terms(prev) !== terms(draft)
   const narrowing = achievementNarrows(prev, draft)
   const settingUp = todayKey === prev.createdOn
-  const base = { changed, narrowing, settingUp }
+  const base = { changed, narrowing, settingUp, needsReason: false }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing || settingUp) return { ...base, allowed: true, next: draft }
-  const allowed = todayKey >= prev.lockedUntil
+  if (todayKey < prev.lockedUntil)
+    return { ...base, allowed: false, next: prev }
+  const written = reason.trim()
+  if (!written) return { ...base, needsReason: true, allowed: false, next: prev }
   const unlock = new Date(today)
   unlock.setDate(unlock.getDate() + lockDays)
   return {
     ...base,
-    allowed,
-    next: allowed ? { ...draft, lockedUntil: toKey(unlock) } : prev,
+    allowed: true,
+    next: {
+      ...draft,
+      lockedUntil: toKey(unlock),
+      looseningLog: [
+        ...(prev.looseningLog || []),
+        { at: todayKey, reason: written },
+      ],
+    },
   }
 }
 

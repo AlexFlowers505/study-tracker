@@ -506,6 +506,8 @@ export interface ShopItem extends Labeled {
   createdOn: DayKey
   /** No **lowering** of the price before this date. */
   lockedUntil: DayKey
+  /** Every time it was made cheaper, and why. Same rule as a streak's. */
+  looseningLog?: Loosening[]
 }
 
 /**
@@ -561,6 +563,8 @@ export interface Achievement extends Labeled {
   createdOn: DayKey
   /** No **lowering** of the threshold before this date. See `ruleEdit`. */
   lockedUntil: DayKey
+  /** Every time it was made easier, and why. Same rule as a streak's. */
+  looseningLog?: Loosening[]
 }
 
 /**

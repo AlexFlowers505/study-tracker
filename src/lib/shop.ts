@@ -74,6 +74,8 @@ export interface PriceEdit {
   /** Proved not to make the reward cheaper. */
   narrowing: boolean
   settingUp: boolean
+  /** The clock permits it; only the written reason is missing. */
+  needsReason: boolean
   allowed: boolean
   next: ShopItem
 }
@@ -89,20 +91,29 @@ export function priceEdit(
   draft: ShopItem,
   lockDays: number,
   today = new Date(),
+  reason = "",
 ): PriceEdit {
   const todayKey = toKey(today)
   const changed = prev.price !== draft.price
   const narrowing = draft.price >= prev.price
   const settingUp = todayKey === prev.createdOn
-  const base = { changed, narrowing, settingUp }
+  const base = { changed, narrowing, settingUp, needsReason: false }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing || settingUp) return { ...base, allowed: true, next: draft }
-  const allowed = todayKey >= prev.lockedUntil
+  if (todayKey < prev.lockedUntil)
+    return { ...base, allowed: false, next: prev }
+  const written = reason.trim()
+  if (!written) return { ...base, needsReason: true, allowed: false, next: prev }
   return {
     ...base,
-    allowed,
-    next: allowed
-      ? { ...draft, lockedUntil: toKey(addDays(today, lockDays)) }
-      : prev,
+    allowed: true,
+    next: {
+      ...draft,
+      lockedUntil: toKey(addDays(today, lockDays)),
+      looseningLog: [
+        ...(prev.looseningLog || []),
+        { at: todayKey, reason: written },
+      ],
+    },
   }
 }

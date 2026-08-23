@@ -16,6 +16,7 @@ import { newShopItem, priceEdit } from "../lib/shop"
 import { LOCK_DAYS, lockFrom } from "../lib/customStreaks"
 import { fmtDateLong, toKey } from "../lib/date"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
+import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
@@ -42,6 +43,7 @@ function Form({
 }) {
   const c = usePalette()
   const [draft, setDraft] = useState<ShopItem | null>(null)
+  const [reason, setReason] = useState("")
   const settingUp = toKey(today) === item.createdOn
   const locked = !settingUp && toKey(today) < item.lockedUntil
 
@@ -54,7 +56,10 @@ function Form({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
           <button
             type="button"
-            onClick={() => setDraft(item)}
+            onClick={() => {
+              setReason("")
+              setDraft(item)
+            }}
             className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
           >
             <Pencil size={10} /> Edit
@@ -73,7 +78,7 @@ function Form({
       </div>
     )
 
-  const edit = priceEdit(item, draft, LOCK_DAYS, today)
+  const edit = priceEdit(item, draft, LOCK_DAYS, today, reason)
 
   return (
     <div className="space-y-2 pl-1 pt-1">
@@ -95,6 +100,24 @@ function Form({
         />
         <span className="text-[11px] font-mono text-ink/55">kept days</span>
       </div>
+
+      {/* Only when it is going the easy way. Asking you to justify raising
+          your own bar would be asking the wrong question. */}
+      {edit.changed && !edit.settingUp && !edit.narrowing && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="w-16 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
+            Because
+          </span>
+          <AutoTextarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why it is getting cheaper"
+            rows={1}
+            maxHeight={120}
+            className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
+          />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <button
@@ -130,7 +153,13 @@ function Form({
               : "This only asks for more."}
           </span>
         )}
-        {edit.changed && !edit.settingUp && !edit.narrowing && (
+        {edit.needsReason && (
+          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
+            <TriangleAlert size={11} />
+            Say why first. It goes on the record.
+          </span>
+        )}
+        {edit.changed && !edit.settingUp && !edit.narrowing && !edit.needsReason && (
           <span
             className="flex items-center gap-1 text-[10px] font-mono"
             style={{ color: c.exam }}
