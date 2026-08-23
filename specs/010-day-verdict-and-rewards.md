@@ -92,11 +92,31 @@ dependencies are real, not preference.
       again with it attached. `settings.goalCuts` is deprecated — the streak it
       defended no longer exists.*
 
-      *Not yet applied to achievement thresholds or shop prices: both use the
-      same one-sided lock and neither asks for a reason. Worth doing for
-      consistency; not done, and recorded here rather than forgotten.*
+      *Applied to achievement thresholds and shop prices as well — the same
+      one-sided lock, the same refusal, the same `looseningLog` on the item.*
 - [ ] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
       only stage that touches RLS. Optional, and deliberately last.
+
+      *Not started, and one thing has to be settled first: it cannot be
+      verified from here. A second party needs a second account, and the agent
+      building it can neither create one nor sign in — so the two-account path
+      would ship untested, which is exactly the risk this stage was flagged
+      for.*
+
+      *One design note found while scoping it, worth keeping either way: the
+      claim in Part 7 that "existing policies do not change" only holds if the
+      **proposal row is self-describing**. If the supervisor has to read the
+      project to see what they are approving, the `projects` policy has to open
+      up and the blast radius is back. So the row must carry the project's
+      name, the rule's label, the old terms and the new ones as text, plus the
+      whole proposed rule as jsonb to apply on approval. Then membership
+      governs one table and nothing else.*
+
+      *The invite is the other unsolved half: the owner does not know the
+      supervisor's user id, and Supabase does not expose `auth.users` to the
+      client. That means either a `profiles` table (and a decision about who
+      may read an email) or a token plus a narrow `SECURITY DEFINER` function —
+      which is the footgun this document already names.*
 
 **Keeping this document true.** Tick a stage when it lands. If a decision
 changes, do not quietly rewrite the prose — amend the *Decisions* section at
