@@ -39,7 +39,7 @@ import { makeId } from "./lib/id"
 import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
 import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
-import { ruleStatus, streakContext } from "./lib/customStreaks"
+import { afterGoalCut, ruleStatus, streakContext } from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
@@ -1173,10 +1173,15 @@ export default function StudyTrackerApp() {
           activities={project.activities}
           onClose={() => setShowSetup(false)}
           onSaveSettings={updateSettings}
-          onRecordGoalCut={(cut) =>
+          onCutGoals={(reason) =>
+            // Every rule whose limit comes from the goal is locked again and
+            // told why, in the same write as the number itself.
             updateSettings({
               ...project.settings,
-              goalCuts: [...(project.settings.goalCuts || []), cut],
+              streakRules: afterGoalCut(
+                project.settings.streakRules || [],
+                reason,
+              ),
             })
           }
           onUpdateSlots={updateSlots}

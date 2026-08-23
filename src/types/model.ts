@@ -456,6 +456,21 @@ export interface StreakRule extends Labeled {
   inDayVerdictSince?: DayKey
 
   /**
+   * Every loosening this rule has had, and why — `spec 010`, part 7.
+   *
+   * The reason is required and it lives **here**, written in the same
+   * operation as `lockedUntil`, rather than in `change_log`: that table's
+   * writes are deliberately best-effort so a logging failure can never raise
+   * the save banner, which is right for a convenience and fatally wrong for an
+   * obligation. A reason that can silently fail to save is not one.
+   *
+   * Append-only, and shown back to you. Being made to write "lowered the gym
+   * target because I could not be bothered" is most of the mechanism; being
+   * able to read the last six of those is the rest of it.
+   */
+  looseningLog?: Loosening[]
+
+  /**
    * The single condition a rule used to be, before it could carry several.
    * Read only through `ruleClauses()`, and left in the data so nothing anybody
    * wrote is thrown away by an upgrade.
@@ -581,6 +596,12 @@ export interface DayMark {
  * an append-only ledger for the same reason `WeekVerdict` is. Re-breaking and
  * re-fixing a past week must not mint a second reward.
  */
+/** One loosening, with the reason that had to be given for it. */
+export interface Loosening {
+  at: DayKey
+  reason: string
+}
+
 export interface RuleVerdict {
   ruleId: string
   /** The Monday of the week. */
@@ -621,12 +642,12 @@ export interface Settings {
   /**
    * Every time the weekly goal total was *lowered*, in order.
    *
-   * A ledger rather than a flag, and for the same reason the freeze verdicts
-   * are: it records what happened at a moment, so it cannot be undone by
-   * putting the number back. Lowering the bar is the one edit that would let
-   * you buy a green week, so the week it lands in earns no freeze — and the
-   * streaks panel can say so, with the figures, instead of a freeze quietly
-   * failing to appear.
+   * @deprecated Superseded in `spec 010` part 7. It existed because lowering
+   * the bar was the one edit that could buy a green week, and the main streak
+   * had no other defence. That streak is gone, and the goal is now guarded by
+   * the rules that read it: `goalCutEdit` refuses a cut while any of them is
+   * locked, and `afterGoalCut` locks them again with the reason attached.
+   * Left in the type so old rows still parse, and unread.
    */
   goalCuts?: GoalCut[]
   /**

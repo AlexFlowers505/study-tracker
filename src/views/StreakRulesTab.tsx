@@ -30,6 +30,12 @@
    *how long* — and carries its own weekdays, which is what lets one condition
    be a weekday rule and the other an every-day one inside the same promise.
 
+   **A loosening has to be explained.** Not to the app — to you, later. The
+   reason is required, it is written in the same operation as the new lock
+   date, and it is shown back on the summary. Being made to type "lowered the
+   gym target because I could not be bothered" is most of the mechanism;
+   being able to read the last few of those is the rest of it.
+
    **Nothing is written until Done.** Every control used to save on the spot,
    through `ruleEdit` one field at a time, and that turned out to be the wrong
    shape for a thing with a lock on it: a stray scroll over the freeze count
@@ -72,6 +78,7 @@ import {
 } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
+import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { Tip } from "../ui/Tip"
@@ -631,6 +638,14 @@ function RuleSummary({
           ? "Counts towards the day's verdict"
           : "Keeps its own streak only"}
       </p>
+      {/* The last thing you told yourself. Reading it back is what makes
+          writing it worth anything. */}
+      {rule.looseningLog?.length ? (
+        <p className="text-[10px] font-mono text-ink/45 italic">
+          Last eased {fmtDateLong(rule.looseningLog.at(-1)!.at)} —{" "}
+          {rule.looseningLog.at(-1)!.reason}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
         <button
           type="button"
@@ -677,6 +692,9 @@ function RuleForm({
    * number back was a loosening you then had to wait a week for.
    */
   const [draft, setDraft] = useState<StreakRule | null>(null)
+  // Held beside the draft rather than inside it: it explains the change, so it
+  // has no meaning until there is one, and it is thrown away with Cancel.
+  const [reason, setReason] = useState("")
   const settingUp = toKey(today) === rule.startedOn
   const locked = !settingUp && toKey(today) < rule.lockedUntil
 
@@ -691,7 +709,8 @@ function RuleForm({
         ctx={ctx}
         locked={locked}
         settingUp={settingUp}
-        onEdit={() =>
+        onEdit={() => {
+          setReason("")
           setDraft({
             ...base,
             unitId: undefined,
@@ -700,13 +719,13 @@ function RuleForm({
             value: undefined,
             weekdays: undefined,
           })
-        }
+        }}
       />
     )
 
   const clauses = ruleClauses(draft)
   const byWeek = draft.scope === "week"
-  const edit = ruleEdit(base, draft, ctx, today)
+  const edit = ruleEdit(base, draft, ctx, today, reason)
   const patch = (next: Partial<StreakRule>) =>
     setDraft({ ...draft, ...next })
   const patchClause = (id: string, next: Partial<StreakClause>) =>
@@ -816,6 +835,22 @@ function RuleForm({
         <span className={WORD}>earned</span>
       </Row>
 
+      {/* A loosening the clock allows still has to be explained. The box
+          appears only then — asking for a reason to *narrow* a rule would be
+          asking you to justify keeping your own promise. */}
+      {edit.changed && !edit.settingUp && !edit.narrowing && (
+        <Row label="Because">
+          <AutoTextarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this is going down"
+            rows={1}
+            maxHeight={120}
+            className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
+          />
+        </Row>
+      )}
+
       {/* What this edit counts as, before it costs anything. The lock is
           one-sided, and an unexplained one-sided lock is indistinguishable
           from a bug — so it says which of the four cases it decided, every
@@ -876,7 +911,13 @@ function RuleForm({
             {fmtDateLong(lockFrom(today))}.
           </span>
         )}
-        {!edit.allowed && (
+        {edit.needsReason && (
+          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
+            <TriangleAlert size={11} />
+            Say why first. It goes on the record, not into a log that can fail.
+          </span>
+        )}
+        {!edit.allowed && !edit.needsReason && edit.changed && (
           <span
             className="flex items-center gap-1 text-[10px] font-mono"
             style={{ color: c.exam }}

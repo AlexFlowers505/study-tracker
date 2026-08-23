@@ -81,8 +81,20 @@ dependencies are real, not preference.
       come straight off the balance and can never push it below zero — the
       balance goes negative from days you missed, never from something you
       chose. **Needs `017` run before the app will load.***
-- [ ] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.
-      *Also closes the back door stage 2 left open — see decision 14.*
+- [x] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.
+      *Landed, both halves. A loosening needs written text, `ruleEdit` refuses
+      without it, and it goes into `looseningLog` on the rule in the same
+      operation as the new lock date — never into `change_log`, whose writes
+      are best-effort. The last one is shown back on the summary, which is
+      most of why writing it is worth anything. Decision 14 is closed too:
+      `goalCutEdit` refuses a cut while any rule reading the goal is locked
+      and demands a reason when they are open, and `afterGoalCut` locks them
+      again with it attached. `settings.goalCuts` is deprecated — the streak it
+      defended no longer exists.*
+
+      *Not yet applied to achievement thresholds or shop prices: both use the
+      same one-sided lock and neither asks for a reason. Worth doing for
+      consistency; not done, and recorded here rather than forgotten.*
 - [ ] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
       only stage that touches RLS. Optional, and deliberately last.
 

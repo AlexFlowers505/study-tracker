@@ -933,6 +933,81 @@ export function freezeOffer(
   return { ok: available >= cost, cost, available, key }
 }
 
+/**
+ * The rules whose limit comes from the project's daily goal.
+ *
+ * Lowering that goal lowers those rules **without touching them**, which is a
+ * loosening that never passes through `ruleEdit` at all. `termsOf` folds the
+ * goals in so an edit to the *rule* is judged correctly; this is the other
+ * half, and without it the lock has a door in the side of it.
+ */
+export const goalReaders = (rules: StreakRule[]): StreakRule[] =>
+  rules.filter((r) => ruleClauses(r).some((c) => c.useDailyGoal))
+
+export interface GoalCutVerdict {
+  /** Rules that would be loosened by the cut. */
+  affected: StreakRule[]
+  /** Any of them still inside its own lock — then the cut waits. */
+  blockedUntil: DayKey | null
+  /** The clock is clear; only a written reason is left. */
+  needsReason: boolean
+  allowed: boolean
+}
+
+/**
+ * Whether the daily goal may be lowered, and what it costs the rules that read
+ * it — the same three answers `ruleEdit` gives, for the same reasons.
+ */
+export function goalCutEdit(
+  rules: StreakRule[],
+  reason: string,
+  today = new Date(),
+): GoalCutVerdict {
+  const todayKey = toKey(today)
+  const affected = goalReaders(rules)
+  if (!affected.length)
+    return { affected, blockedUntil: null, needsReason: false, allowed: true }
+
+  // The latest lock among them decides: a cut loosens all of them at once, so
+  // it can only happen when every one of them is open to it.
+  const locked = affected
+    .filter((r) => todayKey !== r.startedOn && todayKey < r.lockedUntil)
+    .map((r) => r.lockedUntil)
+    .sort()
+  if (locked.length)
+    return {
+      affected,
+      blockedUntil: locked[locked.length - 1],
+      needsReason: false,
+      allowed: false,
+    }
+  if (!reason.trim())
+    return { affected, blockedUntil: null, needsReason: true, allowed: false }
+  return { affected, blockedUntil: null, needsReason: false, allowed: true }
+}
+
+/** Those rules after the cut: locked again, with the reason on the record. */
+export const afterGoalCut = (
+  rules: StreakRule[],
+  reason: string,
+  today = new Date(),
+): StreakRule[] => {
+  const affected = new Set(goalReaders(rules).map((r) => r.id))
+  const at = toKey(today)
+  return rules.map((r) =>
+    affected.has(r.id)
+      ? {
+          ...r,
+          lockedUntil: lockFrom(today),
+          looseningLog: [
+            ...(r.looseningLog || []),
+            { at, reason: `Daily goal lowered — ${reason.trim()}` },
+          ],
+        }
+      : r,
+  )
+}
+
 /* ---- Saying it back ------------------------------------------------------ */
 
 const listDays = (weekdays: number[]) =>
@@ -1129,6 +1204,15 @@ export interface RuleEdit {
   narrowing: boolean
   /** Still the day it was written: anything goes and nothing starts the clock. */
   settingUp: boolean
+  /**
+   * A loosening the clock permits, waiting only on a written reason.
+   *
+   * Separate from `allowed` because the two refusals are completely different
+   * problems: one you fix by typing, the other by waiting a week, and telling
+   * someone to wait when they only had to explain themselves is telling them
+   * the wrong thing.
+   */
+  needsReason: boolean
   allowed: boolean
   /** The rule as it should be stored, with the clock moved if it had to be. */
   next: StreakRule
@@ -1149,6 +1233,7 @@ export function ruleEdit(
   draft: StreakRule,
   ctx: StreakContext,
   today = new Date(),
+  reason = "",
 ): RuleEdit {
   const todayKey = toKey(today)
   const changed = termsChanged(prev, draft, ctx)
@@ -1161,14 +1246,27 @@ export function ruleEdit(
   // has judged nothing yet, so there is no verdict a kinder version could
   // rescue.
   const settingUp = todayKey === prev.startedOn
-  const base = { changed, narrowing, settingUp }
+  const base = { changed, narrowing, settingUp, needsReason: false }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing) return { ...base, allowed: true, next: draft }
   if (settingUp) return { ...base, allowed: true, next: draft }
-  const allowed = todayKey >= prev.lockedUntil
+  const clockOpen = todayKey >= prev.lockedUntil
+  const written = reason.trim()
+  if (!clockOpen) return { ...base, allowed: false, next: prev }
+  // The clock has run out; the only thing left is to say why. Written in the
+  // same operation as the new lock date, so a reason cannot go missing from a
+  // loosening that happened.
+  if (!written) return { ...base, needsReason: true, allowed: false, next: prev }
   return {
     ...base,
-    allowed,
-    next: allowed ? { ...draft, lockedUntil: lockFrom(today) } : prev,
+    allowed: true,
+    next: {
+      ...draft,
+      lockedUntil: lockFrom(today),
+      looseningLog: [
+        ...(prev.looseningLog || []),
+        { at: todayKey, reason: written },
+      ],
+    },
   }
 }

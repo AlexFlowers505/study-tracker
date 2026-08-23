@@ -28,7 +28,7 @@ import type {
   Activity,
   CounterUnit,
   Project,
-  GoalCut,
+  StreakRule,
   Settings,
   Slot,
 } from '../types/model'
@@ -36,7 +36,6 @@ import {
   WEEKDAY_LABELS,
   WEEKDAY_ORDER,
   fmtDateLong,
-  startOfWeek,
   toKey,
 } from '../lib/date'
 import { DEFAULT_SETTINGS } from '../lib/defaults'
@@ -52,6 +51,8 @@ import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
+import { goalCutEdit } from '../lib/customStreaks'
+import { AutoTextarea } from '../ui/controls'
 import { StreakRulesTab } from './StreakRulesTab'
 import { AchievementsTab } from './AchievementsTab'
 import { ShopTab } from './ShopTab'
@@ -67,7 +68,7 @@ export function SetupModal({
   activities,
   onClose,
   onSaveSettings,
-  onRecordGoalCut,
+  onCutGoals,
   onUpdateSlots,
   onUpdateActivities,
   counterUnits,
@@ -88,7 +89,7 @@ export function SetupModal({
   activities: Activity[]
   onClose: () => void
   onSaveSettings: (next: Settings) => void
-  onRecordGoalCut: (cut: GoalCut) => void
+  onCutGoals: (reason: string) => void
   onUpdateSlots: (next: Slot[]) => void
   onUpdateActivities: (next: Activity[]) => void
   counterUnits: CounterUnit[]
@@ -192,7 +193,8 @@ export function SetupModal({
             <ProjectDetailsTab
               settings={settings}
               onSave={onSaveSettings}
-              onRecordGoalCut={onRecordGoalCut}
+              onCutGoals={onCutGoals}
+              streakRules={settings.streakRules || []}
             />
           )}
           {tab === "slots" && (
@@ -387,11 +389,13 @@ function ProjectsTab({
 function ProjectDetailsTab({
   settings,
   onSave,
-  onRecordGoalCut,
+  onCutGoals,
+  streakRules,
 }: {
   settings: Settings
   onSave: (next: Settings) => void
-  onRecordGoalCut: (cut: GoalCut) => void
+  onCutGoals: (reason: string) => void
+  streakRules: StreakRule[]
 }) {
   const c = usePalette()
   const [projectName, setProjectName] = useState(
@@ -427,6 +431,8 @@ function ProjectDetailsTab({
     null,
   )
   const [confirmingCut, setConfirmingCut] = useState(false)
+  // Required when a cut would loosen a rule that reads the goal.
+  const [cutReason, setCutReason] = useState("")
   // This form auto-saves, so it must not fire on mount: merely opening the
   // setup modal would write whatever it was seeded with. That is exactly how a
   // blank default project got saved over a real one when the modal opened on a
@@ -475,22 +481,27 @@ function ProjectDetailsTab({
   const delta = draftWeekly - savedWeekly
   const isCut = delta < 0
 
+  /**
+   * Whether this cut is allowed at all — `spec 010`, decision 14.
+   *
+   * A rule whose limit comes from the daily goal is loosened by lowering that
+   * goal, and that edit never passes through `ruleEdit`. So the goal editor
+   * consults the rules directly: while any of them is locked the cut waits,
+   * and when they are all open it still has to be explained, exactly as
+   * loosening the rule itself would be.
+   */
+  const cut = goalCutEdit(streakRules, cutReason, new Date())
+
   const commitGoals = () => {
     if (!goalDraft) return
+    if (isCut && !cut.allowed) return
     setDailyGoals(goalDraft)
-    if (isCut) {
-      // Recorded against the week it lands in, which is the week that pays for
-      // it. Append-only: putting the number back afterwards does not undo the
-      // fact that it was lowered.
-      onRecordGoalCut({
-        weekKey: toKey(startOfWeek(new Date())),
-        at: new Date().toISOString(),
-        from: savedWeekly,
-        to: draftWeekly,
-      })
-    }
+    // The rules that read the goal are locked again and told why, in the same
+    // breath as the number changing.
+    if (isCut && cut.affected.length) onCutGoals(cutReason.trim())
     setGoalDraft(null)
     setConfirmingCut(false)
+    setCutReason("")
   }
 
   return (
@@ -671,10 +682,38 @@ function ProjectDetailsTab({
                 </Tip>
               )}
             </div>
-            {isCut && (
-              <p className="text-[10px] font-mono leading-relaxed" style={{ color: c.exam }}>
-                Less time per week than before — no freeze for this week.
-              </p>
+            {isCut && cut.affected.length > 0 && (
+              <div className="space-y-1.5">
+                <p
+                  className="text-[10px] font-mono leading-relaxed"
+                  style={{ color: c.exam }}
+                >
+                  {cut.affected.length === 1
+                    ? `"${cut.affected[0].label}" is held to this goal, so lowering it loosens that rule.`
+                    : `${cut.affected.length} rules are held to this goal, so lowering it loosens them.`}
+                </p>
+                {cut.blockedUntil ? (
+                  <p className="text-[10px] font-mono" style={{ color: c.exam }}>
+                    It waits until {fmtDateLong(cut.blockedUntil)}.
+                  </p>
+                ) : (
+                  <>
+                    <AutoTextarea
+                      value={cutReason}
+                      onChange={(e) => setCutReason(e.target.value)}
+                      placeholder="Why the goal is going down"
+                      rows={1}
+                      maxHeight={120}
+                      className={`${FIELD_SOFT} rounded-xl py-1.5 text-[11px]`}
+                    />
+                    {cut.needsReason && (
+                      <p className="text-[10px] font-mono text-ink/45">
+                        Say why first. It goes on each rule's record.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
             )}
             <div className="flex items-center justify-end gap-2">
               <button
@@ -685,7 +724,7 @@ function ProjectDetailsTab({
               </button>
               <button
                 onClick={() => (isCut ? setConfirmingCut(true) : commitGoals())}
-                disabled={delta === 0 && !goalDraft}
+                disabled={(delta === 0 && !goalDraft) || (isCut && !cut.allowed)}
                 className={`${btnBase} px-3 py-1.5 rounded-xl text-[10px] font-mono uppercase tracking-widest font-bold`}
                 style={{ backgroundColor: c.accent, color: c.onFill }}
               >
