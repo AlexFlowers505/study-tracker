@@ -107,6 +107,28 @@ dependencies are real, not preference.
       ***Not verified end to end by the agent** — a second party needs a second
       account. The test sequence is at the foot of `migrations/018`.*
 
+## Not yet proven
+
+Everything below has shipped and neither part has been exercised against real
+use. Both are recorded here rather than in anybody's memory.
+
+- **A purchase.** The shop draws, prices, locks and refuses correctly, but
+  nothing has been bought: the balance was zero while it was built, since
+  counting starts the day it is switched on and the first mark seals two days
+  later. The write path is the same shape as every other ledger here, and that
+  is an argument rather than a test.
+- **The supervisor, end to end.** The owner's side is verified — the block
+  draws, an invite inserts. Untested: claiming one, a supervisor seeing *only*
+  their proposals, the trigger refusing an owner who tries to approve their
+  own loosening, and the propose → decide → apply round trip. That last one is
+  the security-relevant one, and the sequence to run is at the foot of
+  `migrations/018`.
+
+  **The feature is dormant until an invite is claimed.** With no supervisors
+  `hasSupervisor` is false, `ruleEdit` behaves exactly as it did at stage 7,
+  and the panel renders nothing — so the unverified path is not in anyone's
+  way. The *read* half is exercised on every load and works.
+
 **Keeping this document true.** Tick a stage when it lands. If a decision
 changes, do not quietly rewrite the prose — amend the *Decisions* section at
 the bottom with what changed and why, then fix the prose. Half the value of
