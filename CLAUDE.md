@@ -7,6 +7,20 @@ Scope note: this file applies to this repository only. Keep machine-wide or
 unrelated-project instructions out of it — and out of `~/.claude/CLAUDE.md`, which
 would leak into every other project on the machine.
 
+## Work in progress
+
+**`specs/010-day-verdict-and-rewards.md` is agreed, staged and not yet
+started.** It is large and it rewrites things this file currently describes as
+settled — the main goal streak is abolished, the day's colour becomes a
+composite verdict over every participating rule, and a balance, achievements, a
+shop and an optional supervisor are built on top of that.
+
+Read it before changing anything about streaks, freezes, the goal, or how a day
+card is coloured. Its Status block holds the build order and what has landed;
+its Decisions section holds the reasoning, so a change of mind is recorded
+rather than silently applied. Everything below in this file describes the app as
+it stands **today**, before that work.
+
 ## Commands
 
 ```
