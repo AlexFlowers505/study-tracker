@@ -15,6 +15,7 @@ import {
   Filter,
   History,
   Moon,
+  Gift,
   Trophy,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -162,6 +163,8 @@ export function PeriodBar({
   onToggleLog,
   showHistory,
   onToggleHistory,
+  showShop,
+  onToggleShop,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -182,6 +185,8 @@ export function PeriodBar({
   onToggleLog: () => void
   showHistory: boolean
   onToggleHistory: () => void
+  showShop: boolean
+  onToggleShop: () => void
 }) {
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-card shadow-sm hover:bg-ink/5 disabled:opacity-35 disabled:hover:bg-card disabled:cursor-not-allowed`
@@ -257,6 +262,12 @@ export function PeriodBar({
               tip={showSleep ? "Hide sleep" : "Show sleep"}
             />
           )}
+          <PanelToggle
+            icon={Gift}
+            active={showShop}
+            onClick={onToggleShop}
+            tip={showShop ? "Hide the rewards" : "What your kept days will buy"}
+          />
           <PanelToggle
             icon={Trophy}
             active={showHistory}

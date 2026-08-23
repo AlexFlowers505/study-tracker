@@ -18,6 +18,7 @@ import {
   Shapes,
   SlidersHorizontal,
   Tags,
+  Gift,
   Trophy,
   Trash2,
   X,
@@ -53,6 +54,7 @@ import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
 import { StreakRulesTab } from './StreakRulesTab'
 import { AchievementsTab } from './AchievementsTab'
+import { ShopTab } from './ShopTab'
 import { CategoriesTab } from './CategoriesTab'
 import { AppearanceTab } from './AppearanceTab'
 import { TagsTab } from './TagsTab'
@@ -146,6 +148,7 @@ export function SetupModal({
             { id: "tags", label: "Tags", icon: Tags },
             { id: "streaks", label: "Streaks", icon: Flame },
             { id: "achievements", label: "History", icon: Trophy },
+            { id: "shop", label: "Rewards", icon: Gift },
             { id: "projects", label: "Projects", icon: FolderOpen },
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
@@ -210,6 +213,9 @@ export function SetupModal({
               units={counterUnits}
               onApply={onUpdateProject}
             />
+          )}
+          {tab === "shop" && (
+            <ShopTab settings={settings} onSave={onSaveSettings} />
           )}
           {tab === "achievements" && (
             <AchievementsTab

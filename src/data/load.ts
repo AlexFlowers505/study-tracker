@@ -28,6 +28,7 @@ import type {
   ProjectRow,
   DayMarkRow,
   EarnedRow,
+  PurchaseRow,
   RuleVerdictRow,
   WeekVerdictRow,
 } from "./schema"
@@ -58,6 +59,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     ruleVerdictRows,
     dayMarkRows,
     earnedRows,
+    purchaseRows,
     prefs,
   ] =
     await Promise.all([
@@ -85,6 +87,11 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       client
         .from("achievements")
         .select("project_id,achievement_id,earned_at,value"),
+    ),
+    fetchAllRows<PurchaseRow>(() =>
+      client
+        .from("purchases")
+        .select("project_id,purchase_id,item_id,label,price,bought_at"),
     ),
     client.from("user_prefs").select("active_project_id").maybeSingle(),
   ])
@@ -114,6 +121,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       ruleVerdicts: {},
       dayLedger: {},
       earned: {},
+      purchases: {},
     }),
   )
 
@@ -202,6 +210,18 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       achievementId: r.achievement_id,
       earnedAt: r.earned_at,
       value: Number(r.value) || 0,
+    }
+  })
+
+  purchaseRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p?.purchases) return
+    p.purchases[r.purchase_id] = {
+      id: r.purchase_id,
+      itemId: r.item_id,
+      label: r.label || "",
+      price: Number(r.price) || 0,
+      boughtAt: r.bought_at,
     }
   })
 

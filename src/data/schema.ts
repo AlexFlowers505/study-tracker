@@ -114,6 +114,15 @@ export interface NoteRow {
   ignored: boolean | null
 }
 
+export interface PurchaseRow {
+  project_id: string
+  purchase_id: string
+  item_id: string
+  label: string
+  price: number
+  bought_at: string
+}
+
 export interface EarnedRow {
   project_id: string
   achievement_id: string

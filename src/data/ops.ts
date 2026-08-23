@@ -42,6 +42,7 @@ export type WriteOp =
       projectId: string
       achievementId: string
     }
+  | { key: string; kind: "purchase"; projectId: string; purchaseId: string }
   | { key: string; kind: "prefs" }
   | { key: string; kind: "deleteProject"; projectId: string }
   | {
@@ -126,6 +127,20 @@ export const opEarned = (
   kind: "earned",
   projectId,
   achievementId,
+})
+
+/**
+ * A reward taken. Written once and never refunded — the whole value of the
+ * ritual is that it costs something, and something undoable costs nothing.
+ */
+export const opPurchase = (
+  projectId: string,
+  purchaseId: string,
+): WriteOp => ({
+  key: `purchase:${projectId}:${purchaseId}`,
+  kind: "purchase",
+  projectId,
+  purchaseId,
 })
 
 export const opPrefs = (): WriteOp => ({ key: "prefs", kind: "prefs" })
@@ -290,6 +305,25 @@ export async function applyWriteOp(
             value: badge.value,
           },
           { onConflict: "project_id,achievement_id", ignoreDuplicates: true },
+        ),
+      )
+    }
+
+    case "purchase": {
+      if (!project) return
+      const bought = project.purchases?.[op.purchaseId]
+      if (!bought) return
+      return run(
+        client.from("purchases").upsert(
+          {
+            project_id: project.id,
+            purchase_id: bought.id,
+            item_id: bought.itemId,
+            label: bought.label,
+            price: bought.price,
+            bought_at: bought.boughtAt,
+          },
+          { onConflict: "project_id,purchase_id", ignoreDuplicates: true },
         ),
       )
     }

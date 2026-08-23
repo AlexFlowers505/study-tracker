@@ -10,6 +10,7 @@ import type {
   PeriodId,
   Project,
   Settings,
+  ShopItem,
   Slot,
 } from "./types/model"
 import type { WriteOp } from "./data/ops"
@@ -42,6 +43,7 @@ import { ruleStatus, streakContext } from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
+import { purchaseOf } from "./lib/shop"
 import { ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
@@ -55,6 +57,7 @@ import {
   opDay,
   opDayMark,
   opEarned,
+  opPurchase,
   opRuleVerdict,
   opDeleteProject,
   opLog,
@@ -68,6 +71,7 @@ import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
+import { ShopSection } from "./views/ShopSection"
 import { SleepSection } from "./views/SleepSection"
 import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
@@ -133,6 +137,7 @@ export default function StudyTrackerApp() {
   const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showShop, setShowShop] = useState(false)
   /**
    * Which streak's panel is open: `"main"`, a rule id, or nothing.
    *
@@ -543,6 +548,18 @@ export default function StudyTrackerApp() {
   }, [loaded, loadFailed, badgesDue, project, patchProject])
 
   /**
+   * Taking a reward. Append-only and never refunded — the ledger is what makes
+   * the promise cost something, and something you can undo costs nothing.
+   */
+  const buyReward = (item: ShopItem) => {
+    const bought = purchaseOf(item)
+    patchProject(
+      { purchases: { ...(project.purchases || {}), [bought.id]: bought } },
+      [opPurchase(project.id, bought.id)],
+    )
+  }
+
+  /**
    * The freeze waiting to be confirmed, from whichever streak asked.
    *
    * Spending is permanent — no refund if the day is later logged up to green,
@@ -877,6 +894,8 @@ export default function StudyTrackerApp() {
           onToggleLog={() => setShowLog((v) => !v)}
           showHistory={showHistory}
           onToggleHistory={() => setShowHistory((v) => !v)}
+          showShop={showShop}
+          onToggleShop={() => setShowShop((v) => !v)}
         />
 
         {/* Its own row under the period bar. Streaks are the one project-wide
@@ -965,6 +984,15 @@ export default function StudyTrackerApp() {
               onClose={() => setOpenStreak(null)}
             />
           ))}
+
+        {showShop && (
+          <ShopSection
+            project={project}
+            balance={project.settings.balanceStart ? balance : null}
+            onBuy={buyReward}
+            onClose={() => setShowShop(false)}
+          />
+        )}
 
         {showHistory && (
           <AchievementsSection

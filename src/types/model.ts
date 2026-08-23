@@ -473,6 +473,42 @@ export interface StreakRule extends Labeled {
 }
 
 /**
+ * Something you have decided to let yourself have — `spec 010`, part 6.
+ *
+ * Not a game reward. Buying it here is **permitting yourself to buy it in
+ * life**, which puts this in the same family as the edit lock rather than in
+ * the same family as points: the app is the ledger of a promise you made
+ * yourself about spending.
+ *
+ * Priced in **kept days**, the balance's unit — a number you cannot
+ * re-invent the way you can re-invent "50,000 points", and the same thing the
+ * streak already counts, which is what stops a second economy existing at all.
+ */
+export interface ShopItem extends Labeled {
+  /** In kept days. */
+  price: number
+  /** The day it was written. Its own grace day, like a rule's `startedOn`. */
+  createdOn: DayKey
+  /** No **lowering** of the price before this date. */
+  lockedUntil: DayKey
+}
+
+/**
+ * A reward taken. Append-only and never refunded: the point of the ritual is
+ * that it costs something, and something you can undo costs nothing.
+ *
+ * `label` and `price` are stored with it so the row still reads after the item
+ * is deleted — that purchase happened.
+ */
+export interface Purchase {
+  id: string
+  itemId: string
+  label: string
+  price: number
+  boughtAt: string
+}
+
+/**
  * What an achievement counts.
  *
  * Deliberately a short list. Every source is a number the app already knows
@@ -613,6 +649,8 @@ export interface Settings {
   balanceStart?: DayKey | null
   /** The achievements you have written. In `settings`, like `tags`. */
   achievements?: Achievement[]
+  /** The rewards you have decided to let yourself have. In `settings`, too. */
+  shop?: ShopItem[]
 }
 
 export interface GoalCut {
@@ -655,6 +693,8 @@ export interface Project {
   dayLedger?: Record<DayKey, DayMark>
   /** Earned achievements, keyed by their id. Append-only. */
   earned?: Record<string, EarnedAchievement>
+  /** Rewards taken, keyed by the purchase's own id. Append-only. */
+  purchases?: Record<string, Purchase>
 }
 
 export interface AppData {

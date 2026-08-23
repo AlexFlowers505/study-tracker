@@ -41,8 +41,12 @@ import { makeIsIgnored } from "./stats"
 export const MARK_VALUE = 1
 
 export interface Balance {
-  /** Sealed days only. What the shop may be priced against. */
+  /** What is left to spend: every sealed mark, less everything bought. */
   total: number
+  /** The marks alone, before anything was taken out. */
+  earned: number
+  /** Kept days already spent in the shop. */
+  spent: number
   /** Days marked so far. */
   sealed: number
   /**
@@ -58,12 +62,18 @@ export interface Balance {
 export function balanceOf(project: Project, today = new Date()): Balance {
   const ledger = project.dayLedger || {}
   const todayKey = toKey(today)
-  let total = 0
+  let earnedDays = 0
   let sealed = 0
   Object.values(ledger).forEach((mark) => {
-    total += mark.kept ? MARK_VALUE : -MARK_VALUE
+    earnedDays += mark.kept ? MARK_VALUE : -MARK_VALUE
     sealed += 1
   })
+  // Purchases come straight off the top. A reward taken is a reward paid for,
+  // and there is no refund — see `spec 010` part 6.
+  const spent = Object.values(project.purchases || {}).reduce(
+    (sum, p) => sum + (Number(p.price) || 0),
+    0,
+  )
 
   // The two days still in the writing window, reported apart from the total.
   const ctx = streakContext(project)
@@ -78,7 +88,14 @@ export function balanceOf(project: Project, today = new Date()): Balance {
     else pendingMissed += 1
   }
 
-  return { total, sealed, pendingKept, pendingMissed }
+  return {
+    total: earnedDays - spent,
+    earned: earnedDays,
+    spent,
+    sealed,
+    pendingKept,
+    pendingMissed,
+  }
 }
 
 /**

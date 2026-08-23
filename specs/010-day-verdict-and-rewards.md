@@ -74,7 +74,13 @@ dependencies are real, not preference.
       opened from the period bar; the shell seals a reached one into the
       ledger. Verified end to end on dev — a definition written, sealed, and
       still there after a reload.*
-- [ ] **Stage 6 — The shop.** Part 6. Migration `017`.
+- [x] **Stage 6 — The shop.** Part 6. Migration `017`.
+      *Written. `lib/shop.ts` holds the price lock and the purchase;
+      `ShopTab` writes items behind the same Edit/Done draft; `ShopSection` is
+      the panel, with the balance in full and the buying ceremony. Purchases
+      come straight off the balance and can never push it below zero — the
+      balance goes negative from days you missed, never from something you
+      chose. **Needs `017` run before the app will load.***
 - [ ] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.
       *Also closes the back door stage 2 left open — see decision 14.*
 - [ ] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
