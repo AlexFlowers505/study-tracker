@@ -36,6 +36,12 @@ export type WriteOp =
       weekKey: DayKey
     }
   | { key: string; kind: "dayMark"; projectId: string; dateKey: DayKey }
+  | {
+      key: string
+      kind: "earned"
+      projectId: string
+      achievementId: string
+    }
   | { key: string; kind: "prefs" }
   | { key: string; kind: "deleteProject"; projectId: string }
   | {
@@ -105,6 +111,21 @@ export const opDayMark = (projectId: string, dateKey: DayKey): WriteOp => ({
   kind: "dayMark",
   projectId,
   dateKey,
+})
+
+/**
+ * An achievement reached. Written once, like every other ledger here — and
+ * kept out of `settings` so that editing a definition can never touch what was
+ * earned against it.
+ */
+export const opEarned = (
+  projectId: string,
+  achievementId: string,
+): WriteOp => ({
+  key: `earned:${projectId}:${achievementId}`,
+  kind: "earned",
+  projectId,
+  achievementId,
 })
 
 export const opPrefs = (): WriteOp => ({ key: "prefs", kind: "prefs" })
@@ -250,6 +271,25 @@ export async function applyWriteOp(
             sealed_at: mark.sealedAt,
           },
           { onConflict: "project_id,date", ignoreDuplicates: true },
+        ),
+      )
+    }
+
+    case "earned": {
+      if (!project) return
+      const badge = project.earned?.[op.achievementId]
+      if (!badge) return
+      // ignoreDuplicates: what was reached was reached, and the row already
+      // there is the authority on when.
+      return run(
+        client.from("achievements").upsert(
+          {
+            project_id: project.id,
+            achievement_id: badge.achievementId,
+            earned_at: badge.earnedAt,
+            value: badge.value,
+          },
+          { onConflict: "project_id,achievement_id", ignoreDuplicates: true },
         ),
       )
     }

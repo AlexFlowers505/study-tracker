@@ -68,6 +68,12 @@ dependencies are real, not preference.
       shop exists to put it beside. **Needs `015` run before the app will
       load** — a missing table is a failed read, not an empty one.*
 - [ ] **Stage 5 — Achievements.** Part 5. Migration `016`.
+      *Half landed: `lib/achievements.ts` (three sources — the composite
+      streak, one rule's streak, everything ever gathered against a target —
+      progress, the one-sided lock, and `dueAchievements`), the ledger table,
+      and the whole data layer. **Still to build: the Setup tab that writes
+      them, the trophy case that shows them, and the shell effect that seals a
+      reached one.** Nothing imports the lib yet.*
 - [ ] **Stage 6 — The shop.** Part 6. Migration `017`.
 - [ ] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.
       *Also closes the back door stage 2 left open — see decision 14.*

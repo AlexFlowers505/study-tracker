@@ -473,6 +473,60 @@ export interface StreakRule extends Labeled {
 }
 
 /**
+ * What an achievement counts.
+ *
+ * Deliberately a short list. Every source is a number the app already knows
+ * how to compute, and a wider one would turn the editor into a second rule
+ * builder — which is a thing this app has exactly one of on purpose.
+ *
+ * - `keptDays` — the composite streak: days on which every voting rule held.
+ * - `ruleStreak` — one rule's own streak, for a promise you want counted
+ *   separately from the day's verdict.
+ * - `total` — everything ever recorded against a target, in its own measure:
+ *   minutes for an activity or study time, occurrences for a counter or tag.
+ */
+export type AchievementSource =
+  | { kind: "keptDays" }
+  | { kind: "ruleStreak"; ruleId: string }
+  | { kind: "total"; target: StreakTarget }
+
+/**
+ * A thing you reached once and cannot lose — `spec 010`, part 5.
+ *
+ * Everything else in this app is built on fear: a streak is what you lose, a
+ * red day is what you avoid. That works and it is one-sided. An achievement is
+ * the other pole, and the only reason the history is worth having accumulated
+ * rather than merely survived.
+ *
+ * Written by you, and there should be few. A generated 30/60/100 ladder across
+ * five rules is thirty achievements, which is the dilution problem wearing a
+ * rosette.
+ */
+export interface Achievement extends Labeled {
+  source: AchievementSource
+  /** The number to reach. Minutes when the source measures time. */
+  threshold: number
+  /** The day it was written. Its own grace day, like a rule's `startedOn`. */
+  createdOn: DayKey
+  /** No **lowering** of the threshold before this date. See `ruleEdit`. */
+  lockedUntil: DayKey
+}
+
+/**
+ * An achievement earned, written once with its date and never recomputed.
+ *
+ * In its own ledger rather than in `settings`, and that is the whole point:
+ * the hand that edits the definitions must not be the hand that edits what was
+ * earned. In `settings` an achievement would be forgeable.
+ */
+export interface EarnedAchievement {
+  achievementId: string
+  earnedAt: string
+  /** What the figure stood at. Kept so a deleted definition still reads. */
+  value: number
+}
+
+/**
  * One finished day's mark on the balance, written once and never revisited.
  *
  * A ledger for the same reason the verdicts are, and more so: this one can be
@@ -557,6 +611,8 @@ export interface Settings {
    * be free — the same reason `startedOn` exists on a rule.
    */
   balanceStart?: DayKey | null
+  /** The achievements you have written. In `settings`, like `tags`. */
+  achievements?: Achievement[]
 }
 
 export interface GoalCut {
@@ -597,6 +653,8 @@ export interface Project {
   ruleVerdicts?: Record<string, RuleVerdict>
   /** Sealed day marks, keyed by the day. Append-only — see `DayMark`. */
   dayLedger?: Record<DayKey, DayMark>
+  /** Earned achievements, keyed by their id. Append-only. */
+  earned?: Record<string, EarnedAchievement>
 }
 
 export interface AppData {

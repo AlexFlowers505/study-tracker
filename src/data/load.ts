@@ -27,6 +27,7 @@ import type {
   NoteRow,
   ProjectRow,
   DayMarkRow,
+  EarnedRow,
   RuleVerdictRow,
   WeekVerdictRow,
 } from "./schema"
@@ -56,6 +57,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     verdictRows,
     ruleVerdictRows,
     dayMarkRows,
+    earnedRows,
     prefs,
   ] =
     await Promise.all([
@@ -78,6 +80,11 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     ),
     fetchAllRows<DayMarkRow>(() =>
       client.from("day_ledger").select("project_id,date,kept,sealed_at"),
+    ),
+    fetchAllRows<EarnedRow>(() =>
+      client
+        .from("achievements")
+        .select("project_id,achievement_id,earned_at,value"),
     ),
     client.from("user_prefs").select("active_project_id").maybeSingle(),
   ])
@@ -106,6 +113,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       weekVerdicts: {},
       ruleVerdicts: {},
       dayLedger: {},
+      earned: {},
     }),
   )
 
@@ -184,6 +192,16 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       date: r.date,
       kept: !!r.kept,
       sealedAt: r.sealed_at,
+    }
+  })
+
+  earnedRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p?.earned) return
+    p.earned[r.achievement_id] = {
+      achievementId: r.achievement_id,
+      earnedAt: r.earned_at,
+      value: Number(r.value) || 0,
     }
   })
 

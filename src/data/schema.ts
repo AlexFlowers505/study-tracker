@@ -114,6 +114,13 @@ export interface NoteRow {
   ignored: boolean | null
 }
 
+export interface EarnedRow {
+  project_id: string
+  achievement_id: string
+  earned_at: string
+  value: number
+}
+
 export interface DayMarkRow {
   project_id: string
   date: string
