@@ -64,7 +64,10 @@ begin
     select p.id,
            coalesce(
              nullif(p.settings->>'freezeStart', ''),
-             (select min(d.date) from days d where d.project_id = p.id),
+             -- `days.date` is a real date column; everything else here is the
+             -- app's 'YYYY-MM-DD' text, so it is rendered rather than cast.
+             (select to_char(min(d.date), 'YYYY-MM-DD')
+                from days d where d.project_id = p.id),
              to_char(now(), 'YYYY-MM-DD')
            ) as started_on
     from projects p
@@ -132,11 +135,12 @@ begin
   -- ---------------------------------------------------------------------
   -- 3. The days already frozen, so nothing anybody paid for is refunded.
   -- ---------------------------------------------------------------------
+  -- `rule_freezes` is jsonb, not a text array — `012` made it an array *in*
+  -- jsonb so it could ride in the same row shape as everything else on a day.
   update days d
-  set rule_freezes =
-        coalesce(d.rule_freezes, '{}'::text[]) || 'rule-daily-goal'
+  set rule_freezes = d.rule_freezes || to_jsonb('rule-daily-goal'::text)
   where d.frozen is true
-    and not ('rule-daily-goal' = any(coalesce(d.rule_freezes, '{}'::text[])))
+    and not (d.rule_freezes @> '["rule-daily-goal"]'::jsonb)
     and exists (
       select 1 from projects p
       where p.id = d.project_id
@@ -162,7 +166,8 @@ end $$;
 --          p.settings->>'projectName'   as project,
 --          p.settings->>'goalsEnabled'  as goals_on,
 --          p.settings->>'freezeStart'   as freeze_start,
---          (select min(d.date) from days d where d.project_id = p.id) as first_day,
+--          (select to_char(min(d.date), 'YYYY-MM-DD')
+--             from days d where d.project_id = p.id) as first_day,
 --          (select count(*) from week_verdicts w where w.project_id = p.id) as sealed_weeks,
 --          (select count(*) from days d where d.project_id = p.id and d.frozen) as frozen_days,
 --          exists (
