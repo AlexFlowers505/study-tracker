@@ -50,8 +50,6 @@ import {
   targetInfo,
 } from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey, weekDates } from "./date"
-import { canFreeze, dayState } from "./freezes"
-import { dayBreakdown, goalForDate } from "./stats"
 import { fmtHours } from "./time"
 
 export type RiskLevel = "danger" | "warning" | "safe"
@@ -314,67 +312,6 @@ export function ruleRisk(
             : `${lost} · ${plural(offer.cost, "freeze")} needed and you have ${offer.available}`
           : `${plural(restores, "day")} at stake · the day is running out`,
       freezeDay: offer.ok ? offer.key : undefined,
-    }
-  }
-
-  return { id, level: "safe" }
-}
-
-/**
- * The goal streak's standing.
- *
- * Temporary in the sense that `spec 010` part 1 dissolves this streak into an
- * ordinary rule; until then it is assessed on its own terms so the row can be
- * complete.
- */
-export function mainRisk(
-  project: Project,
-  balance: number,
-  currentDays: number,
-  today = new Date(),
-): StreakRisk {
-  const { days, slots, settings } = project
-  const todayKey = toKey(today)
-  const yesterday = addDays(today, -1)
-  const yesterdayKey = toKey(yesterday)
-  const id = "main"
-
-  const yState = dayState(days[yesterdayKey], yesterday, settings, slots, todayKey)
-  if (yState === "missed") {
-    const can = canFreeze(yesterday, days[yesterdayKey], settings, slots, today, balance)
-    return {
-      id,
-      level: "danger",
-      headline: "Yesterday fell short of its goal",
-      detail: can
-        ? `A freeze covers it · ${balance} banked`
-        : balance > 0
-          ? "Out of the writing window — nothing left to do"
-          : "No freezes banked",
-      freezeDay: can ? yesterdayKey : undefined,
-    }
-  }
-
-  const tState = dayState(days[todayKey], today, settings, slots, todayKey)
-  if (tState === "pending") {
-    // The same clock the custom rules run on: hours still owed against hours
-    // still left. Short at nine in the morning is not news.
-    const need =
-      goalForDate(settings, today) - dayBreakdown(days[todayKey], slots).total
-    const left = minutesLeftToday(today)
-    if (need <= 0 || need * 2 <= left) return { id, level: "safe" }
-    const can = canFreeze(today, days[todayKey], settings, slots, today, balance)
-    return {
-      id,
-      level: need > left ? "danger" : "warning",
-      headline: `Today — ${fmtHours(need)} short of its goal`,
-      detail:
-        need > left
-          ? can
-            ? "No longer reachable · a freeze covers it"
-            : "No longer reachable, and no freeze to cover it"
-          : `${plural(currentDays, "day")} at stake · ${fmtHours(left)} of the day left`,
-      freezeDay: can ? todayKey : undefined,
     }
   }
 

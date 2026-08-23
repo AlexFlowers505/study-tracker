@@ -29,6 +29,7 @@ import { SECTION_HEADING } from '../lib/theme'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
 import { CounterControls, CounterGroupList } from './CounterTotals'
+import type { DayReport } from '../lib/dayVerdict'
 import { periodCounterGroups } from '../lib/periodCounters'
 import type { CounterGrouping } from '../lib/periodCounters'
 
@@ -50,6 +51,7 @@ export function LogView({
   canFreezeDay,
   onFreezeDay,
   onUpdateDay,
+  verdictOf,
   sleepSection,
 }: {
   data: Project
@@ -69,6 +71,13 @@ export function LogView({
   onFreezeDay?: (key: string) => void
   /** Lets the day cards edit an entry in place, without the day dialog. */
   onUpdateDay?: (key: string, patch: Partial<Day>) => void
+  /**
+   * How each day came out. Threaded from the shell rather than computed here,
+   * because a verdict must read the **unfiltered** project: the count filter
+   * is a way of looking at the data, and hiding a slot must not turn a missed
+   * day green.
+   */
+  verdictOf: (key: string) => DayReport
   /** The sleep panel, rendered by the shell so it can read the unfiltered
    *  project — sleep has no slots or activities for the filter to act on. */
   sleepSection?: ReactNode
@@ -386,6 +395,7 @@ export function LogView({
           hiddenGroups={hidden}
           categories={settings.categories || []}
           todayKey={todayKey}
+          verdictOf={verdictOf}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}
@@ -415,6 +425,7 @@ export function LogView({
           canFreezeDay={canFreezeDay}
           onFreezeDay={onFreezeDay}
           onUpdateDay={onUpdateDay}
+          verdictOf={verdictOf}
         />
       )}
       {/* Anything longer than a month — including all-time and custom — is

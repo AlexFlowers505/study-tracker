@@ -27,7 +27,9 @@ import { fromKey, pad, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import { setCheck, splitByKind } from "../lib/checks"
 import { dayBreakdown, goalForDate } from "../lib/stats"
-import { dayState, isEditableDay } from "../lib/freezes"
+import { isEditableDay } from "../lib/freezes"
+import type { DayReport } from "../lib/dayVerdict"
+import { asOutcome } from "../lib/dayVerdict"
 import { btnBase, cardTiny, dayStateSurface } from "../lib/theme"
 import { setSlotCount } from "../lib/counters"
 import {
@@ -60,6 +62,7 @@ function FullDayCard({
   isBeforeStart,
   ignored,
   todayKey,
+  verdict,
   canFreeze,
   onFreeze,
   onEdit,
@@ -98,6 +101,8 @@ function FullDayCard({
   isBeforeStart: boolean
   ignored: boolean
   todayKey: DayKey
+  /** How the day came out, across every rule with a vote on it. */
+  verdict: DayReport
   canFreeze?: boolean
   onFreeze?: () => void
   onEdit?: () => void
@@ -162,8 +167,7 @@ function FullDayCard({
   const { total } = dayBreakdown(entry, slots)
   const metGoal = !ignored && goal > 0 && total >= goal
   // One function decides what a day is; this file only paints it.
-  const state = dayState(entry, date, settings, slots, todayKey)
-  const goalOutcome = ignored || state === "pending" ? null : state
+  const goalOutcome = ignored ? null : asOutcome(verdict.state)
   const surface = dayStateSurface(c, goalOutcome, ignored)
   const hasSleep =
     settings?.sleepEnabled === true && (entry?.sleep || []).length > 0
@@ -326,7 +330,7 @@ function FullDayCard({
               Today
             </span>
           )}
-          {state === "frozen" && (
+          {verdict.state === "frozen" && (
             <Tip text="Streak freeze used — the goal was missed, but the streak held">
               <span
                 className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
@@ -599,6 +603,7 @@ export function FullCardGrid({
   canFreezeDay,
   onFreezeDay,
   onUpdateDay,
+  verdictOf,
 }: {
   dates: Date[]
   days: Record<DayKey, Day>
@@ -625,6 +630,8 @@ export function FullCardGrid({
   onFreezeDay?: (key: DayKey) => void
   /** Enables editing entries in place. Without it the cards are read-only. */
   onUpdateDay?: (key: DayKey, patch: Partial<Day>) => void
+  /** How each day came out — see `lib/dayVerdict`. Read, never computed here. */
+  verdictOf: (key: DayKey) => DayReport
 }) {
   const startDate = settings.startDate ? fromKey(settings.startDate) : null
   // One open form across the whole row, not one per card. Two forms side by
@@ -698,6 +705,7 @@ export function FullCardGrid({
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             todayKey={todayKey}
+            verdict={verdictOf(key)}
             canFreeze={!locked && canFreezeDay ? canFreezeDay(key) : false}
             onFreeze={
               !locked && onFreezeDay ? () => onFreezeDay(key) : undefined

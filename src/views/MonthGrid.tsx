@@ -13,7 +13,6 @@ import type {
   Settings,
   Slot,
 } from "../types/model"
-import type { PeriodState } from "../lib/freezes"
 import type { Palette } from "../lib/theme"
 import {
   fromKey,
@@ -23,7 +22,8 @@ import {
   toRoman,
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
-import { dayState, periodState } from "../lib/freezes"
+import type { DayReport, DayVerdict } from "../lib/dayVerdict"
+import { asOutcome, foldVerdicts } from "../lib/dayVerdict"
 import {
   buildTooltip,
   dayBreakdown,
@@ -86,15 +86,15 @@ function WeekSummaryStrip({
   total: number
   goal: number
   ignored: boolean
-  /** By days, not by summed hours — see lib/freezes. */
-  state: PeriodState
+  /** By days, not by summed hours — see lib/dayVerdict. */
+  state: DayVerdict
   ordinal: number
   /** Grouped and folded from the period heading, which owns both switches. */
   groups: CounterGroup[]
 }) {
   const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
-  const goalOutcome = ignored || state === "pending" ? null : state
+  const goalOutcome = ignored ? null : asOutcome(state)
   return (
     <div className={`px-1 pb-1.5 ${ignored ? "opacity-60" : ""}`}>
     <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-widest">
@@ -149,8 +149,8 @@ function CompactDayCell({
   isFuture,
   isBeforeStart,
   ignored,
-  todayKey,
   counterUnits,
+  verdict,
   onEdit,
 }: {
   date: Date
@@ -164,7 +164,8 @@ function CompactDayCell({
   isFuture: boolean
   isBeforeStart: boolean
   ignored: boolean
-  todayKey: DayKey
+  /** How the day came out, across every rule with a vote on it. */
+  verdict: DayReport
   /** Absent for a day that has not happened — nothing to open, so the cell
    *  is inert rather than opening an editor for a day you cannot log. */
   onEdit?: () => void
@@ -188,8 +189,7 @@ function CompactDayCell({
     ? `${buildTooltip(entry, slots, activities, counterUnits)}\n\nIgnored in statistics`
     : buildTooltip(entry, slots, activities, counterUnits)
   const metGoal = !ignored && goal > 0 && total >= goal
-  const state = dayState(entry, date, settings, slots, todayKey)
-  const goalOutcome = ignored || state === "pending" ? null : state
+  const goalOutcome = ignored ? null : asOutcome(verdict.state)
 
   return (
     <Tip text={tooltip} multiline className="w-full">
@@ -223,7 +223,7 @@ function CompactDayCell({
           </span>
           <div className="flex items-center gap-1">
             {ignored && <EyeOff size={11} className="text-ink/35" />}
-            {state === "frozen" && (
+            {verdict.state === "frozen" && (
               <Tip text="Streak freeze used">
                 <Snowflake size={11} style={{ color: c.freeze }} />
               </Tip>
@@ -318,6 +318,7 @@ export function MonthGrid({
   grouping,
   hiddenGroups,
   categories,
+  verdictOf,
 }: {
   cursor: Date
   days: Record<DayKey, Day>
@@ -330,6 +331,8 @@ export function MonthGrid({
   hiddenGroups: Set<string>
   categories: Category[]
   todayKey: DayKey
+  /** How each day came out — see `lib/dayVerdict`. Read, never computed here. */
+  verdictOf: (key: DayKey) => DayReport
   onEditDay: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
   monthIgnore?: Record<DayKey, boolean>
@@ -388,12 +391,8 @@ export function MonthGrid({
         // Only the days of this month that fall in the row, so a row split
         // across two months is judged on what it actually shows.
         const weekDatesInRow = row.filter(Boolean) as Date[]
-        const weekState = periodState(
-          weekDatesInRow,
-          days,
-          settings,
-          slots,
-          todayKey,
+        const weekState = foldVerdicts(
+          weekDatesInRow.map((d) => verdictOf(toKey(d)).state),
         )
         const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
         const weekGroups = periodCounterGroups({
@@ -447,7 +446,7 @@ export function MonthGrid({
                     isFuture={toKey(date) > todayKey}
                     isBeforeStart={startDate ? date < startDate : false}
                     ignored={dayIgnored}
-                    todayKey={todayKey}
+                    verdict={verdictOf(toKey(date))}
                     // Withheld for a day that has not happened: there is
                     // nothing to record about it, so the grid does not offer a
                     // way in. Same rule the week cards follow.

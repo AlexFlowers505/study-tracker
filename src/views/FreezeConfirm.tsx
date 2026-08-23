@@ -2,10 +2,8 @@
    "Are you sure?", for every freeze in the app.
 
    Spending is permanent — no refund if the day is later logged up to green,
-   and nothing in Setup rewrites it — so it asks first. It used to ask only on
-   one of the three ways in: the day card confirmed, the goal streak's strip
-   spent on the click, and a custom streak's strip spent on the click. Three
-   paths to one irreversible act, two of them silent.
+   and nothing in Setup rewrites it — so it asks first. It used to ask on only
+   one of the three ways in; the two strips spent on the click.
 
    **It names what is left, pool by pool.** "You have 4" is not the question:
    a custom streak holds two kinds of freeze that behave differently — an
@@ -15,9 +13,10 @@
    before and after, and spends them in the order the ledger actually spends
    them: the expiring one first.
 
-   The goal streak has one pool and shows one row. Same dialog, because it is
-   the same question about the same kind of thing, and two dialogs that merely
-   looked alike would drift.
+   A rule with no weekly allowance shows a row of zeroes for it rather than
+   hiding the row: which pool a freeze comes out of is the question this dialog
+   exists to answer, and a pool that silently disappears is a worse answer than
+   an empty one.
 --------------------------------------------------------------- */
 
 import { ArrowRight, Snowflake } from "lucide-react"
@@ -41,8 +40,8 @@ export interface FreezePool {
  * that knows both streaks' accounting.
  */
 export interface FreezeAsk {
-  /** The custom rule this belongs to, or `null` for the goal streak. */
-  ruleId: string | null
+  /** The rule this freeze belongs to. Freezes are per rule, always. */
+  ruleId: string
   dayKey: DayKey
   /** The streak's own name, so a page with five of them says which. */
   title: string

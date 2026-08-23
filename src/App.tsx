@@ -36,12 +36,11 @@ import {
 } from "./lib/defaults"
 import { makeId } from "./lib/id"
 import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
-import { FREEZE_CAP, canFreeze, freezeLedger } from "./lib/freezes"
-import { computeStreaks } from "./lib/streaks"
 import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
-import { ruleStatus } from "./lib/customStreaks"
-import { mainRisk, ruleRisk } from "./lib/streakRisk"
+import { ruleStatus, streakContext } from "./lib/customStreaks"
+import { dayReport, keptDays } from "./lib/dayVerdict"
+import { ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
 } from "./lib/period"
@@ -53,7 +52,6 @@ import {
   applyWriteOp,
   opDay,
   opRuleVerdict,
-  opVerdict,
   opDeleteProject,
   opLog,
   opNote,
@@ -61,7 +59,6 @@ import {
   opProject,
 } from "./data/ops"
 import { CountFilter } from "./views/CountFilter"
-import { StreaksSection } from "./views/StreaksSection"
 import { StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
@@ -416,17 +413,6 @@ export default function StudyTrackerApp() {
     patchProject({ days: { ...project.days, [key]: next }, changeLog }, ops)
   }
 
-  /* ---- Streak freezes -------------------------------------------------
-     The ledger is read from the project, never recomputed into it:
-     `pending` is the list of finished weeks still missing a verdict, and
-     sealing one is a write that happens exactly once. See lib/freezes. */
-  const ledger = useMemo(() => freezeLedger(project), [project])
-
-  // For the number on the streaks toggle. Computed from `project`, never from
-  // `visibleProject`: the count filter changes what the page shows, never what
-  // a streak is worth.
-  const streaks = useMemo(() => computeStreaks(project), [project])
-
   /* ---- Custom streaks -------------------------------------------------
      Same shape as above, one ledger per rule. Computed from `project` rather
      than `visibleProject` for the same reason the main streak is: the count
@@ -441,6 +427,22 @@ export default function StudyTrackerApp() {
   )
 
   /**
+   * How each day came out, across every rule with a vote on it.
+   *
+   * Built against `project`, never `visibleProject`: the count filter is a way
+   * of looking at the data and must not be able to turn a missed day green.
+   * Streaks have always been blind to it, and a day's verdict is a streak's
+   * reading of that day.
+   */
+  const verdictCtx = useMemo(() => streakContext(project), [project])
+  const verdictOf = useCallback(
+    (key: DayKey) => dayReport(project, key, toKey(new Date()), verdictCtx),
+    [project, verdictCtx],
+  )
+  /** The run of kept days — the composite streak. */
+  const kept = useMemo(() => keptDays(project), [project])
+
+  /**
    * Which streaks are in trouble right now — `spec 010`, part 3.
    *
    * Computed here beside the statuses it reads, because the row itself must
@@ -448,13 +450,8 @@ export default function StudyTrackerApp() {
    * data, and judgements live in `lib`.
    */
   const streakRisks = useMemo(
-    () => [
-      ...(streaks
-        ? [mainRisk(project, ledger.balance, streaks.currentDays)]
-        : []),
-      ...ruleStatuses.map((s2) => ruleRisk(s2, project)),
-    ],
-    [streaks, project, ledger.balance, ruleStatuses],
+    () => ruleStatuses.map((s2) => ruleRisk(s2, project)),
+    [project, ruleStatuses],
   )
 
   // The same once-only sealing, for every rule at once: one pass writes them
@@ -485,45 +482,6 @@ export default function StudyTrackerApp() {
     updateDay(key, { ruleFreezes: [...existing, ruleId] })
   }
 
-  // Seal whatever is due. Runs after a load and after any edit that finishes
-  // a week; the op is an ignore-on-conflict upsert, so a replay is harmless.
-  useEffect(() => {
-    if (!loaded || loadFailed || !ledger.pending.length) return
-    const verdicts = { ...(project.weekVerdicts || {}) }
-    ledger.pending.forEach((v) => (verdicts[v.weekKey] = v))
-    // Not derivable, and that is the point: a verdict is a fact recorded once
-    // at a moment in time. Deriving it would recompute it from today's data,
-    // which is exactly the loophole the ledger exists to close.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    patchProject(
-      { weekVerdicts: verdicts },
-      ledger.pending.map((v) => opVerdict(project.id, v.weekKey)),
-    )
-  }, [loaded, loadFailed, ledger, project, patchProject])
-
-  // Accounting starts the first time the meter is on and the project is open,
-  // so switching the feature on never pays out the whole history at once.
-  useEffect(() => {
-    if (!loaded || loadFailed) return
-    if (project.settings.goalsEnabled === false) return
-    if (project.settings.freezeStart) return
-    // Same reasoning: the date accounting began is a recorded fact, not a
-    // function of the current state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    updateSettings({ ...project.settings, freezeStart: toKey(new Date()) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, loadFailed, project.settings.goalsEnabled])
-
-  const canFreezeDay = (key: DayKey) =>
-    canFreeze(
-      fromKey(key),
-      project.days[key],
-      project.settings,
-      project.slots,
-      new Date(),
-      ledger.balance,
-    )
-
   /**
    * The freeze waiting to be confirmed, from whichever streak asked.
    *
@@ -534,29 +492,10 @@ export default function StudyTrackerApp() {
    */
   const [freezeAsk, setFreezeAsk] = useState<FreezeAsk | null>(null)
 
-  /** The goal streak's ask. One pool: the freezes finished weeks earned. */
-  const askMainFreeze = (key: DayKey) =>
-    setFreezeAsk({
-      ruleId: null,
-      dayKey: key,
-      title: "Goal streak",
-      tint: c.freeze,
-      cost: 1,
-      pools: [
-        {
-          label: "Earned freezes",
-          hint: "One for every week with no missed day. Carried until spent.",
-          left: ledger.balance,
-          total: FREEZE_CAP,
-        },
-      ],
-    })
-
   const confirmFreeze = () => {
     if (!freezeAsk) return
     const { ruleId, dayKey } = freezeAsk
-    if (ruleId === null) updateDay(dayKey, { frozen: true })
-    else spendRuleFreeze(ruleId, dayKey)
+    spendRuleFreeze(ruleId, dayKey)
     setFreezeAsk(null)
   }
 
@@ -884,8 +823,7 @@ export default function StudyTrackerApp() {
         <div className="mb-3">
           <StreakBar
             statuses={ruleStatuses}
-            mainDays={streaks?.currentDays ?? null}
-            mainFreezes={ledger.balance}
+            keptDays={kept?.current ?? null}
             risks={streakRisks}
             active={openStreak}
             onSelect={setOpenStreak}
@@ -926,17 +864,6 @@ export default function StudyTrackerApp() {
             width and scrolling with the page — on every screen size. It used
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
-        {openStreak === "main" && (
-          <StreaksSection
-            project={visibleProject}
-            rangeStart={range.start}
-            rangeEnd={range.end}
-            today={new Date()}
-            onFreeze={askMainFreeze}
-            onClose={() => setOpenStreak(null)}
-          />
-        )}
-
         {ruleStatuses
           .filter((s2) => s2.rule.id === openStreak)
           .map((s2) => (
@@ -985,6 +912,7 @@ export default function StudyTrackerApp() {
 
         <LogView
           data={visibleProject}
+          verdictOf={verdictOf}
           period={period}
           range={range}
           cursor={logCursor}
@@ -1002,8 +930,6 @@ export default function StudyTrackerApp() {
           onQuickAddSlotDay={(key, slotId) =>
             setQuickAdd({ key, slotId })
           }
-          canFreezeDay={canFreezeDay}
-          onFreezeDay={askMainFreeze}
           // Entries are edited in the card itself. The day dialog is still
           // there for the day-level things — lessons, exam, ignore, the note.
           onUpdateDay={updateDay}
@@ -1116,6 +1042,7 @@ export default function StudyTrackerApp() {
       {editingKey && (
         <DayQuickviewModal
           dateKey={editingKey}
+          verdictOf={verdictOf}
           dayEntry={project.days[editingKey]}
           slots={project.slots}
           activities={project.activities}
@@ -1129,8 +1056,6 @@ export default function StudyTrackerApp() {
           onQuickAddSlot={(key, slotId) =>
             setQuickAdd({ key, slotId })
           }
-          canFreeze={canFreezeDay}
-          onFreeze={askMainFreeze}
           onGoToDayView={(key) => {
             goToDay(key)
             setEditingKey(null)

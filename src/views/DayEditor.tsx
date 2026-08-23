@@ -27,9 +27,12 @@ import { Tip } from "../ui/Tip"
 import { useModalDismiss } from "../ui/useModalDismiss"
 import { btnBase } from "../lib/theme"
 import { FullCardGrid } from "./DayCards"
+import type { DayReport } from "../lib/dayVerdict"
 
 export interface DayDialogProps {
   dateKey: DayKey
+  /** How the day came out — see `lib/dayVerdict`. */
+  verdictOf: (key: DayKey) => DayReport
   dayEntry?: Day
   slots: Slot[]
   activities: Activity[]
@@ -41,6 +44,7 @@ export interface DayDialogProps {
 
 export function DayQuickviewModal({
   dateKey,
+  verdictOf,
   dayEntry,
   slots,
   activities,
@@ -76,6 +80,7 @@ export function DayQuickviewModal({
             states it was a box inside a box. */}
         <div className="p-4 overflow-y-auto flex-1">
             <FullCardGrid
+              verdictOf={verdictOf}
               dates={[d]}
               days={{ [dateKey]: dayEntry || {} }}
               slots={slots}

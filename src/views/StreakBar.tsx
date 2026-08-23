@@ -186,17 +186,18 @@ function RiskBlock({
 
 export function StreakBar({
   statuses,
-  mainDays,
-  mainFreezes,
+  keptDays,
   risks,
   active,
   onSelect,
 }: {
   /** One per rule, already computed — see `ruleStatus`. */
   statuses: RuleStatus[]
-  /** Null when the effectiveness meter is off: no metric, no streak. */
-  mainDays: number | null
-  mainFreezes: number
+  /**
+   * The run of days every voting rule held — the composite. Null when no rule
+   * has a vote yet, which is the only state in which the day has no verdict.
+   */
+  keptDays: number | null
   /** One per streak, keyed by the same ids — see `lib/streakRisk`. */
   risks: StreakRisk[]
   active: StreakId
@@ -208,20 +209,6 @@ export function StreakBar({
   const [open, setOpen] = useState(false)
 
   const entries: Entry[] = [
-    ...(mainDays != null
-      ? [
-          {
-            id: "main",
-            tint: c.project,
-            icon: null,
-            label: "Goal",
-            days: mainDays,
-            weekly: null,
-            banked: mainFreezes,
-            tip: `Hours against your daily goal — ${plural(mainDays, "day")} in a row, ${plural(mainFreezes, "freeze")} banked`,
-          },
-        ]
-      : []),
     ...statuses.map((s) => ({
       id: s.rule.id,
       tint: s.rule.color,
@@ -294,18 +281,24 @@ export function StreakBar({
                 ? `${holding} more holding`
                 : `${plural(holding, "streak")} holding`}
             </span>
-            {mainDays != null && !troubled.some((r) => r.id === "main") && (
+            {/* The composite, and the one number here worth being afraid of.
+                It belongs to no single rule, so it wears the project's own
+                tint rather than any streak's. */}
+            {keptDays != null && (
               <span
                 className="flex items-center gap-1 text-[11px] font-mono font-bold ml-auto"
                 style={{ color: c.project }}
               >
                 <Flame size={10} strokeWidth={3} />
-                {mainDays}
+                {keptDays}
+                <span className="font-normal text-ink/40 tracking-widest">
+                  KEPT
+                </span>
               </span>
             )}
             <ChevronDown
               size={14}
-              className={`text-ink/30 shrink-0 ${mainDays != null && !troubled.some((r) => r.id === "main") ? "" : "ml-auto"}`}
+              className={`text-ink/30 shrink-0 ${keptDays != null ? "" : "ml-auto"}`}
             />
           </button>
         )

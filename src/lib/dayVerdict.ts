@@ -23,7 +23,7 @@
    pool of its own and does no arithmetic about them.
 --------------------------------------------------------------- */
 
-import type { DayKey, Project, StreakRule } from "../types/model"
+import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
 import { ruleDayState, streakContext } from "./customStreaks"
 import { addDays, fromKey, toKey } from "./date"
@@ -120,6 +120,23 @@ export function dayReport(
   return { ...base, state: "kept" }
 }
 
+/**
+ * The verdict as a surface colour.
+ *
+ * `GoalOutcome` is the older, narrower word for the same three states, and
+ * `dayStateSurface` speaks it. Keeping the translation in one place is what
+ * lets every card, cell and heatmap square go on painting exactly as before
+ * while what decides the colour changes underneath them.
+ */
+export const asOutcome = (state: DayVerdict): GoalOutcome =>
+  state === "kept"
+    ? "met"
+    : state === "frozen"
+      ? "frozen"
+      : state === "missed"
+        ? "missed"
+        : null
+
 /** Kept and frozen both count; a frozen day was paid for, not failed. */
 export const heldUp = (state: DayVerdict): boolean =>
   state === "kept" || state === "frozen"
@@ -181,20 +198,17 @@ export function keptDays(project: Project, today = new Date()): KeptDays | null 
  * A stretch of days as one verdict — a week strip in the month grid, or any
  * other block that has to say how the whole of it went.
  *
- * Missed if any day missed; otherwise pending while any day is still open.
- * The same shape `periodState` had, so the grid's reading of it is unchanged.
+ * Missed if any day missed; otherwise pending while any is still open. The
+ * same shape `periodState` had, so the grid's reading of it is unchanged.
+ *
+ * Takes the states rather than the days, because the grid already has a report
+ * per day and recomputing them would be the same walk done twice.
  */
-export function periodVerdict(
-  project: Project,
-  dates: Date[],
-  todayKey: DayKey,
-  ctx: StreakContext = streakContext(project),
-): DayVerdict {
+export function foldVerdicts(states: DayVerdict[]): DayVerdict {
   let frozen = false
   let pending = false
   let judged = false
-  for (const d of dates) {
-    const { state } = dayReport(project, toKey(d), todayKey, ctx)
+  for (const state of states) {
     if (state === "unjudged") continue
     judged = true
     if (state === "missed") return "missed"
@@ -205,3 +219,11 @@ export function periodVerdict(
   if (pending) return "pending"
   return frozen ? "frozen" : "kept"
 }
+
+export const periodVerdict = (
+  project: Project,
+  dates: Date[],
+  todayKey: DayKey,
+  ctx: StreakContext = streakContext(project),
+): DayVerdict =>
+  foldVerdicts(dates.map((d) => dayReport(project, toKey(d), todayKey, ctx).state))

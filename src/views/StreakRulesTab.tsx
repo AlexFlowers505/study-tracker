@@ -434,11 +434,47 @@ function ClauseForm({
             </select>
             {timed ? (
               <>
-                <DurationField
-                  minutes={clause.value}
-                  onChange={(value) => onChange({ value })}
-                />
+                {clause.useDailyGoal ? (
+                  <span className={`${WORD} font-bold`}>
+                    {byWeek ? "the week's goal" : "the day's goal"}
+                  </span>
+                ) : (
+                  <DurationField
+                    minutes={clause.value}
+                    onChange={(value) => onChange({ value })}
+                  />
+                )}
                 <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
+                {/* The goal is seven numbers and a condition carries one, so
+                    this is the only way to say "hold me to my goal" without
+                    writing seven conditions that drift apart from the seven
+                    fields in Setup the first time either is edited. */}
+                <Tip
+                  multiline
+                  text={
+                    "Hold this to the daily goal set in Setup rather than to a fixed number, so the two cannot drift apart." +
+                    String.fromCharCode(10, 10) +
+                    "While it is on, lowering that goal lowers this rule, and the lock treats it as such."
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({ useDailyGoal: !clause.useDailyGoal })
+                    }
+                    aria-pressed={!!clause.useDailyGoal}
+                    style={
+                      clause.useDailyGoal
+                        ? { backgroundColor: `${c.accent}24`, color: c.accent }
+                        : undefined
+                    }
+                    className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+                      clause.useDailyGoal ? "" : "text-ink/35 hover:text-ink/70"
+                    }`}
+                  >
+                    use the goal
+                  </button>
+                </Tip>
               </>
             ) : (
               <>
@@ -590,6 +626,11 @@ function RuleSummary({
         {rule.freezesPerWeek} freeze{rule.freezesPerWeek === 1 ? "" : "s"} a
         week, expiring · banking up to {rule.freezeCap} earned
       </p>
+      <p className="text-[10px] font-mono text-ink/40">
+        {rule.inDayVerdict
+          ? "Counts towards the day's verdict"
+          : "Keeps its own streak only"}
+      </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
         <button
           type="button"
@@ -725,6 +766,33 @@ function RuleForm({
         </Tip>
       </Row>
 
+      {/* Not a term the lock protects: joining or leaving the day's verdict
+          changes what the *day* is worth, never what this rule asks of you. */}
+      <Row label="The day">
+        <Pills<"in" | "out">
+          value={draft.inDayVerdict ? "in" : "out"}
+          onChange={(v) => patch({ inDayVerdict: v === "in" })}
+          options={[
+            { id: "in", label: "Counts" },
+            { id: "out", label: "On its own" },
+          ]}
+        />
+        <Tip
+          multiline
+          text={
+            "A day is kept when every rule that counts held. That run of days is the streak on the row above the log — the one number worth being afraid of." +
+            String.fromCharCode(10, 10) +
+            "A rule left out still keeps its own streak. It simply gets no vote on the day." +
+            String.fromCharCode(10, 10) +
+            "Switching this on counts from today, never backwards: a rule two months old could otherwise rewrite a streak out of history you can no longer edit."
+          }
+        >
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
+            what this means
+          </span>
+        </Tip>
+      </Row>
+
       <Row label="Freezes">
         <input
           type="number"
@@ -764,7 +832,15 @@ function RuleForm({
           type="button"
           disabled={!edit.allowed}
           onClick={() => {
-            onChange(edit.next)
+            // The date is stamped here rather than in the form, so it records
+            // when the vote actually started counting rather than when the
+            // switch was first clicked in a draft that might be thrown away.
+            const joined = edit.next.inDayVerdict && !rule.inDayVerdict
+            onChange(
+              joined
+                ? { ...edit.next, inDayVerdictSince: toKey(today) }
+                : edit.next,
+            )
             setDraft(null)
           }}
           className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
