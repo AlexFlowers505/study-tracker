@@ -47,7 +47,17 @@ dependencies are real, not preference.
       that ended on the 23rd reports as 14 days lost. **Still to run on prod,
       with the deploy** — until it does, that project has no rule with a vote
       and its days have no colour.*
-- [ ] **Stage 3 — Pace.** Part 2. Lets weekly rules join the verdict.
+- [x] **Stage 3 — Pace.** Part 2. Lets weekly rules join the verdict.
+      *Landed. `weekLostOn` finds the day a week stopped being winnable and
+      `ruleWeekDayState` turns that into a per-day verdict, so `votersFor` no
+      longer filters weekly rules out. **A lost week costs exactly one day** —
+      the one it was lost on — rather than turning all seven red, which would
+      break a streak seven times for one broken promise and would do it to
+      days on which nothing was yet wrong. The risk row calls the same
+      function, so the row and the day's colour cannot disagree about what
+      "lost" means. Verified headlessly across the week: nothing done is
+      silent through Friday, lost on Friday once Saturday arrives, and a week
+      that ends one short is lost on its Sunday.*
 - [ ] **Stage 4 — The balance.** Part 4. Migration `015`.
 - [ ] **Stage 5 — Achievements.** Part 5. Migration `016`.
 - [ ] **Stage 6 — The shop.** Part 6. Migration `017`.

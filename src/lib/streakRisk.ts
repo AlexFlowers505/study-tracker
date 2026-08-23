@@ -47,6 +47,7 @@ import {
   readWeek,
   ruleDayState,
   ruleWeekState,
+  weekLostOn,
   streakContext,
   targetInfo,
 } from "./customStreaks"
@@ -219,6 +220,11 @@ function weeklyRisk(
   if (state === "missed") return "danger"
   if (state === "met" || state === "frozen" || state === "unjudged") return "safe"
 
+  // "Lost" has exactly one definition and it lives in `weekLostOn`, because
+  // the day verdict is built on it too and a row that disagreed with the
+  // colour of the day would be worse than no row.
+  if (weekLostOn(rule, ctx, days, weekStart, todayKey)) return "danger"
+
   const readings = readWeek(rule, ctx, days, weekStart, todayKey)
   const remaining = weekDates(weekStart).filter((d) => toKey(d) >= todayKey).length
 
@@ -227,23 +233,19 @@ function weeklyRisk(
     if (RANK[next] < RANK[level]) level = next
   }
 
+  // Still winnable, so the only question left is whether it is getting tight.
   readings.forEach((r) => {
     if (!r.applies) return
-    // An "at most" week is broken the moment it is exceeded — there is no
-    // doing less of something you have already done.
-    if (r.clause.op === "atMost" && r.deficit > 0) return worse("danger")
     const need = owed(r)
     if (need <= 0) return
     const info = targetInfo(clauseTarget(r.clause), ctx)
+    // Every remaining day now has to carry one. Still possible, barely.
     if (info.measure === "count") {
-      if (need > remaining) return worse("danger")
-      // Every remaining day now has to carry one. Still possible, barely.
-      if (need >= remaining) return worse("warning")
+      if (need >= remaining) worse("warning")
       return
     }
-    if (remaining === 0) return worse("danger")
     // Behind the straight line from here to Sunday.
-    if (need > r.clause.value * (remaining / 7)) return worse("warning")
+    if (need > r.clause.value * (remaining / 7)) worse("warning")
   })
 
   return level

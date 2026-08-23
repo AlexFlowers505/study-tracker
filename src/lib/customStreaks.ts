@@ -598,6 +598,112 @@ export function ruleWeekState(
   return lastKey >= todayKey ? "pending" : "missed"
 }
 
+/* ---- A week, read one day at a time -------------------------------------- */
+
+/**
+ * The day a week stopped being winnable — `spec 010`, part 2.
+ *
+ * A week has no verdict until it ends, which would keep a weekly rule out of
+ * the day's verdict entirely. But something about it is true every day: **how
+ * much is left against how many days are left.** That is a burn-down, and the
+ * moment it crosses zero is a real event with a real date.
+ *
+ * **A lost week costs exactly one day, and it is the day it was lost on.** The
+ * alternative — every day of the week turning red — would break a streak seven
+ * times for one broken promise, and would do it retroactively to days on which
+ * nothing was yet wrong. On the day the gym became unreachable you lost the
+ * week; the Monday before it you had not.
+ *
+ * A count is read as happening **at most once a day**: three gym trips in one
+ * afternoon is technically possible and is not what anybody means by "three
+ * times a week". Time has no such ceiling, so a time condition can only be
+ * lost once the week is over — you could always have done it all on Sunday.
+ *
+ * Returns null while the week is still winnable, or has already been won.
+ */
+export function weekLostOn(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+  todayKey: DayKey,
+): DayKey | null {
+  const all = weekDates(weekStart).map(toKey)
+  let earliest: DayKey | null = null
+
+  ruleClauses(rule).forEach((clause) => {
+    const covered = all.filter(
+      (k) => k >= rule.startedOn && clauseCoversDay(clause, k),
+    )
+    if (!covered.length) return
+    const measure = targetMeasure(clauseTarget(clause), ctx)
+    const limit = weekLimit(clause, ctx, covered)
+
+    let value = 0
+    for (const key of covered) {
+      // Days that have not happened contribute nothing and settle nothing;
+      // the walk stops there and the week stays open.
+      if (key > todayKey) break
+      value += readClauseDay(clause, ctx, days[key], key, todayKey).value
+
+      if (clause.op === "atMost") {
+        // Already over. There is no doing less of something done.
+        if (value > limit) {
+          if (!earliest || key < earliest) earliest = key
+          return
+        }
+        continue
+      }
+
+      const need = limit - value
+      if (need <= 0) return
+      // Days left to make it up in. Today counts as one of them, because it is
+      // not over — which is why a week is never declared lost on a morning.
+      const after = covered.filter((k) => k > key).length
+      const room =
+        measure === "time"
+          ? after > 0 || key >= todayKey
+            ? Infinity
+            : 0
+          : after + (key >= todayKey ? 1 : 0)
+      if (need > room) {
+        if (!earliest || key < earliest) earliest = key
+        return
+      }
+    }
+  })
+
+  return earliest
+}
+
+/**
+ * What a weekly rule says about one **day** — which is what lets it vote on
+ * the day's verdict alongside the daily rules.
+ *
+ * Every day of a week it is winning is `met`; the day it was lost on is
+ * `missed`, or `frozen` when a freeze covers that week. Days of a week the
+ * rule does not judge at all are `unjudged`, as ever.
+ */
+export function ruleWeekDayState(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  dayKey: DayKey,
+  todayKey: DayKey,
+): RuleState {
+  if (rule.scope !== "week") return "unjudged"
+  if (dayKey > todayKey || dayKey < rule.startedOn) return "unjudged"
+  const weekStart = startOfWeek(fromKey(dayKey))
+  // Whole weeks only, the same rule `ruleWeekState` follows: "three trips a
+  // week" judged on the two days that were left when the rule started is a
+  // rule nobody agreed to.
+  if (toKey(weekStart) < rule.startedOn) return "unjudged"
+
+  const lost = weekLostOn(rule, ctx, days, weekStart, todayKey)
+  if (lost !== dayKey) return "met"
+  return isFrozenFor(days[toKey(weekStart)], rule.id) ? "frozen" : "missed"
+}
+
 /* ---- The week's verdict -------------------------------------------------- */
 
 /**

@@ -25,7 +25,7 @@
 
 import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
-import { ruleDayState, streakContext } from "./customStreaks"
+import { ruleDayState, ruleWeekDayState, streakContext } from "./customStreaks"
 import { addDays, fromKey, toKey } from "./date"
 
 /** The day's own standing, drawn wherever a day is drawn. */
@@ -67,18 +67,18 @@ export const participates = (rule: StreakRule, dayKey: DayKey): boolean =>
   rule.inDayVerdict === true && dayKey >= votesFrom(rule)
 
 /**
- * The rules with a vote on a day.
+ * The rules with a vote on a day — **daily and weekly alike**.
  *
- * **Daily rules only, for now.** A week has no verdict until it ends, so a
- * weekly rule has nothing to say about a Tuesday until `spec 010` part 2
- * gives it a notion of pace. Until then it keeps its own streak and stays out
- * of the day's.
+ * A week has no verdict until it ends, which would have kept a weekly rule out
+ * of this entirely. What it does have every day is a burn-down, and the day
+ * that crosses zero is a real event with a real date: `weekLostOn`. So the
+ * distinction between the two scopes stays in the ledger, where it is honest,
+ * and disappears from the day, where it was only ever in the way.
  */
 export const votersFor = (
   rules: StreakRule[],
   dayKey: DayKey,
-): StreakRule[] =>
-  rules.filter((r) => r.scope === "day" && participates(r, dayKey))
+): StreakRule[] => rules.filter((r) => participates(r, dayKey))
 
 /**
  * One day, judged by everything that gets a vote on it.
@@ -100,7 +100,10 @@ export function dayReport(
   const readings = rules
     .map((rule) => ({
       rule,
-      state: ruleDayState(rule, ctx, day, dayKey, todayKey),
+      state:
+        rule.scope === "week"
+          ? ruleWeekDayState(rule, ctx, project.days, dayKey, todayKey)
+          : ruleDayState(rule, ctx, day, dayKey, todayKey),
     }))
     .filter((r) => r.state !== "unjudged")
 
@@ -147,7 +150,7 @@ export const heldUp = (state: DayVerdict): boolean =>
  */
 export function verdictStart(project: Project): DayKey | null {
   const rules = (project.settings.streakRules || []).filter(
-    (r) => r.scope === "day" && r.inDayVerdict === true,
+    (r) => r.inDayVerdict === true,
   )
   if (!rules.length) return null
   return rules.map(votesFrom).sort()[0]
