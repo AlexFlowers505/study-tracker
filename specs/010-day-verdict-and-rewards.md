@@ -34,14 +34,23 @@ dependencies are real, not preference.
       exceeded* at most *goes straight to `danger` because nothing undoes it.
       Quiet all morning, loud when acting is urgent rather than merely
       possible.*
-- [ ] **Stage 2 — The day verdict, and the end of the main streak.** Part 1.
-      One piece of work: the moment the main streak goes, nothing colours a day
-      card, so the composite has to arrive in the same change. Migration `014`.
+- [x] **Stage 2 — The day verdict, and the end of the main streak.** Part 1.
+      *Code landed. `lib/dayVerdict.ts` is the composite; `lib/streaks.ts` and
+      `views/StreaksSection.tsx` are deleted and `lib/freezes.ts` is down to
+      the editing horizon. A condition can be held to the daily goal
+      (`useDailyGoal`) and a rule can be told whether it votes
+      (`inDayVerdict`).*
+
+      ***Migration `014` still has to be run.** Until it does, no rule has a
+      vote, so days have no colour and the composite streak is absent — the
+      app is correct but empty-handed. Run it on dev, then on prod with the
+      deploy.*
 - [ ] **Stage 3 — Pace.** Part 2. Lets weekly rules join the verdict.
 - [ ] **Stage 4 — The balance.** Part 4. Migration `015`.
 - [ ] **Stage 5 — Achievements.** Part 5. Migration `016`.
 - [ ] **Stage 6 — The shop.** Part 6. Migration `017`.
 - [ ] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.
+      *Also closes the back door stage 2 left open — see decision 14.*
 - [ ] **Stage 8 — The supervisor.** Part 7, second half. Migration `018`. The
       only stage that touches RLS. Optional, and deliberately last.
 
@@ -477,3 +486,14 @@ The record, so a reversal is visible rather than silent.
     the clock rather than a replacement for it. Chosen because it leaves every
     existing RLS policy untouched.
 13. **A refusal restarts the clock; a withdrawal does not.**
+14. **`useDailyGoal` opens a back door that `termsOf` only half shuts.**
+    Folding the goals into the compared terms makes an edit *to the rule*
+    judge correctly. It does nothing about an edit to the **goal**, because
+    that happens in Setup's Project tab and never goes near `ruleEdit` — so
+    lowering the seven fields still loosens the rule for free. Closing it means
+    the goal editor consulting the rules: while any rule reads the goal and is
+    locked, a cut is refused; while none is, a cut is allowed and pushes those
+    rules' `lockedUntil`. That is the same job `goalCuts` used to do and it
+    belongs with the rest of the lock work, so it rides with stage 7. Recorded
+    here rather than fixed quietly, because a known hole with a date on it is a
+    different thing from one nobody wrote down.
