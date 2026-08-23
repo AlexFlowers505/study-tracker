@@ -665,7 +665,7 @@ function RuleForm({
 
   const clauses = ruleClauses(draft)
   const byWeek = draft.scope === "week"
-  const edit = ruleEdit(base, draft, ctx.slots, today)
+  const edit = ruleEdit(base, draft, ctx, today)
   const patch = (next: Partial<StreakRule>) =>
     setDraft({ ...draft, ...next })
   const patchClause = (id: string, next: Partial<StreakClause>) =>
@@ -839,7 +839,17 @@ export function StreakRulesTab({
   const rules = settings.streakRules || []
   const categories: Category[] = settings.categories || []
   const tags: Tag[] = settings.tags || []
-  const ctx: StreakContext = { units, activities, slots, categories, tags }
+  const ctx: StreakContext = {
+    units,
+    activities,
+    slots,
+    categories,
+    tags,
+    // The same resolution `streakContext` does: goals off makes a condition
+    // that reads them vacuous rather than impossible.
+    dailyGoals:
+      settings.goalsEnabled === false ? {} : settings.dailyGoals || {},
+  }
 
   return (
     <div className="space-y-3">

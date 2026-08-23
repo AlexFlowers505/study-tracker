@@ -361,6 +361,19 @@ export interface StreakClause {
    */
   value: number
   /**
+   * Take the limit from the project's daily goal for that weekday instead of
+   * from `value`.
+   *
+   * The goal is seven numbers and a condition carries one, so without this the
+   * only way to write "hold me to my daily goal" is seven conditions that
+   * drift out of step with the seven fields in Setup the first time either is
+   * edited. With it there is one source of truth and the goal stays a display
+   * target for anyone who wants no rule about it at all.
+   *
+   * A **weekly** rule sums the goals of the days its condition covers.
+   */
+  useDailyGoal?: boolean
+  /**
    * Which weekdays this condition applies on. Empty means all of them.
    *
    * Per clause rather than per rule, which is what makes the compound case
@@ -422,6 +435,25 @@ export interface StreakRule extends Labeled {
    * See `ruleEdit` and `isNarrowing` in `lib/customStreaks.ts`.
    */
   lockedUntil: DayKey
+  /**
+   * Whether this rule's verdict decides the day's colour — `spec 010`, part 1.
+   *
+   * A day is kept when every participating rule that judges it held, and the
+   * streak worth being afraid of is the run of those days. Rules left out
+   * still keep their own streak; they simply do not get a vote on the day.
+   */
+  inDayVerdict?: boolean
+  /**
+   * The day it started having that vote, set automatically the moment the flag
+   * goes on.
+   *
+   * For exactly one case, and it is real: a rule two months old, ticked into
+   * the verdict this morning, would otherwise recompute the composite streak
+   * backwards across history you can no longer edit. A newly created rule
+   * cannot do this — its `startedOn` is today — which is why this is one field
+   * and not a feature. Same reasoning as `startedOn` itself.
+   */
+  inDayVerdictSince?: DayKey
 
   /**
    * The single condition a rule used to be, before it could carry several.

@@ -95,6 +95,12 @@ export interface StreakContext {
   slots: Slot[]
   categories: Category[]
   tags: Tag[]
+  /**
+   * The project's daily goal, by `Date.getDay()` — what a condition with
+   * `useDailyGoal` is held to. Empty when the goal is switched off, which
+   * makes such a condition vacuous rather than impossible.
+   */
+  dailyGoals: Record<number, number>
 }
 
 export const streakContext = (project: Project): StreakContext => ({
@@ -103,7 +109,37 @@ export const streakContext = (project: Project): StreakContext => ({
   slots: project.slots || [],
   categories: project.settings.categories || [],
   tags: project.settings.tags || [],
+  dailyGoals:
+    project.settings.goalsEnabled === false
+      ? {}
+      : project.settings.dailyGoals || {},
 })
+
+/**
+ * What this condition is actually held to on this day.
+ *
+ * The only place `useDailyGoal` is resolved. A weekly rule asks for the sum
+ * across the days it covers, which is why this takes a day rather than
+ * returning a single number for the rule.
+ */
+export const clauseLimit = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  dayKey: DayKey,
+): number =>
+  clause.useDailyGoal
+    ? ctx.dailyGoals[fromKey(dayKey).getDay()] || 0
+    : clause.value
+
+/** The same, summed over every day of a week the condition covers. */
+const weekLimit = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  keys: DayKey[],
+): number =>
+  clause.useDailyGoal
+    ? keys.reduce((sum, k) => sum + clauseLimit(clause, ctx, k), 0)
+    : clause.value
 
 /**
  * What a condition measures. The only place that knows a condition used to be
@@ -369,9 +405,9 @@ const deficitOf = (
   clause: StreakClause,
   value: number,
   measure: StreakMeasure,
+  limit: number,
 ): number => {
-  const short =
-    clause.op === "atLeast" ? clause.value - value : value - clause.value
+  const short = clause.op === "atLeast" ? limit - value : value - limit
   if (short <= 0) return 0
   return measure === "time" ? 1 : short
 }
@@ -416,7 +452,7 @@ export function readClauseDay(
     return {
       ...base,
       value,
-      deficit: deficitOf(clause, value, "count"),
+      deficit: deficitOf(clause, value, "count", clause.value),
       skipped: false,
     }
   }
@@ -433,7 +469,7 @@ export function readClauseDay(
   return {
     ...base,
     value,
-    deficit: deficitOf(clause, value, info.measure),
+    deficit: deficitOf(clause, value, info.measure, clauseLimit(clause, ctx, dayKey)),
     skipped: false,
   }
 }
@@ -529,7 +565,9 @@ export function readWeek(
       clause,
       applies: covered.length > 0,
       value,
-      deficit: covered.length ? deficitOf(clause, value, measure) : 0,
+      deficit: covered.length
+        ? deficitOf(clause, value, measure, weekLimit(clause, ctx, covered))
+        : 0,
       skipped: false,
     }
   })
@@ -830,8 +868,11 @@ export function clauseSentence(
     : ""
   // Minutes are printed as hours and minutes, like every other duration in
   // the app: "at least 2h 30m", never "at least 150".
-  const amount =
-    info.measure === "time"
+  const amount = clause.useDailyGoal
+    ? scope === "week"
+      ? "the week's goal"
+      : "the day's goal"
+    : info.measure === "time"
       ? fmtHours(clause.value)
       : `${clause.value} ${clause.value === 1 ? "time" : "times"}`
   return `${info.qualified}${where} ${
@@ -861,11 +902,20 @@ const slotsOf = (clause: StreakClause, slots: Slot[]): Set<string> =>
 const covers = <T,>(bigger: Set<T>, smaller: Set<T>): boolean =>
   [...smaller].every((x) => bigger.has(x))
 
-/** The fields the lock protects. Label, icon, colour and note are not terms. */
-export const termsOf = (rule: StreakRule) =>
-  JSON.stringify({
+/**
+ * The fields the lock protects. Label, icon, colour and note are not terms.
+ *
+ * The daily goal is folded in whenever a condition takes its limit from it,
+ * because then lowering the goal lowers the rule — a change to the terms made
+ * without touching the rule. `spec 010` records the remaining half of this:
+ * the goal editor itself has to refuse a cut while such a rule is locked, or
+ * the back door is merely narrower rather than shut.
+ */
+export const termsOf = (rule: StreakRule, ctx: StreakContext) => {
+  const clauses = ruleClauses(rule)
+  return JSON.stringify({
     scope: rule.scope,
-    clauses: ruleClauses(rule).map((clause) => ({
+    clauses: clauses.map((clause) => ({
       ...clause,
       // Normalised, so a rule being written through for the first time — flat
       // fields becoming a target — does not read as an edit to its terms.
@@ -874,10 +924,15 @@ export const termsOf = (rule: StreakRule) =>
     })),
     freezesPerWeek: rule.freezesPerWeek,
     freezeCap: rule.freezeCap,
+    goals: clauses.some((c) => c.useDailyGoal) ? ctx.dailyGoals : null,
   })
+}
 
-export const termsChanged = (a: StreakRule, b: StreakRule): boolean =>
-  termsOf(a) !== termsOf(b)
+export const termsChanged = (
+  a: StreakRule,
+  b: StreakRule,
+  ctx: StreakContext,
+): boolean => termsOf(a, ctx) !== termsOf(b, ctx)
 
 /**
  * Can it be proved that this condition cannot be easier to keep than that one?
@@ -907,7 +962,15 @@ function clauseNarrows(
 ): boolean {
   if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
   if (prev.op !== next.op) return false
-  if (prev.op === "atLeast" ? next.value < prev.value : next.value > prev.value)
+  // Switching a limit to or from the daily goal swaps one number for seven.
+  // Not comparable, therefore not provable, therefore it waits.
+  if (!!prev.useDailyGoal !== !!next.useDailyGoal) return false
+  // Both read the same goal, so the limit is unchanged by construction and
+  // only the other dimensions are left to compare.
+  if (
+    !prev.useDailyGoal &&
+    (prev.op === "atLeast" ? next.value < prev.value : next.value > prev.value)
+  )
     return false
   // More days covered is harder; dropping one is a day that stops being asked
   // about at all.
@@ -938,8 +1001,9 @@ function clauseNarrows(
 export function isNarrowing(
   prev: StreakRule,
   next: StreakRule,
-  slots: Slot[],
+  ctx: StreakContext,
 ): boolean {
+  const slots = ctx.slots
   if (prev.scope !== next.scope) return false
   if (next.freezesPerWeek > prev.freezesPerWeek) return false
   if (next.freezeCap > prev.freezeCap) return false
@@ -977,12 +1041,12 @@ export interface RuleEdit {
 export function ruleEdit(
   prev: StreakRule,
   draft: StreakRule,
-  slots: Slot[],
+  ctx: StreakContext,
   today = new Date(),
 ): RuleEdit {
   const todayKey = toKey(today)
-  const changed = termsChanged(prev, draft)
-  const narrowing = isNarrowing(prev, draft, slots)
+  const changed = termsChanged(prev, draft, ctx)
+  const narrowing = isNarrowing(prev, draft, ctx)
   // **The day you write a rule is yours to get it right on.** Setting one up
   // takes several changes — pick the counter, pick the test, pick the number,
   // pick the allowance — and most of them are incomparable to the defaults,
