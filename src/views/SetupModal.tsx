@@ -212,6 +212,7 @@ export function SetupModal({
             <StreakRulesTab
               settings={settings}
               units={counterUnits}
+              activities={activities}
               slots={slots}
               onSave={onSaveSettings}
             />

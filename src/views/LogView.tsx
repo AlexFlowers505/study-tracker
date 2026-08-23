@@ -22,14 +22,13 @@ import { counterTotalsIn } from '../lib/counters'
 import { WIDE_PERIODS, rangeLabel } from '../lib/period'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import { MenuToggle } from '../ui/toggles'
-import { RenderIcon } from '../ui/icons'
 import { Tip } from '../ui/Tip'
 import { FullCardGrid } from './DayCards'
 import { Heatmap } from './Heatmap'
 import { SECTION_HEADING } from '../lib/theme'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
-import { CounterTotals } from './CounterTotals'
+import { CounterControls, CounterGroupList } from './CounterTotals'
 import { periodCounterGroups } from '../lib/periodCounters'
 import type { CounterGrouping } from '../lib/periodCounters'
 
@@ -92,9 +91,17 @@ export function LogView({
    * question, and two controls for that is one too many.
    */
   const [grouping, setGrouping] = useState<CounterGrouping>("kind")
-  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(
-    () => new Set(),
-  )
+  /**
+   * `null` is "nothing chosen yet", and it reads as **everything folded**.
+   *
+   * Not an empty set, which would be "all showing": the counters are a
+   * reference you open when you want them, and a project with forty of them
+   * put a wall of chips between the period's heading and its days every time
+   * the page loaded. Rearranging them resets it to null for the same reason —
+   * the ids of one arrangement say nothing about the other, so carrying the
+   * set across would unfold whatever happened not to match.
+   */
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string> | null>(null)
   const {
     slots,
     activities,
@@ -159,13 +166,26 @@ export function LogView({
       grouping,
     ],
   )
-  const toggleGroup = (id: string) =>
-    setHiddenGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const hidden = hiddenGroups ?? new Set(counterGroups.map((g) => g.id))
+  const toggleGroup = (id: string) => {
+    const next = new Set(hidden)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setHiddenGroups(next)
+  }
+  /**
+   * Rearranging shows everything, rather than going back to the folded
+   * default. Switching to By category is a question — *how do these divide
+   * up* — and answering it with an empty section means every switch has to be
+   * followed by a second click to see what you just asked about. The folded
+   * default is about opening the page, which is a different moment.
+   */
+  const regroup = (next: CounterGrouping) => {
+    setGrouping(next)
+    setHiddenGroups(new Set())
+  }
+  const allHidden =
+    counterGroups.length > 0 && counterGroups.every((g) => hidden.has(g.id))
 
   const monthPast =
     granularity === "month" &&
@@ -303,19 +323,46 @@ export function LogView({
 
       {counterGroups.length > 0 && (
         <div className="mb-4">
-          <h3 className={`${SECTION_HEADING} mb-2`}>Counters</h3>
-          <CounterTotals
-            groups={counterGroups}
-            grouping={grouping}
-            onGrouping={setGrouping}
-            hidden={hiddenGroups}
-            onToggle={toggleGroup}
-            onSetAll={(hideAll) =>
-              setHiddenGroups(
-                hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
-              )
-            }
-          />
+          {/* The switches ride on the heading's line, hard right. They say
+              what you are looking at; the box below is what you are looking
+              at, and stacked together inside it the switches read as the
+              first row of the data. `min-w-0` on the heading so a long one
+              shrinks rather than pushing them off the edge. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
+            <h3 className={`${SECTION_HEADING} min-w-0`}>Counters</h3>
+            <CounterControls
+              className="ml-auto"
+              groups={counterGroups}
+              grouping={grouping}
+              onGrouping={regroup}
+              hidden={hidden}
+              onToggle={toggleGroup}
+              onSetAll={(hideAll) =>
+                setHiddenGroups(
+                  hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
+                )
+              }
+            />
+          </div>
+          {allHidden ? (
+            /* A line rather than nothing, and no surface under it: an empty
+               box is a thing that failed to load, where a sentence is a state
+               you put it in. It carries no background for the same reason —
+               there is nothing here to hold. */
+            <p className="text-[10px] font-mono uppercase tracking-widest text-ink/30">
+              All counters hidden
+            </p>
+          ) : (
+            /* A surface of its own, and a **recessed** one: recessed rather
+               than raised because the streak row above it is raised, and this
+               is the period's reference rather than the thing you came to
+               protect. */
+            <div className="rounded-2xl bg-ink/[0.04] px-3 py-3 sm:px-4">
+              <CounterGroupList
+                groups={counterGroups.filter((g) => !hidden.has(g.id))}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -336,7 +383,7 @@ export function LogView({
           settings={settings}
           counterUnits={counterUnits}
           grouping={grouping}
-          hiddenGroups={hiddenGroups}
+          hiddenGroups={hidden}
           categories={settings.categories || []}
           todayKey={todayKey}
           onEditDay={onEditDay}
@@ -388,18 +435,6 @@ export function LogView({
         />
       )}
 
-      <div className="mt-4 flex flex-wrap gap-3 text-[10px] font-mono uppercase tracking-wide text-ink/60">
-        {slots.map((s) => (
-          <span key={s.id} className="flex items-center gap-1.5">
-            <RenderIcon
-              name={s.iconName}
-              size={11}
-              style={{ color: s.color }}
-            />
-            {s.label}
-          </span>
-        ))}
-      </div>
     </div>
   )
 }

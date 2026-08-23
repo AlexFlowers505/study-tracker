@@ -36,10 +36,10 @@ import {
 } from "./lib/defaults"
 import { makeId } from "./lib/id"
 import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
-import { canFreeze, freezeLedger } from "./lib/freezes"
+import { FREEZE_CAP, canFreeze, freezeLedger } from "./lib/freezes"
 import { computeStreaks } from "./lib/streaks"
 import { addSlotCount, counterTotals } from "./lib/counters"
-import { isCheck } from "./lib/checks"
+import { setCheck } from "./lib/checks"
 import { ruleStatus } from "./lib/customStreaks"
 import {
   periodRange,
@@ -74,6 +74,8 @@ import { AuthScreen, SetPasswordScreen } from "./views/AuthScreen"
 import { EnvBadge } from "./views/EnvBadge"
 import { AnalyticsView } from "./views/AnalyticsView"
 import { QuickAddEntryModal } from "./views/QuickAddEntryModal"
+import { FreezeConfirm } from "./views/FreezeConfirm"
+import type { FreezeAsk } from "./views/FreezeConfirm"
 import { DayQuickviewModal } from "./views/DayEditor"
 import { usePalette } from "./ui/useTheme"
 import { entryActivity } from "./lib/entries"
@@ -504,12 +506,40 @@ export default function StudyTrackerApp() {
       ledger.balance,
     )
 
-  // Spending is permanent: no refund if the day is later logged up to green,
-  // and settings never rewrite it. Hence the confirmation.
-  const [freezeCandidate, setFreezeCandidate] = useState<DayKey | null>(null)
-  const spendFreeze = (key: DayKey) => {
-    updateDay(key, { frozen: true })
-    setFreezeCandidate(null)
+  /**
+   * The freeze waiting to be confirmed, from whichever streak asked.
+   *
+   * Spending is permanent — no refund if the day is later logged up to green,
+   * and nothing in Setup rewrites it — so **every** path asks first. Two of
+   * the three used to spend on the click; one dialog for all of them is also
+   * the only place that can say what each pool will be left holding.
+   */
+  const [freezeAsk, setFreezeAsk] = useState<FreezeAsk | null>(null)
+
+  /** The goal streak's ask. One pool: the freezes finished weeks earned. */
+  const askMainFreeze = (key: DayKey) =>
+    setFreezeAsk({
+      ruleId: null,
+      dayKey: key,
+      title: "Goal streak",
+      tint: c.freeze,
+      cost: 1,
+      pools: [
+        {
+          label: "Earned freezes",
+          hint: "One for every week with no missed day. Carried until spent.",
+          left: ledger.balance,
+          total: FREEZE_CAP,
+        },
+      ],
+    })
+
+  const confirmFreeze = () => {
+    if (!freezeAsk) return
+    const { ruleId, dayKey } = freezeAsk
+    if (ruleId === null) updateDay(dayKey, { frozen: true })
+    else spendRuleFreeze(ruleId, dayKey)
+    setFreezeAsk(null)
   }
 
   // The note and its ignore flag share a row, so both edits target the same op.
@@ -883,7 +913,7 @@ export default function StudyTrackerApp() {
             rangeStart={range.start}
             rangeEnd={range.end}
             today={new Date()}
-            onFreeze={spendFreeze}
+            onFreeze={askMainFreeze}
             onClose={() => setOpenStreak(null)}
           />
         )}
@@ -898,7 +928,31 @@ export default function StudyTrackerApp() {
               rangeStart={range.start}
               rangeEnd={range.end}
               today={new Date()}
-              onSpendFreeze={(key) => spendRuleFreeze(s2.rule.id, key)}
+              onSpendFreeze={(key, cost) =>
+                setFreezeAsk({
+                  ruleId: s2.rule.id,
+                  dayKey: key,
+                  title: s2.rule.label,
+                  tint: s2.rule.color,
+                  cost,
+                  // In spending order. The allowance expires on Sunday, so it
+                  // goes first — the same order `ruleStatus` accounts in.
+                  pools: [
+                    {
+                      label: "This week's allowance",
+                      hint: "Granted every Monday and lost unused.",
+                      left: s2.freezes.weeklyLeft,
+                      total: s2.freezes.weeklyTotal,
+                    },
+                    {
+                      label: "Banked",
+                      hint: "One for every week you keep clean. Carried until spent.",
+                      left: s2.freezes.banked,
+                      total: s2.freezes.cap,
+                    },
+                  ],
+                })
+              }
               onClose={() => setOpenStreak(null)}
             />
           ))}
@@ -930,7 +984,7 @@ export default function StudyTrackerApp() {
             setQuickAdd({ key, slotId })
           }
           canFreezeDay={canFreezeDay}
-          onFreezeDay={setFreezeCandidate}
+          onFreezeDay={askMainFreeze}
           // Entries are edited in the card itself. The day dialog is still
           // there for the day-level things — lessons, exam, ignore, the note.
           onUpdateDay={updateDay}
@@ -983,55 +1037,33 @@ export default function StudyTrackerApp() {
         </div>
       )}
 
-      {/* Spending a freeze cannot be undone — no refund even if the day is
-          later logged up to green — so it asks first. */}
-      {freezeCandidate && (
-        <div
-          className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-          onMouseDown={(e) =>
-            e.target === e.currentTarget && setFreezeCandidate(null)
-          }
-        >
-          <div className={`${CARD} w-full max-w-[340px] p-5`}>
-            <p className="text-xs font-mono text-ink/80 mb-1">
-              Use a streak freeze on {fmtDateLong(freezeCandidate)}?
-            </p>
-            <p className="text-[11px] font-mono text-ink/45 mb-4">
-              The day keeps your streak but stays short of its goal. Spent for
-              good — {ledger.balance - 1} would be left.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setFreezeCandidate(null)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => spendFreeze(freezeCandidate)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
-                style={{ backgroundColor: c.freeze, color: c.onFill }}
-              >
-                Use a freeze
-              </button>
-            </div>
-          </div>
-        </div>
+      {freezeAsk && (
+        <FreezeConfirm
+          ask={freezeAsk}
+          onCancel={() => setFreezeAsk(null)}
+          onConfirm={confirmFreeze}
+        />
       )}
 
       {quickAdd && (
-        /* `units` is tallies only. A check has no amount to add and no slot
-           to add it to; it is answered from its own chip on the day card,
-           which is where you are already looking at it. */
+        /* Every counter, both kinds: the dialog's tabs are the kinds of thing
+           a day holds, and it does the splitting itself. */
         <QuickAddEntryModal
           dateKey={quickAdd.key}
           initialSlotId={quickAdd.slotId}
           slots={project.slots}
           activities={project.activities}
-          units={(project.counterUnits || []).filter((u) => !isCheck(u))}
+          units={project.counterUnits || []}
           sleepEnabled={project.settings.sleepEnabled === true}
           counters={project.days[quickAdd.key]?.counters || {}}
+          checks={project.days[quickAdd.key]?.checks || {}}
           onCancel={() => setQuickAdd(null)}
+          onSetCheck={(dateKey, unitId, next) => {
+            // `setCheck` returns both fields at once — a check's answer lives
+            // in two places and they must never be written apart.
+            updateDay(dateKey, setCheck(project.days[dateKey], unitId, next))
+            setQuickAdd(null)
+          }}
           onAddCounter={(dateKey, unitId, slotId, amount) => {
             // Adds to what is there rather than replacing it — that is the
             // whole difference between this and the day editor's fields.
@@ -1079,7 +1111,7 @@ export default function StudyTrackerApp() {
             setQuickAdd({ key, slotId })
           }
           canFreeze={canFreezeDay}
-          onFreeze={setFreezeCandidate}
+          onFreeze={askMainFreeze}
           onGoToDayView={(key) => {
             goToDay(key)
             setEditingKey(null)

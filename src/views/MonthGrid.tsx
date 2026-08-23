@@ -37,10 +37,10 @@ import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
-import { CounterChips } from "./CounterTotals"
+import { CounterGroupList } from "./CounterTotals"
 import { periodCounterGroups } from "../lib/periodCounters"
 import type {
-  CounterChip,
+  CounterGroup,
   CounterGrouping,
 } from "../lib/periodCounters"
 import { usePalette } from "../ui/useTheme"
@@ -62,9 +62,18 @@ const WEEK_DOT_TIP: Record<"met" | "frozen" | "missed", string> = {
 }
 
 /**
- * Caption above each week row. No fill of its own — the goal outcome reads as
- * a dot beside the hours, which leaves the rounded corners to the block of
- * days below where they belong.
+ * The caption above each week row — and, under it, what the week counted.
+ *
+ * A line for as long as it could be one. Once activities, tallies and checks
+ * all reported, a flat run of chips on the end of that line ran off the right
+ * edge of the grid, so the counters moved underneath and took the same
+ * arrangement the period's own heading gives them: grouped, one heading per
+ * line, obeying the same folds. It is a block now rather than a strip, which
+ * is also what the extra room between the weeks is for.
+ *
+ * No fill of its own — the goal outcome reads as a dot beside the hours,
+ * which leaves the rounded corners to the block of days below where they
+ * belong.
  */
 function WeekSummaryStrip({
   total,
@@ -72,7 +81,7 @@ function WeekSummaryStrip({
   ignored,
   state,
   ordinal,
-  chips,
+  groups,
 }: {
   total: number
   goal: number
@@ -80,18 +89,15 @@ function WeekSummaryStrip({
   /** By days, not by summed hours — see lib/freezes. */
   state: PeriodState
   ordinal: number
-  /** Folded from the period heading, which owns the switch for all of them. */
-  chips: CounterChip[]
+  /** Grouped and folded from the period heading, which owns both switches. */
+  groups: CounterGroup[]
 }) {
   const c = usePalette()
   const met = !ignored && goal > 0 && total >= goal
   const goalOutcome = ignored || state === "pending" ? null : state
   return (
-    <div
-      className={`flex items-center gap-2 px-1 pb-1 text-[9px] font-mono uppercase tracking-widest ${
-        ignored ? "opacity-60" : ""
-      }`}
-    >
+    <div className={`px-1 pb-1.5 ${ignored ? "opacity-60" : ""}`}>
+    <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-widest">
       {/* Everything that describes the week sits on the left, so the eye finds
           the same information in the same place on every row; the rule fills
           whatever is left over. */}
@@ -115,12 +121,19 @@ function WeekSummaryStrip({
           />
         </Tip>
       )}
-      {/* The rule does the separating: hours on its left, counts on its right,
-          and the gap between them is however much room the row has. */}
+      {/* The rule runs out to the right edge, which is what makes the week's
+          summary read as a heading for the days under it. */}
       <span className="flex-1 border-b border-dotted border-ink/15" />
-      {/* The same chips as the heading's, obeying the same folds — one
-          switch for both, since they are one question asked twice. */}
-      <CounterChips chips={chips} className="shrink-0" />
+    </div>
+      {/* The same groups as the period heading's, obeying the same folds and
+          wearing the same recessed surface — one pair of switches for both,
+          since they are one question asked twice, and one surface so a week's
+          counters read as the same sort of block wherever they appear. */}
+      {groups.length > 0 && (
+        <div className="mt-2 rounded-2xl bg-ink/[0.04] px-3 py-2.5">
+          <CounterGroupList groups={groups} />
+        </div>
+      )}
     </div>
   )
 }
@@ -339,14 +352,18 @@ export function MonthGrid({
 
   const startDate = settings.startDate ? fromKey(settings.startDate) : null
 
-  // Each week is its own rounded block — summary strip on top, its seven days
-  // below — with breathing room between the weeks. The gaps sit *between*
-  // weeks rather than around every cell: a per-cell gap plus inner padding on
-  // all four sides is what left no room for seven columns on a phone, while
-  // one gap per week costs almost nothing. Inside a week the days are still
+  // Each week is its own block — summary and counters on top, its seven days
+  // below — with real air between the weeks. The gaps sit *between* weeks
+  // rather than around every cell: a per-cell gap plus inner padding on all
+  // four sides is what left no room for seven columns on a phone, while one
+  // gap per week costs almost nothing. Inside a week the days are still
   // separated by hairline seams (a 1px grid gap showing the tint through).
+  //
+  // The gap is wide because a week's summary now carries its counters as well:
+  // at two lines of spacing the counters of one week sat closer to the next
+  // week's days than to their own.
   return (
-    <div className="space-y-2">
+    <div>
       <div className="grid grid-cols-7 rounded-xl bg-ink/[0.04] text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-ink/45 text-center">
         {WEEKDAY_HEADS.map((d) => (
           <div key={d} className="py-1.5">
@@ -355,6 +372,7 @@ export function MonthGrid({
           </div>
         ))}
       </div>
+      <div className="space-y-6 mt-2">
       {weekRows.map((row, ri) => {
         const { total: wTotal, goal: wGoal } = rangeStats(
           row.filter(Boolean) as Date[],
@@ -378,7 +396,7 @@ export function MonthGrid({
           todayKey,
         )
         const isIgnored = makeIsIgnored(weekIgnore, monthIgnore)
-        const weekChips = periodCounterGroups({
+        const weekGroups = periodCounterGroups({
           activities,
           activityMinutes: activityMinutesIn(
             weekDatesInRow,
@@ -390,9 +408,7 @@ export function MonthGrid({
           totals: counterTotalsIn(weekDatesInRow, days, isIgnored),
           categories,
           grouping,
-        })
-          .filter((g) => !hiddenGroups.has(g.id))
-          .flatMap((g) => g.chips)
+        }).filter((g) => !hiddenGroups.has(g.id))
         return (
           <div key={ri}>
             <WeekSummaryStrip
@@ -401,7 +417,7 @@ export function MonthGrid({
               ignored={weekIgnored}
               state={weekState}
               ordinal={ri + 1}
-              chips={weekChips}
+              groups={weekGroups}
             />
             {/* Phone: one rounded block, days separated by hairline seams —
                 there is no width to spare for per-cell gaps. Desktop: real
@@ -447,6 +463,7 @@ export function MonthGrid({
           </div>
         )
       })}
+      </div>
     </div>
   )
 }

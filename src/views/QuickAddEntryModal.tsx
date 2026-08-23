@@ -6,18 +6,32 @@
    asks first: there is unsaved work in the dialog, which is never true
    anywhere else in this app.
 
-   **One dialog, two things you can add.** A day card used to carry a "+" and
-   a "#" side by side, which made you choose what you were recording before
-   you had opened anything — and the two buttons were a pixel apart and told
-   apart only by their glyph. Now the "+" opens this and the choice is a tab
-   inside it, where there is room to label it. Sleep keeps its own button:
-   it is a different axis, not a different kind of study.
+   **One dialog, and its tabs are the kinds of thing a day holds.** A day card
+   used to carry a "+" and a "#" side by side, which made you choose what you
+   were recording before you had opened anything, and the two were a pixel
+   apart and told apart only by their glyph. Now the "+" opens this and the
+   choice is a tab, where there is room to name it.
+
+   The tabs say **Activity, Tally, Check, Sleep** — the app's own list of the
+   things it records, three kinds of counter and the separate axis. They said
+   "Entry" and "Counter" for a while, from before an activity was a counter at
+   all, and by the end that row was drawing a distinction the rest of the app
+   had stopped making: an entry *is* an activity, and "counter" was two
+   different questions wearing one name.
+
+   Answering a check from here is the odd one out and it still earns its
+   place. There is no amount and no slot — you are answering it rather than
+   adding to it, which is why its button says Save — but leaving it out would
+   mean this dialog listed three of the four things a day can hold, with the
+   fourth reachable only from a chip you have to know is a button.
 --------------------------------------------------------------- */
 
 import { useCallback, useState } from "react"
-import { Clock, Hash, Moon, Play, Square, X } from "lucide-react"
+import { Clock, Hash, ListChecks, Moon, Play, Square, X } from "lucide-react"
 import type {
   Activity,
+  CheckMark,
+  CheckState,
   CounterUnit,
   DayKey,
   Slot,
@@ -26,16 +40,26 @@ import type {
 } from "../types/model"
 import type { DayCounters } from "../lib/counters"
 import { slotUnitValue } from "../lib/counters"
-import { fromKey } from "../lib/date"
+import {
+  CHECK_CHOICES,
+  CHECK_LABELS,
+  checkState,
+  splitByKind,
+} from "../lib/checks"
+import { fromKey, toKey } from "../lib/date"
 import { makeId } from "../lib/id"
 import { fmtHours, nowTime, spanMinutes } from "../lib/time"
 import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from "../lib/theme"
-import { AutoTextarea } from "../ui/controls"
+import { AutoTextarea, SegmentedControl } from "../ui/controls"
 import { RenderIcon } from "../ui/icons"
 import { TimeRangeField } from "../ui/TimeRangeField"
 import { useModalDismiss } from "../ui/useModalDismiss"
 
 import { usePalette } from "../ui/useTheme"
+
+/** The four things a day can hold — three kinds of counter, and sleep. */
+type AddKind = "activity" | "tally" | "check" | "sleep"
+
 export function QuickAddEntryModal({
   dateKey,
   slots,
@@ -43,21 +67,28 @@ export function QuickAddEntryModal({
   units = [],
   sleepEnabled,
   counters = {},
+  checks = {},
   initialSlotId,
   variant = "study",
   onCancel,
   onAdd,
   onAddCounter,
+  onSetCheck,
 }: {
   dateKey: DayKey
   slots: Slot[]
   activities: Activity[]
-  /** Empty when the project defines no counters — then there is no tab row. */
+  /**
+   * Every counter the project defines, both kinds. Split in here rather than
+   * by the caller: which tabs exist is a question about this dialog.
+   */
   units?: CounterUnit[]
   /** Whether sleep is tracked at all. Off, the option is absent rather
    *  than disabled — there is nothing behind it. */
   sleepEnabled?: boolean
   counters?: DayCounters
+  /** The day's stored check marks, so the tab can say what it is changing. */
+  checks?: Record<string, CheckMark>
   /** Set when the dialog was opened from a particular slot's own "+". */
   initialSlotId?: string
   /**
@@ -75,6 +106,8 @@ export function QuickAddEntryModal({
     slotId: string,
     amount: number,
   ) => void
+  /** Absent when the project defines no checks — then there is no Check tab. */
+  onSetCheck?: (dateKey: DayKey, unitId: string, next: CheckState) => void
 }) {
   const c = usePalette()
   /* What is being added is chosen *here*, not before the dialog opens.
@@ -82,20 +115,31 @@ export function QuickAddEntryModal({
      decide what you were recording before you had opened anything — and with
      badges, checks, a freeze and a note all wanting room on the same line,
      the second button was also the one the card could least afford. */
-  const canCount = units.length > 0 && !!onAddCounter
-  const [kind, setKind] = useState<"entry" | "counter" | "sleep">(
-    variant === "sleep" && sleepEnabled ? "sleep" : "entry",
+  const { tallies, checks: checkUnits } = splitByKind(units)
+  const canCount = tallies.length > 0 && !!onAddCounter
+  const canCheck = checkUnits.length > 0 && !!onSetCheck
+  const [kind, setKind] = useState<AddKind>(
+    variant === "sleep" && sleepEnabled ? "sleep" : "activity",
   )
   const isSleep = kind === "sleep"
-  const counting = canCount && kind === "counter"
+  const counting = canCount && kind === "tally"
+  const checking = canCheck && kind === "check"
+  /* One tab per kind of thing a day holds. Absent, not disabled, for anything
+     the project does not have — there is nothing behind a tab for tallies you
+     never made — and below two options there is no choice left to offer. */
   const KINDS = [
-    { id: "entry" as const, label: "Entry", icon: Clock, on: true },
-    { id: "counter" as const, label: "Counter", icon: Hash, on: canCount },
+    { id: "activity" as const, label: "Activity", icon: Clock, on: true },
+    { id: "tally" as const, label: "Tally", icon: Hash, on: canCount },
+    { id: "check" as const, label: "Check", icon: ListChecks, on: canCheck },
     { id: "sleep" as const, label: "Sleep", icon: Moon, on: !!sleepEnabled },
   ].filter((k) => k.on)
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
-  const [unitId, setUnitId] = useState(units[0]?.id)
+  const [unitId, setUnitId] = useState(tallies[0]?.id)
   const [amount, setAmount] = useState(1)
+  const [checkUnitId, setCheckUnitId] = useState(checkUnits[0]?.id)
+  // Yes is what you open this to record: "no" is what an untouched day
+  // resolves to on its own, and "skipped" is the deliberate one.
+  const [answer, setAnswer] = useState<CheckState>("yes")
   const [activity, setActivity] = useState(activities[0]?.id)
   const [start, setStart] = useState<TimeOfDay | undefined>(undefined)
   const [end, setEnd] = useState<TimeOfDay | undefined>(undefined)
@@ -136,7 +180,13 @@ export function QuickAddEntryModal({
         <div className="flex items-center justify-between px-5 pt-5 pb-1">
           <div>
             <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
-              {isSleep ? "New sleep" : counting ? "Add to a counter" : "New entry"}
+              {isSleep
+                ? "New sleep"
+                : counting
+                  ? "Add to a tally"
+                  : checking
+                    ? "Answer a check"
+                    : "New entry"}
             </h2>
             <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
               {d.toLocaleDateString(undefined, {
@@ -155,9 +205,6 @@ export function QuickAddEntryModal({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Absent, not disabled, for anything the project does not have —
-              there is nothing behind a tab for counters you never made.
-              Below two options there is no choice left to offer. */}
           {KINDS.length > 1 && (
             <div className="flex gap-1 rounded-xl bg-ink/[0.06] p-1">
               {KINDS.map((k) => {
@@ -172,7 +219,7 @@ export function QuickAddEntryModal({
                         ? { backgroundColor: c.accent, color: c.onFill }
                         : undefined
                     }
-                    /* An icon each. Three words of small uppercase type read
+                    /* An icon each. Four words of small uppercase type read
                        as a sentence to parse; a glyph is what the eye aims at
                        once you know which is which — the same reason Setup's
                        tabs carry them. */
@@ -189,9 +236,20 @@ export function QuickAddEntryModal({
           )}
 
           {/* Sleep has neither, so the row is absent rather than disabled. */}
-          {counting ? (
+          {checking ? (
+            <CheckFields
+              units={checkUnits}
+              dateKey={dateKey}
+              counters={counters}
+              marks={checks}
+              unitId={checkUnitId}
+              setUnitId={setCheckUnitId}
+              answer={answer}
+              setAnswer={setAnswer}
+            />
+          ) : counting ? (
             <CounterFields
-              units={units}
+              units={tallies}
               slots={slots}
               counters={counters}
               unitId={unitId}
@@ -304,14 +362,18 @@ export function QuickAddEntryModal({
             </button>
             <button
               onClick={() =>
-                counting
-                  ? onAddCounter?.(dateKey, unitId, slotId, amount)
-                  : submit()
+                checking
+                  ? onSetCheck?.(dateKey, checkUnitId, answer)
+                  : counting
+                    ? onAddCounter?.(dateKey, unitId, slotId, amount)
+                    : submit()
               }
               className={`${btnBase} px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
               style={{ backgroundColor: c.accent, color: c.onFill }}
             >
-              Add
+              {/* A check is answered, not added to. "Add" would promise a
+                  second mark alongside the first. */}
+              {checking ? "Save" : "Add"}
             </button>
           </div>
         </div>
@@ -326,7 +388,8 @@ export function QuickAddEntryModal({
         >
           <div className={`${CARD} w-full max-w-[300px] p-5`}>
             <p className="text-xs font-mono text-ink/80 mb-4">
-              Discard this new {isSleep ? "sleep entry" : "entry"}?
+              Discard this new{" "}
+              {isSleep ? "sleep entry" : checking ? "answer" : "entry"}?
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -445,6 +508,101 @@ function CounterFields({
           This slot has <strong className="text-ink">{already}</strong>
           {" → will have "}
           <strong style={{ color: c.accent }}>{after}</strong>
+        </span>
+      </div>
+    </>
+  )
+}
+
+/**
+ * The check half. Its own component for the same reason `CounterFields` is:
+ * the branch above stays readable, and Cancel has to be able to throw away
+ * whatever any tab collected, so the state lives up there.
+ *
+ * It says what the day answers now and what it would answer after, exactly as
+ * the tally half prints its before and after. A check is a fact you are
+ * *changing* rather than adding to, and changing one without being shown what
+ * it already said is how you overwrite a "skipped" you meant to keep.
+ */
+function CheckFields({
+  units,
+  dateKey,
+  counters,
+  marks,
+  unitId,
+  setUnitId,
+  answer,
+  setAnswer,
+}: {
+  units: CounterUnit[]
+  dateKey: DayKey
+  counters: DayCounters
+  marks: Record<string, CheckMark>
+  unitId: string
+  setUnitId: (id: string) => void
+  answer: CheckState
+  setAnswer: (next: CheckState) => void
+}) {
+  const c = usePalette()
+  const unit = units.find((u) => u.id === unitId)
+  // `checkState` is the only place the four states are worked out, and it
+  // reads a whole day. The two fields it looks at are the two we were handed.
+  const now = checkState(
+    { counters, checks: marks },
+    unitId,
+    dateKey,
+    toKey(new Date()),
+  )
+
+  return (
+    <>
+      <label className="block">
+        <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
+          Check
+        </span>
+        <select
+          value={unitId}
+          onChange={(e) => setUnitId(e.target.value)}
+          className={FIELD_SOFT}
+        >
+          {units.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div>
+        <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
+          Answer
+        </span>
+        {/* The same shape every other "pick one of these" wears. `unknown` is
+            not among them: it is the absence of an answer, arrived at by
+            clearing one, not something you would come here to record. */}
+        <SegmentedControl
+          items={CHECK_CHOICES.map((state) => ({
+            id: state,
+            label: CHECK_LABELS[state],
+          }))}
+          activeId={answer}
+          onChange={(next) => setAnswer(next as CheckState)}
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5 rounded-xl bg-card p-3 text-[11px] font-mono">
+        {unit && (
+          <RenderIcon
+            name={unit.iconName}
+            size={13}
+            style={{ color: unit.color }}
+          />
+        )}
+        <span className="text-ink/60">
+          This day says{" "}
+          <strong className="text-ink">{CHECK_LABELS[now]}</strong>
+          {" → will say "}
+          <strong style={{ color: c.accent }}>{CHECK_LABELS[answer]}</strong>
         </span>
       </div>
     </>

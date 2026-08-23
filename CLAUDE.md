@@ -23,6 +23,11 @@ not always: the old `App.jsx` and its dead `App-old.jsx` snapshot carried ~30
 standing errors between them, and that noise is exactly how a real bug (a
 binding mutated mid-render in the heatmap) sat unnoticed for months.
 
+`eslint.config.js` ignores `.claude` as well as `dist`. That directory holds
+agent scratch space, including git worktrees — a whole second checkout with its
+own `tsconfig.json` — and with one present typescript-eslint refuses to run at
+all rather than choose between two candidate roots.
+
 ## Stack
 
 React 19, Vite 8, Tailwind CSS v4 (via `@tailwindcss/vite`, no config file),
@@ -166,7 +171,7 @@ which are Node config and get their own lint block.
     All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
     `StreaksSection.tsx`, `ChangeLogSection.tsx`.
   - `CounterTotals.tsx` — **everything a period counted**, under the heading
-    and beside each week's strip in the month grid: activities in hours,
+    and above each week's days in the month grid: activities in hours,
     tallies and checks in counts. All three are counters, so all three report
     together; hours answered "how long" and a period showing only those was
     reporting a fraction of itself. `lib/periodCounters.ts` builds the groups.
@@ -186,17 +191,40 @@ which are Node config and get their own lint block.
     chips on the next: sharing a line put the first chip wherever the heading
     happened to end, and with eight wrapping under it there was no left edge to
     read down.
+    **The figures sit on a recessed surface; the controls sit on the heading's
+    line.** `CounterGroupList` draws the groups and `CounterControls` draws the
+    switches, and they are separate components because they are separate kinds
+    of thing — one says what you are looking at, the other is what you are
+    looking at, and stacked in one box the switches read as the data's first
+    row. Recessed (`bg-ink/[0.04]`) rather than raised, since `StreakBar`
+    directly above it is raised. **A week's counters in the month grid wear the
+    same surface**, so the block reads the same wherever it appears.
     **Each group folds on its own**, from a row of its own names, with By kind
     / By category beside them and one Hide all. A single chevron was a switch
     with one thing to say when the answer is usually "some of it": which six
     of the forty is exactly what the row is for. Nothing folds away from the
     figures — a view preference, unlike the count filter, which is why neither
     carries a dot on the period bar. One set of switches governs the heading
-    *and* every week strip in the month grid: the same chips answering the same
-    question, and two controls for that is one too many. `LogView` holds them
-    in `useState` beside `commentsOpen`, so they start open again on reload.
+    *and* every week in the month grid: the same chips answering the same
+    question, and two controls for that is one too many.
+    `LogView` holds them in `useState` beside `commentsOpen`. `null` is
+    "nothing chosen yet" and reads as **everything folded**, which is how the
+    page opens: a project with forty counters otherwise put a wall of chips
+    between the period's heading and its days on every load. Rearranging them
+    shows everything instead — switching to By category *is* the question "how
+    do these divide up", and answering it with an empty section means every
+    switch needs a second click. All folded, the section says so in a line with
+    no surface under it: an empty box reads as something that failed to load,
+    where a sentence reads as a state you put it in.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
+    **A week in the month grid is a block, not a strip**: its summary line,
+    then its counters grouped exactly as the period's own are, then its seven
+    days. The counters used to be a flat run of chips on the end of the summary
+    line, which ran off the right edge the moment every kind of counter started
+    reporting. The gap between weeks is wide for the same reason — at two lines
+    of spacing one week's counters sat closer to the next week's days than to
+    their own.
     **The donuts sort biggest first**, ring and legend alike, and the sort
     lives in `TotalsDonut` rather than in `periodBreakdown`: a part-of-whole
     answers "what took the most", and configured order (morning, daytime,
@@ -327,8 +355,8 @@ which are Node config and get their own lint block.
     driven by the one range `periodRange()` hands them.
   - `DayCards.tsx` (the week row and the day view's wide card),
     `DayEditor.tsx` (the day dialog: preview that flips into the editor),
-    `QuickAddEntryModal.tsx`, `SetupModal.tsx`, `TopBar.tsx`,
-    `AuthScreen.tsx`, `PeriodBar.tsx`, `NoteCard.tsx`.
+    `QuickAddEntryModal.tsx`, `FreezeConfirm.tsx`, `SetupModal.tsx`,
+    `TopBar.tsx`, `AuthScreen.tsx`, `PeriodBar.tsx`, `NoteCard.tsx`.
 - `src/App.tsx` — the shell and nothing else: auth, the load, the save queue,
   the count-filter projection, and which panels are open. ~700 lines, down
   from 8400.
@@ -633,11 +661,41 @@ Streaks of your own making — `spec 009`, part 2. `lib/customStreaks.ts` holds
 all of it; `settings.streakRules` holds the rules, riding in the same jsonb
 `tags` does.
 
-A rule is **a sentence**: *judge every [day / week], keeping [a counter] in
-[these slots] [at least / at most] [n] on [these weekdays], with [k] freezes a
-week.* One shape covers never-oversleep, always-in-bed-on-time, no-youtube-in-
-the-evening, three-gym-trips-a-week and gym-on-Mon-Wed-Fri. If a further kind
-of rule will not fit it, the shape is wrong rather than the rule.
+A rule is **a sentence**: *judge every [day / week], keeping [this] in [these
+slots] [at least / at most] [n] on [these weekdays], with [k] freezes a week.*
+One shape covers never-oversleep, always-in-bed-on-time, no-youtube-in-the-
+evening, three-gym-trips-a-week, gym-on-Mon-Wed-Fri and two-hours-of-lessons-a-
+day. If a further kind of rule will not fit it, the shape is wrong rather than
+the rule.
+
+**A condition names a target, not a counter** — `StreakTarget`, read through
+`clauseTarget()`, which is the only place that knows a condition once named a
+`unitId` and nothing else. Five kinds: a **unit** (a tally or a check), an
+**activity**, a **category**, a **tag**, or **all study time**. That last one
+has no id and is the one target every project has, which is why it is what a
+new rule starts on and why the project's own daily goal is now expressible as
+a streak of your own.
+
+**The target decides whether the number is minutes or occurrences.** An
+activity and study time measure time; a unit and a tag measure counts; a
+category is the one grouping that can hold both, so it stores a `measure`
+explicitly — filing one more tally under a category must never change what a
+rule written months ago is measuring. `targetMeasure()` falls back to "counts,
+if it holds any counters" for a target written without one. A time condition's
+`value` is **minutes**, like every other duration the app stores, and the form
+takes it as hours and minutes rather than a decimal.
+
+**A time condition's deficit is one, however far off it was.** A count has a
+natural unit of failure — one more slip is one more freeze — and time does not:
+forty minutes short of two hours is one broken promise, not forty. The figure
+you actually missed by is still what the strip, the chart and the tooltip
+report; it is only the *price* that is flat, and without that a bad Tuesday
+would cost forty-five freezes.
+
+`StreakContext` is how the rule reaches the project — units, activities, slots,
+categories and tags in one object, from `streakContext(project)`. One argument
+rather than five, since a condition can now name any of them and no caller
+should have to know which lists this particular rule happens to touch.
 
 **A rule is one promise with as many conditions as it needs**, and all of them
 must hold — `StreakClause`, and `ruleClauses()` is the only thing that knows a
@@ -656,11 +714,32 @@ two of your conditions cost you twice, and a freeze covering both for the price
 of one would make the second condition free.
 
 Setup's Streaks tab writes that sentence with dropdowns in it, and
-`ruleSentence` reads it back in the panel — **the same function**, because the
-only way to check that what you built is what you meant is to read it back, and
-two sentences that can drift check nothing. A grid of labelled fields would
-store the same eight values and say nothing: `op: atMost, value: 0` is correct
-and unreadable.
+`clauseSentence` reads it back in the panel *and* in the tab's own summary —
+**the same function**, because the only way to check that what you built is
+what you meant is to read it back, and two sentences that can drift check
+nothing. A grid of labelled fields would store the same eight values and say
+nothing: `op: atMost, value: 0` is correct and unreadable.
+
+**The target is picked in two steps: the kind, then the one.** All study time /
+Activity / Tally / Check / Category / Tag, and then a dropdown of that kind's
+own names. One grouped `<select>` held everything for a while, and grouping is
+not choosing: the kinds — the taxonomy the rest of the app is built on — were
+visible only as headings inside a list you had to be holding open, and finding
+tags meant scrolling past forty counters. A kind with nothing in it is absent
+from the first dropdown, like a tab with nothing behind it; study time is
+always there. `PickKind` in the tab is deliberately not `StreakTargetKind`: a
+tally and a check are one `unit` in the data and two different questions to a
+person, and the first dropdown is the person's list.
+
+**Nothing is written until Done.** Every control used to save on the spot,
+through `ruleEdit` one field at a time, and that is the wrong shape for a thing
+with a lock on it: half the intermediate states of any edit are narrowings,
+narrowings land immediately by design, and so a stray scroll over the freeze
+count was permanent — while putting the number back was a loosening you then
+waited a week for. The tab now shows a summary with an Edit button; Edit opens
+a draft, and only the difference between where you started and where you
+finished is ever judged. **Done is disabled exactly when `ruleEdit` refuses**,
+with the reason beside it, and Cancel throws the draft away.
 
 Three ideas carry the whole feature:
 
@@ -764,17 +843,28 @@ and two panels that merely looked alike would drift.
   frozen blue, missed red, and the days outside the period left blank so the
   weekday columns stay true. A rule that only judges Mondays then reads down a
   column. One row of cells would have worked for a week and for nothing else.
-- **`StreakChart`** is the same period as bars against a dashed limit line, so
-  breaking the rule is literally crossing it. The limit is **per row**, not one
-  constant, because the goal streak's limit is that weekday's goal and seven
-  different goals is the normal case. A rule with one condition plots that
-  condition's own count; a rule with several plots the **deficit** against a
-  limit of nought, since Pinterest and YouTube have no shared axis to share.
-  The strip's cells follow the same split, and the tooltip lists every
-  condition either way. Bars carry `minPointSize`: half these
-  rules are "at most 0", a week of keeping one is a week of zeroes, and a chart
-  of invisible bars reads as "no data" rather than "nothing happened, which was
-  the point".
+- **`StreakChart`** is the same period as **a filled area against a dashed
+  limit line**, so breaking the rule is literally crossing it. It is the shape
+  Daily study time uses, and deliberately: the goal streak's panel plots
+  exactly that chart's data — hours against the day's goal — so bars here made
+  one question into two drawings. The limit is **per row**, not one constant,
+  because the goal streak's limit is that weekday's goal and seven different
+  goals is the normal case; it is `stepAfter` rather than the `monotone` the
+  analytics goal line uses, since sloping between two limits draws numbers that
+  were never anybody's limit. A rule with one condition plots that condition's
+  own figure; a rule with several plots the **deficit** against a limit of
+  nought, since Pinterest and YouTube have no shared axis to share. The strip's
+  cells follow the same split, and the tooltip lists every condition either
+  way.
+  **The dots carry the verdict** — missed red, frozen blue, kept in the
+  streak's own tint — because an area is one fill and cannot be red on Tuesday,
+  and which days were frozen is half of what the chart is for. They also do
+  what `minPointSize` did for the bars: half these rules are "at most 0", a
+  kept week is a week of zeroes, and an area lying flat on the axis with
+  nothing on it reads as "no data" rather than "nothing happened, which was the
+  point". Past 45 rows they come off — a year is 365 dots on a 150px chart —
+  and at exactly one row both points are drawn larger, since a step line
+  through a single point renders nothing at all.
 
 **Both follow the period bar**, not "this week". The panel opens directly under
 that bar and above a log showing the same range; one stuck on the current week
@@ -786,6 +876,15 @@ to check and an "and" in the middle of a line is not a checklist. The
 description written in Setup sits under them on its own line: it is *why* you
 set the rule, not part of the rule, and run together with the terms it read as
 one more clause.
+
+**Every freeze asks first.** `FreezeConfirm` — one dialog for the goal streak
+and every custom one, since it is the same irreversible act. Spending used to
+be confirmed on exactly one of the three ways in (the day card); the two strips
+spent on the click. It prints **each pool before and after**, in the order the
+ledger actually spends them: a custom streak's allowance expires on Sunday and
+its bank does not, so which one this comes out of is the whole question, and
+"you have 4" does not answer it. `App` assembles the `FreezeAsk`, because it is
+the only place that knows both streaks' accounting.
 
 **Freezes are spent from the strip, never from the day card**: a day can break
 three rules at once, and a snowflake per rule on a card that already carries
@@ -926,10 +1025,20 @@ dialog with that slot already chosen. It follows the card's rules exactly —
 absent on a read-only readout and on a day that has not happened — because the
 readout must never invent a way in that the card withheld.
 
-**The dialog offers tallies only.** A check has no amount to add and no slot to
-add it to, so it is answered from its own chip on the day card — where you are
-already looking at it. `oncePerDay` and everything the dialog did for it is
-gone; the kind replaced it.
+**The tabs are the kinds of thing a day holds** — Activity, Tally, Check,
+Sleep. They said Entry, Counter and Sleep for a while, from before an activity
+was a counter at all, and by the end that row was drawing a distinction the
+rest of the app had stopped making: an entry *is* an activity, and "counter"
+was two different questions wearing one name.
+
+Answering a check from here is the odd one out and it still earns its place.
+There is no amount and no slot — you are answering it rather than adding to it,
+which is why its button says Save and its panel prints the day's current answer
+beside the new one. Leaving it out would mean the dialog listed three of the
+four things a day can hold, with the fourth reachable only from a chip you have
+to know is a button. The chip on the card is still the short way; this is the
+one you find without being told. `oncePerDay` and everything the dialog did for
+it is gone; the kind replaced it.
 
 **The dialog has no minutes box.** Typing "90" is the arithmetic the app exists
 to do, and two ways of saying the same duration have to be stopped from

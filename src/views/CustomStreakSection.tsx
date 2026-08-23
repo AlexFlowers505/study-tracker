@@ -36,6 +36,7 @@ import type {
 } from "../lib/customStreaks"
 import {
   clauseSentence,
+  clauseTarget,
   freezeOffer,
   judgesDay,
   readDay,
@@ -43,6 +44,8 @@ import {
   ruleClauses,
   ruleDayState,
   ruleWeekState,
+  streakContext,
+  targetInfo,
   totalDeficit,
 } from "../lib/customStreaks"
 import {
@@ -53,6 +56,7 @@ import {
   startOfWeek,
   toKey,
 } from "../lib/date"
+import { fmtHours } from "../lib/time"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
@@ -88,15 +92,19 @@ export function CustomStreakSection({
   rangeStart: Date
   rangeEnd: Date
   today: Date
-  /** Puts the rule's id on that day. The caller owns persistence. */
-  onSpendFreeze: (dayKey: string) => void
+  /**
+   * Asks to put the rule's id on that day, at that price. The caller owns
+   * both the confirmation and the persistence — the price is here because
+   * this is where the deficit was worked out.
+   */
+  onSpendFreeze: (dayKey: string, cost: number) => void
   onClose?: () => void
 }) {
   const c = usePalette()
   const { rule, freezes } = status
   const todayKey = toKey(today)
   const byWeek = rule.scope === "week"
-  const units = project.counterUnits || []
+  const ctx = streakContext(project)
   const clauses = ruleClauses(rule)
   // A rule with one condition reports that condition's own number, which is
   // the thing you were counting. A rule with several has no single number —
@@ -104,6 +112,13 @@ export function CustomStreakSection({
   // instead: how far off the whole promise was, which is also exactly what a
   // freeze is priced in.
   const compound = clauses.length > 1
+  /* What the single-condition case is measuring, which decides how every
+     figure on this panel is printed. A rule about hours reports "2h 30m"
+     everywhere, like every other duration in the app; a compound rule reports
+     a deficit, which is always a plain count of unpaid units. */
+  const sole = compound ? null : targetInfo(clauseTarget(clauses[0]), ctx)
+  const timed = !compound && sole?.measure === "time"
+  const fmtValue = (n: number) => (timed ? fmtHours(n) : String(n))
 
   // "1 days" is the tell that a number was pasted next to a fixed word.
   const unitWord = (n: number) =>
@@ -113,18 +128,25 @@ export function CustomStreakSection({
 
   const stateOf = (date: Date, key: string): RuleState =>
     byWeek
-      ? ruleWeekState(rule, units, project.days, startOfWeek(date), todayKey)
-      : ruleDayState(rule, units, project.days[key], key, todayKey)
+      ? ruleWeekState(rule, ctx, project.days, startOfWeek(date), todayKey)
+      : ruleDayState(rule, ctx, project.days[key], key, todayKey)
 
-  /** Every condition that had something to say, in the form "Youtube 2". */
+  /**
+   * Every condition that had something to say, in the form "Youtube 2".
+   *
+   * Each condition is printed in its own measure — a compound rule can hold
+   * one about hours and one about slips, and a shared format would be wrong
+   * for one of them.
+   */
   const breakdown = (readings: ClauseReading[]) =>
     readings
       .filter((r) => r.applies)
-      .map(
-        (r) =>
-          `${units.find((u) => u.id === r.clause.unitId)?.label || "?"} ${r.value}` +
-          (r.skipped ? " (skipped)" : ""),
-      )
+      .map((r) => {
+        const info = targetInfo(clauseTarget(r.clause), ctx)
+        const value =
+          info.measure === "time" ? fmtHours(r.value) : String(r.value)
+        return `${info.label} ${value}` + (r.skipped ? " (skipped)" : "")
+      })
       .join(" · ")
 
   const figure = (readings: ClauseReading[]) =>
@@ -134,7 +156,7 @@ export function CustomStreakSection({
     const key = toKey(date)
     const state = stateOf(date, key)
     const offer = freezeOffer(rule, project, key, todayKey, status)
-    const readings = readDay(rule, units, project.days[key], key, todayKey)
+    const readings = readDay(rule, ctx, project.days[key], key, todayKey)
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
     // `ok` false is exactly that case: the day is freezable and the freezes
@@ -143,7 +165,7 @@ export function CustomStreakSection({
     return {
       key,
       state,
-      value: state === "unjudged" ? "·" : figure(readings),
+      value: state === "unjudged" ? "·" : fmtValue(figure(readings)),
       tooltip:
         `${fmtDateLong(key)} — ${STATE_WORD[state]}` +
         (state === "unjudged" ? "" : `. ${breakdown(readings)}`) +
@@ -157,7 +179,7 @@ export function CustomStreakSection({
             label: fmtDateLong(key),
             // `offer.key`, not `key`: a weekly rule's freeze is recorded on
             // the Monday of the week it covers.
-            onSpend: () => onSpendFreeze(offer.key),
+            onSpend: () => onSpendFreeze(offer.key, offer.cost),
           }
         : undefined,
     }
@@ -188,12 +210,12 @@ export function CustomStreakSection({
     ? (() => {
         const out: StreakChartRow[] = []
         for (let w = startOfWeek(rangeStart); w <= rangeEnd; w = addDays(w, 7)) {
-          const state = ruleWeekState(rule, units, project.days, w, todayKey)
+          const state = ruleWeekState(rule, ctx, project.days, w, todayKey)
           if (state === "unjudged") continue
           out.push(
             rowFor(
               fmtShort(toKey(w)),
-              readWeek(rule, units, project.days, w, todayKey),
+              readWeek(rule, ctx, project.days, w, todayKey),
               state,
             ),
           )
@@ -206,7 +228,7 @@ export function CustomStreakSection({
           const key = toKey(d)
           return rowFor(
             fmtShort(key),
-            readDay(rule, units, project.days[key], key, todayKey),
+            readDay(rule, ctx, project.days[key], key, todayKey),
             stateOf(d, key),
           )
         })
@@ -226,7 +248,7 @@ export function CustomStreakSection({
           {clauses.map((clause) => (
             <span key={clause.id} className="block">
               {compound ? "· " : ""}
-              {clauseSentence(clause, units, project.slots, rule.scope)}
+              {clauseSentence(clause, ctx, rule.scope)}
             </span>
           ))}
           {rule.description && (
@@ -305,14 +327,13 @@ export function CustomStreakSection({
       <StreakChart
         rows={chartRows}
         tint={rule.color}
-        valueName={
-          compound
-            ? "Over the limit by"
-            : units.find((u) => u.id === clauses[0]?.unitId)?.label || "Counted"
-        }
+        valueName={compound ? "Over the limit by" : sole?.label || "Counted"}
         limitName={
           compound || clauses[0]?.op === "atMost" ? "At most" : "At least"
         }
+        // Bars and the limit line are both minutes for a rule about hours, so
+        // the axis and the tooltip have to read them as durations.
+        formatter={timed ? fmtHours : undefined}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">

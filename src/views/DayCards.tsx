@@ -368,7 +368,7 @@ function FullDayCard({
             </Tip>
           )}
           {onQuickAdd && (
-            <Tip text="Add an entry">
+            <Tip text="Add to this day">
               <button
                 onClick={(ev) => {
                   ev.stopPropagation()

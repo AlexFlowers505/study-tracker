@@ -296,6 +296,43 @@ export type StreakOp = "atLeast" | "atMost"
  * [freezesPerWeek] freezes a week.*
  */
 /**
+ * The five things a condition can be about.
+ *
+ * A rule started out able to name one counter unit, which was the right shape
+ * while a counter was a tally or a check. Once an activity became a kind of
+ * counter it stopped being: "at least two hours of lessons a day" is the same
+ * sort of promise as "no youtube in the evening", and only one of them could
+ * be written.
+ *
+ * - `unit` — one tally or check, by id.
+ * - `activity` — one activity, measured in **minutes**.
+ * - `category` — everything filed under it. See `measure`.
+ * - `tag` — every counter wearing it, added up. Always a count: nothing that
+ *   records time carries tags.
+ * - `time` — all study time, whatever it was filed under. The one target with
+ *   no id, and the one that makes the project's own daily goal expressible as
+ *   a streak of your own.
+ */
+export type StreakTargetKind = "unit" | "activity" | "category" | "tag" | "time"
+
+export interface StreakTarget {
+  kind: StreakTargetKind
+  /** Absent for `time`, which names nothing — there is only one of it. */
+  id?: string
+  /**
+   * Which half of a category to read, and the only place the choice arises: a
+   * category is the one grouping that can hold both things that record time
+   * and things that record a count, and "three" would mean two different
+   * questions depending on what happened to be filed under it.
+   *
+   * Stored explicitly rather than inferred from the members, so filing one
+   * more counter under a category cannot silently change what an existing
+   * rule measures.
+   */
+  measure?: "time" | "count"
+}
+
+/**
  * One condition inside a rule. A rule is kept on a period when **every** one
  * of its clauses is.
  *
@@ -308,11 +345,20 @@ export type StreakOp = "atLeast" | "atMost"
  */
 export interface StreakClause {
   id: string
-  /** The counter being measured — a tally or a check. */
-  unitId: string
-  /** Tallies only. Empty means the whole day. */
+  /**
+   * What is being measured. Absent on a condition written when the only
+   * answer was a counter unit — `clauseTarget()` is the only place that
+   * fallback lives.
+   */
+  target?: StreakTarget
+  /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
   op: StreakOp
+  /**
+   * The number the target is held to. **Minutes** when the target measures
+   * time, a count when it measures occurrences — the same unit the app stores
+   * everything in, so nothing has to round a duration to say it.
+   */
   value: number
   /**
    * Which weekdays this condition applies on. Empty means all of them.
@@ -326,6 +372,12 @@ export interface StreakClause {
    * advance and cannot be changed on the morning it would help.
    */
   weekdays?: number[]
+  /**
+   * The counter this condition used to be able to name, back when a counter
+   * was the only thing it could name. Read only through `clauseTarget()`.
+   * @deprecated
+   */
+  unitId?: string
 }
 
 /**

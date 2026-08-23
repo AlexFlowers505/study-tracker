@@ -6,46 +6,72 @@
 
    That is the whole design decision here. A grid of labelled fields would
    store the same values and be unreadable: `op: atMost, value: 0` is correct
-   and says nothing, where "Youtube in Evening, Night at most 0 times" is the
-   same thing said in a way you can disagree with. This is a rule you will live
+   and says nothing, where "Youtube in Evening at most 0 times" is the same
+   thing said in a way you can disagree with. This is a rule you will live
    under for months, and the only way to check that what you built is what you
    meant is to read it back.
 
-   **A rule can carry several conditions**, and they are stacked as separate
-   blocks rather than run together, because that is what they are: one promise
-   with two things to keep. Each block changes shape with the counter it names
-   — a check asks *must it be yes or no*, a tally asks *how many, and where* —
-   and carries its own weekdays, which is what lets one condition be a weekday
-   rule and the other an every-day one inside the same promise.
+   **A condition names a target, not a counter**, and it is picked in two
+   steps: what *kind* of thing — all study time, an activity, a tally, a check,
+   a category, a tag — and then which one. One grouped dropdown held all of
+   them for a while, and grouping is not the same as choosing: you had to scroll
+   past forty names to find out that tags were at the bottom, and there was no
+   way to see what kinds existed without opening the list. Two dropdowns make
+   the taxonomy the first question, which is the order you think in.
 
-   Editing goes through `ruleEdit`, one control at a time. A change that
-   narrows the rule lands immediately; one that might loosen it waits out the
-   clock, and the line under the rule says which it was — a clever lock nobody
-   can predict is worse than a blunt one they can. Adding a condition always
-   lands: a further thing to keep can only ever cost you.
+   A condition about an activity or a category of them is measured in hours, so
+   its number is a duration rather than a count, and the sentence prints it as
+   one.
+
+   **A rule can carry several conditions**, stacked as separate blocks rather
+   than run together, because that is what they are: one promise with two
+   things to keep. Each block changes shape with what it names — a check asks
+   *must it be yes or no*, a tally asks *how many, and where*, an activity asks
+   *how long* — and carries its own weekdays, which is what lets one condition
+   be a weekday rule and the other an every-day one inside the same promise.
+
+   **Nothing is written until Done.** Every control used to save on the spot,
+   through `ruleEdit` one field at a time, and that turned out to be the wrong
+   shape for a thing with a lock on it: a stray scroll over the freeze count
+   was a permanent narrowing, and narrowings land immediately by design. Now
+   the whole edit is one draft judged once — you can restructure a rule freely,
+   and only the difference between where you started and where you finished is
+   ever tested. Done is disabled while that difference cannot be proved
+   harmless and the clock has not run out, and the line beside it says which.
 --------------------------------------------------------------- */
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { Lock, Plus, ShieldCheck, TriangleAlert, X } from "lucide-react"
+import { Lock, Pencil, Plus, ShieldCheck, TriangleAlert, X } from "lucide-react"
 import type {
+  Activity,
+  Category,
   CounterUnit,
+  Labeled,
   Settings,
   Slot,
   StreakClause,
   StreakOp,
   StreakRule,
+  StreakTarget,
+  StreakTargetKind,
+  Tag,
 } from "../types/model"
-import { isCheck } from "../lib/checks"
+import { isCheck, splitByKind } from "../lib/checks"
+import type { StreakContext, StreakMeasure } from "../lib/customStreaks"
 import {
+  clauseSentence,
+  clauseTarget,
   lockFrom,
   newClause,
   newStreakRule,
   ruleClauses,
   ruleEdit,
+  targetInfo,
+  targetMeasure,
 } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
-import { FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
+import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
 import { EditableList } from "../ui/EditableList"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { Tip } from "../ui/Tip"
@@ -56,8 +82,9 @@ const LOCK_HELP =
   "— a lower limit, more days judged, fewer freezes, or one more condition." +
   String.fromCharCode(10, 10) +
   "Anything else waits a week from the last such change, including anything " +
-  "that cannot be compared at all: inverting a test, swapping a counter, " +
-  "dropping a condition, switching between judging a day and judging a week." +
+  "that cannot be compared at all: inverting a test, swapping what is " +
+  "measured, dropping a condition, switching between judging a day and " +
+  "judging a week." +
   String.fromCharCode(10, 10) +
   "The day you write a rule is yours to get it right on: nothing is locked " +
   "until the next day, because the rule has judged nothing yet." +
@@ -111,29 +138,236 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 )
 
 const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
-const SELECT = `${FIELD_SOFT_INLINE} max-w-44 rounded-lg py-1 text-[11px]`
+const SELECT = `${FIELD_SOFT_INLINE} max-w-52 rounded-lg py-1 text-[11px]`
+/* Narrower than the one beside it, and deliberately: six fixed words against a
+   list of the project's own names, and equal widths would read as two halves
+   of one answer rather than as a question and its answer. */
+const KIND_SELECT = `${FIELD_SOFT_INLINE} max-w-36 rounded-lg py-1 text-[11px]`
 const WORD = "text-[11px] font-mono text-ink/55"
+
+/**
+ * The kinds of thing you can point a condition at.
+ *
+ * Not the same list as `StreakTargetKind`: a tally and a check are both a
+ * `unit` in the data and two different questions to a person, and this is the
+ * list a person is choosing from. `targetKindOf` is the whole of the mapping.
+ */
+type PickKind = "time" | "activity" | "tally" | "check" | "category" | "tag"
+
+const PICKS: PickKind[] = [
+  "time",
+  "activity",
+  "tally",
+  "check",
+  "category",
+  "tag",
+]
+
+const PICK_LABEL: Record<PickKind, string> = {
+  time: "All study time",
+  activity: "Activity",
+  tally: "Tally",
+  check: "Check",
+  category: "Category",
+  tag: "Tag",
+}
+
+const targetKindOf = (pick: PickKind): StreakTargetKind =>
+  pick === "tally" || pick === "check" ? "unit" : pick
+
+/** Which kind an existing target belongs to, splitting units back in two. */
+function pickOf(target: StreakTarget, ctx: StreakContext): PickKind {
+  if (target.kind !== "unit") return target.kind
+  const unit = ctx.units.find((u) => u.id === target.id)
+  return unit && isCheck(unit) ? "check" : "tally"
+}
+
+/** What the second dropdown offers. Empty for study time, which names nothing. */
+function choicesFor(pick: PickKind, ctx: StreakContext): Labeled[] {
+  const { tallies, checks } = splitByKind(ctx.units)
+  if (pick === "activity") return ctx.activities
+  if (pick === "tally") return tallies
+  if (pick === "check") return checks
+  if (pick === "category") return ctx.categories
+  if (pick === "tag") return ctx.tags
+  return []
+}
+
+/**
+ * What a condition is about — **the kind first, then the one**, plus the one
+ * question a category raises.
+ *
+ * Two dropdowns rather than one grouped list. Grouping is not choosing: with
+ * everything in a single list you had to open it and scroll past forty names
+ * to discover that tags were at the bottom, and the kinds themselves — the
+ * taxonomy the rest of the app is built on — were only visible as headings
+ * inside something you had to be holding open. Asking the kind first is the
+ * order the question is actually thought in, and it makes the second list
+ * short enough to read.
+ *
+ * A kind with nothing in it is absent from the first dropdown, for the same
+ * reason a tab is: there is nothing behind it. Study time is always there.
+ */
+function TargetPicker({
+  target,
+  ctx,
+  onChange,
+}: {
+  target: StreakTarget
+  ctx: StreakContext
+  onChange: (next: StreakTarget) => void
+}) {
+  const pick = pickOf(target, ctx)
+  const choices = choicesFor(pick, ctx)
+  const kinds = PICKS.filter(
+    (p) => p === "time" || choicesFor(p, ctx).length > 0,
+  )
+  // Which halves this category actually holds. The choice is only a question
+  // when it holds both; otherwise there is one answer and it is stamped in
+  // without asking.
+  const hasCounts = ctx.units.some((u) => u.categoryId === target.id)
+  const hasTime = ctx.activities.some((a) => a.categoryId === target.id)
+  const mixed = target.kind === "category" && hasCounts && hasTime
+
+  const defaultMeasure = (id: string): StreakMeasure =>
+    ctx.units.some((u) => u.categoryId === id) ? "count" : "time"
+
+  /* A category's measure is stored the moment one is picked, never inferred
+     later: filing one more tally under it must not change what a rule written
+     today measures. Picking a *different* category re-stamps it, since the
+     answer belongs to that category rather than to the condition. */
+  const make = (nextPick: PickKind, id: string): StreakTarget =>
+    nextPick === "time"
+      ? { kind: "time" }
+      : nextPick === "category"
+        ? { kind: "category", id, measure: defaultMeasure(id) }
+        : { kind: targetKindOf(nextPick), id }
+
+  // A target pointing at something since deleted keeps its place in the list,
+  // named as `targetInfo` names it. Dropping it would leave the select showing
+  // its first option instead — a silent claim that the rule is about something
+  // it is not.
+  const missing = choices.length > 0 && !choices.some((o) => o.id === target.id)
+
+  return (
+    <>
+      <select
+        value={pick}
+        onChange={(e) => {
+          const next = e.target.value as PickKind
+          onChange(make(next, choicesFor(next, ctx)[0]?.id || ""))
+        }}
+        className={KIND_SELECT}
+      >
+        {kinds.map((p) => (
+          <option key={p} value={p}>
+            {PICK_LABEL[p]}
+          </option>
+        ))}
+      </select>
+
+      {choices.length > 0 && (
+        <select
+          value={target.id || ""}
+          onChange={(e) => onChange(make(pick, e.target.value))}
+          className={SELECT}
+        >
+          {missing && (
+            <option value={target.id || ""}>
+              {targetInfo(target, ctx).label}
+            </option>
+          )}
+          {choices.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {mixed && (
+        <Tip
+          multiline
+          text={
+            "This category holds both things that record time and things that record a count, so it has to be told which half to measure." +
+            String.fromCharCode(10, 10) +
+            "Stored with the rule rather than worked out from the members, so filing one more counter under the category cannot change what an existing rule means."
+          }
+        >
+          <Pills<StreakMeasure>
+            value={targetMeasure(target, ctx)}
+            onChange={(measure) => onChange({ ...target, measure })}
+            options={[
+              { id: "time", label: "Hours" },
+              { id: "count", label: "Times" },
+            ]}
+          />
+        </Tip>
+      )}
+    </>
+  )
+}
+
+/**
+ * Hours and minutes, never decimal hours.
+ *
+ * The same rule the rest of the app follows: "1.5h" has to be multiplied by 60
+ * before it means anything you can act on, and doing that arithmetic is the
+ * job. Two boxes also make "two and a half hours" a thing you type rather than
+ * a thing you convert.
+ */
+function DurationField({
+  minutes,
+  onChange,
+}: {
+  minutes: number
+  onChange: (next: number) => void
+}) {
+  const h = Math.floor(Math.max(0, minutes) / 60)
+  const m = Math.max(0, minutes) % 60
+  const num = (raw: string) => Math.max(0, Number(raw) || 0)
+  return (
+    <>
+      <input
+        type="number"
+        min={0}
+        value={h}
+        onChange={(e) => onChange(num(e.target.value) * 60 + m)}
+        className={NUM}
+      />
+      <span className={WORD}>h</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        value={m}
+        onChange={(e) => onChange(h * 60 + Math.min(59, num(e.target.value)))}
+        className={NUM}
+      />
+      <span className={WORD}>m</span>
+    </>
+  )
+}
 
 /** One condition: what is measured, where, and on which days. */
 function ClauseForm({
   clause,
-  units,
-  slots,
+  ctx,
   byWeek,
   onChange,
   onRemove,
 }: {
   clause: StreakClause
-  units: CounterUnit[]
-  slots: Slot[]
+  ctx: StreakContext
   byWeek: boolean
   onChange: (patch: Partial<StreakClause>) => void
   /** Absent on the only condition — a rule with none is not a rule. */
   onRemove?: () => void
 }) {
   const c = usePalette()
-  const unit = units.find((u) => u.id === clause.unitId)
-  const check = !!unit && isCheck(unit)
+  const target = clauseTarget(clause)
+  const info = targetInfo(target, ctx)
+  const timed = info.measure === "time"
 
   /* Both chip rows work the same way: everything lit means no restriction, and
      turning the last one off is refused because "count nothing" and "judge no
@@ -153,22 +387,27 @@ function ClauseForm({
   return (
     <div className="space-y-2">
       <Row label="Keeping">
-        <select
-          value={clause.unitId}
-          onChange={(e) => onChange({ unitId: e.target.value })}
-          className={SELECT}
-        >
-          {units.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.label}
-            </option>
-          ))}
-        </select>
+        <TargetPicker
+          target={target}
+          ctx={ctx}
+          onChange={(next) => {
+            const measure = targetMeasure(next, ctx)
+            // Changing what is measured changes what the number means, so the
+            // number goes back to its default for the new measure. "At most 0
+            // minutes of lessons" is a legal sentence nobody has ever meant.
+            const same = measure === info.measure
+            onChange({
+              target: next,
+              ...(same ? {} : { op: newClause(next, measure).op }),
+              ...(same ? {} : { value: newClause(next, measure).value }),
+            })
+          }}
+        />
         <span className={WORD}>must be</span>
 
         {/* A check has two answers, not a comparison. "Overslept must be at
             most 0 times" is the same rule and nobody would write it. */}
-        {check ? (
+        {info.check ? (
           <Pills<"yes" | "no">
             value={clause.op === "atLeast" ? "yes" : "no"}
             onChange={(v) =>
@@ -193,16 +432,30 @@ function ClauseForm({
               <option value="atLeast">at least</option>
               <option value="atMost">at most</option>
             </select>
-            <input
-              type="number"
-              min={0}
-              value={clause.value}
-              onChange={(e) =>
-                onChange({ value: Math.max(0, Number(e.target.value) || 0) })
-              }
-              className={NUM}
-            />
-            <span className={WORD}>{byWeek ? "times a week" : "times a day"}</span>
+            {timed ? (
+              <>
+                <DurationField
+                  minutes={clause.value}
+                  onChange={(value) => onChange({ value })}
+                />
+                <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
+              </>
+            ) : (
+              <>
+                <input
+                  type="number"
+                  min={0}
+                  value={clause.value}
+                  onChange={(e) =>
+                    onChange({ value: Math.max(0, Number(e.target.value) || 0) })
+                  }
+                  className={NUM}
+                />
+                <span className={WORD}>
+                  {byWeek ? "times a week" : "times a day"}
+                </span>
+              </>
+            )}
           </>
         )}
 
@@ -219,11 +472,12 @@ function ClauseForm({
         )}
       </Row>
 
-      {/* Slots are a tally's question. A check is a fact about the day. */}
-      {!check && (
+      {/* Slots narrow anything that is logged into one — hours as much as
+          counts. A check is a fact about the whole day and has none. */}
+      {!info.check && (
         <Row label="In">
           <div className="flex flex-wrap gap-1">
-            {slots.map((s) => {
+            {ctx.slots.map((s) => {
               const on = !clause.slotIds?.length || clause.slotIds.includes(s.id)
               return (
                 <button
@@ -233,7 +487,7 @@ function ClauseForm({
                     onChange({
                       slotIds: toggleIn(
                         clause.slotIds,
-                        slots.map((x) => x.id),
+                        ctx.slots.map((x) => x.id),
                         s.id,
                       ),
                     })
@@ -302,178 +556,48 @@ function ClauseForm({
   )
 }
 
-/** One rule's terms, and the note saying what the last edit counted as. */
-function RuleForm({
+/** The rule as it stands, with the button that opens it for editing. */
+function RuleSummary({
   rule,
-  units,
-  slots,
-  onChange,
-  today,
+  ctx,
+  locked,
+  settingUp,
+  onEdit,
 }: {
   rule: StreakRule
-  units: CounterUnit[]
-  slots: Slot[]
-  onChange: (next: StreakRule) => void
-  today: Date
+  ctx: StreakContext
+  locked: boolean
+  settingUp: boolean
+  onEdit: () => void
 }) {
-  const c = usePalette()
-  // What the last attempt was. Held here rather than derived, because the
-  // interesting case is the one where nothing changed — a refused edit leaves
-  // the rule exactly as it was, and without a word for it the control simply
-  // springs back and looks broken.
-  const [note, setNote] = useState<
-    "narrowed" | "loosened" | "refused" | "setup" | null
-  >(null)
   const clauses = ruleClauses(rule)
-  const byWeek = rule.scope === "week"
-  const settingUp = toKey(today) === rule.startedOn
-  const locked = !settingUp && toKey(today) < rule.lockedUntil
-
-  /**
-   * Every write goes through here, and every write stores `clauses` — which
-   * is also what quietly normalises a rule from before rules could have more
-   * than one, the first time it is touched.
-   */
-  const apply = (patch: Partial<StreakRule>) => {
-    const draft: StreakRule = {
-      ...rule,
-      clauses,
-      unitId: undefined,
-      slotIds: undefined,
-      op: undefined,
-      value: undefined,
-      weekdays: undefined,
-      ...patch,
-    }
-    const edit = ruleEdit({ ...rule, clauses }, draft, slots, today)
-    setNote(
-      !edit.changed
-        ? null
-        : edit.settingUp
-          ? "setup"
-          : edit.narrowing
-            ? "narrowed"
-            : edit.allowed
-              ? "loosened"
-              : "refused",
-    )
-    if (edit.allowed) onChange(edit.next)
-  }
-
-  const patchClause = (id: string, patch: Partial<StreakClause>) =>
-    apply({
-      clauses: clauses.map((cl) => (cl.id === id ? { ...cl, ...patch } : cl)),
-    })
-
   return (
-    <div className="space-y-2 pl-1 pt-1">
-      <Row label="Judge">
-        <Pills<"day" | "week">
-          value={rule.scope}
-          onChange={(scope) => apply({ scope })}
-          options={[
-            { id: "day", label: "Every day" },
-            { id: "week", label: "Every week" },
-          ]}
-        />
-      </Row>
-
-      {clauses.map((clause, i) => (
-        <div key={clause.id}>
-          {/* A hairline between conditions, so two blocks of three rows do not
-              read as one block of six. */}
-          {i > 0 && <div className="h-px my-2 bg-ink/10" />}
-          <ClauseForm
-            clause={clause}
-            units={units}
-            slots={slots}
-            byWeek={byWeek}
-            onChange={(patch) => patchClause(clause.id, patch)}
-            onRemove={
-              clauses.length > 1
-                ? () =>
-                    apply({
-                      clauses: clauses.filter((cl) => cl.id !== clause.id),
-                    })
-                : undefined
-            }
-          />
-        </div>
-      ))}
-
-      <Row label="">
-        <Tip multiline text={CONDITION_HELP}>
-          <button
-            type="button"
-            onClick={() =>
-              apply({ clauses: [...clauses, newClause(units[0].id)] })
-            }
-            className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono bg-ink/[0.06] text-ink/55 hover:text-ink hover:bg-ink/[0.10]`}
-          >
-            <Plus size={10} />
-            Condition
-          </button>
-        </Tip>
-      </Row>
-
-      <Row label="Freezes">
-        <input
-          type="number"
-          min={0}
-          value={rule.freezesPerWeek}
-          onChange={(e) =>
-            apply({ freezesPerWeek: Math.max(0, Number(e.target.value) || 0) })
-          }
-          className={NUM}
-        />
-        <span className={WORD}>a week, expiring · bank up to</span>
-        <input
-          type="number"
-          min={0}
-          value={rule.freezeCap}
-          onChange={(e) =>
-            apply({ freezeCap: Math.max(0, Number(e.target.value) || 0) })
-          }
-          className={NUM}
-        />
-        <span className={WORD}>earned</span>
-      </Row>
-
-      {/* What just happened, and what the clock says. Both, because the lock is
-          one-sided and an unexplained one-sided lock is indistinguishable from
-          a bug. */}
+    <div className="space-y-1.5 pl-1 pt-1">
+      {/* The same sentence the panel reads back, from the same function. A
+          summary written separately is a summary that can drift. */}
+      <p className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
+        {rule.scope === "week" ? "Every week" : "Every day"}
+      </p>
+      <ul className="space-y-0.5">
+        {clauses.map((clause) => (
+          <li key={clause.id} className="text-[11px] font-mono text-ink/70">
+            {clauses.length > 1 && <span className="text-ink/30">· </span>}
+            {clauseSentence(clause, ctx, rule.scope)}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[10px] font-mono text-ink/40">
+        {rule.freezesPerWeek} freeze{rule.freezesPerWeek === 1 ? "" : "s"} a
+        week, expiring · banking up to {rule.freezeCap} earned
+      </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-        {note === "setup" && (
-          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
-            <ShieldCheck size={11} />
-            Saved. Today is yours to get this right on.
-          </span>
-        )}
-        {note === "narrowed" && (
-          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
-            <ShieldCheck size={11} />
-            This only narrows the rule — saved.
-          </span>
-        )}
-        {note === "loosened" && (
-          <span
-            className="flex items-center gap-1 text-[10px] font-mono"
-            style={{ color: c.exam }}
-          >
-            <TriangleAlert size={11} />
-            Saved, and locked again until {fmtDateLong(lockFrom(today))}.
-          </span>
-        )}
-        {note === "refused" && (
-          <span
-            className="flex items-center gap-1 text-[10px] font-mono"
-            style={{ color: c.exam }}
-          >
-            <TriangleAlert size={11} />
-            That could make the rule easier. It waits until{" "}
-            {fmtDateLong(rule.lockedUntil)}.
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={onEdit}
+          className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
+        >
+          <Pencil size={10} /> Edit
+        </button>
         <Tip multiline text={LOCK_HELP}>
           <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
             <Lock size={10} />
@@ -489,38 +613,243 @@ function RuleForm({
   )
 }
 
+/** One rule's terms, and the note saying what the pending edit counts as. */
+function RuleForm({
+  rule,
+  ctx,
+  onChange,
+  today,
+}: {
+  rule: StreakRule
+  ctx: StreakContext
+  onChange: (next: StreakRule) => void
+  today: Date
+}) {
+  const c = usePalette()
+  /**
+   * The rule being composed, or `null` while the summary is showing.
+   *
+   * Nothing here reaches the project until Done. That is the whole protection:
+   * a rule under a lock cannot be edited safely one control at a time, because
+   * half the intermediate states are narrowings and narrowings land at once —
+   * so a stray scroll over the freeze count was permanent, and putting the
+   * number back was a loosening you then had to wait a week for.
+   */
+  const [draft, setDraft] = useState<StreakRule | null>(null)
+  const settingUp = toKey(today) === rule.startedOn
+  const locked = !settingUp && toKey(today) < rule.lockedUntil
+
+  // Normalised on both sides, so a rule being written through for the first
+  // time — flat fields becoming clauses — is not itself read as an edit.
+  const base: StreakRule = { ...rule, clauses: ruleClauses(rule) }
+
+  if (!draft)
+    return (
+      <RuleSummary
+        rule={rule}
+        ctx={ctx}
+        locked={locked}
+        settingUp={settingUp}
+        onEdit={() =>
+          setDraft({
+            ...base,
+            unitId: undefined,
+            slotIds: undefined,
+            op: undefined,
+            value: undefined,
+            weekdays: undefined,
+          })
+        }
+      />
+    )
+
+  const clauses = ruleClauses(draft)
+  const byWeek = draft.scope === "week"
+  const edit = ruleEdit(base, draft, ctx.slots, today)
+  const patch = (next: Partial<StreakRule>) =>
+    setDraft({ ...draft, ...next })
+  const patchClause = (id: string, next: Partial<StreakClause>) =>
+    patch({
+      clauses: clauses.map((cl) => (cl.id === id ? { ...cl, ...next } : cl)),
+    })
+
+  return (
+    <div className="space-y-2 pl-1 pt-1">
+      <Row label="Judge">
+        <Pills<"day" | "week">
+          value={draft.scope}
+          onChange={(scope) => patch({ scope })}
+          options={[
+            { id: "day", label: "Every day" },
+            { id: "week", label: "Every week" },
+          ]}
+        />
+      </Row>
+
+      {clauses.map((clause, i) => (
+        <div key={clause.id}>
+          {/* A hairline between conditions, so two blocks of three rows do not
+              read as one block of six. */}
+          {i > 0 && <div className="h-px my-2 bg-ink/10" />}
+          <ClauseForm
+            clause={clause}
+            ctx={ctx}
+            byWeek={byWeek}
+            onChange={(next) => patchClause(clause.id, next)}
+            onRemove={
+              clauses.length > 1
+                ? () =>
+                    patch({
+                      clauses: clauses.filter((cl) => cl.id !== clause.id),
+                    })
+                : undefined
+            }
+          />
+        </div>
+      ))}
+
+      <Row label="">
+        <Tip multiline text={CONDITION_HELP}>
+          <button
+            type="button"
+            onClick={() =>
+              patch({
+                clauses: [...clauses, newClause({ kind: "time" }, "time")],
+              })
+            }
+            className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono bg-ink/[0.06] text-ink/55 hover:text-ink hover:bg-ink/[0.10]`}
+          >
+            <Plus size={10} />
+            Condition
+          </button>
+        </Tip>
+      </Row>
+
+      <Row label="Freezes">
+        <input
+          type="number"
+          min={0}
+          value={draft.freezesPerWeek}
+          onChange={(e) =>
+            patch({ freezesPerWeek: Math.max(0, Number(e.target.value) || 0) })
+          }
+          className={NUM}
+        />
+        <span className={WORD}>a week, expiring · bank up to</span>
+        <input
+          type="number"
+          min={0}
+          value={draft.freezeCap}
+          onChange={(e) =>
+            patch({ freezeCap: Math.max(0, Number(e.target.value) || 0) })
+          }
+          className={NUM}
+        />
+        <span className={WORD}>earned</span>
+      </Row>
+
+      {/* What this edit counts as, before it costs anything. The lock is
+          one-sided, and an unexplained one-sided lock is indistinguishable
+          from a bug — so it says which of the four cases it decided, every
+          time, and Done simply refuses in the one case it cannot allow. */}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => setDraft(null)}
+          className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide text-ink/55 hover:text-ink hover:bg-ink/5`}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!edit.allowed}
+          onClick={() => {
+            onChange(edit.next)
+            setDraft(null)
+          }}
+          className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
+          style={{ backgroundColor: c.accent, color: c.onFill }}
+        >
+          Done
+        </button>
+
+        {!edit.changed && (
+          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/40">
+            No change to the terms.
+          </span>
+        )}
+        {edit.changed && edit.settingUp && (
+          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
+            <ShieldCheck size={11} />
+            Today is yours to get this right on.
+          </span>
+        )}
+        {edit.changed && !edit.settingUp && edit.narrowing && (
+          <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
+            <ShieldCheck size={11} />
+            This only narrows the rule.
+          </span>
+        )}
+        {edit.changed && !edit.settingUp && !edit.narrowing && edit.allowed && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: c.exam }}
+          >
+            <TriangleAlert size={11} />
+            This could make the rule easier — saving locks it until{" "}
+            {fmtDateLong(lockFrom(today))}.
+          </span>
+        )}
+        {!edit.allowed && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: c.exam }}
+          >
+            <TriangleAlert size={11} />
+            This could make the rule easier. It waits until{" "}
+            {fmtDateLong(rule.lockedUntil)}.
+          </span>
+        )}
+        <Tip multiline text={LOCK_HELP}>
+          <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
+            <Lock size={10} />
+            How this works
+          </span>
+        </Tip>
+      </div>
+    </div>
+  )
+}
+
 export function StreakRulesTab({
   settings,
   units,
+  activities,
   slots,
   onSave,
   today = new Date(),
 }: {
   settings: Settings
   units: CounterUnit[]
+  activities: Activity[]
   slots: Slot[]
   onSave: (next: Settings) => void
   today?: Date
 }) {
   const rules = settings.streakRules || []
-
-  if (!units.length)
-    return (
-      <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        A streak is a rule about a counter, so there has to be a counter first.
-        Add one in the Counters tab and come back.
-      </p>
-    )
+  const categories: Category[] = settings.categories || []
+  const tags: Tag[] = settings.tags || []
+  const ctx: StreakContext = { units, activities, slots, categories, tags }
 
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        Your own streaks, each one a promise about your counters — never
-        oversleep, get to bed on time, no youtube after the evening starts, the
-        gym three times a week. A promise can hold several conditions at once,
-        and all of them have to keep. Each streak keeps its own freezes: an
-        allowance every week that expires, and one banked freeze for every week
-        you keep clean.
+        Your own streaks, each one a promise about what you record — never
+        oversleep, two hours of lessons a day, no youtube after the evening
+        starts, the gym three times a week. A promise can hold several
+        conditions at once, and all of them have to keep. Each streak keeps its
+        own freezes: an allowance every week that expires, and one banked
+        freeze for every week you keep clean.
       </p>
 
       <EditableList<StreakRule>
@@ -528,15 +857,16 @@ export function StreakRulesTab({
         onChange={(streakRules) => onSave({ ...settings, streakRules })}
         noun="streak"
         minItems={0}
-        newItem={() => newStreakRule(units[0].id, today)}
+        /* A new rule is about all study time: the one target every project
+           has, whether or not it has ever defined a counter. */
+        newItem={() => newStreakRule({ kind: "time" }, "time", today)}
         warningNote={(label) =>
           `Remove "${label}"? Its streak goes with it, and so does every freeze banked against it. The days you marked stay exactly as they are.`
         }
         extra={(rule, update) => (
           <RuleForm
             rule={rule}
-            units={units}
-            slots={slots}
+            ctx={ctx}
             today={today}
             onChange={(next) => update(next)}
           />
