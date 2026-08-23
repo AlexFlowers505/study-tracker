@@ -33,6 +33,7 @@
 import { useState } from "react"
 import { ChevronDown, Flame, Snowflake } from "lucide-react"
 import type { RuleStatus } from "../lib/customStreaks"
+import type { Balance } from "../lib/balance"
 import type { StreakRisk } from "../lib/streakRisk"
 import { byRisk } from "../lib/streakRisk"
 import { btnBase } from "../lib/theme"
@@ -187,6 +188,7 @@ function RiskBlock({
 export function StreakBar({
   statuses,
   keptDays,
+  balance,
   risks,
   active,
   onSelect,
@@ -198,6 +200,13 @@ export function StreakBar({
    * has a vote yet, which is the only state in which the day has no verdict.
    */
   keptDays: number | null
+  /**
+   * The account, in kept days. Deliberately the quietest thing in this row:
+   * it does not motivate — the streak does — and given equal weight it would
+   * win, because watching a number grow is pleasanter than guarding one that
+   * can be zeroed. It moves beside the shop once there is one.
+   */
+  balance: Balance | null
   /** One per streak, keyed by the same ids — see `lib/streakRisk`. */
   risks: StreakRisk[]
   active: StreakId
@@ -296,9 +305,28 @@ export function StreakBar({
                 </span>
               </span>
             )}
+            {balance && (
+              <Tip
+                text={`${balance.total} kept days banked${
+                  balance.pendingKept || balance.pendingMissed
+                    ? ` · ${balance.pendingKept + balance.pendingMissed} still inside the writing window and not counted yet`
+                    : ""
+                }. A kept day is +1, a missed one −1, and it never resets.`}
+              >
+                <span
+                  className={`text-[10px] font-mono tabular-nums ${
+                    balance.total < 0 ? "text-ink/45" : "text-ink/35"
+                  }`}
+                  style={balance.total < 0 ? { color: c.exam } : undefined}
+                >
+                  {balance.total > 0 ? "+" : ""}
+                  {balance.total}
+                </span>
+              </Tip>
+            )}
             <ChevronDown
               size={14}
-              className={`text-ink/30 shrink-0 ${keptDays != null ? "" : "ml-auto"}`}
+              className={`text-ink/30 shrink-0 ${keptDays != null || balance ? "" : "ml-auto"}`}
             />
           </button>
         )

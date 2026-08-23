@@ -58,7 +58,15 @@ dependencies are real, not preference.
       "lost" means. Verified headlessly across the week: nothing done is
       silent through Friday, lost on Friday once Saturday arrives, and a week
       that ends one short is lost on its Sunday.*
-- [ ] **Stage 4 — The balance.** Part 4. Migration `015`.
+- [x] **Stage 4 — The balance.** Part 4. Migration `015`.
+      *Landed. `lib/balance.ts` folds the sealed marks; `dueMarks` returns the
+      days owed a mark and the shell writes them once, on the log's own
+      horizon rather than the weekly one. Today and yesterday are reported
+      apart from the total as "not counted yet". `settings.balanceStart` is
+      stamped the first time the app runs with a rule that votes, so nothing
+      is backfilled. Shown as the quietest thing in the streak row until the
+      shop exists to put it beside. **Needs `015` run before the app will
+      load** — a missing table is a failed read, not an empty one.*
 - [ ] **Stage 5 — Achievements.** Part 5. Migration `016`.
 - [ ] **Stage 6 — The shop.** Part 6. Migration `017`.
 - [ ] **Stage 7 — Reasons.** Part 7, first half. No migration; a field on the rule.

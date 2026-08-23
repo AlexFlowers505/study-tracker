@@ -35,6 +35,7 @@ export type WriteOp =
       ruleId: string
       weekKey: DayKey
     }
+  | { key: string; kind: "dayMark"; projectId: string; dateKey: DayKey }
   | { key: string; kind: "prefs" }
   | { key: string; kind: "deleteProject"; projectId: string }
   | {
@@ -92,6 +93,18 @@ export const opVerdict = (projectId: string, weekKey: DayKey): WriteOp => ({
   kind: "verdict",
   projectId,
   weekKey,
+})
+
+/**
+ * A sealed day mark. Written once, like both verdict ledgers — the primary key
+ * is what makes a second mark for the same day impossible, so the upsert can
+ * never overwrite a sealed day with a freshly recomputed one.
+ */
+export const opDayMark = (projectId: string, dateKey: DayKey): WriteOp => ({
+  key: `dayMark:${projectId}:${dateKey}`,
+  kind: "dayMark",
+  projectId,
+  dateKey,
 })
 
 export const opPrefs = (): WriteOp => ({ key: "prefs", kind: "prefs" })
@@ -218,6 +231,25 @@ export async function applyWriteOp(
             sealed_at: verdict.sealedAt,
           },
           { onConflict: "project_id,week_key", ignoreDuplicates: true },
+        ),
+      )
+    }
+
+    case "dayMark": {
+      if (!project) return
+      const mark = project.dayLedger?.[op.dateKey]
+      if (!mark) return
+      // ignoreDuplicates, as with the verdicts: a mark already in the table is
+      // the authority, and this is the ledger a purchase was priced against.
+      return run(
+        client.from("day_ledger").upsert(
+          {
+            project_id: project.id,
+            date: mark.date,
+            kept: mark.kept,
+            sealed_at: mark.sealedAt,
+          },
+          { onConflict: "project_id,date", ignoreDuplicates: true },
         ),
       )
     }

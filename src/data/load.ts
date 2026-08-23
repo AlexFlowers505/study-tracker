@@ -26,6 +26,7 @@ import type {
   DayRow,
   NoteRow,
   ProjectRow,
+  DayMarkRow,
   RuleVerdictRow,
   WeekVerdictRow,
 } from "./schema"
@@ -48,7 +49,15 @@ async function fetchAllRows<T>(makeQuery: () => Query): Promise<T[]> {
  * a `user_id` filter of its own.
  */
 export async function loadFromTables(client: Client): Promise<AppData | null> {
-  const [projectRows, dayRows, noteRows, verdictRows, ruleVerdictRows, prefs] =
+  const [
+    projectRows,
+    dayRows,
+    noteRows,
+    verdictRows,
+    ruleVerdictRows,
+    dayMarkRows,
+    prefs,
+  ] =
     await Promise.all([
     fetchAllRows<ProjectRow>(() =>
       client
@@ -66,6 +75,9 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       client
         .from("streak_verdicts")
         .select("project_id,rule_id,week_key,kept,sealed_at"),
+    ),
+    fetchAllRows<DayMarkRow>(() =>
+      client.from("day_ledger").select("project_id,date,kept,sealed_at"),
     ),
     client.from("user_prefs").select("active_project_id").maybeSingle(),
   ])
@@ -93,6 +105,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
       changeLog: [],
       weekVerdicts: {},
       ruleVerdicts: {},
+      dayLedger: {},
     }),
   )
 
@@ -159,6 +172,16 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     p.ruleVerdicts[`${r.rule_id}::${r.week_key}`] = {
       ruleId: r.rule_id,
       weekKey: r.week_key,
+      kept: !!r.kept,
+      sealedAt: r.sealed_at,
+    }
+  })
+
+  dayMarkRows.forEach((r) => {
+    const p = byId.get(r.project_id)
+    if (!p?.dayLedger) return
+    p.dayLedger[r.date] = {
+      date: r.date,
       kept: !!r.kept,
       sealedAt: r.sealed_at,
     }

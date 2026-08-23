@@ -114,6 +114,13 @@ export interface NoteRow {
   ignored: boolean | null
 }
 
+export interface DayMarkRow {
+  project_id: string
+  date: string
+  kept: boolean
+  sealed_at: string
+}
+
 export interface RuleVerdictRow {
   project_id: string
   rule_id: string

@@ -473,6 +473,20 @@ export interface StreakRule extends Labeled {
 }
 
 /**
+ * One finished day's mark on the balance, written once and never revisited.
+ *
+ * A ledger for the same reason the verdicts are, and more so: this one can be
+ * *spent*. A day's mark is written when the day leaves the editing window and
+ * never looked at again, so editing yesterday cannot retroactively change a
+ * balance you have already bought something with.
+ */
+export interface DayMark {
+  date: DayKey
+  kept: boolean
+  sealedAt: string
+}
+
+/**
  * One rule's verdict on one finished week, written once and never revisited —
  * an append-only ledger for the same reason `WeekVerdict` is. Re-breaking and
  * re-fixing a past week must not mint a second reward.
@@ -535,6 +549,14 @@ export interface Settings {
   streakRules?: StreakRule[]
   /** The project's counter categories. In `settings`, like `tags`. */
   categories?: Category[]
+  /**
+   * The day the balance started counting.
+   *
+   * Written once, the first time the app runs with the ledger present. Without
+   * it the whole history would seal in one second and the first purchase would
+   * be free — the same reason `startedOn` exists on a rule.
+   */
+  balanceStart?: DayKey | null
 }
 
 export interface GoalCut {
@@ -573,6 +595,8 @@ export interface Project {
   weekVerdicts?: Record<DayKey, WeekVerdict>
   /** Sealed custom-streak verdicts, keyed `${ruleId}::${weekKey}`. Append-only. */
   ruleVerdicts?: Record<string, RuleVerdict>
+  /** Sealed day marks, keyed by the day. Append-only — see `DayMark`. */
+  dayLedger?: Record<DayKey, DayMark>
 }
 
 export interface AppData {

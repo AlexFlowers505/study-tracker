@@ -40,6 +40,7 @@ import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
 import { ruleStatus, streakContext } from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
+import { balanceOf, dueMarks } from "./lib/balance"
 import { ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
@@ -51,6 +52,7 @@ import { fetchIsAdmin } from "./data/admin"
 import {
   applyWriteOp,
   opDay,
+  opDayMark,
   opRuleVerdict,
   opDeleteProject,
   opLog,
@@ -443,6 +445,17 @@ export default function StudyTrackerApp() {
   const kept = useMemo(() => keptDays(project), [project])
 
   /**
+   * The balance, and the day marks still owed to it — `spec 010`, part 4.
+   *
+   * Read from the project, never recomputed into it. This is the one figure
+   * here that can be *spent*, so a mark is written once when its day leaves
+   * the writing window and never revisited: editing yesterday must not move a
+   * balance something was already bought against.
+   */
+  const balance = useMemo(() => balanceOf(project), [project])
+  const marksDue = useMemo(() => dueMarks(project), [project])
+
+  /**
    * Which streaks are in trouble right now — `spec 010`, part 3.
    *
    * Computed here beside the statuses it reads, because the row itself must
@@ -481,6 +494,33 @@ export default function StudyTrackerApp() {
     if (existing.includes(ruleId)) return
     updateDay(key, { ruleFreezes: [...existing, ruleId] })
   }
+
+  // Counting starts the first time the app runs with a rule that votes, so
+  // switching the balance on never seals a year of history in one second and
+  // makes the first purchase free.
+  useEffect(() => {
+    if (!loaded || loadFailed) return
+    if (project.settings.balanceStart) return
+    if (!kept) return
+    // Not derivable, and that is the point: the date counting began is a
+    // recorded fact rather than a function of the current state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    updateSettings({ ...project.settings, balanceStart: toKey(new Date()) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, loadFailed, project.settings.balanceStart, kept])
+
+  // Seal whatever days are due. The op is an ignore-on-conflict upsert, so a
+  // replay is harmless and a mark already written stays as written.
+  useEffect(() => {
+    if (!loaded || loadFailed || !marksDue.length) return
+    const ledger = { ...(project.dayLedger || {}) }
+    marksDue.forEach((m) => (ledger[m.date] = m))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    patchProject(
+      { dayLedger: ledger },
+      marksDue.map((m) => opDayMark(project.id, m.date)),
+    )
+  }, [loaded, loadFailed, marksDue, project, patchProject])
 
   /**
    * The freeze waiting to be confirmed, from whichever streak asked.
@@ -824,6 +864,7 @@ export default function StudyTrackerApp() {
           <StreakBar
             statuses={ruleStatuses}
             keptDays={kept?.current ?? null}
+            balance={project.settings.balanceStart ? balance : null}
             risks={streakRisks}
             active={openStreak}
             onSelect={setOpenStreak}
