@@ -393,6 +393,24 @@ export interface StreakClause {
   op?: StreakOp
   /** @deprecated The number `op` pointed at. Read through `clauseBounds()`. */
   value?: number
+  /**
+   * A different requirement on different weekdays, keyed the way `getDay()`
+   * keys them — 0 is Sunday.
+   *
+   * Real goals are not one number: three hours most days, ninety minutes on
+   * Thursday. Saying that took seven conditions before, which then drifted
+   * apart the first time any of them was edited.
+   *
+   * **A weekday with no entry here is a weekday the condition does not
+   * judge**, which is why this replaces `weekdays` rather than sitting beside
+   * it: "no requirement" and "not asked about" were always the same thing, and
+   * keeping two fields for it is two ways for them to disagree.
+   *
+   * Absent means the condition asks the same thing every day it covers — the
+   * common case, and it stays a single pair of numbers rather than seven
+   * copies of one.
+   */
+  days?: Record<number, { min?: number; max?: number }>
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
   /**
@@ -418,6 +436,10 @@ export interface StreakClause {
    * A weekday left out is **not judged** by this clause — the one honest
    * "does not apply" the feature has, and honest because it is declared in
    * advance and cannot be changed on the morning it would help.
+   *
+   * Read through `clauseWeekdays()`, which prefers `days` when it is there:
+   * per-day numbers already say which weekdays are judged, by having a figure
+   * for them, and two fields answering one question is two ways to disagree.
    */
   weekdays?: number[]
   /**

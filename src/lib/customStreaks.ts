@@ -129,24 +129,51 @@ export interface ClauseBounds {
 }
 
 /**
- * What this condition is actually held to on this day.
+ * What this condition is held to on a given **weekday**.
+ *
+ * Every question about a condition's numbers is really a question about a
+ * weekday: `days` is keyed on one, `useDailyGoal` reads seven, and the flat
+ * pair answers all of them the same. Working in weekdays rather than dates is
+ * what lets the lock and the benchmark ask without inventing a date first.
  *
  * The only place `useDailyGoal` is resolved, and it resolves the **floor**:
  * "at least the day's goal" is the only thing that phrase ever meant.
  */
-export const clauseBounds = (
+export const boundsOnWeekday = (
   clause: StreakClause,
   ctx: StreakContext,
-  dayKey: DayKey,
+  weekday: number,
 ): ClauseBounds => {
-  if (clause.useDailyGoal)
-    return { min: ctx.dailyGoals[fromKey(dayKey).getDay()] || 0 }
+  // Per-day numbers are the explicit version and win over everything: writing
+  // them out is exactly the act of saying the flat pair was not enough.
+  if (clause.days) return clause.days[weekday] ?? {}
+  if (clause.useDailyGoal) return { min: ctx.dailyGoals[weekday] || 0 }
   if (clause.min !== undefined || clause.max !== undefined)
     return { min: clause.min, max: clause.max }
   // Written before the pair existed: one bound, whichever the operator named.
   if (clause.op === "atMost") return { max: clause.value ?? 0 }
   return { min: clause.value ?? 0 }
 }
+
+/** The same, for a date. */
+export const clauseBounds = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  dayKey: DayKey,
+): ClauseBounds => boundsOnWeekday(clause, ctx, fromKey(dayKey).getDay())
+
+/**
+ * Which weekdays a condition judges at all.
+ *
+ * With per-day numbers the keys *are* the answer — a weekday nobody wrote a
+ * figure for is a weekday nothing is owed on, which is the same statement.
+ */
+export const clauseWeekdays = (clause: StreakClause): number[] =>
+  clause.days
+    ? WEEKDAY_ORDER.filter((wd) => clause.days![wd] !== undefined)
+    : clause.weekdays?.length
+      ? clause.weekdays
+      : [...WEEKDAY_ORDER]
 
 /** The bounds a week asks for: each present side summed over its days. */
 export const weekBounds = (
@@ -517,8 +544,7 @@ const deficitOf = (
 
 /** Does this condition cover this weekday? No list means every one of them. */
 export const clauseCoversDay = (clause: StreakClause, dayKey: DayKey): boolean =>
-  !clause.weekdays?.length ||
-  clause.weekdays.includes(fromKey(dayKey).getDay())
+  clauseWeekdays(clause).includes(fromKey(dayKey).getDay())
 
 /**
  * One condition, on one day.
@@ -1322,27 +1348,43 @@ export function clauseSentence(
       scope === "week" ? "the week's goal" : "the day's goal"
     }${when}`
 
-  const { min, max } = clauseBounds(clause, ctx, describingDay())
   // Both bounds read as a range, because "at least 2h and at most 4h" is one
   // requirement said twice and nobody talks that way.
-  const said =
-    min !== undefined && max !== undefined
-      ? `between ${amount(min)} and ${amount(max)}`
-      : max !== undefined
-        ? `at most ${amount(max)}`
-        : `at least ${amount(min ?? 0)}`
-  return `${named}${where} ${said}${when}`
+  const said = (b: ClauseBounds) =>
+    b.min !== undefined && b.max !== undefined
+      ? `between ${amount(b.min)} and ${amount(b.max)}`
+      : b.max !== undefined
+        ? `at most ${amount(b.max)}`
+        : `at least ${amount(b.min ?? 0)}`
+
+  /* Per-day numbers are grouped by what they ask for, so "3h on Mon, Tue,
+     Wed, Fri, Sat, Sun and 1h 30m on Thu" reads as two requirements rather
+     than as seven. Grouping is what makes the readback checkable: the point of
+     a sentence is that you can hold it against what you meant, and seven
+     clauses of arithmetic cannot be held against anything. */
+  const judged = clauseWeekdays(clause)
+  const groups: { bounds: ClauseBounds; days: number[] }[] = []
+  judged.forEach((weekday) => {
+    const b = boundsOnWeekday(clause, ctx, weekday)
+    const found = groups.find(
+      (g) => g.bounds.min === b.min && g.bounds.max === b.max,
+    )
+    if (found) found.days.push(weekday)
+    else groups.push({ bounds: b, days: [weekday] })
+  })
+
+  // One group is the ordinary case and keeps the ordinary sentence, with the
+  // weekday suffix `when` already carries. Several always name their own days,
+  // since that is the only thing separating them.
+  if (groups.length === 1)
+    return `${named}${where} ${said(groups[0].bounds)}${when}`
+
+  return `${named}${where} ${groups
+    .map((g) => `${said(g.bounds)} on ${listDays(g.days)}`)
+    .join(", ")}`
 }
 
-/**
- * A day key to resolve a condition's bounds against, for the places describing
- * the rule rather than judging a date.
- *
- * Only `useDailyGoal` ever varied by day, and that branch is taken before this
- * is reached — so any key gives the same answer, and today's is the honest one
- * to name.
- */
-const describingDay = (): DayKey => toKey(new Date())
+
 
 /** The whole rule in one line — the scope, then every condition joined by "and". */
 export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {
@@ -1356,9 +1398,6 @@ export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {
 /* ---- The lock ------------------------------------------------------------ */
 
 /** The weekdays a clause covers. No list means all seven. */
-const weekdaysOf = (clause: StreakClause): Set<number> =>
-  new Set(clause.weekdays?.length ? clause.weekdays : WEEKDAY_ORDER)
-
 /** The slots a clause counts. No list means the whole day, which is every slot. */
 const slotsOf = (clause: StreakClause, slots: Slot[]): Set<string> =>
   new Set(clause.slotIds?.length ? clause.slotIds : slots.map((s) => s.id))
@@ -1422,6 +1461,7 @@ const sameTarget = (a: StreakTarget, b: StreakTarget): boolean =>
 function clauseNarrows(
   prev: StreakClause,
   next: StreakClause,
+  ctx: StreakContext,
   slots: Slot[],
 ): boolean {
   if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
@@ -1429,19 +1469,27 @@ function clauseNarrows(
   // Not comparable, therefore not provable, therefore it waits.
   if (!!prev.useDailyGoal !== !!next.useDailyGoal) return false
 
-  /* Each bound, in its own direction.
-     - a floor that rises is harder; absent is a floor of nothing;
-     - a ceiling that falls is harder; absent is no ceiling at all.
-     Adding a bound that was not there is therefore automatically no-easier,
-     which is right: one more thing to keep can only ever cost you. */
-  const a = boundsIsh(prev)
-  const b = boundsIsh(next)
-  if (!prev.useDailyGoal && (b.min ?? 0) < (a.min ?? 0)) return false
-  if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+  /* **Weekday by weekday**, since a condition can now ask a different thing
+     on each. For every weekday the old rule judged:
 
-  // More days covered is harder; dropping one is a day that stops being asked
-  // about at all.
-  if (!covers(weekdaysOf(next), weekdaysOf(prev))) return false
+     - it must still be judged — dropping one is a day that stops being asked
+       about, which is unambiguously easier;
+     - its floor must not fall and its ceiling must not rise. Absent is a floor
+       of nothing and a ceiling of everything, so *adding* a bound is
+       automatically no-easier, which is right: one more thing to keep can only
+       cost you.
+
+     Weekdays the old rule did not judge are skipped entirely. Gaining one is
+     more to keep, and that never waits. */
+  const wasJudged = new Set(clauseWeekdays(prev))
+  const isJudged = new Set(clauseWeekdays(next))
+  for (const weekday of wasJudged) {
+    if (!isJudged.has(weekday)) return false
+    const a = boundsOnWeekday(prev, ctx, weekday)
+    const b = boundsOnWeekday(next, ctx, weekday)
+    if ((b.min ?? 0) < (a.min ?? 0)) return false
+    if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+  }
 
   /* The slot rows point in opposite directions for the same edit, and that is
      not a mistake: under a ceiling a slot is a place you can be caught, so
@@ -1453,23 +1501,18 @@ function clauseNarrows(
      exactly what it is for. */
   const ps = slotsOf(prev, slots)
   const ns = slotsOf(next, slots)
-  const hasFloor = b.min !== undefined || a.min !== undefined
-  const hasCeiling = b.max !== undefined || a.max !== undefined
+  const anyBound = (clause: StreakClause, pick: "min" | "max") =>
+    clauseWeekdays(clause).some(
+      (wd) => boundsOnWeekday(clause, ctx, wd)[pick] !== undefined,
+    )
+  const hasFloor = anyBound(prev, "min") || anyBound(next, "min")
+  const hasCeiling = anyBound(prev, "max") || anyBound(next, "max")
   if (hasFloor && hasCeiling)
     return covers(ns, ps) && covers(ps, ns)
   return hasCeiling ? covers(ns, ps) : covers(ps, ns)
 }
 
-/**
- * A condition's bounds without a date — the lock compares terms, and a term
- * that varies by day is handled by the `useDailyGoal` branch above it.
- */
-const boundsIsh = (clause: StreakClause): ClauseBounds =>
-  clause.min !== undefined || clause.max !== undefined
-    ? { min: clause.min, max: clause.max }
-    : clause.op === "atMost"
-      ? { max: clause.value ?? 0 }
-      : { min: clause.value ?? 0 }
+
 
 /**
  * Can it be proved that `next` cannot be easier to keep than `prev`?
@@ -1503,7 +1546,7 @@ export function isNarrowing(
   // condition is not mistaken for a dropped one plus a new one.
   return ruleClauses(prev).every((before) => {
     const counterpart = after.find((c) => c.id === before.id)
-    return !!counterpart && clauseNarrows(before, counterpart, slots)
+    return !!counterpart && clauseNarrows(before, counterpart, ctx, slots)
   })
 }
 

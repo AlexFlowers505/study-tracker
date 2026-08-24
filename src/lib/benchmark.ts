@@ -35,30 +35,21 @@
 import type { Project, StreakClause, StreakRule } from "../types/model"
 import type { StreakContext } from "./customStreaks"
 import {
-  clauseBounds,
+  boundsOnWeekday,
   clauseTarget,
+  clauseWeekdays,
   ruleClauses,
   streakContext,
   targetMeasure,
 } from "./customStreaks"
-import { toKey } from "./date"
 import { WEEKDAY_ORDER } from "./date"
 
 /** Why a rule cannot be the benchmark, in the words the form should use. */
 export type BenchmarkBar = string | null
 
-/**
- * A condition's bounds, without a day to resolve them against.
- *
- * Only `useDailyGoal` varies by day, and every caller here has already taken
- * that branch, so any date gives the same answer.
- */
-const boundsOf = (clause: StreakClause, ctx: StreakContext) =>
-  clauseBounds(clause, ctx, toKey(new Date()))
-
-/** Does this condition cover this weekday? No list means all of them. */
+/** Does this condition judge this weekday? */
 const covers = (clause: StreakClause, weekday: number): boolean =>
-  !clause.weekdays?.length || clause.weekdays.includes(weekday)
+  clauseWeekdays(clause).includes(weekday)
 
 /**
  * Whether this rule could supply the day's goal, and if not, why not.
@@ -79,7 +70,11 @@ export function benchmarkBar(
   for (const clause of clauses) {
     if (targetMeasure(clauseTarget(clause), ctx) !== "time")
       return "Only a rule that counts time; this one counts occurrences."
-    if (boundsOf(clause, ctx).min === undefined)
+    // Every weekday it judges has to name a floor. A day with only a ceiling
+    // has nothing to aim at, and a goal line with a hole in it is worse than
+    // no goal line.
+    const judged = clauseWeekdays(clause)
+    if (judged.some((wd) => boundsOnWeekday(clause, ctx, wd).min === undefined))
       return "Only floors — a ceiling is not something to aim at."
   }
 
@@ -141,9 +136,7 @@ export function benchmarkGoals(
     // `useDailyGoal` is keyed on the weekday, so `ctx.dailyGoals` answers it
     // directly — there is no day to look up.
     goals[weekday] = clause
-      ? clause.useDailyGoal
-        ? ctx.dailyGoals[weekday] || 0
-        : (boundsOf(clause, ctx).min ?? 0)
+      ? (boundsOnWeekday(clause, ctx, weekday).min ?? 0)
       : 0
   })
   return goals

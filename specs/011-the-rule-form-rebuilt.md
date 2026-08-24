@@ -102,8 +102,29 @@ do that a rule cannot say better.
         *Verified against the live project: 127 days, the same 22-day run,
         the same two missed days at the start of August, the same banked
         freezes. Nothing moved.*
-  - [ ] **3b — per-weekday numbers.** `days` replaces `weekdays`; a day with
+  - [x] **3b — per-weekday numbers.** `days` replaces `weekdays`; a day with
         no requirement is a day the rule does not judge.
+        *`boundsOnWeekday()` is the resolver everything now goes through —
+        every question about a condition's numbers turns out to be a question
+        about a weekday, which is what lets the lock and the benchmark ask
+        without inventing a date first. `clauseWeekdays()` answers coverage the
+        same way, preferring `days` when it is there: per-day figures already
+        say which days are judged, by having one.*
+        *`weekdays` is kept rather than deprecated. Most conditions ask the
+        same thing every day they cover, and that case stays one pair of
+        numbers plus a row of day switches instead of seven copies of one
+        figure. `days` is the override, and the form seeds it from what the
+        condition already asks — so turning the mode on changes nothing about
+        the rule, it only makes the numbers editable.*
+        *The lock walks weekdays now: every day the old rule judged must still
+        be judged, with no lower floor and no higher ceiling. Days it did not
+        judge are skipped, since gaining one is more to keep.*
+        *The readback groups by figure — "Lessons at least 3h on Mon, Tue,
+        Wed, Fri, Sat, Sun, at least 1h 30m on Thu" — because a sentence you
+        cannot hold against what you meant is not doing its job.*
+        *This is what lets `useDailyGoal` go before its migration does: that
+        exact rule, written out, is accepted as the benchmark and derives the
+        same seven figures the goal held.*
   - [ ] **3c — slot requirements.** Day-level and slot-level at once.
   - [ ] **3d — the form in sections**, labels above fields, and the tab saying
         that the accounting period is the week.

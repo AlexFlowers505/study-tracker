@@ -76,8 +76,10 @@ import type { ClauseBounds, StreakContext } from "../lib/customStreaks"
 import type { RuleProposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
 import {
+  boundsOnWeekday,
   clauseBounds,
   clauseSentence,
+  clauseWeekdays,
   clauseTarget,
   clauseTargets,
   clauseUnits,
@@ -871,40 +873,151 @@ function ClauseForm({
           a question it can ask. */}
       {!byWeek && (
         <Row label="On">
-          <div className="flex flex-wrap gap-1">
-            {WEEKDAY_ORDER.map((wd) => {
-              const on =
-                !clause.weekdays?.length || clause.weekdays.includes(wd)
-              return (
-                <button
-                  key={wd}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      weekdays: toggleIn(
-                        clause.weekdays?.map(String),
-                        WEEKDAY_ORDER.map(String),
-                        String(wd),
-                      )?.map(Number),
-                    })
-                  }
-                  aria-pressed={on}
-                  style={
-                    on ? { backgroundColor: c.accent, color: c.onFill } : undefined
-                  }
-                  className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
-                    on ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
-                  }`}
-                >
-                  {WEEKDAY_LABELS[wd]}
-                </button>
-              )
-            })}
-          </div>
-          {!clause.weekdays?.length && (
-            <span className="text-[9px] font-mono text-ink/35">every day</span>
-          )}
+          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
         </Row>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Which weekdays a condition judges, and — once you ask for it — a different
+ * figure on each.
+ *
+ * **Two modes, because two questions.** Most conditions ask the same thing
+ * every day they cover, and that stays one number and a row of day switches.
+ * Real goals often do not: three hours most days, ninety minutes on Thursday.
+ * Saying that took seven conditions before, which then drifted apart the first
+ * time any one of them was edited.
+ *
+ * **A day with no figure is a day the rule does not judge**, so the two
+ * questions are the same question once per-day numbers are on: switching a day
+ * off *is* leaving its figure blank. That is why turning the mode on hands
+ * every covered day the shared figure to start from rather than an empty grid
+ * — nothing changes about what the rule asks until you change a number.
+ */
+function WeekdayRow({
+  clause,
+  ctx,
+  timed,
+  onChange,
+}: {
+  clause: StreakClause
+  ctx: StreakContext
+  timed: boolean
+  onChange: (patch: Partial<StreakClause>) => void
+}) {
+  const c = usePalette()
+  const perDay = !!clause.days
+  const judged = clauseWeekdays(clause)
+
+  const setPerDay = (on: boolean) => {
+    if (!on) return onChange({ days: undefined })
+    // Seeded from what the condition already asks, so switching the mode on
+    // changes nothing about the rule — it only makes the numbers editable.
+    const days: Record<number, ClauseBounds> = {}
+    judged.forEach((wd) => {
+      days[wd] = boundsOnWeekday(clause, ctx, wd)
+    })
+    onChange({ days, weekdays: undefined, useDailyGoal: undefined })
+  }
+
+  const toggleDay = (wd: number) => {
+    const on = judged.includes(wd)
+    // The last one cannot come off: a condition that judges no day is not a
+    // condition, and an empty list reads as "every day" to anyone glancing.
+    if (on && judged.length === 1) return
+    if (perDay) {
+      const days = { ...clause.days }
+      if (on) delete days[wd]
+      else days[wd] = boundsOnWeekday(clause, ctx, judged[0])
+      return onChange({ days })
+    }
+    const next = on ? judged.filter((x) => x !== wd) : [...judged, wd]
+    onChange({
+      weekdays: next.length === WEEKDAY_ORDER.length ? undefined : next,
+    })
+  }
+
+  const setDay = (wd: number, bounds: ClauseBounds) =>
+    onChange({ days: { ...clause.days, [wd]: bounds } })
+
+  return (
+    <div className="space-y-1.5 w-full">
+      <div className="flex flex-wrap items-center gap-1">
+        {WEEKDAY_ORDER.map((wd) => {
+          const on = judged.includes(wd)
+          return (
+            <button
+              key={wd}
+              type="button"
+              onClick={() => toggleDay(wd)}
+              aria-pressed={on}
+              style={
+                on ? { backgroundColor: c.accent, color: c.onFill } : undefined
+              }
+              className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
+                on ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
+              }`}
+            >
+              {WEEKDAY_LABELS[wd]}
+            </button>
+          )
+        })}
+        {!perDay && judged.length === WEEKDAY_ORDER.length && (
+          <span className="text-[9px] font-mono text-ink/35">every day</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setPerDay(!perDay)}
+          aria-pressed={perDay}
+          style={
+            perDay
+              ? { backgroundColor: `${c.accent}24`, color: c.accent }
+              : undefined
+          }
+          className={`${btnBase} ml-1 px-2 py-1 rounded-full text-[10px] font-mono ${
+            perDay ? "" : "text-ink/35 hover:text-ink/70"
+          }`}
+        >
+          a figure per day
+        </button>
+      </div>
+
+      {perDay && (
+        <div className="flex flex-wrap gap-2">
+          {judged.map((wd) => {
+            const b = clause.days?.[wd] ?? {}
+            const shown = b.min ?? b.max ?? 0
+            const side: "min" | "max" = b.min !== undefined ? "min" : "max"
+            return (
+              <label key={wd} className="flex flex-col items-center gap-0.5">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+                  {WEEKDAY_LABELS[wd]}
+                </span>
+                {timed ? (
+                  <DurationField
+                    minutes={shown}
+                    onChange={(v) => setDay(wd, { ...b, [side]: v })}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    min={0}
+                    value={shown}
+                    onChange={(e) =>
+                      setDay(wd, {
+                        ...b,
+                        [side]: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                    className={NUM}
+                  />
+                )}
+              </label>
+            )
+          })}
+        </div>
       )}
     </div>
   )
