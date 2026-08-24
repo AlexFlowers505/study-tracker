@@ -49,6 +49,7 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
 import {
+  Gauge,
   Hourglass,
   Lock,
   Pencil,
@@ -74,6 +75,7 @@ import type {
 import { isCheck, splitByKind } from "../lib/checks"
 import type { StreakContext, StreakMeasure } from "../lib/customStreaks"
 import type { RuleProposal } from "../types/model"
+import { benchmarkBar } from "../lib/benchmark"
 import {
   clauseSentence,
   clauseTarget,
@@ -614,15 +616,22 @@ function RuleSummary({
   ctx,
   locked,
   settingUp,
+  isBenchmark,
+  onBenchmark,
   onEdit,
 }: {
   rule: StreakRule
   ctx: StreakContext
   locked: boolean
   settingUp: boolean
+  /** Whether this is the rule the day's goal is read from. */
+  isBenchmark: boolean
+  onBenchmark: (on: boolean) => void
   onEdit: () => void
 }) {
+  const c = usePalette()
   const clauses = ruleClauses(rule)
+  const bar = benchmarkBar(rule, ctx)
   return (
     <div className="space-y-1.5 pl-1 pt-1">
       {/* The same sentence the panel reads back, from the same function. A
@@ -655,6 +664,41 @@ function RuleSummary({
           {rule.looseningLog.at(-1)!.reason}
         </p>
       ) : null}
+      {/* The benchmark switch sits out here rather than inside the draft,
+          because it is not one of the rule's terms: it moves where a printed
+          figure is read from and changes no verdict, so there is nothing for
+          the lock to protect and nothing to explain in writing.
+
+          Ineligible rules say **why** instead of simply not offering it. A
+          switch that is quietly absent teaches nothing, and "why can't I pick
+          this one" has a short true answer every time. */}
+      <div className="pt-1">
+        {bar ? (
+          <span className="flex items-start gap-1.5 text-[10px] font-mono text-ink/30">
+            <Gauge size={11} className="shrink-0 mt-px" />
+            {bar}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onBenchmark(!isBenchmark)}
+            className={`${btnBase} flex items-start gap-1.5 text-[10px] font-mono text-left ${
+              isBenchmark
+                ? "text-ink/70"
+                : "text-ink/35 hover:text-ink/60"
+            }`}
+          >
+            <Gauge
+              size={11}
+              className="shrink-0 mt-px"
+              style={isBenchmark ? { color: c.accent } : undefined}
+            />
+            {isBenchmark
+              ? "The day's goal is read from this rule"
+              : "Read the day's goal from this rule"}
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
         <button
           type="button"
@@ -686,6 +730,8 @@ function RuleForm({
   onPropose,
   pending,
   supervised,
+  isBenchmark,
+  onBenchmark,
   today,
 }: {
   rule: StreakRule
@@ -696,6 +742,8 @@ function RuleForm({
   /** The request already waiting on this rule, if any. */
   pending?: RuleProposal
   supervised: boolean
+  isBenchmark: boolean
+  onBenchmark: (on: boolean) => void
   today: Date
 }) {
   const c = usePalette()
@@ -746,6 +794,8 @@ function RuleForm({
         ctx={ctx}
         locked={locked}
         settingUp={settingUp}
+        isBenchmark={isBenchmark}
+        onBenchmark={onBenchmark}
         onEdit={() => {
           setReason("")
           setDraft({
@@ -1061,6 +1111,15 @@ export function StreakRulesTab({
             ctx={ctx}
             today={today}
             supervised={supervised}
+            isBenchmark={settings.benchmarkRuleId === rule.id}
+            /* Exclusive by construction: one field holding one id, so
+               nominating a second cannot leave the first also nominated. */
+            onBenchmark={(on) =>
+              onSave({
+                ...settings,
+                benchmarkRuleId: on ? rule.id : undefined,
+              })
+            }
             pending={proposals.find(
               (p) => p.ruleId === rule.id && p.state === "pending",
             )}

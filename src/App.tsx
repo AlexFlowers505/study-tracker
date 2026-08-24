@@ -48,6 +48,7 @@ import {
   streakContext,
 } from "./lib/customStreaks"
 import { dayReport, keptDays } from "./lib/dayVerdict"
+import { withBenchmarkGoals } from "./lib/benchmark"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
 import { purchaseOf } from "./lib/shop"
@@ -877,6 +878,18 @@ export default function StudyTrackerApp() {
     hiddenCategories,
   ])
 
+  /* The day's goal, from the rule that promised it.
+
+     Layered on top of the count filter rather than folded into it: they are
+     two different projections of the same stored project and stacking them
+     one at a time is what keeps either one readable. Both are read-only —
+     every edit below still closes over `project`, so a derived figure can
+     never be written back over one somebody typed. */
+  const shownProject = useMemo(
+    () => withBenchmarkGoals(visibleProject),
+    [visibleProject],
+  )
+
   // No env vars, no database. A dead end rather than the signed-out local
   // fallback, because that path calls `window.storage` — an API browsers do
   // not have — so "degrading gracefully" here means a logbook that silently
@@ -1141,7 +1154,7 @@ export default function StudyTrackerApp() {
         )}
 
         <LogView
-          data={visibleProject}
+          data={shownProject}
           verdictOf={verdictOf}
           period={period}
           range={range}
@@ -1181,7 +1194,7 @@ export default function StudyTrackerApp() {
 
         <div className="mt-10">
           <AnalyticsView
-            data={visibleProject}
+            data={shownProject}
             rangeStart={range.start}
             rangeEnd={range.end}
           />

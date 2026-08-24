@@ -326,12 +326,53 @@ looking at, which means it has to show the *figures* and not only the ticks —
     wrong thing to optimise: a reward reachable while keeping half your
     promises says half is enough. Break-even now sits at 75%.
 
+---
+
+# Part 6 — The benchmark *(landed)*
+
+One rule is nominated, and the figure it asks for is the figure every day is
+held up against: the `goal 3h` line on the cards, the dashed line in the daily
+chart, the heatmap's shading. `lib/benchmark.ts`, `settings.benchmarkRuleId`.
+
+**Why the word.** Not "pinned" and not "key" — those say how it got there and
+how much it matters, and neither is the job. A benchmark is the thing you
+measure against, which is exactly what that number does and all it does.
+
+**It is display-only, and therefore outside the lock.** Nominating a rule moves
+where a printed figure is read from; it changes no verdict, no streak and no
+balance, so there is nothing here that can be made easier and nothing to
+explain in writing.
+
+**Eligibility is a consequence, not a policy.** `goalForDate` returns minutes
+and every reader of it is minutes all the way down, so the rule has to measure
+time; a ceiling is not something to aim at, so the conditions have to be
+floors; and no two conditions may land on the same weekday, because two figures
+on one Tuesday is not a goal. A weekly rule has no per-day figure at all.
+
+**Several conditions are allowed, and that was the correction that made it
+usable.** One condition was the first cut and it barred every real goal: "three
+hours, but ninety minutes on Thursday" is two conditions. What matters is one
+figure per weekday, not one condition per rule.
+
+**`useDailyGoal` does not disqualify a rule**, though it looks circular. Such a
+condition's limit *is* `settings.dailyGoals`, so the figure comes back out the
+same as it went in — an identity, not a cycle. Barring it would have made the
+feature dead on arrival for every migrated project, since the rule `014` built
+is exactly that shape. When Part 3 deletes the field, this stops being a
+special case and nothing else changes.
+
+**Derived at the edge.** `withBenchmarkGoals` projects the figures into
+`settings.dailyGoals` in `App`, layered on the count filter, so the ten files
+calling `goalForDate` go on asking the same question and get an answer with a
+promise behind it. Read-only, like the count filter: every edit closes over the
+stored project, so a derived figure can never be written over a typed one.
+
 ## Open questions
 
-- **Does the daily goal survive as a display target?** Ten files read it and
-  the "goal 3h" line is genuinely useful. The alternative is deriving the
-  displayed target from whichever rule votes on that day, which is more honest
-  and considerably more work. Needs an answer before stage 4.
+- ~~**Does the daily goal survive as a display target?**~~ **Answered, and
+  built** — see Part 6. It survives as a *display*, and its figures come from a
+  nominated rule rather than from seven numbers nobody promised anything
+  about.
 - **What is a rule's priority attached to?** A number on the rule is the
   obvious answer; the ordering half works without one.
 - **Do weights apply to `VerdictBar` too?** A month cell's segments have the

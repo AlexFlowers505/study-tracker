@@ -89,7 +89,18 @@ which are Node config and get their own lint block.
     `cellSurface`, `dayStateSurface` and `chartTooltip`. See **Theming** below;
     the short version is that surfaces are Tailwind tokens and the accents are
     a `Palette` object you get from `usePalette()`.
-  - `stats.ts` — `dayBreakdown`, `rangeStats`, `periodBreakdown`,
+    - `benchmark.ts` — which rule supplies the day's goal. One rule is
+    nominated (`settings.benchmarkRuleId`) and its figures stand in for
+    `settings.dailyGoals`, so `goal 3h` on a card is a promise somebody made
+    rather than a number nobody answers for. **Display only, and therefore
+    outside the lock** — it changes no verdict. Eligibility falls out of the
+    readers: `goalForDate` is minutes, so the rule must measure time; a ceiling
+    is not something to aim at, so its conditions must be floors; and no two
+    may land on the same weekday, or that day has two goals. Several
+    conditions are fine and necessary — "3h, but 1h30 on Thursday" is two.
+    `withBenchmarkGoals` projects the result in `App`, layered on the count
+    filter, so the ten callers of `goalForDate` need no change.
+- `stats.ts` — `dayBreakdown`, `rangeStats`, `periodBreakdown`,
     `elapsedDayCount`, `goalForDate`, `makeIsIgnored`. **Every number the app
     reports comes from here, and none of it ever reads `day.sleep`.**
   - `period.ts` — `PERIODS`, `periodRange`, `stepCursor`, `rangeLabel`.

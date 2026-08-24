@@ -677,7 +677,24 @@ export interface Settings {
   projectName: string
   projectIcon: string
   /** Minutes, keyed by `Date.getDay()` — 0 is Sunday. */
+  /**
+   * The seven per-weekday figures the day is measured against, in minutes.
+   *
+   * Standing in for these, when one is nominated, is the **benchmark** rule —
+   * see `benchmarkRuleId` and `lib/benchmark.ts`. These stay stored either
+   * way: nominating a rule is a change of source, not a deletion, and taking
+   * the nomination away has to put something back.
+   */
   dailyGoals: Record<number, number>
+  /**
+   * Which rule supplies the day's goal, if any.
+   *
+   * Display only — it moves where a printed figure comes from and changes no
+   * verdict, which is why it sits outside the lock and needs no written
+   * reason. Re-checked on every read, since a rule can be edited into
+   * something that no longer qualifies.
+   */
+  benchmarkRuleId?: string
   /**
    * When freeze accounting started — set the first time the effectiveness
    * meter is on and a week is sealed. Weeks that ended before it never grant,
