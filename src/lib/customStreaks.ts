@@ -46,6 +46,7 @@
 import type {
   Activity,
   Category,
+  CheckState,
   CounterUnit,
   Day,
   DayKey,
@@ -66,7 +67,13 @@ import {
   toKey,
   weekDates,
 } from "./date"
-import { checkState, counterKind, isCheck } from "./checks"
+import {
+  CHECK_CHOICES,
+  CHECK_LABELS,
+  checkState,
+  counterKind,
+  isCheck,
+} from "./checks"
 import { dayCounters, slotUnitValue, unitDayTotal } from "./counters"
 import { entryActivity } from "./entries"
 import { makeId } from "./id"
@@ -557,6 +564,9 @@ const deficitOf = (
 }
 
 /** Does this condition cover this weekday? No list means every one of them. */
+/** A date to describe a condition against, where any date would do. */
+const describingKey = (): DayKey => toKey(new Date())
+
 export const clauseCoversDay = (clause: StreakClause, dayKey: DayKey): boolean =>
   clauseWeekdays(clause).includes(fromKey(dayKey).getDay())
 
@@ -594,6 +604,25 @@ export function readClauseDay(
      the ordinary count below, where a `yes` is the one it already stores. */
   if (targets.length === 1 && info.check) {
     const state = checkState(day, targets[0].id || "")
+
+    /* **The day names which answers it will take.** A check is not a number,
+       so a floor and a ceiling say nothing useful about one; what a day asks
+       is which of the three answers is acceptable today. An unanswered check
+       satisfies nothing — that is the reminder, and a weekday you did not want
+       to be asked about is one you left out of the map. */
+    const allowed = clause.allow?.[fromKey(dayKey).getDay()]
+    if (allowed) {
+      const ok = !!state && allowed.includes(state)
+      return {
+        ...base,
+        value: state === "yes" ? 1 : 0,
+        deficit: ok ? 0 : 1,
+        skipped: state === "skip",
+      }
+    }
+
+    // Written before that existed: a floor of one means yes, a ceiling of
+    // nothing means no, and a skip is a miss you chose rather than suffered.
     if (state === "skip")
       return { ...base, value: 0, deficit: 1, skipped: true }
     const value = state === "yes" ? 1 : 0
@@ -729,6 +758,46 @@ export function readWeek(
   return ruleClauses(rule).map((clause) => {
     const measure = targetMeasure(clauseTarget(clause), ctx)
     const covered = keys.filter((k) => clauseCoversDay(clause, k))
+
+    /* **A week of checks is counted per answer, not summed.**
+       `{ yes: { min: 6 }, no: { max: 0 } }` is *six good days, no bad ones,
+       and the seventh may be skipped* — three requirements about three
+       different answers, which no single total can hold. A state left out is
+       unconstrained, which is what "skipped: any" means.
+
+       The deficit adds the shortfalls: falling two `yes` short and taking one
+       `no` you swore off is two problems, and pricing it as one would make the
+       second free. */
+    if (clause.states) {
+      const tally: Record<string, number> = { yes: 0, no: 0, skip: 0 }
+      covered.forEach((k) => {
+        const state = checkState(days[k], clauseTarget(clause).id || "")
+        if (state) tally[state] += 1
+      })
+      const short = CHECK_CHOICES.reduce((sum, answer) => {
+        const bound = clause.states?.[answer]
+        if (!bound) return sum
+        const had = tally[answer]
+        return (
+          sum +
+          Math.max(
+            bound.min === undefined ? 0 : bound.min - had,
+            bound.max === undefined ? 0 : had - bound.max,
+            0,
+          )
+        )
+      }, 0)
+      return {
+        clause,
+        applies: covered.length > 0,
+        // The headline figure is the yes count: it is what the chart plots and
+        // what nearly every rule of this shape is actually about.
+        value: tally.yes,
+        deficit: covered.length ? short : 0,
+        skipped: false,
+      }
+    }
+
     const value = covered.reduce(
       (sum, k) => sum + readClauseDay(clause, ctx, days[k], k).value,
       0,
@@ -1290,10 +1359,59 @@ export function clauseSentence(
 
   // Only a lone check reads as an answer; several of them are a count, which
   // is exactly how `readClauseDay` treats them.
-  if (targets.length === 1 && info.check)
+  if (targets.length === 1 && info.check) {
+    /* A week of checks, counted per answer. Only the constrained answers are
+       named — a state left out is unconstrained, and listing "skipped: any"
+       would be spending a clause on saying nothing. */
+    if (clause.states) {
+      const parts = CHECK_CHOICES.flatMap((answer) => {
+        const b = clause.states?.[answer]
+        if (!b || (b.min === undefined && b.max === undefined)) return []
+        const label = CHECK_LABELS[answer].toLowerCase()
+        if (b.min !== undefined && b.max !== undefined)
+          return [`${b.min}–${b.max} ${label}`]
+        return [
+          b.max !== undefined
+            ? `at most ${b.max} ${label}`
+            : `at least ${b.min} ${label}`,
+        ]
+      })
+      return parts.length
+        ? `${info.qualified}: ${parts.join(", ")} a week`
+        : `${info.qualified} — nothing asked`
+    }
+
+    /* Judged by the day, with each weekday naming the answers it takes.
+       Grouped by that set, so "yes on Mon–Fri, yes or skipped at the weekend"
+       reads as two requirements rather than as seven. */
+    if (clause.allow) {
+      const groups: { answers: CheckState[]; days: number[] }[] = []
+      clauseWeekdays(clause).forEach((weekday) => {
+        const answers = clause.allow?.[weekday] ?? []
+        const key = [...answers].sort().join("|")
+        const found = groups.find(
+          (g) => [...g.answers].sort().join("|") === key,
+        )
+        if (found) found.days.push(weekday)
+        else groups.push({ answers, days: [weekday] })
+      })
+      const said = (answers: CheckState[]) =>
+        answers.length
+          ? answers.map((a) => CHECK_LABELS[a].toLowerCase()).join(" or ")
+          : "nothing"
+      if (groups.length === 1)
+        return `${info.qualified} must be ${said(groups[0].answers)}${when}`
+      return `${info.qualified} must be ${groups
+        .map((g) => `${said(g.answers)} on ${listDays(g.days)}`)
+        .join(", ")}`
+    }
+
     return `${info.qualified} must be ${
-      clause.op === "atLeast" ? "yes" : "no"
+      clauseBounds(clause, ctx, describingKey()).min !== undefined
+        ? "yes"
+        : "no"
     }${when}`
+  }
 
   const where = clause.slotIds?.length
     ? ` in ${clause.slotIds
@@ -1462,10 +1580,34 @@ function clauseNarrows(
   const isJudged = new Set(clauseWeekdays(next))
   for (const weekday of wasJudged) {
     if (!isJudged.has(weekday)) return false
+    /* A check's weekday asks which answers it takes, and **fewer accepted
+       answers is harder**. Dropping the field entirely is not comparable to
+       keeping it — one is a set and the other is a number — so it waits. */
+    const wasAllow = prev.allow?.[weekday]
+    const nowAllow = next.allow?.[weekday]
+    if (!!wasAllow !== !!nowAllow) return false
+    if (wasAllow && nowAllow) {
+      if (!nowAllow.every((a) => wasAllow.includes(a))) return false
+      continue
+    }
     const a = boundsOnWeekday(prev, ctx, weekday)
     const b = boundsOnWeekday(next, ctx, weekday)
     if ((b.min ?? 0) < (a.min ?? 0)) return false
     if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+  }
+
+  /* A week counted per answer: each constrained state compared in its own
+     direction, and a constraint that was there must still be there. */
+  if (!!prev.states !== !!next.states) return false
+  if (prev.states && next.states) {
+    for (const answer of CHECK_CHOICES) {
+      const a = prev.states[answer]
+      const b = next.states[answer]
+      if (a && !b) return false
+      if (!a || !b) continue
+      if ((b.min ?? 0) < (a.min ?? 0)) return false
+      if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+    }
   }
 
   /* The slot rows point in opposite directions for the same edit, and that is

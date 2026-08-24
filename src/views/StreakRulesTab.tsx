@@ -60,6 +60,8 @@ import {
 } from "lucide-react"
 import type {
   Activity,
+  CheckState,
+  DayRequirement,
   Category,
   CounterUnit,
   Labeled,
@@ -93,6 +95,7 @@ import {
   targetMeasure,
 } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
+import { CHECK_CHOICES, CHECK_LABELS } from "../lib/checks"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
@@ -180,6 +183,21 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
  * costs to slip — and it was eleven fields in a flat list. A heading heavier
  * than the field labels is what turns the list back into the three.
  */
+/**
+ * A heading inside one condition, dividing *what it watches* from *what it
+ * asks of it*.
+ *
+ * Lighter than a `Section`, which groups whole parts of the rule, and heavier
+ * than a field label, which names one control. Without it a condition is
+ * eleven fields in a row and the first — the counters, which everything below
+ * is about — reads as just another one of them.
+ */
+const SubHead = ({ children }: { children: ReactNode }) => (
+  <p className="text-[9px] font-sans font-extrabold uppercase tracking-widest text-ink/45 pt-1">
+    {children}
+  </p>
+)
+
 const Section = ({
   title,
   children,
@@ -328,14 +346,14 @@ function CountersPicker({
   /* Every kind that has something in it. A kind with nothing behind it is
      absent for the same reason a tab is.
 
-     **`All study time` stays**, against what `spec 011` first decided. The
-     argument for dropping it was that selecting every activity says the same
-     thing, and that is not true: study time counts whatever was logged,
-     including under an activity that does not exist yet, where a list of
-     activities freezes the answer on the day it was written. It is also the
-     only target with no id, so it cannot be expressed any other way. */
+     **`All study time` can no longer be chosen**, but a condition already on
+     it still offers it, the same way a deleted counter keeps its chip. Hiding
+     it outright would leave the dropdown showing its first option instead — a
+     silent claim that the rule is about something it is not. So it is a door
+     you can walk out of and not back in, which is what "removed" has to mean
+     for a field that is already in somebody's data. */
   const kinds = PICKS.filter(
-    (k) => k === "time" || choicesFor(k, ctx).length > 0,
+    (k) => (k === "time" ? pick === "time" : choicesFor(k, ctx).length > 0),
   )
 
   const options = choicesFor(pick, ctx)
@@ -392,6 +410,9 @@ function CountersPicker({
   return (
     <div className="space-y-2 w-full">
       <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+          Entity
+        </span>
         <select
           value={pick}
           onChange={(e) => switchKind(e.target.value as PickKind)}
@@ -704,7 +725,8 @@ function ClauseForm({
 
   return (
     <div className="space-y-2">
-      <Row label="Counters">
+      <SubHead>Counters</SubHead>
+      <Row label="">
         <CountersPicker
           clause={clause}
           ctx={ctx}
@@ -724,26 +746,14 @@ function ClauseForm({
             })
           }}
         />
-        <span className={WORD}>must be</span>
+        {!info.check && <span className={WORD}>must be</span>}
 
-        {/* A check has two answers, not a comparison. "Overslept must be at
-            most 0 times" is the same rule and nobody would write it. */}
-        {info.check ? (
-          <Pills<"yes" | "no">
-            value={bounds.min !== undefined ? "yes" : "no"}
-            onChange={(v) =>
-              onChange(
-                v === "yes"
-                  ? { min: 1, max: undefined, op: undefined, value: undefined }
-                  : { min: undefined, max: 0, op: undefined, value: undefined },
-              )
-            }
-            options={[
-              { id: "yes", label: "Yes" },
-              { id: "no", label: "No" },
-            ]}
-          />
-        ) : (
+        {/* A check is not a number, so a floor and a ceiling say nothing
+            useful about one. Judged by the day it asks *which answers today
+            takes*; judged by the week it asks *how many of each*. Both are
+            drawn below rather than on this line — they are sets and tables,
+            not a figure. */}
+        {info.check ? null : (
           <>
             {/* **Two switches, not one dropdown.** A floor and a ceiling are
                 different requirements and a condition may carry both — "at
@@ -807,7 +817,7 @@ function ClauseForm({
         {/* The bound this condition is *not* currently stating. Offered rather
             than assumed: most conditions want one, and a second empty field on
             every row would be a form asking a question nobody had. */}
-        {!info.check && (
+        {!info.check && !clause.useDailyGoal && (
           <SecondBound
             bounds={bounds}
             timed={timed}
@@ -870,13 +880,33 @@ function ClauseForm({
         </Row>
       )}
 
+      <SubHead>Days &amp; Slots &amp; Conditions</SubHead>
+
+      {info.check && byWeek && (
+        <Row label="Answers a week">
+          <CheckWeekFields clause={clause} onChange={onChange} />
+        </Row>
+      )}
+
+      {info.check && !byWeek && (
+        <Row label="Answers each day takes">
+          <CheckDayFields clause={clause} onChange={onChange} />
+        </Row>
+      )}
+
       {/* On top of where the day's own figure is counted, a named slot may
           carry a figure of its own. That is the promise the old model could
           not make: *two hours on Monday, of which at least one in the morning,
           and the rest wherever.* */}
       {!info.check && ctx.slots.length > 0 && (
         <Row label="Of which">
-          <SlotBounds clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
+          <SlotBounds
+            clause={clause}
+            ctx={ctx}
+            timed={timed}
+            byWeek={byWeek}
+            onChange={onChange}
+          />
         </Row>
       )}
 
@@ -887,6 +917,161 @@ function ClauseForm({
           <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
         </Row>
       )}
+    </div>
+  )
+}
+
+/**
+ * Which answers each weekday will accept — a check, judged by the day.
+ *
+ * Not a floor and a ceiling. A check is an answer, and what a day asks is
+ * which of the three it will take: `yes` on a workday, `yes` or `skipped` at
+ * the weekend. A weekday with nothing ticked is a weekday the rule does not
+ * judge, which is the same statement said in the place you are already
+ * looking — and an unanswered check satisfies none of them, which is the whole
+ * reminder.
+ */
+function CheckDayFields({
+  clause,
+  onChange,
+}: {
+  clause: StreakClause
+  onChange: (patch: Partial<StreakClause>) => void
+}) {
+  const c = usePalette()
+  // Seeded from whatever the condition asked before per-day answers existed,
+  // so switching to this changes nothing until a box is ticked.
+  const seed: CheckState[] =
+    clause.min !== undefined || clause.op === "atLeast" ? ["yes"] : ["no"]
+  const allow: Record<number, CheckState[]> =
+    clause.allow ??
+    Object.fromEntries(clauseWeekdays(clause).map((wd) => [wd, seed]))
+
+  const toggle = (weekday: number, answer: CheckState) => {
+    const on = allow[weekday] ?? []
+    const next = on.includes(answer)
+      ? on.filter((a) => a !== answer)
+      : [...on, answer]
+    const days = { ...allow }
+    // Nothing ticked is the day dropping out, which is what it means.
+    if (next.length) days[weekday] = next
+    else delete days[weekday]
+    onChange({
+      allow: days,
+      weekdays: undefined,
+      min: undefined,
+      max: undefined,
+      op: undefined,
+      value: undefined,
+    })
+  }
+
+  return (
+    <div className="space-y-1 w-full">
+      {WEEKDAY_ORDER.map((weekday) => (
+        <div key={weekday} className="flex items-center gap-1.5">
+          <span className="w-8 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
+            {WEEKDAY_LABELS[weekday]}
+          </span>
+          {CHECK_CHOICES.map((answer) => {
+            const on = (allow[weekday] ?? []).includes(answer)
+            return (
+              <button
+                key={answer}
+                type="button"
+                onClick={() => toggle(weekday, answer)}
+                aria-pressed={on}
+                style={
+                  on
+                    ? { backgroundColor: `${c.accent}24`, color: c.accent }
+                    : undefined
+                }
+                className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+                  on ? "font-bold" : "text-ink/35 hover:text-ink/70"
+                }`}
+              >
+                {CHECK_LABELS[answer]}
+              </button>
+            )
+          })}
+          {!(allow[weekday] ?? []).length && (
+            <span className="text-[9px] font-mono text-ink/30">not judged</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * How many of each answer a week needs — a check, judged by the week.
+ *
+ * *Six good days, no bad ones, and the seventh may be skipped* is three
+ * requirements about three different answers, which no single total could
+ * hold. A state left blank is unconstrained, which is what "skipped: any"
+ * means, and saying it out loud would be a field spent on nothing.
+ */
+function CheckWeekFields({
+  clause,
+  onChange,
+}: {
+  clause: StreakClause
+  onChange: (patch: Partial<StreakClause>) => void
+}) {
+  const states = clause.states ?? {}
+  const write = (
+    answer: CheckState,
+    side: "min" | "max",
+    raw: string,
+  ) => {
+    const next = { ...states }
+    const entry = { ...(next[answer] ?? {}) }
+    if (raw === "") delete entry[side]
+    else entry[side] = Math.max(0, Number(raw) || 0)
+    if (entry.min === undefined && entry.max === undefined) delete next[answer]
+    else next[answer] = entry
+    onChange({
+      states: next,
+      min: undefined,
+      max: undefined,
+      op: undefined,
+      value: undefined,
+    })
+  }
+
+  return (
+    <div className="space-y-1 w-full">
+      {CHECK_CHOICES.map((answer) => {
+        const b = states[answer] ?? {}
+        return (
+          <div key={answer} className="flex items-center gap-1.5">
+            <span className="w-14 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
+              {CHECK_LABELS[answer]}
+            </span>
+            <span className={WORD}>at least</span>
+            <input
+              type="number"
+              min={0}
+              value={b.min ?? ""}
+              placeholder="—"
+              onChange={(e) => write(answer, "min", e.target.value)}
+              className={NUM}
+            />
+            <span className={WORD}>at most</span>
+            <input
+              type="number"
+              min={0}
+              value={b.max ?? ""}
+              placeholder="—"
+              onChange={(e) => write(answer, "max", e.target.value)}
+              className={NUM}
+            />
+            {b.min === undefined && b.max === undefined && (
+              <span className="text-[9px] font-mono text-ink/30">any</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -906,16 +1091,28 @@ function SlotBounds({
   clause,
   ctx,
   timed,
+  byWeek,
   onChange,
 }: {
   clause: StreakClause
   ctx: StreakContext
   timed: boolean
+  byWeek: boolean
   onChange: (patch: Partial<StreakClause>) => void
 }) {
   const c = usePalette()
   const judged = clauseWeekdays(clause)
-  const current = slotBoundsOnWeekday(clause, judged[0] ?? 0)
+  /* **Shared unless you say otherwise.** One slot requirement for every day is
+     what almost every rule means, and it stays one row. Turning it off gives
+     each weekday its own, seeded from the shared one so nothing changes about
+     the rule until a figure does.
+
+     A week-scoped condition has no per-day anything to offer: it counts the
+     week, and which day the hour fell on is not a question it asks. */
+  const perDay = !!clause.days && judged.some((wd) => clause.days?.[wd]?.slots)
+  const [editing, setEditing] = useState(judged[0] ?? 0)
+  const showing = perDay ? editing : judged[0] ?? 0
+  const current = slotBoundsOnWeekday(clause, showing)
 
   const write = (next: Record<string, ClauseBounds>) => {
     const cleaned = Object.fromEntries(
@@ -923,11 +1120,74 @@ function SlotBounds({
         ([, b]) => b.min !== undefined || b.max !== undefined,
       ),
     )
-    onChange({ slots: Object.keys(cleaned).length ? cleaned : undefined })
+    const value = Object.keys(cleaned).length ? cleaned : undefined
+    if (!perDay) return onChange({ slots: value })
+    onChange({
+      days: {
+        ...clause.days,
+        [showing]: { ...(clause.days?.[showing] ?? {}), slots: value },
+      },
+    })
+  }
+
+  const setPerDay = (on: boolean) => {
+    if (!on) {
+      // Back to one set for every day: the one you were last looking at is
+      // the one that survives, since it is the one you were editing.
+      const days = { ...clause.days }
+      judged.forEach((wd) => {
+        if (days[wd]) days[wd] = { ...days[wd], slots: undefined }
+      })
+      return onChange({ days, slots: current })
+    }
+    const days: Record<number, DayRequirement> = { ...clause.days }
+    judged.forEach((wd) => {
+      days[wd] = { ...(days[wd] ?? boundsOnWeekday(clause, ctx, wd)), slots: current }
+    })
+    onChange({ days, slots: undefined, weekdays: undefined })
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 w-full">
+    <div className="space-y-1.5 w-full">
+      {!byWeek && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setPerDay(!perDay)}
+            aria-pressed={!perDay}
+            style={
+              !perDay
+                ? { backgroundColor: `${c.accent}24`, color: c.accent }
+                : undefined
+            }
+            className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+              perDay ? "text-ink/35 hover:text-ink/70" : ""
+            }`}
+          >
+            shared time slots
+          </button>
+          {perDay &&
+            judged.map((wd) => (
+              <button
+                key={wd}
+                type="button"
+                onClick={() => setEditing(wd)}
+                aria-pressed={showing === wd}
+                style={
+                  showing === wd
+                    ? { backgroundColor: c.accent, color: c.onFill }
+                    : undefined
+                }
+                className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
+                  showing === wd ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
+                }`}
+              >
+                {WEEKDAY_LABELS[wd]}
+              </button>
+            ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5 w-full">
       {ctx.slots.map((slot) => {
         const b = current[slot.id]
         if (!b)
@@ -1003,6 +1263,7 @@ function SlotBounds({
           </span>
         )
       })}
+      </div>
     </div>
   )
 }
@@ -1380,7 +1641,7 @@ function RuleForm({
         </Row>
       </Section>
 
-      <Section title="Counters & conditions">
+      <Section title="Conditions">
       {clauses.map((clause, i) => (
         <div key={clause.id}>
           {/* A hairline between conditions, so two blocks of three rows do not
@@ -1421,7 +1682,7 @@ function RuleForm({
       </Row>
       </Section>
 
-      <Section title="Freezes & the verdict">
+      <Section title="Freezes">
       {/* Not a term the lock protects: joining or leaving the day's verdict
           changes what the *day* is worth, never what this rule asks of you. */}
       <Row label="The day">

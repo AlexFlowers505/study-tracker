@@ -450,6 +450,47 @@ looking at, which means it has to show the *figures* and not only the ticks —
 
 ---
 
+## Stage 6 — the seven the audit found
+
+The list this spec was written from had thirty items. Twenty-three were built
+in stages 0–5; an audit against the list found seven that were not, and this
+stage is those.
+
+- [x] **`All study time` is removed from the picker after all** — Decision 1
+      restored. It cannot be chosen, but a condition already on it still offers
+      it, the way a deleted counter keeps its chip: hiding it outright would
+      leave the dropdown showing its first option instead, a silent claim that
+      the rule is about something it is not. A door you can walk out of and not
+      back in, which is what "removed" has to mean for a field already in
+      somebody's data.
+- [x] **Checks judged by the day name the answers they take** — `clause.allow`,
+      a set per weekday. A check is not a number, so a floor and a ceiling say
+      nothing useful about one; what a day asks is which of the three it will
+      accept. An unanswered check satisfies none of them, which is the reminder,
+      and a weekday with nothing ticked is a weekday the rule does not judge.
+      *Checked: yes on Mon–Fri, yes-or-skipped at the weekend — Monday yes
+      keeps, Monday skip misses, Monday unanswered misses, Saturday skip
+      keeps.*
+- [x] **Checks judged by the week count each answer** — `clause.states`.
+      `{ yes: { min: 6 }, no: { max: 0 } }` is *six good days, no bad ones, and
+      the seventh may be skipped*: three requirements about three different
+      answers, which no single total could hold. A state left out is
+      unconstrained, which is what "skipped: any" means.
+      *Checked: 6 yes + 1 skip keeps; 5 yes + 2 skip misses by one; 6 yes + 1
+      no misses, because the `no` breaks it even though the yes count is
+      satisfied.*
+- [x] **The kind dropdown is labelled `Entity` again.** Stage 2 renamed the row
+      to Counters and the word was lost with it.
+- [x] **A condition is two headed blocks** — `Counters`, then
+      `Days & Slots & Conditions`. Counters first, because the rest is
+      meaningless until you have said what is being watched.
+      **`Judge period` stays above both**, and has to: `scope` belongs to the
+      rule, and a rule with several conditions has one of it.
+- [x] **Shared time slots**, on by default, with a per-weekday set behind it.
+      Turning it off seeds every judged day from the shared set, so nothing
+      about the rule changes until a figure does. Absent for a weekly
+      condition, which does not ask which day the hour fell on.
+
 ## Decisions
 
 1. **`All study time` is removed as a target.** It had no id, it existed for

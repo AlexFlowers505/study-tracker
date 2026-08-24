@@ -438,6 +438,32 @@ export interface StreakClause {
    * through `DayRequirement.slots`.
    */
   slots?: Record<string, { min?: number; max?: number }>
+  /**
+   * **Checks, judged by the day**: which answers each weekday will accept.
+   *
+   * A check is not a number, so a floor and a ceiling say nothing useful about
+   * one — "Overslept at most 0 times" is a sentence nobody would write. What a
+   * day actually asks is *which of the three answers is acceptable today*:
+   * `yes` on a workday, `yes` or `skipped` at the weekend.
+   *
+   * An unanswered check satisfies nothing. That is the whole reminder
+   * mechanism: a weekday you did not want to be asked about is a weekday you
+   * leave out of this map, and one you left in is one you have to answer.
+   *
+   * Keyed like `days`, the way `getDay()` keys them — 0 is Sunday.
+   */
+  allow?: Record<number, CheckState[]>
+  /**
+   * **Checks, judged by the week**: how many of each answer the week needs.
+   *
+   * `{ yes: { min: 6 }, no: { max: 0 } }` is *six good days, no bad ones, and
+   * the seventh may be skipped* — the rule people actually want and the one
+   * a single number could never express, because it is three requirements
+   * about three different answers.
+   *
+   * A state left out is unconstrained, which is what "skipped: any" means.
+   */
+  states?: Partial<Record<CheckState, { min?: number; max?: number }>>
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
   /**
