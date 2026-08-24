@@ -343,18 +343,20 @@ function CountersPicker({
   const member = memberPickOf(first)
   const chosen = targets.map((t) => t.id || "")
 
-  /* Every kind that has something in it. A kind with nothing behind it is
-     absent for the same reason a tab is.
+  /* **Every kind is offered, including one with nothing in it yet.**
+
+     They used to be hidden while empty, on the same reasoning as a tab with
+     nothing behind it — and that reasoning is wrong here. A tab you cannot see
+     is a page you know exists; a *kind* you cannot see is a capability you
+     have no way of learning about. A project with no categories looked
+     exactly like a build where categories were never implemented. So the kind
+     stays and the empty list says what to do about it.
 
      **`All study time` can no longer be chosen**, but a condition already on
      it still offers it, the same way a deleted counter keeps its chip. Hiding
      it outright would leave the dropdown showing its first option instead — a
-     silent claim that the rule is about something it is not. So it is a door
-     you can walk out of and not back in, which is what "removed" has to mean
-     for a field that is already in somebody's data. */
-  const kinds = PICKS.filter(
-    (k) => (k === "time" ? pick === "time" : choicesFor(k, ctx).length > 0),
-  )
+     silent claim that the rule is about something it is not. */
+  const kinds = PICKS.filter((k) => k !== "time" || pick === "time")
 
   const options = choicesFor(pick, ctx)
 
@@ -429,6 +431,12 @@ function CountersPicker({
         )}
       </div>
 
+      {options.length === 0 && pick !== "time" && (
+        <p className="text-[10px] font-mono text-ink/40">
+          No {PICK_LABEL[pick].toLowerCase()} yet — Setup has the tab for them.
+        </p>
+      )}
+
       {/* Which ones. Several, and that is the point of the rebuild: "any of
           Lessons, Q&A or Polishing" is one promise about study, where three
           rules would be three streaks to keep and three allowances to spend. */}
@@ -456,8 +464,10 @@ function CountersPicker({
           which is arithmetic that works — the pair that cannot be added is
           time and occurrences, and that is the choice being made here. */}
       {isSet && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className={WORD}>counting</span>
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+            Counter type
+          </span>
           <Pills<MemberPick>
             value={member}
             onChange={setMember}
@@ -568,84 +578,6 @@ function PickChips({
 }
 
 /**
- * The bound a condition is not currently stating, offered as a button until it
- * is wanted.
- *
- * Both at once is the whole reason the pair exists — "between two and four
- * hours" — but most conditions want one, and drawing an empty second field on
- * every row would be the form asking a question nobody had.
- */
-function SecondBound({
-  bounds,
-  timed,
-  byWeek,
-  onChange,
-}: {
-  bounds: ClauseBounds
-  timed: boolean
-  byWeek: boolean
-  onChange: (patch: Partial<StreakClause>) => void
-}) {
-  const missing: "min" | "max" = bounds.min === undefined ? "min" : "max"
-  const present = bounds.min ?? bounds.max ?? 0
-  const value = missing === "min" ? bounds.min : bounds.max
-
-  if (value === undefined)
-    return (
-      <button
-        type="button"
-        onClick={() =>
-          onChange(
-            missing === "min"
-              ? { min: 0, op: undefined, value: undefined }
-              : { max: present, op: undefined, value: undefined },
-          )
-        }
-        className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70`}
-      >
-        + {missing === "min" ? "and at least" : "and at most"}
-      </button>
-    )
-
-  return (
-    <>
-      <span className={WORD}>
-        and {missing === "min" ? "at least" : "at most"}
-      </span>
-      {timed ? (
-        <DurationField
-          minutes={value}
-          onChange={(v) =>
-            onChange(missing === "min" ? { min: v } : { max: v })
-          }
-        />
-      ) : (
-        <input
-          type="number"
-          min={0}
-          value={value}
-          onChange={(e) => {
-            const v = Math.max(0, Number(e.target.value) || 0)
-            onChange(missing === "min" ? { min: v } : { max: v })
-          }}
-          className={NUM}
-        />
-      )}
-      <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
-      <button
-        type="button"
-        onClick={() =>
-          onChange(missing === "min" ? { min: undefined } : { max: undefined })
-        }
-        className={`${btnBase} px-1.5 py-1 rounded-full text-[10px] font-mono text-ink/30 hover:text-ink/70`}
-      >
-        <X size={11} />
-      </button>
-    </>
-  )
-}
-
-/**
  * Hours and minutes, never decimal hours.
  *
  * The same rule the rest of the app follows: "1.5h" has to be multiplied by 60
@@ -746,86 +678,6 @@ function ClauseForm({
             })
           }}
         />
-        {!info.check && <span className={WORD}>must be</span>}
-
-        {/* A check is not a number, so a floor and a ceiling say nothing
-            useful about one. Judged by the day it asks *which answers today
-            takes*; judged by the week it asks *how many of each*. Both are
-            drawn below rather than on this line — they are sets and tables,
-            not a figure. */}
-        {info.check ? null : (
-          <>
-            {/* **Two switches, not one dropdown.** A floor and a ceiling are
-                different requirements and a condition may carry both — "at
-                least two hours and at most four" was simply unwritable while
-                one select had to choose between them. Turning the last one off
-                is refused: a condition with no bound asks for nothing. */}
-            <Pills<"min" | "max">
-              value={bounds.min !== undefined ? "min" : "max"}
-              onChange={(side) => {
-                const other = side === "min" ? bounds.max : bounds.min
-                if (other === undefined) return
-                onChange(
-                  side === "min"
-                    ? { min: other, max: undefined, op: undefined, value: undefined }
-                    : { max: other, min: undefined, op: undefined, value: undefined },
-                )
-              }}
-              options={[
-                { id: "min", label: "at least" },
-                { id: "max", label: "at most" },
-              ]}
-            />
-            {timed ? (
-              <>
-                <DurationField
-                  minutes={bounds.min ?? bounds.max ?? 0}
-                  onChange={(v) =>
-                    onChange(
-                      bounds.min !== undefined
-                        ? { min: v, op: undefined, value: undefined }
-                        : { max: v, op: undefined, value: undefined },
-                    )
-                  }
-                />
-                <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
-              </>
-            ) : (
-              <>
-                <input
-                  type="number"
-                  min={0}
-                  value={bounds.min ?? bounds.max ?? 0}
-                  onChange={(e) => {
-                    const v = Math.max(0, Number(e.target.value) || 0)
-                    onChange(
-                      bounds.min !== undefined
-                        ? { min: v, op: undefined, value: undefined }
-                        : { max: v, op: undefined, value: undefined },
-                    )
-                  }}
-                  className={NUM}
-                />
-                <span className={WORD}>
-                  {byWeek ? "times a week" : "times a day"}
-                </span>
-              </>
-            )}
-          </>
-        )}
-
-        {/* The bound this condition is *not* currently stating. Offered rather
-            than assumed: most conditions want one, and a second empty field on
-            every row would be a form asking a question nobody had. */}
-        {!info.check && !clause.useDailyGoal && (
-          <SecondBound
-            bounds={bounds}
-            timed={timed}
-            byWeek={byWeek}
-            onChange={onChange}
-          />
-        )}
-
         {onRemove && (
           <Tip text="Drop this condition">
             <button
@@ -839,6 +691,7 @@ function ClauseForm({
         )}
       </Row>
 
+      <SubHead>Days &amp; Slots &amp; Conditions</SubHead>
       {/* Slots narrow anything that is logged into one — hours as much as
           counts. A check is a fact about the whole day and has none. */}
       {!info.check && (
@@ -880,7 +733,36 @@ function ClauseForm({
         </Row>
       )}
 
-      <SubHead>Days &amp; Slots &amp; Conditions</SubHead>
+
+      {/* **Two labelled fields, not a sentence with switches in it.**
+
+          It used to read *must be [at least ▾] [2h] a day*, with the operator
+          a pill and the unit a word — and a form built out of clickable
+          fragments of prose gives you nothing to scan: the label and the input
+          are the same object, so there is no column to run your eye down and
+          no way to see at a glance what the condition asks. A minimum and a
+          maximum are two things; they get two fields, both always visible,
+          both able to be empty. */}
+      {!info.check && (
+        <Row label={byWeek ? "Per week" : "Per day"}>
+          <BoundField
+            label="Minimum"
+            value={bounds.min}
+            timed={timed}
+            onChange={(v) =>
+              onChange({ min: v, op: undefined, value: undefined })
+            }
+          />
+          <BoundField
+            label="Maximum"
+            value={bounds.max}
+            timed={timed}
+            onChange={(v) =>
+              onChange({ max: v, op: undefined, value: undefined })
+            }
+          />
+        </Row>
+      )}
 
       {info.check && byWeek && (
         <Row label="Answers a week">
@@ -918,6 +800,100 @@ function ClauseForm({
         </Row>
       )}
     </div>
+  )
+}
+
+/**
+ * One bound, with its own label above it and a way to have none.
+ *
+ * Empty is a real value and the placeholder says so: a condition with only a
+ * minimum is the common case, and drawing a zero there would be claiming a
+ * ceiling nobody asked for.
+ */
+function BoundField({
+  label,
+  value,
+  timed,
+  onChange,
+}: {
+  label: string
+  value: number | undefined
+  timed: boolean
+  onChange: (next: number | undefined) => void
+}) {
+  const set = (raw: string) =>
+    onChange(raw === "" ? undefined : Math.max(0, Number(raw) || 0))
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+        {label}
+      </span>
+      <span className="flex items-center gap-1">
+        {timed ? (
+          <HoursMinutes minutes={value} onChange={onChange} />
+        ) : (
+          <input
+            type="number"
+            min={0}
+            value={value ?? ""}
+            placeholder="—"
+            onChange={(e) => set(e.target.value)}
+            className={NUM}
+          />
+        )}
+        {value !== undefined && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className={`${btnBase} rounded-full p-0.5 text-ink/25 hover:text-ink`}
+          >
+            <X size={10} />
+          </button>
+        )}
+      </span>
+    </label>
+  )
+}
+
+/** Hours and minutes as two boxes, or nothing at all. */
+function HoursMinutes({
+  minutes,
+  onChange,
+}: {
+  minutes: number | undefined
+  onChange: (next: number | undefined) => void
+}) {
+  const h = minutes === undefined ? "" : Math.floor(minutes / 60)
+  const m = minutes === undefined ? "" : minutes % 60
+  const num = (v: string) => Math.max(0, Number(v) || 0)
+  const write = (hh: string, mm: string) =>
+    hh === "" && mm === ""
+      ? onChange(undefined)
+      : onChange(num(hh) * 60 + Math.min(59, num(mm)))
+
+  return (
+    <>
+      <input
+        type="number"
+        min={0}
+        value={h}
+        placeholder="—"
+        onChange={(e) => write(e.target.value, String(m))}
+        className={NUM}
+      />
+      <span className="text-[10px] font-mono text-ink/35">h</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        value={m}
+        placeholder="—"
+        onChange={(e) => write(String(h), e.target.value)}
+        className={NUM}
+      />
+      <span className="text-[10px] font-mono text-ink/35">m</span>
+    </>
   )
 }
 
@@ -1040,38 +1016,50 @@ function CheckWeekFields({
   }
 
   return (
-    <div className="space-y-1 w-full">
-      {CHECK_CHOICES.map((answer) => {
-        const b = states[answer] ?? {}
-        return (
-          <div key={answer} className="flex items-center gap-1.5">
-            <span className="w-14 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
-              {CHECK_LABELS[answer]}
-            </span>
-            <span className={WORD}>at least</span>
-            <input
-              type="number"
-              min={0}
-              value={b.min ?? ""}
-              placeholder="—"
-              onChange={(e) => write(answer, "min", e.target.value)}
-              className={NUM}
-            />
-            <span className={WORD}>at most</span>
-            <input
-              type="number"
-              min={0}
-              value={b.max ?? ""}
-              placeholder="—"
-              onChange={(e) => write(answer, "max", e.target.value)}
-              className={NUM}
-            />
-            {b.min === undefined && b.max === undefined && (
-              <span className="text-[9px] font-mono text-ink/30">any</span>
-            )}
-          </div>
-        )
-      })}
+    <div className="w-full">
+      {/* One header, then a row per answer — a table, because that is what
+          three answers with two bounds each is. Repeating "at least" and "at
+          most" on every line would be six words doing the work of two. */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="w-16 shrink-0" />
+        <span className="w-14 text-[9px] font-mono uppercase tracking-widest text-ink/35 text-center">
+          Minimum
+        </span>
+        <span className="w-14 text-[9px] font-mono uppercase tracking-widest text-ink/35 text-center">
+          Maximum
+        </span>
+      </div>
+      <div className="space-y-1">
+        {CHECK_CHOICES.map((answer) => {
+          const b = states[answer] ?? {}
+          return (
+            <div key={answer} className="flex items-center gap-1.5">
+              <span className="w-16 shrink-0 text-[10px] font-mono text-ink/60">
+                {CHECK_LABELS[answer]}
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={b.min ?? ""}
+                placeholder="—"
+                onChange={(e) => write(answer, "min", e.target.value)}
+                className={`${NUM} w-14`}
+              />
+              <input
+                type="number"
+                min={0}
+                value={b.max ?? ""}
+                placeholder="—"
+                onChange={(e) => write(answer, "max", e.target.value)}
+                className={`${NUM} w-14`}
+              />
+              {b.min === undefined && b.max === undefined && (
+                <span className="text-[9px] font-mono text-ink/30">any</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1623,8 +1611,13 @@ function RuleForm({
 
   return (
     <div className="space-y-4 pl-1 pt-1">
-      <Section title="Judge period">
-        <Row label="">
+      {/* **Judge period first**, because it decides the shape of everything
+          under it: by day each day is judged on its own, by week only the
+          total matters. It is a property of the rule rather than of any one
+          condition — a rule with three conditions has one scope — which is why
+          it sits above them rather than inside each. */}
+      <Section title="The rule">
+        <Row label="Judge period">
           <Pills<"day" | "week">
             value={draft.scope}
             onChange={(scope) => patch({ scope })}
@@ -1728,27 +1721,38 @@ function RuleForm({
         </Row>
       )}
 
-      <Row label="Freezes">
-        <input
-          type="number"
-          min={0}
-          value={draft.freezesPerWeek}
-          onChange={(e) =>
-            patch({ freezesPerWeek: Math.max(0, Number(e.target.value) || 0) })
-          }
-          className={NUM}
-        />
-        <span className={WORD}>a week, expiring · bank up to</span>
-        <input
-          type="number"
-          min={0}
-          value={draft.freezeCap}
-          onChange={(e) =>
-            patch({ freezeCap: Math.max(0, Number(e.target.value) || 0) })
-          }
-          className={NUM}
-        />
-        <span className={WORD}>earned</span>
+      <Row label="">
+        <label className="flex flex-col gap-1">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Granted each week
+          </span>
+          <input
+            type="number"
+            min={0}
+            value={draft.freezesPerWeek}
+            onChange={(e) =>
+              patch({ freezesPerWeek: Math.max(0, Number(e.target.value) || 0) })
+            }
+            className={NUM}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Bank holds up to
+          </span>
+          <input
+            type="number"
+            min={0}
+            value={draft.freezeCap}
+            onChange={(e) =>
+              patch({ freezeCap: Math.max(0, Number(e.target.value) || 0) })
+            }
+            className={NUM}
+          />
+        </label>
+        <span className="text-[10px] font-mono text-ink/35 self-end pb-1.5">
+          the weekly one expires; the bank carries over
+        </span>
       </Row>
       </Section>
 
