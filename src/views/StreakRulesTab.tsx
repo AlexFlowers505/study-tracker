@@ -78,6 +78,7 @@ import { benchmarkBar } from "../lib/benchmark"
 import {
   boundsOnWeekday,
   clauseBounds,
+  slotBoundsOnWeekday,
   clauseSentence,
   clauseWeekdays,
   clauseTarget,
@@ -150,13 +151,50 @@ function Pills<T extends string>({
   )
 }
 
+/**
+ * One labelled field, **with the label above it**.
+ *
+ * It sat to the left in a sixteen-pixel column, which is fine while every
+ * control fits on the line beside it and stops being fine the moment one
+ * wraps: the label then points at the first line of something three lines
+ * tall, and the eye has to pair them back up on every row. Above is where the
+ * question goes, and the answer under it.
+ */
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
-  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-    <span className="w-16 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
-      {label}
-    </span>
-    {children}
+  <div className="space-y-1">
+    {label && (
+      <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/40">
+        {label}
+      </span>
+    )}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      {children}
+    </div>
   </div>
+)
+
+/**
+ * A heading over a group of rows.
+ *
+ * The form is three questions — which counters, what is asked of them, what it
+ * costs to slip — and it was eleven fields in a flat list. A heading heavier
+ * than the field labels is what turns the list back into the three.
+ */
+const Section = ({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) => (
+  <section className="space-y-2">
+    <h4 className="text-[10px] font-sans font-extrabold uppercase tracking-widest text-ink/70">
+      {title}
+    </h4>
+    <div className="space-y-2 pl-0.5 border-l-2 border-ink/[0.07] pl-3">
+      {children}
+    </div>
+  </section>
 )
 
 const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
@@ -869,6 +907,16 @@ function ClauseForm({
         </Row>
       )}
 
+      {/* On top of where the day's own figure is counted, a named slot may
+          carry a figure of its own. That is the promise the old model could
+          not make: *two hours on Monday, of which at least one in the morning,
+          and the rest wherever.* */}
+      {!info.check && ctx.slots.length > 0 && (
+        <Row label="Of which">
+          <SlotBounds clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
+        </Row>
+      )}
+
       {/* A weekly rule counts the whole week; which weekdays it fell on is not
           a question it can ask. */}
       {!byWeek && (
@@ -876,6 +924,122 @@ function ClauseForm({
           <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
         </Row>
       )}
+    </div>
+  )
+}
+
+/**
+ * A figure on a particular slot, on top of the day's own.
+ *
+ * `slotIds` above already says *where the day's figure is counted*. This is a
+ * different question and both answers apply: the day may want two hours in
+ * total while insisting one of them lands in the morning.
+ *
+ * Only offered per slot on demand. A row of seven empty fields under every
+ * condition would be the form asking a question almost nobody has, and the
+ * ones who do have it usually have it about one slot.
+ */
+function SlotBounds({
+  clause,
+  ctx,
+  timed,
+  onChange,
+}: {
+  clause: StreakClause
+  ctx: StreakContext
+  timed: boolean
+  onChange: (patch: Partial<StreakClause>) => void
+}) {
+  const c = usePalette()
+  const judged = clauseWeekdays(clause)
+  const current = slotBoundsOnWeekday(clause, judged[0] ?? 0)
+
+  const write = (next: Record<string, ClauseBounds>) => {
+    const cleaned = Object.fromEntries(
+      Object.entries(next).filter(
+        ([, b]) => b.min !== undefined || b.max !== undefined,
+      ),
+    )
+    onChange({ slots: Object.keys(cleaned).length ? cleaned : undefined })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 w-full">
+      {ctx.slots.map((slot) => {
+        const b = current[slot.id]
+        if (!b)
+          return (
+            <button
+              key={slot.id}
+              type="button"
+              onClick={() => write({ ...current, [slot.id]: { min: 0 } })}
+              className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70 bg-ink/[0.05]`}
+            >
+              + {slot.label}
+            </button>
+          )
+        const side: "min" | "max" = b.min !== undefined ? "min" : "max"
+        const shown = b.min ?? b.max ?? 0
+        return (
+          <span
+            key={slot.id}
+            className="flex items-center gap-1 rounded-full px-2 py-1"
+            style={{ backgroundColor: `${slot.color}1A` }}
+          >
+            <span
+              className="text-[10px] font-mono"
+              style={{ color: slot.color }}
+            >
+              {slot.label}
+            </span>
+            <Pills<"min" | "max">
+              value={side}
+              onChange={(next) =>
+                write({ ...current, [slot.id]: { [next]: shown } })
+              }
+              options={[
+                { id: "min", label: "min" },
+                { id: "max", label: "max" },
+              ]}
+            />
+            {timed ? (
+              <DurationField
+                minutes={shown}
+                onChange={(v) =>
+                  write({ ...current, [slot.id]: { [side]: v } })
+                }
+              />
+            ) : (
+              <input
+                type="number"
+                min={0}
+                value={shown}
+                onChange={(e) =>
+                  write({
+                    ...current,
+                    [slot.id]: {
+                      [side]: Math.max(0, Number(e.target.value) || 0),
+                    },
+                  })
+                }
+                className={NUM}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                const next = { ...current }
+                delete next[slot.id]
+                write(next)
+              }}
+              className={`${btnBase} rounded-full text-ink/30 hover:text-ink`}
+              style={{ color: c.ink }}
+            >
+              <X size={11} />
+            </button>
+          </span>
+        )
+      })}
     </div>
   )
 }
@@ -1234,18 +1398,26 @@ function RuleForm({
     })
 
   return (
-    <div className="space-y-2 pl-1 pt-1">
-      <Row label="Judge">
-        <Pills<"day" | "week">
-          value={draft.scope}
-          onChange={(scope) => patch({ scope })}
-          options={[
-            { id: "day", label: "Every day" },
-            { id: "week", label: "Every week" },
-          ]}
-        />
-      </Row>
+    <div className="space-y-4 pl-1 pt-1">
+      <Section title="Judge period">
+        <Row label="">
+          <Pills<"day" | "week">
+            value={draft.scope}
+            onChange={(scope) => patch({ scope })}
+            options={[
+              { id: "day", label: "Every day" },
+              { id: "week", label: "Every week" },
+            ]}
+          />
+          <span className="text-[10px] font-mono text-ink/40">
+            {draft.scope === "week"
+              ? "one figure for the whole week"
+              : "each day judged on its own"}
+          </span>
+        </Row>
+      </Section>
 
+      <Section title="Counters & conditions">
       {clauses.map((clause, i) => (
         <div key={clause.id}>
           {/* A hairline between conditions, so two blocks of three rows do not
@@ -1284,7 +1456,9 @@ function RuleForm({
           </button>
         </Tip>
       </Row>
+      </Section>
 
+      <Section title="Freezes & the verdict">
       {/* Not a term the lock protects: joining or leaving the day's verdict
           changes what the *day* is worth, never what this rule asks of you. */}
       <Row label="The day">
@@ -1334,6 +1508,7 @@ function RuleForm({
         />
         <span className={WORD}>earned</span>
       </Row>
+      </Section>
 
       {/* A loosening the clock allows still has to be explained. The box
           appears only then — asking for a reason to *narrow* a rule would be
@@ -1502,9 +1677,20 @@ export function StreakRulesTab({
         Your own streaks, each one a promise about what you record — never
         oversleep, two hours of lessons a day, no youtube after the evening
         starts, the gym three times a week. A promise can hold several
-        conditions at once, and all of them have to keep. Each streak keeps its
-        own freezes: an allowance every week that expires, and one banked
-        freeze for every week you keep clean.
+        conditions at once, and all of them have to keep.
+      </p>
+
+      {/* The part everyone gets wrong. You watch days; the accounting runs on
+          weeks, and none of that is visible in a tab that talks about days. */}
+      <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
+        <strong className="text-ink/70">
+          You keep a streak by the day and pay for it by the week.
+        </strong>{" "}
+        Each streak grants an allowance of freezes every Monday, which is gone
+        if unused, and banks one more for every week it comes through clean. A
+        week seals on the Tuesday after it ends — the day its last day passes
+        out of the writing window — and what it earned is written once and
+        never recalculated.
       </p>
 
       <EditableList<StreakRule>

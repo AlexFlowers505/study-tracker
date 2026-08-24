@@ -351,6 +351,20 @@ export interface StreakTarget {
 }
 
 /**
+ * What one weekday asks for: the day's own bounds, and optionally bounds on
+ * particular slots within it.
+ *
+ * `slots` here overrides the condition's shared `slots` for that weekday —
+ * the "different slots on different days" case, which is rare enough that
+ * nothing has to carry it unless it is used.
+ */
+export interface DayRequirement {
+  min?: number
+  max?: number
+  slots?: Record<string, { min?: number; max?: number }>
+}
+
+/**
  * One condition inside a rule. A rule is kept on a period when **every** one
  * of its clauses is.
  *
@@ -410,7 +424,20 @@ export interface StreakClause {
    * common case, and it stays a single pair of numbers rather than seven
    * copies of one.
    */
-  days?: Record<number, { min?: number; max?: number }>
+  days?: Record<number, DayRequirement>
+  /**
+   * A requirement on a **particular slot**, on top of whatever the day as a
+   * whole asks for.
+   *
+   * This is the case the old model could not express at all: *two hours on
+   * Monday, of which at least one must be in the morning, and the rest
+   * wherever.* `slotIds` says where the day's own figure is counted; this says
+   * that a named slot has its own floor or ceiling, and both apply.
+   *
+   * Shared across every weekday the condition judges. A day may override it
+   * through `DayRequirement.slots`.
+   */
+  slots?: Record<string, { min?: number; max?: number }>
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
   /**

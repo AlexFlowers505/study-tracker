@@ -155,6 +155,16 @@ export const boundsOnWeekday = (
   return { min: clause.value ?? 0 }
 }
 
+/**
+ * The slot requirements in force on a weekday: the condition's shared ones,
+ * unless that weekday overrode them.
+ */
+export const slotBoundsOnWeekday = (
+  clause: StreakClause,
+  weekday: number,
+): Record<string, ClauseBounds> =>
+  clause.days?.[weekday]?.slots ?? clause.slots ?? {}
+
 /** The same, for a date. */
 export const clauseBounds = (
   clause: StreakClause,
@@ -591,19 +601,44 @@ export function readClauseDay(
     }
   }
 
-  const value =
+  const unitIds = clauseUnits(clause, ctx).map((u) => u.id)
+  const keep = keepsAnyActivity(targets, ctx)
+  /** What this condition counts, over any set of slots. */
+  const measured = (slotIds: string[] | undefined) =>
     info.measure === "time"
-      ? minutesOn(day, ctx.slots, clause.slotIds, keepsAnyActivity(targets, ctx))
-      : countOn(
-          dayCounters(day || {}),
-          clauseUnits(clause, ctx).map((u) => u.id),
-          clause.slotIds,
-        )
+      ? minutesOn(day, ctx.slots, slotIds, keep)
+      : countOn(dayCounters(day || {}), unitIds, slotIds)
+
+  const value = measured(clause.slotIds)
+
+  /* The day's own bound, plus any bound on a named slot. Both apply, which is
+     the whole point of the pair: *two hours on Monday, of which at least one
+     in the morning, and the rest wherever* is a single promise the old model
+     could not state.
+
+     The shortfalls are added and **then** flattened, rather than flattened
+     one at a time. A time condition still costs exactly one freeze however
+     many of its parts broke — it is one broken promise — while a count
+     condition costs what it actually fell short by, which is the arithmetic
+     the freeze economy already runs on. */
+  const weekday = fromKey(dayKey).getDay()
+  const slotRules = slotBoundsOnWeekday(clause, weekday)
+  const shortOf = (v: number, b: ClauseBounds) =>
+    Math.max(
+      b.min === undefined ? 0 : b.min - v,
+      b.max === undefined ? 0 : v - b.max,
+      0,
+    )
+
+  let short = shortOf(value, boundsOnWeekday(clause, ctx, weekday))
+  Object.entries(slotRules).forEach(([slotId, bounds]) => {
+    short += shortOf(measured([slotId]), bounds)
+  })
 
   return {
     ...base,
     value,
-    deficit: deficitOf(value, info.measure, clauseBounds(clause, ctx, dayKey)),
+    deficit: short <= 0 ? 0 : info.measure === "time" ? 1 : short,
     skipped: false,
   }
 }
@@ -1373,15 +1408,33 @@ export function clauseSentence(
     else groups.push({ bounds: b, days: [weekday] })
   })
 
+  /* A bound on a named slot rides on the end, because it is a rider: the
+     day's own figure is the promise, and "of which at least an hour in the
+     morning" qualifies it. Read the other way round it sounds like two
+     separate rules, which is exactly what it is not. */
+  const slotRules = Object.entries(
+    slotBoundsOnWeekday(clause, judged[0] ?? 0),
+  ).filter(([, b]) => b.min !== undefined || b.max !== undefined)
+  const rider = slotRules.length
+    ? `, of which ${slotRules
+        .map(
+          ([slotId, b]) =>
+            `${said(b)} in ${
+              ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot"
+            }`,
+        )
+        .join(" and ")}`
+    : ""
+
   // One group is the ordinary case and keeps the ordinary sentence, with the
   // weekday suffix `when` already carries. Several always name their own days,
   // since that is the only thing separating them.
   if (groups.length === 1)
-    return `${named}${where} ${said(groups[0].bounds)}${when}`
+    return `${named}${where} ${said(groups[0].bounds)}${rider}${when}`
 
   return `${named}${where} ${groups
     .map((g) => `${said(g.bounds)} on ${listDays(g.days)}`)
-    .join(", ")}`
+    .join(", ")}${rider}`
 }
 
 

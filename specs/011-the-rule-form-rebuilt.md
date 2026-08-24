@@ -125,9 +125,38 @@ do that a rule cannot say better.
         *This is what lets `useDailyGoal` go before its migration does: that
         exact rule, written out, is accepted as the benchmark and derives the
         same seven figures the goal held.*
-  - [ ] **3c — slot requirements.** Day-level and slot-level at once.
-  - [ ] **3d — the form in sections**, labels above fields, and the tab saying
+  - [x] **3c — slot requirements.** Day-level and slot-level at once.
+        *`clause.slots` holds a floor or ceiling on a named slot, on top of
+        whatever the day as a whole asks. `slotIds` still says where the day's
+        own figure is counted — a different question, and both answers apply.
+        `DayRequirement.slots` overrides it per weekday.*
+        *Shortfalls are added and **then** flattened, rather than flattened one
+        at a time: a time condition still costs exactly one freeze however many
+        of its parts broke, since it is one broken promise, while a count
+        condition costs what it actually fell short by.*
+        *Verified as the example that motivated it: "two hours, of which at
+        least one in the morning" keeps at 1h+1h, misses at 0h+2h, and misses
+        at 1h30 in the morning alone. The readback reads it as a rider —
+        "Lessons at least 2h, of which at least 1h in Morning on Mon" — because
+        the day's figure is the promise and the slot qualifies it.*
+
+        ***Per-weekday slot sets are readable but not yet editable.*** The
+        model carries them and every reader resolves them; the form edits the
+        shared set only. Seven days times seven slots is a grid, and it is the
+        rare case — putting it in now would cost the common case its
+        legibility. Nothing needs re-migrating when it lands.
+  - [x] **3d — the form in sections**, labels above fields, and the tab saying
         that the accounting period is the week.
+        *Three headings — Judge period, Counters & conditions, Freezes & the
+        verdict — over what was eleven fields in a flat list. Labels moved
+        above their controls: in a sixteen-pixel column on the left they
+        pointed at the first line of something three lines tall, and the eye
+        had to pair them up again on every row.*
+        *The tab now says the part everyone gets wrong: **you keep a streak by
+        the day and pay for it by the week.** The allowance arrives every
+        Monday and expires; a clean week banks one more; a week seals on the
+        Tuesday after. None of that was visible in a tab that talked about
+        days.*
 - [ ] **Stage 4 — The effectiveness meter goes.** Part 3. Needs a migration
       that turns every `useDailyGoal` condition into explicit per-day numbers,
       and it must run **before** the field is dropped.
