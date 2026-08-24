@@ -1449,6 +1449,24 @@ function RuleForm({
         </Tip>
       </Row>
 
+      {/* Drawing only, so it is not a term and the lock never sees it. It sets
+          how much of the day's ring this rule takes and where its arc starts;
+          the verdict is unchanged, because a day is missed the moment anything
+          is missed. A rule that should genuinely count for less is a rule that
+          should not be voting — the switch above says that honestly. */}
+      {draft.inDayVerdict && (
+        <Row label="Weight in the ring">
+          <Pills<string>
+            value={String(Math.min(5, Math.max(1, Math.round(draft.weight ?? 1))))}
+            onChange={(w) => patch({ weight: Number(w) })}
+            options={["1", "2", "3", "4", "5"].map((n) => ({ id: n, label: n }))}
+          />
+          <span className="text-[10px] font-mono text-ink/40">
+            how much of the day this is about
+          </span>
+        </Row>
+      )}
+
       <Row label="Freezes">
         <input
           type="number"

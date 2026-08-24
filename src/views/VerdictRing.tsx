@@ -14,15 +14,28 @@
    almost counts, the verdict stops being a verdict. So the centre figure goes
    red at four out of five, and the gap in the ring says where it went.
 
+   **Arcs are as long as the rule is heavy** — `StreakRule.weight`, 1 to 5,
+   heaviest first at twelve o'clock so the same rule sits in the same place on
+   every day of the month. A missed arc keeps a **floor** on its length, and
+   that floor is what keeps the weighting honest: a ring 90% green on a broken
+   day says "basically fine" far more loudly than five equal segments with one
+   red one, and nothing here may read as a score.
+
    **Not in the month grid.** At the sixteen pixels a month cell can spare,
    five arcs and their gaps are a smudge; the grid gets a segment bar instead,
    which is the same information in a shape that survives being small. This is
    for the places a day has room: the week's cards, the day view, the dialog.
+
+   **It opens.** Clicking it shows the day rule by rule — what each asked for
+   and what it got. On a kept day that is the thing worth looking at, which is
+   half the reason to keep one.
 --------------------------------------------------------------- */
 
 import type { RuleState } from "../lib/customStreaks"
 import type { DayReport } from "../lib/dayVerdict"
-import { Tip } from "../ui/Tip"
+import { ruleWeight } from "../lib/dayVerdict"
+import { PopoverMenu } from "../ui/PopoverMenu"
+import { RenderIcon } from "../ui/icons"
 import { usePalette } from "../ui/useTheme"
 
 /** How wide the empty part of the track is, as a fraction of one arc's slot. */
@@ -30,6 +43,16 @@ const GAP_SHARE = 0.1
 
 /** Below this many rules the gaps can be generous; above it they must not be. */
 const CROWDED = 8
+
+/**
+ * The least of the circle a single arc may take, as a fraction.
+ *
+ * Only a missed one is held to it. A light rule that held can shrink away
+ * quietly — nothing is lost by not noticing it — but a light rule that broke
+ * must stay visible, or a weighted ring starts reading as "how much of the day
+ * did I get", which is exactly the score it must never be.
+ */
+const MISS_FLOOR = 0.12
 
 export function VerdictRing({
   report,
@@ -46,9 +69,18 @@ export function VerdictRing({
   const stroke = Math.max(3, Math.round(size * 0.12))
   const r = size / 2 - stroke / 2 - 1
   const circumference = 2 * Math.PI * r
-  const slot = circumference / n
-  // Crowded rings lose most of their gap rather than most of their arc: an arc
-  // too short to see is a rule that has silently stopped reporting.
+
+  /* Each rule's share of the circle, by weight — then a floor applied to the
+     ones that missed, and the rest rescaled to make room for it. Rescaling
+     rather than overflowing is what keeps the circle a circle. */
+  const raw = report.readings.map((x) => ruleWeight(x.rule))
+  const total = raw.reduce((a, b) => a + b, 0) || 1
+  const floored = report.readings.map((x, i) =>
+    x.state === "missed" ? Math.max(raw[i] / total, MISS_FLOOR) : raw[i] / total,
+  )
+  const scale = floored.reduce((a, b) => a + b, 0)
+  const shares = floored.map((f) => f / scale)
+
   /* **One rule is a closed circle, with no gap at all.**
 
      The gaps divide one arc from the next, and with a single arc there is
@@ -56,8 +88,10 @@ export function VerdictRing({
      with a bite out of the top, which reads as "something is missing" when the
      whole message is that nothing is. A divider needs two things to stand
      between. */
-  const gap = n === 1 ? 0 : slot * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
-  const arc = slot - gap
+  const gap =
+    n === 1
+      ? 0
+      : (circumference / n) * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
 
   const colourFor = (state: RuleState) =>
     state === "met"
@@ -97,8 +131,8 @@ export function VerdictRing({
           .filter(Boolean)
           .join(String.fromCharCode(10))
 
-  return (
-    <Tip text={tip} className="shrink-0 flex items-center">
+  const svg = (
+    <>
       <svg
         width={size}
         height={size}
@@ -121,17 +155,22 @@ export function VerdictRing({
           strokeWidth={stroke}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         >
-          {report.readings.map((reading, i) => (
-            <circle
-              key={reading.rule.id}
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              stroke={colourFor(reading.state)}
-              strokeDasharray={`${arc} ${circumference - arc}`}
-              strokeDashoffset={-(i * slot + gap / 2)}
-            />
-          ))}
+          {report.readings.map((reading, i) => {
+            const start =
+              shares.slice(0, i).reduce((a, b) => a + b, 0) * circumference
+            const arc = Math.max(shares[i] * circumference - gap, 0.5)
+            return (
+              <circle
+                key={reading.rule.id}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                stroke={colourFor(reading.state)}
+                strokeDasharray={`${arc} ${circumference - arc}`}
+                strokeDashoffset={-(start + gap / 2)}
+              />
+            )
+          })}
         </g>
         <text
           x={size / 2}
@@ -146,7 +185,73 @@ export function VerdictRing({
           {report.kept}
         </text>
       </svg>
-    </Tip>
+    </>
+  )
+
+  /* A popover rather than a dialog: the day dialog already exists for editing,
+     and this is for reading. Everything in it is already in `readings` — this
+     is a drawing, not a mechanism. */
+  return (
+    <PopoverMenu
+      width={230}
+      label={tip}
+      wrapClassName="shrink-0 flex items-center"
+      triggerClassName="flex items-center rounded-full"
+      trigger={svg}
+    >
+      {() => <VerdictDetail report={report} />}
+    </PopoverMenu>
+  )
+}
+
+/** The day, rule by rule. Worth looking at on a kept day, which is the point. */
+function VerdictDetail({ report }: { report: DayReport }) {
+  const c = usePalette()
+  const colourFor = (state: RuleState) =>
+    state === "met"
+      ? c.goalMet
+      : state === "frozen"
+        ? c.freeze
+        : state === "missed"
+          ? c.exam
+          : `${c.ink}55`
+  const word = (state: RuleState) =>
+    state === "met"
+      ? "kept"
+      : state === "frozen"
+        ? "frozen"
+        : state === "missed"
+          ? "missed"
+          : "not yet"
+
+  return (
+    <div className="p-1">
+      <p className="px-2 pt-1 pb-2 text-[9px] font-mono uppercase tracking-widest text-ink/40">
+        {report.kept} of {report.judged} kept
+      </p>
+      {report.readings.map(({ rule, state }) => (
+        <div
+          key={rule.id}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-xl"
+        >
+          <span
+            className="flex items-center shrink-0"
+            style={{ color: rule.color }}
+          >
+            <RenderIcon name={rule.iconName} size={12} />
+          </span>
+          <span className="text-[11px] font-mono truncate text-ink/75">
+            {rule.label}
+          </span>
+          <span
+            className="ml-auto shrink-0 text-[10px] font-mono uppercase tracking-widest"
+            style={{ color: colourFor(state) }}
+          >
+            {word(state)}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 

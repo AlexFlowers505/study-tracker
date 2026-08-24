@@ -36,6 +36,10 @@ export interface RuleReading {
   state: RuleState
 }
 
+/** How much of the ring a rule takes. 1 to 5; absent is 1. */
+export const ruleWeight = (rule: StreakRule): number =>
+  Math.min(5, Math.max(1, Math.round(rule.weight ?? 1)))
+
 export interface DayReport {
   state: DayVerdict
   /** Every participating rule that had something to say, in the rule's order. */
@@ -108,6 +112,12 @@ export function dayReport(
     .filter((r) => r.state !== "unjudged")
 
   if (!readings.length) return NOTHING
+
+  /* Heaviest first, so the rule that matters most starts at twelve o'clock and
+     sits in the same place on every day of the month. Ties keep the rule
+     order, which is the order you wrote them in — `sort` is stable, so nothing
+     has to be said to keep it. */
+  readings.sort((a, b) => ruleWeight(b.rule) - ruleWeight(a.rule))
 
   const kept = readings.filter(
     (r) => r.state === "met" || r.state === "frozen",

@@ -179,7 +179,22 @@ do that a rule cannot say better.
       dashed limit, no heatmap shading. Showing the last figures somebody typed
       into a tab that no longer exists would be worse than showing none: a
       target nobody can change and nobody promised.*
-- [ ] **Stage 5 — The ring: weights and a detail view.** Parts 4 and 5.
+- [x] **Stage 5 — The ring: weights and a detail view.** Parts 4 and 5.
+      *`StreakRule.weight`, 1 to 5, sets how long a rule's arc is and where it
+      starts — heaviest first at twelve o'clock, so the same rule sits in the
+      same place on every day of the month.*
+      ***Drawing only, and the floor is what makes that safe.*** A missed arc
+      never falls below 12% of the circle, and the rest is rescaled to make
+      room so the shares still sum to one. Checked at the case that matters: a
+      weight-1 rule missing among four weight-5 rules would have taken 4.8% of
+      the ring and takes 11.2%. Without that, a ring 90% green on a broken day
+      reads as "basically fine", which is the score it must never be.*
+      *The control is offered only while the rule votes. A rule that should
+      genuinely count for less is a rule that should not be voting, and
+      `inDayVerdict` says that honestly.*
+      *The ring opens into a popover listing every voting rule and how it came
+      out. A popover rather than a dialog: the day dialog exists for editing,
+      this is for reading, and everything in it was already in `readings`.*
 
 Build 1 → 5. Stage 4 cannot precede stage 3 (there is nowhere for the
 expanded goal to go) and stage 3 is far easier once stage 2 has settled what a

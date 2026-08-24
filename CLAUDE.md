@@ -9,7 +9,19 @@ would leak into every other project on the machine.
 
 ## Work in progress
 
-**`specs/011-the-rule-form-rebuilt.md` is agreed and barely started.** It
+**`specs/011-the-rule-form-rebuilt.md` is done, except for `migrations/019`,
+which has not been run anywhere.** Read its Status block before touching
+rules, checks, the daily goal or the ring. Highlights: a condition names
+several counters and can take a floor and a ceiling at once and a different
+figure on each weekday; a named slot can carry its own figure on top of the
+day's; checks have three answers and nothing is inferred for an unanswered
+one; the effectiveness meter is gone and the day's goal is read from a
+nominated **benchmark** rule (`lib/benchmark.ts`); the verdict ring is
+weighted and opens.
+
+**Superseded, kept only for history:**
+
+**`specs/011-the-rule-form-rebuilt.md` was agreed and barely started.** It
 rebuilds the streak form around two sections — pick the counters, then state
 the conditions — and three things fall out with it: checks lose their `unset`
 state, the effectiveness meter stops deciding anything (`useDailyGoal` is

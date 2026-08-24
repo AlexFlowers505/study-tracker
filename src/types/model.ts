@@ -520,6 +520,23 @@ export interface StreakRule extends Labeled {
    */
   lockedUntil: DayKey
   /**
+   * How much of the day this rule is about, 1 to 5. Absent is 1.
+   *
+   * **Drawing only.** It sets how long the rule's arc is in the day's ring and
+   * where in the ring it starts — the heaviest first, at twelve o'clock, so
+   * the same rule sits in the same place on every day of the month. It changes
+   * no verdict: the day is still missed the moment anything is missed, and a
+   * missed arc keeps a floor on its length so a weighted ring can never read
+   * as a score.
+   *
+   * That constraint is the whole design. A ring 90% green on a broken day says
+   * "basically fine" far louder than five equal segments with one red one, and
+   * the moment 4/5 almost counts the verdict has stopped being a verdict. If
+   * a rule genuinely should count for less, the honest way to say so is to
+   * stop it voting — see `inDayVerdict`.
+   */
+  weight?: number
+  /**
    * Whether this rule's verdict decides the day's colour — `spec 010`, part 1.
    *
    * A day is kept when every participating rule that judges it held, and the
