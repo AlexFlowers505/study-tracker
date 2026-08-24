@@ -525,15 +525,15 @@ export const ICON_LIBRARY: IconEntry[] = [
   { name: "Hash", icon: Hash, group: "Lists and progress", keywords: "number count tag" },
 
   // Rewards
-  { name: "Trophy", icon: Trophy, group: "Rewards", keywords: "win prize champion achievement" },
-  { name: "Medal", icon: Medal, group: "Rewards", keywords: "prize award place" },
-  { name: "Award", icon: Award, group: "Rewards", keywords: "prize ribbon" },
+  { name: "Trophy", icon: Trophy, group: "Rewards", keywords: "win prize champion achievement reward" },
+  { name: "Medal", icon: Medal, group: "Rewards", keywords: "prize award place reward" },
+  { name: "Award", icon: Award, group: "Rewards", keywords: "prize ribbon reward" },
   { name: "Crown", icon: Crown, group: "Rewards", keywords: "king best top" },
-  { name: "Star", icon: Star, group: "Rewards", keywords: "favourite rating best" },
+  { name: "Star", icon: Star, group: "Rewards", keywords: "favourite rating best reward" },
   { name: "Sparkles", icon: Sparkles, group: "Rewards", keywords: "magic special new" },
   { name: "Sparkle", icon: Sparkle, group: "Rewards", keywords: "shine special" },
   { name: "WandSparkles", icon: WandSparkles, group: "Rewards", keywords: "magic wish" },
-  { name: "Gem", icon: Gem, group: "Rewards", keywords: "jewel precious rare" },
+  { name: "Gem", icon: Gem, group: "Rewards", keywords: "jewel precious rare reward" },
   { name: "Diamond", icon: Diamond, group: "Rewards", keywords: "precious rare" },
   { name: "Zap", icon: Zap, group: "Rewards", keywords: "energy fast power" },
   { name: "Rocket", icon: Rocket, group: "Rewards", keywords: "launch fast ambition" },
@@ -745,8 +745,14 @@ export const ICON_GROUPS: string[] = [
 export function iconMatches(entry: IconEntry, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
+  // The group is deliberately **not** searched. It reads like a free win and
+  // is not: "clock" would drag in Play, Pause and Circle because they happen
+  // to be filed under The clock, and a search that answers with its whole
+  // shelf is worse than one that answers with nothing. The headings already
+  // do that job, and they do it while you are browsing, which is when it is
+  // wanted. A word worth finding a group by belongs in its entries' keywords.
   const haystack = `${entry.name.replace(/([a-z])([A-Z0-9])/g, "$1 $2")} ${
     entry.keywords
-  } ${entry.group}`.toLowerCase()
+  }`.toLowerCase()
   return q.split(/\s+/).every((word) => haystack.includes(word))
 }

@@ -46,6 +46,7 @@ import { CounterBadges } from "./CounterInputs"
 import { CheckChips } from "./CheckChips"
 import { DayNoteRow } from "./DayNoteRow"
 import { EntriesReadout } from "./EntriesReadout"
+import { VerdictRing } from "./VerdictRing"
 import type { EntrySnapshot, ReadoutEditing } from "./EntriesReadout"
 
 import { usePalette } from "../ui/useTheme"
@@ -282,6 +283,16 @@ function FullDayCard({
                   : { weekday: "short", day: "numeric" },
               )}
             </div>
+            {/* The verdict, beside the day it is about.
+
+                The memo that designed this put it in the card's top-right
+                corner, and on a card with room that is the better place. This
+                one has no such corner: Today, Frozen, the freeze, the "+" and
+                the close X already live there, and a ring among them reads as
+                a sixth button. Beside the date it reads as what it is — the
+                day, and how the day went — and it lands the same way on a
+                compact card as on a wide one, which the corner did not. */}
+            <VerdictRing report={verdict} size={big ? 34 : 22} />
             {onExpand && (
               <Tip text="Open this day in a larger view">
                 <button

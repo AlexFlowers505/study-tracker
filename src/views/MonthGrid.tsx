@@ -36,6 +36,7 @@ import { activityMinutesIn } from "../lib/stats"
 import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
+import { VerdictBar } from "./VerdictRing"
 import { Tip } from "../ui/Tip"
 import { CounterGroupList } from "./CounterTotals"
 import { periodCounterGroups } from "../lib/periodCounters"
@@ -258,6 +259,16 @@ function CompactDayCell({
               ))}
           </div>
         </div>
+
+        {/* Which rules held, one segment each, directly under the number.
+
+            The ring the day cards wear cannot come here: at the sixteen pixels
+            a month cell can spare, five arcs and their gaps are a smudge. A
+            bar survives being small, and it gains something the ring can never
+            have — a fixed left edge, so a column of days reads vertically and
+            "the second rule broke three times this week" becomes a thing you
+            can see rather than a thing you count. */}
+        <VerdictBar report={verdict} />
 
         {/* Per-slot minutes need more room than a phone column has; on small
             screens the slots collapse to coloured dots and the hours below
