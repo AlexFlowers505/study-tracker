@@ -9,6 +9,12 @@
    a target nobody has promised anything about is a target, and the point of
    this app is that its numbers are promises.
 
+   **So there is no goal without a rule.** Nominate nothing and no goal is
+   drawn: no line on the cards, no dashed limit on the chart, no shading on the
+   heatmap. Showing the last figures somebody typed into a tab that no longer
+   exists would be worse than showing none — a target nobody can change and
+   nobody promised.
+
    So one rule is nominated as the **benchmark**, and the figure it asks for is
    the figure the day is held up against. The word is deliberately not "pinned"
    or "key": those say how it got there and how much it matters, and neither is
@@ -115,12 +121,10 @@ export function benchmarkRule(
  * prints `goal 3h` Monday to Friday and no goal line at all on Saturday —
  * rather than a goal of zero, which reads as a promise already kept.
  *
- * **A condition still reading `useDailyGoal` is allowed here, and the loop it
- * looks like is an identity, not a cycle**: such a condition's limit *is*
- * `settings.dailyGoals`, so the figure comes back out the same as it went in.
- * Barring it would have made the feature unusable on the one rule every
- * migrated project actually has. `spec 011` deletes that field; when it does,
- * this stops being a special case and nothing here changes.
+ * There was a special case here for a condition that read the project's daily
+ * goal — an identity rather than the cycle it looked like. `migrations/019`
+ * wrote those figures into the conditions themselves, so there is nothing left
+ * to special-case and this reads one thing from one place.
  */
 export function benchmarkGoals(
   project: Project,
@@ -156,9 +160,12 @@ export function benchmarkGoals(
  */
 export function withBenchmarkGoals(project: Project): Project {
   const goals = benchmarkGoals(project)
-  if (!goals) return project
   return {
     ...project,
-    settings: { ...project.settings, dailyGoals: goals, goalsEnabled: true },
+    settings: goals
+      ? { ...project.settings, dailyGoals: goals, goalsEnabled: true }
+      : // Nothing nominated, so nothing is claimed. `dailyGoals` is left in
+        // storage as the record of what `019` read; it is simply not shown.
+        { ...project.settings, dailyGoals: {}, goalsEnabled: false },
   }
 }

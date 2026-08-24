@@ -680,7 +680,6 @@ function ClauseForm({
   /** Absent on the only condition — a rule with none is not a rule. */
   onRemove?: () => void
 }) {
-  const c = usePalette()
   const target = clauseTarget(clause)
   const info = targetInfo(target, ctx)
   const timed = info.measure === "time"
@@ -769,53 +768,17 @@ function ClauseForm({
             />
             {timed ? (
               <>
-                {clause.useDailyGoal ? (
-                  <span className={`${WORD} font-bold`}>
-                    {byWeek ? "the week's goal" : "the day's goal"}
-                  </span>
-                ) : (
-                  <DurationField
-                    minutes={bounds.min ?? bounds.max ?? 0}
-                    onChange={(v) =>
-                      onChange(
-                        bounds.min !== undefined
-                          ? { min: v, op: undefined, value: undefined }
-                          : { max: v, op: undefined, value: undefined },
-                      )
-                    }
-                  />
-                )}
-                <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
-                {/* The goal is seven numbers and a condition carries one, so
-                    this is the only way to say "hold me to my goal" without
-                    writing seven conditions that drift apart from the seven
-                    fields in Setup the first time either is edited. */}
-                <Tip
-                  multiline
-                  text={
-                    "Hold this to the daily goal set in Setup rather than to a fixed number, so the two cannot drift apart." +
-                    String.fromCharCode(10, 10) +
-                    "While it is on, lowering that goal lowers this rule, and the lock treats it as such."
+                <DurationField
+                  minutes={bounds.min ?? bounds.max ?? 0}
+                  onChange={(v) =>
+                    onChange(
+                      bounds.min !== undefined
+                        ? { min: v, op: undefined, value: undefined }
+                        : { max: v, op: undefined, value: undefined },
+                    )
                   }
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onChange({ useDailyGoal: !clause.useDailyGoal })
-                    }
-                    aria-pressed={!!clause.useDailyGoal}
-                    style={
-                      clause.useDailyGoal
-                        ? { backgroundColor: `${c.accent}24`, color: c.accent }
-                        : undefined
-                    }
-                    className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
-                      clause.useDailyGoal ? "" : "text-ink/35 hover:text-ink/70"
-                    }`}
-                  >
-                    use the goal
-                  </button>
-                </Tip>
+                />
+                <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
               </>
             ) : (
               <>
@@ -844,7 +807,7 @@ function ClauseForm({
         {/* The bound this condition is *not* currently stating. Offered rather
             than assumed: most conditions want one, and a second empty field on
             every row would be a form asking a question nobody had. */}
-        {!info.check && !clause.useDailyGoal && (
+        {!info.check && (
           <SecondBound
             bounds={bounds}
             timed={timed}
@@ -1083,7 +1046,7 @@ function WeekdayRow({
     judged.forEach((wd) => {
       days[wd] = boundsOnWeekday(clause, ctx, wd)
     })
-    onChange({ days, weekdays: undefined, useDailyGoal: undefined })
+    onChange({ days, weekdays: undefined })
   }
 
   const toggleDay = (wd: number) => {
@@ -1667,8 +1630,7 @@ export function StreakRulesTab({
     tags,
     // The same resolution `streakContext` does: goals off makes a condition
     // that reads them vacuous rather than impossible.
-    dailyGoals:
-      settings.goalsEnabled === false ? {} : settings.dailyGoals || {},
+    dailyGoals: settings.dailyGoals || {},
   }
 
   return (

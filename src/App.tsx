@@ -42,7 +42,6 @@ import { CHANGE_LOG_LIMIT, diffDay } from "./lib/changelog"
 import { addSlotCount, counterTotals } from "./lib/counters"
 import { setCheck } from "./lib/checks"
 import {
-  afterGoalCut,
   lockFrom,
   ruleStatus,
   streakContext,
@@ -1324,17 +1323,6 @@ export default function StudyTrackerApp() {
           inviteNote={inviteNote}
           onMakeInvite={makeInvite}
           supervisorCount={(project.supervisors || []).length}
-          onCutGoals={(reason) =>
-            // Every rule whose limit comes from the goal is locked again and
-            // told why, in the same write as the number itself.
-            updateSettings({
-              ...project.settings,
-              streakRules: afterGoalCut(
-                project.settings.streakRules || [],
-                reason,
-              ),
-            })
-          }
           onUpdateSlots={updateSlots}
           onUpdateActivities={updateActivities}
           counterUnits={project.counterUnits || []}

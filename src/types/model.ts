@@ -788,12 +788,11 @@ export interface Settings {
   /**
    * Every time the weekly goal total was *lowered*, in order.
    *
-   * @deprecated Superseded in `spec 010` part 7. It existed because lowering
-   * the bar was the one edit that could buy a green week, and the main streak
-   * had no other defence. That streak is gone, and the goal is now guarded by
-   * the rules that read it: `goalCutEdit` refuses a cut while any of them is
-   * locked, and `afterGoalCut` locks them again with the reason attached.
-   * Left in the type so old rows still parse, and unread.
+   * @deprecated It existed because lowering the bar was the one edit that
+   * could buy a green week, and the main streak had no other defence. That
+   * streak went in `spec 010`; the goal itself went in `spec 011`, along with
+   * the tab that could lower it. There is nothing left to guard. Left in the
+   * type so old rows still parse, and unread.
    */
   goalCuts?: GoalCut[]
   /**

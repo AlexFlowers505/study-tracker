@@ -12,7 +12,7 @@
    window in the app is derived from that one, which is why they cannot drift.
 --------------------------------------------------------------- */
 
-import { WEEKDAY_ORDER, addDays, fromKey, toKey } from "./date"
+import { addDays, fromKey, toKey } from "./date"
 import type { DayKey } from "../types/model"
 
 /**
@@ -49,13 +49,3 @@ export function isSealable(weekStart: Date, today: Date): boolean {
   return !isEditableDay(lastDay, todayKey)
 }
 
-/**
- * Total minutes a full week asks for, across the seven per-weekday goals.
- *
- * Lives here because it is a fact about the goal rather than about any rule
- * that happens to read it — Setup prints it beside the seven fields so the
- * week's total is visible while you are editing a day of it.
- */
-export function weeklyGoalTotal(dailyGoals: Record<number, number>): number {
-  return WEEKDAY_ORDER.reduce((sum, wd) => sum + (dailyGoals[wd] || 0), 0)
-}

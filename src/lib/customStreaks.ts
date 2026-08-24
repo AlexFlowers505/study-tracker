@@ -97,7 +97,7 @@ export interface StreakContext {
   tags: Tag[]
   /**
    * The project's daily goal, by `Date.getDay()` — what a condition with
-   * `useDailyGoal` is held to. Empty when the goal is switched off, which
+   * the benchmark reads back. Empty when nothing is nominated, which
    * makes such a condition vacuous rather than impossible.
    */
   dailyGoals: Record<number, number>
@@ -132,12 +132,8 @@ export interface ClauseBounds {
  * What this condition is held to on a given **weekday**.
  *
  * Every question about a condition's numbers is really a question about a
- * weekday: `days` is keyed on one, `useDailyGoal` reads seven, and the flat
- * pair answers all of them the same. Working in weekdays rather than dates is
- * what lets the lock and the benchmark ask without inventing a date first.
- *
- * The only place `useDailyGoal` is resolved, and it resolves the **floor**:
- * "at least the day's goal" is the only thing that phrase ever meant.
+ * weekday, and working in weekdays rather than dates is what lets the lock and
+ * the benchmark ask without inventing a date first.
  */
 export const boundsOnWeekday = (
   clause: StreakClause,
@@ -147,6 +143,14 @@ export const boundsOnWeekday = (
   // Per-day numbers are the explicit version and win over everything: writing
   // them out is exactly the act of saying the flat pair was not enough.
   if (clause.days) return clause.days[weekday] ?? {}
+  /* **A condition still pointing at the daily goal.** Nothing can create one
+     any more — the switch is gone from the form and the goal is gone from
+     Setup — and `migrations/019` rewrites the ones that exist into explicit
+     figures. This branch is what makes that migration's timing harmless: drop
+     it and an unmigrated condition falls through to `min: 0`, which every day
+     clears, so a rule would quietly stop judging and its red days would turn
+     green. Failing that way round is much worse than carrying a dead branch
+     until the migration has been everywhere. */
   if (clause.useDailyGoal) return { min: ctx.dailyGoals[weekday] || 0 }
   if (clause.min !== undefined || clause.max !== undefined)
     return { min: clause.min, max: clause.max }
@@ -1255,81 +1259,6 @@ export function freezeOffer(
   return { ok: available >= cost, cost, available, key }
 }
 
-/**
- * The rules whose limit comes from the project's daily goal.
- *
- * Lowering that goal lowers those rules **without touching them**, which is a
- * loosening that never passes through `ruleEdit` at all. `termsOf` folds the
- * goals in so an edit to the *rule* is judged correctly; this is the other
- * half, and without it the lock has a door in the side of it.
- */
-export const goalReaders = (rules: StreakRule[]): StreakRule[] =>
-  rules.filter((r) => ruleClauses(r).some((c) => c.useDailyGoal))
-
-export interface GoalCutVerdict {
-  /** Rules that would be loosened by the cut. */
-  affected: StreakRule[]
-  /** Any of them still inside its own lock — then the cut waits. */
-  blockedUntil: DayKey | null
-  /** The clock is clear; only a written reason is left. */
-  needsReason: boolean
-  allowed: boolean
-}
-
-/**
- * Whether the daily goal may be lowered, and what it costs the rules that read
- * it — the same three answers `ruleEdit` gives, for the same reasons.
- */
-export function goalCutEdit(
-  rules: StreakRule[],
-  reason: string,
-  today = new Date(),
-): GoalCutVerdict {
-  const todayKey = toKey(today)
-  const affected = goalReaders(rules)
-  if (!affected.length)
-    return { affected, blockedUntil: null, needsReason: false, allowed: true }
-
-  // The latest lock among them decides: a cut loosens all of them at once, so
-  // it can only happen when every one of them is open to it.
-  const locked = affected
-    .filter((r) => todayKey !== r.startedOn && todayKey < r.lockedUntil)
-    .map((r) => r.lockedUntil)
-    .sort()
-  if (locked.length)
-    return {
-      affected,
-      blockedUntil: locked[locked.length - 1],
-      needsReason: false,
-      allowed: false,
-    }
-  if (!reason.trim())
-    return { affected, blockedUntil: null, needsReason: true, allowed: false }
-  return { affected, blockedUntil: null, needsReason: false, allowed: true }
-}
-
-/** Those rules after the cut: locked again, with the reason on the record. */
-export const afterGoalCut = (
-  rules: StreakRule[],
-  reason: string,
-  today = new Date(),
-): StreakRule[] => {
-  const affected = new Set(goalReaders(rules).map((r) => r.id))
-  const at = toKey(today)
-  return rules.map((r) =>
-    affected.has(r.id)
-      ? {
-          ...r,
-          lockedUntil: lockFrom(today),
-          looseningLog: [
-            ...(r.looseningLog || []),
-            { at, reason: `Daily goal lowered — ${reason.trim()}` },
-          ],
-        }
-      : r,
-  )
-}
-
 /* ---- Saying it back ------------------------------------------------------ */
 
 const listDays = (weekdays: number[]) =>
@@ -1377,11 +1306,6 @@ export function clauseSentence(
   // the app: "at least 2h 30m", never "at least 150".
   const amount = (n: number) =>
     info.measure === "time" ? fmtHours(n) : `${n} ${n === 1 ? "time" : "times"}`
-
-  if (clause.useDailyGoal)
-    return `${named}${where} at least ${
-      scope === "week" ? "the week's goal" : "the day's goal"
-    }${when}`
 
   // Both bounds read as a range, because "at least 2h and at most 4h" is one
   // requirement said twice and nobody talks that way.
@@ -1461,11 +1385,11 @@ const covers = <T,>(bigger: Set<T>, smaller: Set<T>): boolean =>
 /**
  * The fields the lock protects. Label, icon, colour and note are not terms.
  *
- * The daily goal is folded in whenever a condition takes its limit from it,
- * because then lowering the goal lowers the rule — a change to the terms made
- * without touching the rule. `spec 010` records the remaining half of this:
- * the goal editor itself has to refuse a cut while such a rule is locked, or
- * the back door is merely narrower rather than shut.
+ * Every term now lives on the condition. It did not always: a condition could
+ * point at the project's daily goal, so lowering that goal in a tab the lock
+ * never sees lowered the rule too. `migrations/019` wrote those figures into
+ * the conditions that were reading them, which is what closed the door rather
+ * than narrowing it.
  */
 export const termsOf = (rule: StreakRule, ctx: StreakContext) => {
   const clauses = ruleClauses(rule)
@@ -1480,6 +1404,9 @@ export const termsOf = (rule: StreakRule, ctx: StreakContext) => {
     })),
     freezesPerWeek: rule.freezesPerWeek,
     freezeCap: rule.freezeCap,
+    // Folded in only while a condition can still point at the goal. Nothing
+    // can create one, and `019` rewrites the ones that exist — but until it
+    // has, such a rule's terms really do live partly in `settings`.
     goals: clauses.some((c) => c.useDailyGoal) ? ctx.dailyGoals : null,
   })
 }
@@ -1518,9 +1445,6 @@ function clauseNarrows(
   slots: Slot[],
 ): boolean {
   if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
-  // Switching a limit to or from the daily goal swaps one number for seven.
-  // Not comparable, therefore not provable, therefore it waits.
-  if (!!prev.useDailyGoal !== !!next.useDailyGoal) return false
 
   /* **Weekday by weekday**, since a condition can now ask a different thing
      on each. For every weekday the old rule judged:

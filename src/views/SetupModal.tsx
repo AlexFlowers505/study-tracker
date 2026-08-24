@@ -4,16 +4,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  AlertTriangle,
-  ArrowRight,
   Flame,
   FolderOpen,
-  Gauge,
   Hash,
   LayoutGrid,
   Moon,
   Palette,
-  Pencil,
   Plus,
   Shapes,
   SlidersHorizontal,
@@ -34,15 +30,10 @@ import type {
   Slot,
 } from '../types/model'
 import {
-  WEEKDAY_LABELS,
-  WEEKDAY_ORDER,
   fmtDateLong,
   toKey,
 } from '../lib/date'
-import { DEFAULT_SETTINGS } from '../lib/defaults'
-import { fmtHours } from '../lib/time'
-import { weeklyGoalTotal } from '../lib/freezes'
-import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from '../lib/theme'
+import { FIELD_SOFT, btnBase } from '../lib/theme'
 import { DateField } from '../ui/DateField'
 import { EditableList } from '../ui/EditableList'
 import { Field } from '../ui/Field'
@@ -52,8 +43,6 @@ import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { CounterUnitsTab } from './CounterUnitsTab'
-import { goalCutEdit } from '../lib/customStreaks'
-import { AutoTextarea } from '../ui/controls'
 import { StreakRulesTab } from './StreakRulesTab'
 import { AchievementsTab } from './AchievementsTab'
 import { ShopTab } from './ShopTab'
@@ -77,7 +66,6 @@ export function SetupModal({
   inviteNote,
   onMakeInvite,
   supervisorCount,
-  onCutGoals,
   onUpdateSlots,
   onUpdateActivities,
   counterUnits,
@@ -106,7 +94,6 @@ export function SetupModal({
   inviteNote: string | null
   onMakeInvite: () => void
   supervisorCount: number
-  onCutGoals: (reason: string) => void
   onUpdateSlots: (next: Slot[]) => void
   onUpdateActivities: (next: Activity[]) => void
   counterUnits: CounterUnit[]
@@ -225,8 +212,6 @@ export function SetupModal({
             <ProjectDetailsTab
               settings={settings}
               onSave={onSaveSettings}
-              onCutGoals={onCutGoals}
-              streakRules={settings.streakRules || []}
             />
           )}
           {tab === "slots" && (
@@ -432,13 +417,9 @@ function ProjectsTab({
 function ProjectDetailsTab({
   settings,
   onSave,
-  onCutGoals,
-  streakRules,
 }: {
   settings: Settings
   onSave: (next: Settings) => void
-  onCutGoals: (reason: string) => void
-  streakRules: StreakRule[]
 }) {
   const c = usePalette()
   const [projectName, setProjectName] = useState(
@@ -446,9 +427,6 @@ function ProjectDetailsTab({
   )
   const [projectIcon, setProjectIcon] = useState(
     settings.projectIcon ?? "Train",
-  )
-  const [goalsEnabled, setGoalsEnabled] = useState(
-    settings.goalsEnabled !== false,
   )
   // Opt-in, so an existing project without the key stays as it was.
   const [sleepEnabled, setSleepEnabled] = useState(
@@ -458,24 +436,7 @@ function ProjectDetailsTab({
     settings.startDate || toKey(new Date()),
   )
   const [endDate, setEndDate] = useState(settings.endDate || "")
-  const [dailyGoals, setDailyGoals] = useState(
-    settings.dailyGoals || DEFAULT_SETTINGS.dailyGoals,
-  )
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
-  /**
-   * The goals being typed, or null when not editing.
-   *
-   * Everything else on this tab writes as you type. The goals must not: the
-   * weekly total is what decides whether this week can still earn a freeze, so
-   * dragging a number through 30 on the way to 300 would forfeit it. Held apart
-   * until Confirm, and the saved copy is what auto-saves.
-   */
-  const [goalDraft, setGoalDraft] = useState<Record<number, number> | null>(
-    null,
-  )
-  const [confirmingCut, setConfirmingCut] = useState(false)
-  // Required when a cut would loosen a rule that reads the goal.
-  const [cutReason, setCutReason] = useState("")
   // This form auto-saves, so it must not fire on mount: merely opening the
   // setup modal would write whatever it was seeded with. That is exactly how a
   // blank default project got saved over a real one when the modal opened on a
@@ -490,62 +451,18 @@ function ProjectDetailsTab({
     const t = setTimeout(
       () =>
         onSave({
+          ...settings,
           projectName,
           projectIcon,
-          goalsEnabled,
           sleepEnabled,
           startDate,
           endDate: endDate || null,
-          dailyGoals,
         }),
       300,
     )
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    projectName,
-    projectIcon,
-    goalsEnabled,
-    sleepEnabled,
-    startDate,
-    endDate,
-    dailyGoals,
-  ])
-
-  const setGoal = (dayIdx: number, minutes: string) =>
-    setGoalDraft((g) => ({
-      ...(g || dailyGoals),
-      [dayIdx]: Math.max(0, Number(minutes) || 0),
-    }))
-
-  const shownGoals = goalDraft || dailyGoals
-  const savedWeekly = weeklyGoalTotal(dailyGoals)
-  const draftWeekly = weeklyGoalTotal(shownGoals)
-  const delta = draftWeekly - savedWeekly
-  const isCut = delta < 0
-
-  /**
-   * Whether this cut is allowed at all — `spec 010`, decision 14.
-   *
-   * A rule whose limit comes from the daily goal is loosened by lowering that
-   * goal, and that edit never passes through `ruleEdit`. So the goal editor
-   * consults the rules directly: while any of them is locked the cut waits,
-   * and when they are all open it still has to be explained, exactly as
-   * loosening the rule itself would be.
-   */
-  const cut = goalCutEdit(streakRules, cutReason, new Date())
-
-  const commitGoals = () => {
-    if (!goalDraft) return
-    if (isCut && !cut.allowed) return
-    setDailyGoals(goalDraft)
-    // The rules that read the goal are locked again and told why, in the same
-    // breath as the number changing.
-    if (isCut && cut.affected.length) onCutGoals(cutReason.trim())
-    setGoalDraft(null)
-    setConfirmingCut(false)
-    setCutReason("")
-  }
+  }, [projectName, projectIcon, sleepEnabled, startDate, endDate])
 
   return (
     <div className="space-y-5 font-mono text-sm">
@@ -629,184 +546,23 @@ function ProjectDetailsTab({
         </p>
       </Field>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50">
-            <Gauge size={12} /> Effectiveness meter — daily minute goal
-          </span>
-          <Tip text="Show the daily minute goal in the log and analytics">
-            <SwitchToggle
-              checked={goalsEnabled}
-              onChange={setGoalsEnabled}
-              label="Show the daily minute goal in the log and analytics"
-            />
-          </Tip>
-        </div>
-        {/* Behind an explicit Edit, unlike everything else here. These seven
-            numbers decide what counts as a kept day, so nudging one by accident
-            rewrites the meaning of the whole log — and lowering the weekly
-            total costs this week its freeze. That is worth a deliberate step
-            and a way back out. */}
-        <div className="grid grid-cols-7 gap-1.5">
-          {WEEKDAY_ORDER.map((idx) => (
-            <label key={idx} className="flex flex-col items-center gap-1">
-              <span className="text-[9px] uppercase tracking-widest text-ink/40">
-                {WEEKDAY_LABELS[idx]}
-              </span>
-              <input
-                type="number"
-                min={0}
-                value={shownGoals[idx] ?? 0}
-                disabled={!goalsEnabled || !goalDraft}
-                onChange={(e) => setGoal(idx, e.target.value)}
-                className={`w-full rounded-xl px-1.5 py-1.5 text-xs text-center font-mono border-0 focus:outline-none focus:ring-2 focus:ring-ink/15 ${
-                  goalDraft ? "bg-ink/[0.10]" : "bg-ink/[0.05]"
-                } disabled:cursor-not-allowed`}
-              />
-            </label>
-          ))}
-        </div>
+      {/* **The effectiveness meter used to sit here** — seven minute goals, an
+          on/off switch, an explicit Edit, a weekly total, and a confirmation
+          for lowering it that cost the week its freeze.
 
-        {!goalDraft ? (
-          <div className="flex items-center justify-between gap-2 mt-2">
-            <p className="text-[9px] text-ink/40">
-              Minutes per day · {fmtHours(savedWeekly)} a week
-            </p>
-            <button
-              onClick={() => setGoalDraft({ ...dailyGoals })}
-              disabled={!goalsEnabled}
-              className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5 disabled:opacity-40`}
-            >
-              <Pencil size={10} /> Edit
-            </button>
-          </div>
-        ) : (
-          <div className="mt-2.5 rounded-xl bg-ink/[0.04] p-3 space-y-2.5">
-            {/* Before, after, and the difference — the number that decides
-                whether this costs you a freeze, said out loud rather than left
-                to be worked out from seven boxes. */}
-            <div className="flex items-center gap-2 text-[11px] font-mono">
-              <span className="text-ink/45">{fmtHours(savedWeekly)}</span>
-              <ArrowRight size={11} className="text-ink/30" />
-              <span className="font-bold">{fmtHours(draftWeekly)}</span>
-              {delta !== 0 && (
-                <span
-                  className="font-bold"
-                  style={{ color: isCut ? c.exam : c.goalMet }}
-                >
-                  {delta > 0 ? "+" : "−"}
-                  {fmtHours(Math.abs(delta))}
-                </span>
-              )}
-              {isCut && (
-                <Tip
-                  multiline
-                  text={
-                    "The weekly total is going down, so this week earns no freeze." +
-                    String.fromCharCode(10, 10) +
-                    "Otherwise lowering the bar would be the way to buy a green week, and a freeze is meant to be earned against the target you were actually holding yourself to."
-                  }
-                >
-                  <span className="cursor-help" style={{ color: c.exam }}>
-                    <AlertTriangle size={13} />
-                  </span>
-                </Tip>
-              )}
-            </div>
-            {isCut && cut.affected.length > 0 && (
-              <div className="space-y-1.5">
-                <p
-                  className="text-[10px] font-mono leading-relaxed"
-                  style={{ color: c.exam }}
-                >
-                  {cut.affected.length === 1
-                    ? `"${cut.affected[0].label}" is held to this goal, so lowering it loosens that rule.`
-                    : `${cut.affected.length} rules are held to this goal, so lowering it loosens them.`}
-                </p>
-                {cut.blockedUntil ? (
-                  <p className="text-[10px] font-mono" style={{ color: c.exam }}>
-                    It waits until {fmtDateLong(cut.blockedUntil)}.
-                  </p>
-                ) : (
-                  <>
-                    <AutoTextarea
-                      value={cutReason}
-                      onChange={(e) => setCutReason(e.target.value)}
-                      placeholder="Why the goal is going down"
-                      rows={1}
-                      maxHeight={120}
-                      className={`${FIELD_SOFT} rounded-xl py-1.5 text-[11px]`}
-                    />
-                    {cut.needsReason && (
-                      <p className="text-[10px] font-mono text-ink/45">
-                        Say why first. It goes on each rule's record.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setGoalDraft(null)}
-                className={`${btnBase} px-3 py-1.5 rounded-xl text-[10px] font-mono uppercase tracking-widest text-ink/55 hover:text-ink hover:bg-ink/5`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => (isCut ? setConfirmingCut(true) : commitGoals())}
-                disabled={(delta === 0 && !goalDraft) || (isCut && !cut.allowed)}
-                className={`${btnBase} px-3 py-1.5 rounded-xl text-[10px] font-mono uppercase tracking-widest font-bold`}
-                style={{ backgroundColor: c.accent, color: c.onFill }}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          It is gone, and what replaced it is a rule. Every promise in this app
+          is one now, and the goal was the last thing pretending it could be a
+          number with nothing behind it: a target nobody promised anything
+          about is a target. Nominate a rule as the **benchmark** in Setup →
+          Streaks and its figure becomes the `goal 3h` on every card, the
+          dashed line on the daily chart and the shading on the heatmap.
 
-      {/* A second, deliberate yes — and it names the consequence rather than
-          asking abstractly, because "are you sure" on its own is a question
-          nobody can answer. */}
-      {confirmingCut && (
-        <div
-          className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-          onMouseDown={(e) =>
-            e.target === e.currentTarget && setConfirmingCut(false)
-          }
-        >
-          <div className={`${CARD} w-full max-w-[340px] p-5`}>
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} style={{ color: c.exam }} />
-              <h3 className="font-sans font-extrabold uppercase tracking-tight text-sm">
-                Lower the weekly goal?
-              </h3>
-            </div>
-            <p className="text-xs font-mono text-ink/70 leading-relaxed mb-4">
-              You are going from <strong>{fmtHours(savedWeekly)}</strong> a week
-              to <strong>{fmtHours(draftWeekly)}</strong>. Because the total is
-              going down, <strong>this week will not earn a freeze</strong> —
-              otherwise lowering the bar would be a way to buy one. Continue?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmingCut(false)}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
-              >
-                Keep editing
-              </button>
-              <button
-                onClick={commitGoals}
-                className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide`}
-                style={{ backgroundColor: c.exam, color: c.onFill }}
-              >
-                Lower it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          That also shuts the hole the lock could never close. These seven
+          fields were edited here, in a tab `ruleEdit` never sees, so lowering
+          them lowered every rule reading them with no clock, no reason and no
+          record. `goalCutEdit` narrowed the door; removing the door shuts it.
+          `migrations/019` moves the figures into the conditions that were
+          reading them. */}
     </div>
   )
 }

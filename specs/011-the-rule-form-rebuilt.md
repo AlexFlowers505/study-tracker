@@ -157,9 +157,28 @@ do that a rule cannot say better.
         Monday and expires; a clean week banks one more; a week seals on the
         Tuesday after. None of that was visible in a tab that talked about
         days.*
-- [ ] **Stage 4 — The effectiveness meter goes.** Part 3. Needs a migration
-      that turns every `useDailyGoal` condition into explicit per-day numbers,
-      and it must run **before** the field is dropped.
+- [x] **Stage 4 — The effectiveness meter goes.** Part 3.
+      *The seven goal fields, their on/off switch, the explicit Edit, the
+      weekly total and the lower-it-costs-a-freeze confirmation are all gone
+      from Setup, and with them `goalCutEdit`, `goalReaders`, `afterGoalCut`
+      and `weeklyGoalTotal`. **The lock hole is shut by removing the door**,
+      not by narrowing it: those figures were edited in a tab `ruleEdit` never
+      saw.*
+      *`migrations/019` rewrites every condition that pointed at the goal into
+      the seven figures it was pointing at, and nominates that rule as the
+      project's benchmark if none is nominated.*
+      ***The order of migration and deploy does not matter**, and that was
+      worth arranging: `boundsOnWeekday` keeps one branch that resolves an
+      unmigrated `useDailyGoal`. Drop it and such a condition falls through to
+      a floor of zero, which every day clears — the rule would quietly stop
+      judging and its red days would turn green. Carrying a dead branch until
+      the migration has been everywhere is much cheaper than failing that way
+      round. Verified on the live unmigrated project: same 22-day run, same
+      three banked freezes, goal line intact.*
+      ***No benchmark now means no goal at all** — no line on the cards, no
+      dashed limit, no heatmap shading. Showing the last figures somebody typed
+      into a tab that no longer exists would be worse than showing none: a
+      target nobody can change and nobody promised.*
 - [ ] **Stage 5 — The ring: weights and a detail view.** Parts 4 and 5.
 
 Build 1 → 5. Stage 4 cannot precede stage 3 (there is nowhere for the
