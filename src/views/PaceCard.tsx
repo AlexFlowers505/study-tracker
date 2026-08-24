@@ -116,17 +116,12 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
         })}
       </div>
 
-      <div className="grid grid-cols-7 gap-[3px] mt-1">
-        {WEEKDAY_ORDER.map((wd) => (
-          <span
-            key={wd}
-            className="text-[8px] font-mono uppercase tracking-widest text-ink/30 text-center"
-          >
-            {WEEKDAY_LABELS[wd].slice(0, 1)}
-          </span>
-        ))}
-      </div>
-
+      {/* No weekday row of its own. `StreakStrip` renders immediately below
+          this in the panel and carries one, over seven Monday-first columns in
+          the same order — two rows of the same seven letters four lines apart
+          is a label drawn twice, not a label. With several conditions the
+          cards stack directly on each other, so that single header still reads
+          down all of them. */}
       <p className="text-[9px] font-mono text-ink/35 mt-1.5">
         {pace.op === "atMost"
           ? "The bar is what you have spent of the week's allowance."
