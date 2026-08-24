@@ -183,6 +183,9 @@ which are Node config and get their own lint block.
     **The `name` strings are stored data** — add and regroup freely, never
     rename or remove. The file is generated and asserts both halves of that:
     every name a real lucide export, and nothing already stored dropped.
+    **Each icon costs about 350 bytes of bundle** — going from 115 to 321 added
+    71 KB uncompressed, some 7%. Worth it once, to make the picker usable; a
+    reason not to answer "add more icons" by pasting in the other 1700.
   - `controls.tsx` (`AutoTextarea`, `SegmentedControl`), `toggles.tsx`
     (`SwitchToggle`, `MenuToggle`), `EditableList.tsx`, `StatTile.tsx`,
     `ChartCard.tsx`, `ToggleChips.tsx`, `Brand.tsx`, and the hooks
