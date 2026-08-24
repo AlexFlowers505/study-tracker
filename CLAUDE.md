@@ -164,6 +164,25 @@ which are Node config and get their own lint block.
     which has to sit on the calendar's own root to win.
   - `icons.tsx` — `RenderIcon`; the list itself is data in `iconLibrary.ts`,
     and `buttonStyles.ts` holds `segBtn` / `segBtnStyle`.
+  - `IconGrid.tsx` — **the one icon picker**, with the search box. There were
+    two copies of the grid, from when the library was a hundred long and
+    scanning it was plausible; it is 321 in 15 groups now, and past about a
+    hundred a grid stops being a picker and becomes a haystack — the icon you
+    want is in there and you take the fourth-best one you saw first.
+    **Every entry carries keywords saying what its picture is *of***, because
+    the drawing and lucide's name for it agree far less often than you would
+    hope: "gym" has to find `Dumbbell` and "quit" has to find `CigaretteOff`.
+    The name is matched with its capitals split apart, or "clock" would never
+    reach `AlarmClock`. The **group is deliberately not searched** — "clock"
+    would drag in Play, Pause and Circle for being filed under The clock, and a
+    search that answers with its whole shelf is worse than one that answers
+    with nothing; the headings do that job while you browse, which is when it
+    is wanted. Headings show while browsing and vanish while searching: three
+    matches spread over three headings read as three failures rather than one
+    short list.
+    **The `name` strings are stored data** — add and regroup freely, never
+    rename or remove. The file is generated and asserts both halves of that:
+    every name a real lucide export, and nothing already stored dropped.
   - `controls.tsx` (`AutoTextarea`, `SegmentedControl`), `toggles.tsx`
     (`SwitchToggle`, `MenuToggle`), `EditableList.tsx`, `StatTile.tsx`,
     `ChartCard.tsx`, `ToggleChips.tsx`, `Brand.tsx`, and the hooks
@@ -230,6 +249,36 @@ which are Node config and get their own lint block.
     switch needs a second click. All folded, the section says so in a line with
     no surface under it: an empty box reads as something that failed to load,
     where a sentence reads as a state you put it in.
+  - `VerdictRing.tsx` — the day's composite verdict as **a ring on the cards
+    and a bar in the month grid**. One arc per voting rule, from
+    `DayReport.readings`. Closed means kept, so a day is an object you shut
+    rather than a tint you notice.
+    **It draws partial and does not mean partial**: four of five is one
+    segment short of closed, and the centre figure goes red, because the
+    verdict underneath is still a miss (`spec 010`, Decision 1).
+    It sits **beside the date, not in the card's corner** — Today, Frozen, the
+    freeze, the "+" and the close X already live in that corner, and a ring
+    among them reads as a sixth button.
+    `VerdictBar` is the same reading for a month cell, where five arcs at
+    sixteen pixels are a smudge. It gains what a ring cannot have — a fixed
+    left edge — so "the second rule broke three times this week" reads down a
+    column instead of being counted.
+  - `PaceCard.tsx` — a **weekly** rule's week as a burn-down, in its panel,
+    from `weekPace`. `weekLostOn` has always known the day a week stopped
+    being winnable, and that is the right answer to the wrong question: by
+    then the week is over. This is the Wednesday question — how much is left
+    against how many days are left. Its per-clause walk is `clauseLostOn`,
+    which `weekLostOn` also calls, so the card and the day's colour cannot
+    drift about what "lost" means.
+    **One reading per condition**, never one per rule: two conditions in two
+    units have no shared axis, the same reason `StreakChart` plots a deficit
+    for a compound rule.
+    **The two operators burn in opposite directions and are drawn so** — under
+    `atLeast` the bar is a debt that should reach nothing by Sunday, under
+    `atMost` a budget that should not fill. One shape for both would put
+    "good" at the top of the chart for one rule and the bottom for the next.
+    It is the one thing on that panel fixed to **this** week: the rest is
+    history and follows the period bar, and pace is not history.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
     **A week in the month grid is a block, not a strip**: its summary line,
@@ -1138,6 +1187,12 @@ Match the existing file:
   not follow the theme, and it will look fine to whoever wrote it. Tailwind
   also cannot see class names built from template literals — dynamic colours go
   in `style`, not `className`.
+- **`c.warn` is amber, and it means "behind but not lost".** It was added
+  for `PaceCard` and it is the state the app had no colour for: green says
+  nothing is wrong, red says nothing can be done, and a weekly rule spends
+  most of its life in the stretch where acting still helps. Amber rather than
+  a paler red, because nobody should have to judge a shade to know which of
+  the two they are looking at.
 - **Never index into `PALETTE` for a fixed role.** `SLEEP_COLOR` used to be
   `PALETTE[3]`, which silently repainted every sleep chart the first time the
   list was reordered. Retiring a colour is safe for saved data — slots and

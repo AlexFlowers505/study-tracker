@@ -107,6 +107,49 @@ dependencies are real, not preference.
       ***Not verified end to end by the agent** — a second party needs a second
       account. The test sequence is at the foot of `migrations/018`.*
 
+- [x] **Stage 9 — The drawings.** No new mechanism; the pictures the two
+      sketches argued for and stages 1–8 did not build.
+      *Added after the fact, and the omission is worth naming: stages 1–8 were
+      written from the **decisions** the sketches produced, and their drawings
+      never became work items. So the day's verdict shipped as a tint, pace
+      shipped as a colour and a sentence, and the two shelves shipped in the
+      app's default shapes. Everything was true and none of it looked like what
+      had been agreed.*
+
+      - **`views/VerdictRing.tsx`** — one arc per voting rule, beside the date
+        on every day card and in the dialog. It draws partial and does not
+        *mean* partial: the centre figure goes red at four of five, because
+        Decision 1 stands. The sketch put it in the card's top-right corner,
+        which on this card is where Today, Frozen, the freeze, the "+" and the
+        close X already are; beside the date it reads as the day rather than
+        as a sixth button, and it lands the same on a compact card as a wide
+        one. `VerdictBar` is the same reading for the month grid, where five
+        arcs at sixteen pixels are a smudge — and it gains a fixed left edge,
+        so a rule that broke three times reads down a column.
+      - **`views/PaceCard.tsx`** and `weekPace` — a weekly rule's week as a
+        burn-down, in the rule's panel. `weekLostOn` already knew the day a
+        week stopped being winnable, which is the right answer to the wrong
+        question: by then the week is over. This asks the Wednesday question.
+        The per-clause walk was pulled out of `weekLostOn` and both now call
+        it, so the card and the day's colour cannot drift.
+        The palette gained **`warn`**, an amber, because the app had no colour
+        for "behind but not lost" — green says nothing is wrong, red says
+        nothing can be done, and a weekly rule spends most of its life in the
+        state where acting still helps. Checked headlessly across a made-up
+        week: ahead on Monday, behind by Wednesday, still merely behind on
+        Saturday, lost on the Saturday once Sunday is all that is left.
+      - **The trophy case is one grid**, earned and locked in the same tile.
+        Two shapes drew a line through the one collection this app has, when a
+        locked tile is the earned one with its date not yet written.
+      - **The shop's balance is a card**, with what you have as the figure and
+        earned/spent/not-counted as a footnote. A taken item stays on the shelf
+        and says when it last went, because a reward can be taken twice.
+      - **The icon library is searchable and three times as long** — 321 in 15
+        groups, each carrying what its picture is *of*, since "gym" has to find
+        the dumbbell. One `ui/IconGrid.tsx` where there were two copies of the
+        grid. The list is generated and asserted against lucide's own exports,
+        and against the names already in saved data.
+
 ## Not yet proven
 
 Everything below has shipped and neither part has been exercised against real
@@ -561,7 +604,17 @@ The record, so a reversal is visible rather than silent.
     the clock rather than a replacement for it. Chosen because it leaves every
     existing RLS policy untouched.
 13. **A refusal restarts the clock; a withdrawal does not.**
-14. **`useDailyGoal` opens a back door that `termsOf` only half shuts.**
+14. **The sketches' drawings were not carried into the stages, and that was
+    a mistake rather than a decision.** Stages 1–8 were built from the
+    decisions the two sketches produced and not from their pictures, so the
+    ring, the segment bar and the pace chart were simply never scheduled. The
+    only one that made it was the risk bar, and only because it *was* a
+    mechanism. Recorded here because the failure has a shape worth
+    remembering: a sketch that argues a decision and draws it produces two
+    kinds of work, and writing down only the first loses the second silently —
+    everything ships, everything is true, and nothing looks like what was
+    agreed. Stage 9 is the repair.
+15. **`useDailyGoal` opens a back door that `termsOf` only half shuts.**
     Folding the goals into the compared terms makes an edit *to the rule*
     judge correctly. It does nothing about an edit to the **goal**, because
     that happens in Setup's Project tab and never goes near `ruleEdit` — so
