@@ -19,6 +19,11 @@
    sentence you can act on this week; a goal you can see pulls harder than a
    surprise you cannot.
 
+   **It was called "History" and that was a mistake.** The word came from the
+   sketch that designed it, where it meant "the record of what you have done";
+   in an app that already has a change log it reads as the wrong shelf, and the
+   trophy on the toggle was quietly disagreeing with the label beside it.
+
    A definition deleted since it was earned still shows. That happened; the
    ledger is not in the business of forgetting, and the tile reads from the
    figure stored with it rather than from a definition that is no longer there.
@@ -91,7 +96,7 @@ export function AchievementsSection({
     <PanelSection
       tint={c.project}
       icon={Trophy}
-      title="History"
+      title="Achievements"
       subtitle={
         total
           ? `${done.length} of ${total} earned`
@@ -104,7 +109,7 @@ export function AchievementsSection({
           </span>
         </Tip>
       }
-      closeLabel="Hide the history"
+      closeLabel="Hide the achievements"
       onClose={onClose}
     >
       {total > 0 && (

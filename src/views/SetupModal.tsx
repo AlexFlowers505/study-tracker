@@ -134,7 +134,14 @@ export function SetupModal({
     >
       <div
         style={{ backgroundColor: c.card }}
-        className="w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] flex flex-col"
+        /* A **fixed** height, not a maximum.
+
+           With `max-h` the panel was as tall as whatever tab you were on, and
+           since it is centred, every tab switch moved the top edge — the
+           heading, the tabs and the first field all jumped, and on a tall tab
+           it grew from both ends at once. Nothing about the window should
+           depend on which tab is open. */
+        className="w-full max-w-lg rounded-2xl shadow-2xl h-[85vh] flex flex-col"
       >
         <div className="flex items-center justify-between px-5 py-4 shrink-0 rounded-t-xl">
           <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
@@ -148,9 +155,14 @@ export function SetupModal({
           </button>
         </div>
 
+        {/* Ten tabs will not fit across a phone, and `flex-1` does not save
+            them: a flex item refuses to shrink below its own content, so the
+            row simply overflowed the panel and "App" sat outside the rounded
+            corner. It scrolls instead — the same answer the period bar gives
+            to the same problem, and each tab now keeps its natural width. */}
         <div
           style={{ backgroundColor: c.card }}
-          className="flex border-b border-ink/10 shrink-0"
+          className="flex border-b border-ink/10 shrink-0 overflow-x-auto"
         >
           {/* An icon each. Seven tabs of small uppercase type is a wall of
               words to read every time; a glyph is what the eye actually aims
@@ -165,7 +177,10 @@ export function SetupModal({
             { id: "categories", label: "Categories", icon: Shapes },
             { id: "tags", label: "Tags", icon: Tags },
             { id: "streaks", label: "Streaks", icon: Flame },
-            { id: "achievements", label: "History", icon: Trophy },
+            // "History" was carried over from a sketch and was wrong in an app
+            // that already has a change log: two words for one shelf, and the
+            // trophy beside it said which one this really was.
+            { id: "achievements", label: "Achievements", icon: Trophy },
             { id: "shop", label: "Rewards", icon: Gift },
             { id: "projects", label: "Projects", icon: FolderOpen },
             // Last, and the only one that is not about a project — it is a
@@ -180,7 +195,7 @@ export function SetupModal({
                 style={
                   active ? { borderColor: c.accent, color: c.accent } : undefined
                 }
-                className={`${btnBase} flex-1 flex flex-col items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-2 py-2 border-b-2 ${
+                className={`${btnBase} shrink-0 flex flex-col items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-3 py-2 border-b-2 ${
                   active
                     ? ""
                     : "border-transparent text-ink/50 hover:text-ink hover:bg-ink/5"
@@ -195,7 +210,7 @@ export function SetupModal({
 
         <div
           style={{ backgroundColor: c.card }}
-          className="p-5 overflow-y-auto rounded-b-xl"
+          className="p-5 overflow-y-auto rounded-b-xl flex-1 min-h-0"
         >
           {tab === "tags" && (
             <TagsTab

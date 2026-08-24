@@ -26,7 +26,7 @@ import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
 /** How wide the empty part of the track is, as a fraction of one arc's slot. */
-const GAP_SHARE = 0.18
+const GAP_SHARE = 0.1
 
 /** Below this many rules the gaps can be generous; above it they must not be. */
 const CROWDED = 8
@@ -49,7 +49,14 @@ export function VerdictRing({
   const slot = circumference / n
   // Crowded rings lose most of their gap rather than most of their arc: an arc
   // too short to see is a rule that has silently stopped reporting.
-  const gap = slot * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
+  /* **One rule is a closed circle, with no gap at all.**
+
+     The gaps divide one arc from the next, and with a single arc there is
+     nothing to divide — so a kept day under a single rule was drawing a ring
+     with a bite out of the top, which reads as "something is missing" when the
+     whole message is that nothing is. A divider needs two things to stand
+     between. */
+  const gap = n === 1 ? 0 : slot * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
   const arc = slot - gap
 
   const colourFor = (state: RuleState) =>

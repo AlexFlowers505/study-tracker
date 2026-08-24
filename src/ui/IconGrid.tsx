@@ -21,6 +21,7 @@
 import { useMemo, useState } from "react"
 import { Search } from "lucide-react"
 import { FIELD_SOFT, btnBase } from "../lib/theme"
+import { Tip } from "./Tip"
 import { ICON_GROUPS, ICON_LIBRARY, iconMatches } from "./iconLibrary"
 import { RenderIcon } from "./icons"
 
@@ -51,18 +52,26 @@ export function IconGrid({
     [matches],
   )
 
+  /* Every cell says its own name, because the search box made the name worth
+     knowing: finding this icon again a month from now means typing it, and an
+     unlabelled grid gives you nothing to type.
+
+     After a dwell, though. A cursor crossing three hundred icons on its way to
+     one would otherwise fire a bubble under every icon it passed, which is
+     noise where the point was information. Stopping on one is the gesture that
+     means "what is this". */
   const cell = (name: string) => (
-    <button
-      key={name}
-      type="button"
-      onClick={() => onPick(name)}
-      title={name}
-      className={`${btnBase} p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
-        value === name ? "bg-ink/10 ring-1 ring-ink/30" : ""
-      }`}
-    >
-      <RenderIcon name={name} size={14} />
-    </button>
+    <Tip key={name} text={name} delay={450} className="flex">
+      <button
+        type="button"
+        onClick={() => onPick(name)}
+        className={`${btnBase} w-full p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
+          value === name ? "bg-ink/10 ring-1 ring-ink/30" : ""
+        }`}
+      >
+        <RenderIcon name={name} size={14} />
+      </button>
+    </Tip>
   )
 
   return (

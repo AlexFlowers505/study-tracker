@@ -402,7 +402,7 @@ function ClauseForm({
 
   return (
     <div className="space-y-2">
-      <Row label="Keeping">
+      <Row label="Entity">
         <TargetPicker
           target={target}
           ctx={ctx}

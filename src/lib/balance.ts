@@ -26,8 +26,16 @@
    a balance a purchase was already priced against. Today and yesterday are
    therefore visible but not yet counted.
 
-   The rate is `±1` and is **not a setting**. A configurable rate is the
-   forgeable part of any economy.
+   **A kept day is `+1`; a missed day is `−3`.** It was symmetric at first, on
+   the grounds that a symmetric rate keeps the shop reachable for anyone above
+   half — which is true, and was the wrong thing to optimise. A reward you can
+   reach while keeping barely half your promises is a reward that says half is
+   enough. At `−3` the account only grows above a **75%** keep rate, and that
+   is the point: the price of the shop is a standard, not a grind.
+
+   Neither figure is a setting. A configurable rate is the forgeable part of
+   any economy — the number you quietly edit on the evening you need it to be
+   different.
 --------------------------------------------------------------- */
 
 import type { DayMark, Project } from "../types/model"
@@ -37,8 +45,14 @@ import { addDays, fromKey, toKey } from "./date"
 import { isEditableDay } from "./freezes"
 import { makeIsIgnored } from "./stats"
 
-/** What one sealed day is worth. Not a setting — see the note above. */
-export const MARK_VALUE = 1
+/** What a kept day adds. Not a setting — see the note above. */
+export const KEPT_VALUE = 1
+
+/**
+ * What a missed day takes. Three, deliberately: break-even sits at a 75% keep
+ * rate, so the balance grows only while the promise is mostly being kept.
+ */
+export const MISSED_COST = 3
 
 export interface Balance {
   /** What is left to spend: every sealed mark, less everything bought. */
@@ -65,7 +79,7 @@ export function balanceOf(project: Project, today = new Date()): Balance {
   let earnedDays = 0
   let sealed = 0
   Object.values(ledger).forEach((mark) => {
-    earnedDays += mark.kept ? MARK_VALUE : -MARK_VALUE
+    earnedDays += mark.kept ? KEPT_VALUE : -MISSED_COST
     sealed += 1
   })
   // Purchases come straight off the top. A reward taken is a reward paid for,

@@ -12,7 +12,7 @@ import type { ReactNode } from "react"
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react"
 import type { Labeled } from "../types/model"
 import { makeId } from "../lib/id"
-import { PALETTE, btnBase } from "../lib/theme"
+import { BTN_SOFT, PALETTE, btnBase } from "../lib/theme"
 import { IconGrid } from "./IconGrid"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
@@ -168,12 +168,20 @@ export function EditableList<T extends Labeled>({
                           />
                         ))}
                       </div>
-                      <button
-                        onClick={() => setOpenPickerId(null)}
-                        className={`${btnBase} mt-3 text-[9px] uppercase tracking-widest text-ink/40 hover:text-ink`}
-                      >
-                        Done
-                      </button>
+                      {/* It wore the same 9px dim uppercase as the "Icon"
+                          and "Color" headings two lines above it, which made
+                          the one thing in the panel that *does* something look
+                          like the two things that only say what you are
+                          looking at. A control gets a control's surface. */}
+                      <div className="flex justify-end mt-3">
+                        <button
+                          type="button"
+                          onClick={() => setOpenPickerId(null)}
+                          className={`${btnBase} ${BTN_SOFT} px-3 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-widest`}
+                        >
+                          Done
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -11,7 +11,7 @@
    editor's top-row buttons used to show half a tooltip.
 --------------------------------------------------------------- */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { createPortal } from "react-dom"
 
@@ -34,6 +34,18 @@ interface TipBubbleProps {
 }
 
 function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
+  /* A tall bubble anchored above its trigger runs off the top of the window,
+     and the flip threshold above cannot see that coming: it knows where the
+     trigger is, not how many lines the text will take. The long "how this
+     works" notes are five or six lines, so the shop's ran clean off the top
+     and could not be read at all.
+
+     So the bubble measures itself once it exists and pulls itself back inside.
+     Only the vertical is corrected — the horizontal clamp above is already
+     right, and it is the one that has to be guessed before layout because the
+     width depends on the text. */
+  const ref = useRef<HTMLSpanElement>(null)
+  const [top, setTop] = useState<number | null>(null)
   const centerX = box.left + box.width / 2
   const clampedX = Math.min(
     Math.max(centerX, TIP_HALF_WIDTH + 8),
@@ -67,10 +79,34 @@ function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
               transform: "translate(-50%, -100%)",
             }
 
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const pad = 8
+    let next = rect.top
+    if (rect.bottom > window.innerHeight - pad)
+      next = window.innerHeight - pad - rect.height
+    if (next < pad) next = pad
+    setTop(Math.abs(next - rect.top) > 0.5 ? next : null)
+  }, [box, text, multiline, side])
+
+  // Once the vertical is pinned in pixels, the transform must stop moving it —
+  // but the horizontal half of it still has to do its job.
+  const corrected =
+    top === null
+      ? placement
+      : {
+          ...placement,
+          top,
+          transform: side === "left" ? "translateX(-100%)" : "translateX(-50%)",
+        }
+
   return (
     <span
+      ref={ref}
       role="tooltip"
-      style={{ position: "fixed", ...placement }}
+      style={{ position: "fixed", ...corrected }}
       className={`pointer-events-none z-[100] rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
         multiline
           ? "whitespace-pre-line max-w-[220px] text-left"
@@ -88,6 +124,16 @@ export interface TipProps {
   multiline?: boolean
   side?: TipSide
   className?: string
+  /**
+   * Milliseconds of hovering before the bubble appears.
+   *
+   * Zero — the default — is right for a lone button, where the tooltip *is*
+   * the label. It is wrong for a grid of three hundred icons: a cursor
+   * crossing that grid on its way somewhere would fire a bubble under every
+   * one it passed. A dwell says "you stopped on this one, so you want to know
+   * what it is". Focus is never delayed: a keyboard user asked deliberately.
+   */
+  delay?: number
 }
 
 export function Tip({
@@ -96,9 +142,15 @@ export function Tip({
   multiline = false,
   side = "top",
   className = "",
+  delay = 0,
 }: TipProps) {
   const triggerRef = useRef<HTMLSpanElement>(null)
   const [box, setBox] = useState<DOMRect | null>(null)
+  const timer = useRef<number | undefined>(undefined)
+
+  // A pending bubble outlives its trigger otherwise — the picker closes, the
+  // timer fires, and it appears over whatever is there now.
+  useEffect(() => () => window.clearTimeout(timer.current), [])
 
   // Fixed coordinates go stale the moment anything scrolls, so drop the bubble
   // instead of letting it float away from its trigger.
@@ -118,13 +170,21 @@ export function Tip({
   const show = () => {
     if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
   }
-  const hide = () => setBox(null)
+  const showAfterDwell = () => {
+    if (!delay) return show()
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(show, delay)
+  }
+  const hide = () => {
+    window.clearTimeout(timer.current)
+    setBox(null)
+  }
 
   return (
     <span
       ref={triggerRef}
       className={`inline-flex ${className}`}
-      onMouseEnter={show}
+      onMouseEnter={showAfterDwell}
       onMouseLeave={hide}
       onFocus={show}
       onBlur={hide}

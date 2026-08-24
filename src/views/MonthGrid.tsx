@@ -37,6 +37,11 @@ import { btnBase, cellSurface, dayStateSurface } from "../lib/theme"
 import { unitDayTotal } from "../lib/counters"
 import { RenderIcon } from "../ui/icons"
 import { VerdictBar } from "./VerdictRing"
+
+/** How many counter dots a month cell can carry before the rest become a
+ *  count. Three fits beside the freeze and sleep marks at every width the
+ *  grid is drawn at, including a phone column. */
+const DOTS_SHOWN = 3
 import { Tip } from "../ui/Tip"
 import { CounterGroupList } from "./CounterTotals"
 import { periodCounterGroups } from "../lib/periodCounters"
@@ -191,6 +196,9 @@ function CompactDayCell({
     : buildTooltip(entry, slots, activities, counterUnits)
   const metGoal = !ignored && goal > 0 && total >= goal
   const goalOutcome = ignored ? null : asOutcome(verdict.state)
+  const touched = counterUnits.filter(
+    (u) => unitDayTotal(entry?.counters, u.id) > 0,
+  )
 
   return (
     <Tip text={tooltip} multiline className="w-full">
@@ -237,10 +245,16 @@ function CompactDayCell({
               )}
             {/* A dot per unit the day touched, in the unit's own colour. A
                 month cell has no room for numbers, so the count is in the
-                tooltip and the presence is the signal. */}
-            {counterUnits
-              .filter((u) => unitDayTotal(entry?.counters, u.id) > 0)
-              .map((u) => (
+                tooltip and the presence is the signal.
+
+                **Capped, with the rest as a count.** A project with a dozen
+                counters put a dozen dots on one 16px line and they marched
+                straight out of the cell. Scrolling was the other option and is
+                worse here: a scroll strip that narrow has no affordance, and
+                nobody scrolls a calendar square. The cell's own tooltip
+                already lists everything, so the overflow only has to say that
+                there *is* more. */}
+            {touched.slice(0, DOTS_SHOWN).map((u) => (
                 <Tip
                   key={u.id}
                   text={`${unitDayTotal(entry?.counters, u.id)} × ${u.label}`}
@@ -256,7 +270,12 @@ function CompactDayCell({
                     />
                   </span>
                 </Tip>
-              ))}
+            ))}
+            {touched.length > DOTS_SHOWN && (
+              <span className="text-[8px] font-mono text-ink/40 shrink-0">
+                +{touched.length - DOTS_SHOWN}
+              </span>
+            )}
           </div>
         </div>
 
