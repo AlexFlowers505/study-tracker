@@ -53,6 +53,7 @@ import type {
   RuleVerdict,
   Slot,
   StreakClause,
+  StreakOp,
   StreakRule,
   StreakTarget,
   Tag,
@@ -621,6 +622,57 @@ export function ruleWeekState(
  *
  * Returns null while the week is still winnable, or has already been won.
  */
+export function clauseLostOn(
+  clause: StreakClause,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  /** Already narrowed to the days this clause judges — see `coveredDays`. */
+  covered: DayKey[],
+  todayKey: DayKey,
+): DayKey | null {
+  if (!covered.length) return null
+  const measure = targetMeasure(clauseTarget(clause), ctx)
+  const limit = weekLimit(clause, ctx, covered)
+
+  let value = 0
+  for (const key of covered) {
+    // Days that have not happened contribute nothing and settle nothing; the
+    // walk stops there and the week stays open.
+    if (key > todayKey) break
+    value += readClauseDay(clause, ctx, days[key], key, todayKey).value
+
+    if (clause.op === "atMost") {
+      // Already over. There is no doing less of something done.
+      if (value > limit) return key
+      continue
+    }
+
+    const need = limit - value
+    if (need <= 0) return null
+    // Days left to make it up in. Today counts as one of them, because it is
+    // not over — which is why a week is never declared lost on a morning.
+    const after = covered.filter((k) => k > key).length
+    const room =
+      measure === "time"
+        ? after > 0 || key >= todayKey
+          ? Infinity
+          : 0
+        : after + (key >= todayKey ? 1 : 0)
+    if (need > room) return key
+  }
+  return null
+}
+
+/** The days of a week this clause actually judges. */
+const coveredDays = (
+  clause: StreakClause,
+  rule: StreakRule,
+  weekStart: Date,
+): DayKey[] =>
+  weekDates(weekStart)
+    .map(toKey)
+    .filter((k) => k >= rule.startedOn && clauseCoversDay(clause, k))
+
 export function weekLostOn(
   rule: StreakRule,
   ctx: StreakContext,
@@ -628,52 +680,140 @@ export function weekLostOn(
   weekStart: Date,
   todayKey: DayKey,
 ): DayKey | null {
-  const all = weekDates(weekStart).map(toKey)
   let earliest: DayKey | null = null
-
-  ruleClauses(rule).forEach((clause) => {
-    const covered = all.filter(
-      (k) => k >= rule.startedOn && clauseCoversDay(clause, k),
+  for (const clause of ruleClauses(rule)) {
+    const lost = clauseLostOn(
+      clause,
+      ctx,
+      days,
+      coveredDays(clause, rule, weekStart),
+      todayKey,
     )
-    if (!covered.length) return
+    if (lost && (!earliest || lost < earliest)) earliest = lost
+  }
+  return earliest
+}
+
+/* ---- Pace ---------------------------------------------------------------- */
+
+/**
+ * Where one day sits in the week's burn-down.
+ *
+ * `outside` is a day the clause does not judge — a Saturday under a weekday
+ * condition. It keeps its column so the week still reads Monday to Sunday;
+ * dropping it would shift every other day sideways, which is the one thing a
+ * weekday strip must not do.
+ */
+export type PaceState = "ahead" | "behind" | "lost" | "future" | "outside"
+
+export interface PaceDay {
+  key: DayKey
+  /** Everything counted up to and including this day. */
+  cumulative: number
+  /** What the bar draws: what is left to do, or what has been spent. */
+  bar: number
+  state: PaceState
+}
+
+export interface ClausePace {
+  clause: StreakClause
+  /** What is being counted, in words — the target's own name. */
+  label: string
+  measure: StreakMeasure
+  op: StreakOp
+  limit: number
+  /** Where it stands right now. */
+  value: number
+  /** Judged days still to come, today included. */
+  daysLeft: number
+  lostOn: DayKey | null
+  days: PaceDay[]
+}
+
+/**
+ * A weekly rule's week, day by day — `spec 010`, part 2, the drawing half.
+ *
+ * `weekLostOn` already knew the day a week stopped being winnable, and that
+ * one date is all the day's colour needs. It is not all a *person* needs: by
+ * the time the answer is "lost", the week that could have been saved is over.
+ * The useful question is asked on the Wednesday — how much is left, against
+ * how many days are left — and this returns it for every day at once.
+ *
+ * **One reading per condition, never one per rule.** Two conditions in two
+ * units have no shared axis, exactly as the chart found; a compound rule gets
+ * two rows here rather than one meaningless one.
+ *
+ * **The two operators burn in opposite directions, and are drawn so.** Under
+ * `atLeast` the bar is a debt you pay off and it should reach nothing by
+ * Sunday. Under `atMost` it is a budget you spend and it should not fill.
+ * Drawing both as one shape would put "good" at the top of the chart on one
+ * rule and at the bottom on the next.
+ */
+export function weekPace(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+  todayKey: DayKey,
+): ClausePace[] {
+  if (rule.scope !== "week") return []
+  const all = weekDates(weekStart).map(toKey)
+
+  return ruleClauses(rule).flatMap((clause) => {
+    const covered = coveredDays(clause, rule, weekStart)
+    if (!covered.length) return []
+
     const measure = targetMeasure(clauseTarget(clause), ctx)
     const limit = weekLimit(clause, ctx, covered)
+    const lostOn = clauseLostOn(clause, ctx, days, covered, todayKey)
 
-    let value = 0
-    for (const key of covered) {
-      // Days that have not happened contribute nothing and settle nothing;
-      // the walk stops there and the week stays open.
-      if (key > todayKey) break
-      value += readClauseDay(clause, ctx, days[key], key, todayKey).value
-
-      if (clause.op === "atMost") {
-        // Already over. There is no doing less of something done.
-        if (value > limit) {
-          if (!earliest || key < earliest) earliest = key
-          return
+    let cumulative = 0
+    let seen = 0
+    const rows: PaceDay[] = all.map((key) => {
+      if (!covered.includes(key))
+        return { key, cumulative, bar: 0, state: "outside" as const }
+      if (key > todayKey)
+        return {
+          key,
+          cumulative,
+          bar: clause.op === "atMost" ? cumulative : Math.max(0, limit - cumulative),
+          state: "future" as const,
         }
-        continue
-      }
 
-      const need = limit - value
-      if (need <= 0) return
-      // Days left to make it up in. Today counts as one of them, because it is
-      // not over — which is why a week is never declared lost on a morning.
-      const after = covered.filter((k) => k > key).length
-      const room =
-        measure === "time"
-          ? after > 0 || key >= todayKey
-            ? Infinity
-            : 0
-          : after + (key >= todayKey ? 1 : 0)
-      if (need > room) {
-        if (!earliest || key < earliest) earliest = key
-        return
-      }
-    }
+      cumulative += readClauseDay(clause, ctx, days[key], key, todayKey).value
+      seen += 1
+
+      const bar =
+        clause.op === "atMost" ? cumulative : Math.max(0, limit - cumulative)
+
+      // Lost stays lost: every day from the one it broke on wears the colour,
+      // because the week is over as a question even though the days are not.
+      if (lostOn && key >= lostOn)
+        return { key, cumulative, bar, state: "lost" as const }
+
+      // The even line — what you would have by now if you spread the week's
+      // work across the days that judge it. Ahead of it is the only sense in
+      // which a Wednesday can be "on track" for a thing due on Sunday.
+      const pacing = (limit * seen) / covered.length
+      const ahead =
+        clause.op === "atMost" ? cumulative <= pacing : cumulative >= pacing
+      return { key, cumulative, bar, state: ahead ? "ahead" : "behind" }
+    })
+
+    return [
+      {
+        clause,
+        label: targetInfo(clauseTarget(clause), ctx).label,
+        measure,
+        op: clause.op,
+        limit,
+        value: cumulative,
+        daysLeft: covered.filter((k) => k >= todayKey).length,
+        lostOn,
+        days: rows,
+      },
+    ]
   })
-
-  return earliest
 }
 
 /**

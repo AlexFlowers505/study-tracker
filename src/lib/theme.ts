@@ -80,6 +80,7 @@ export interface Palette {
   accent: string
   exam: string
   goalMet: string
+  warn: string
   freeze: string
   sleep: string
   project: string
@@ -97,6 +98,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     accent: "#2F5FBF",
     exam: "#C1595B",
     goalMet: "#2F9E8F",
+    warn: "#B8912F",
     freeze: "#4C8FBD",
     sleep: "#8B6FB3",
     project: "#D2740A",
@@ -112,6 +114,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     accent: "#6D9BEA",
     exam: "#E58184",
     goalMet: "#3FB5A4",
+    warn: "#D6B24A",
     freeze: "#66A9D7",
     sleep: "#AE8FD9",
     project: "#E9932A",
@@ -126,6 +129,12 @@ export const PALETTES: Record<ThemeMode, Palette> = {
    - `accent`   — the active state, and today.
    - `exam`     — a missed goal. Red.
    - `goalMet`  — a met goal. Green.
+   - `warn`     — behind, but not yet lost. The one state the app had no
+                  colour for: green says nothing is wrong and red says it
+                  cannot be fixed, and a weekly rule spends most of its life
+                  in neither. Amber rather than a paler red, because the
+                  reader must not have to judge a shade to know which of the
+                  two they are looking at.
    - `freeze`   — a day saved by a streak freeze. Its own colour on purpose:
                   the goal was missed, so it must not read as green, but a
                   freeze was spent to stop it being a failure, so it must not

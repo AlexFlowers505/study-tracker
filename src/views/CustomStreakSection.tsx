@@ -45,6 +45,7 @@ import {
   ruleDayState,
   ruleWeekState,
   streakContext,
+  weekPace,
   targetInfo,
   totalDeficit,
 } from "../lib/customStreaks"
@@ -57,6 +58,7 @@ import {
   toKey,
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
+import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
@@ -233,6 +235,20 @@ export function CustomStreakSection({
           )
         })
 
+  /* Where this week stands, for a rule that judges weeks.
+
+     Deliberately **this week**, and the one thing on the panel that is: the
+     rest follows the period bar, because the rest is history and history has
+     whatever range you asked for. Pace is not history — it is the question of
+     what to do before Sunday, and there is only one Sunday that can still be
+     acted on. Shown only when the period contains it, so a panel scrolled back
+     to March does not offer advice about a week that ended five months ago. */
+  const thisWeek = startOfWeek(new Date())
+  const paceRows =
+    byWeek && toKey(thisWeek) >= toKey(rangeStart) && thisWeek <= rangeEnd
+      ? weekPace(rule, ctx, project.days, thisWeek, todayKey)
+      : []
+
   return (
     <PanelSection
       tint={rule.color}
@@ -318,6 +334,10 @@ export function CustomStreakSection({
           ))}
         </div>
       )}
+
+      {paceRows.map((pace) => (
+        <PaceCard key={pace.clause.id} pace={pace} />
+      ))}
 
       <StreakStrip
         cells={cells}
