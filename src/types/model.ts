@@ -58,27 +58,35 @@ export type CounterRelation = "positive" | "neutral" | "negative"
  * The two questions a counter can answer, which are not the same question.
  *
  * - `tally` — *how many?* Three lessons, eleven pages, none. A number per slot.
- * - `check` — *did it happen?* Not a number, and not a plain yes/no either: at
- *   nine in the morning you do not yet know whether you overslept, and a "no"
- *   recorded then is a claim about the rest of the day you are not entitled to
- *   make. So a check has four states — see `CheckState`.
+ * - `check` — *did it happen?* Three answers rather than two, because "I chose
+ *   not to today" is a different thing from "it did not happen" — see
+ *   `CheckState`.
  *
  * `spec 008` said a boolean is a counter that stops at one, and that was true
- * enough to ship `oncePerDay` on. It stopped being true the moment "I do not
- * know yet" and "it did not happen" had to be told apart.
+ * enough to ship `oncePerDay` on. It stopped being true the moment a skip had
+ * to be told apart from a no.
  */
 export type CounterKind = "tally" | "check"
 
 /**
- * What a check says about one day.
+ * What a check says about one day — **three answers, and no fourth**.
  *
- * `unknown` is the resting state of a day still in progress, and it resolves
- * to `no` the moment the day is over — which is what makes the common case
- * cost nothing to record. `no` exists so a day inside the editing window can
- * be closed deliberately; nothing downstream tells it apart from an unrecorded
- * day that has ended.
+ * There used to be an `unknown`, which was the resting state of an unanswered
+ * day and resolved to `no` once that day was over. It was there so that every
+ * check could be drawn on every day card as a checklist you were meant to
+ * clear, and it earned its place while that was the design.
+ *
+ * It stopped earning it. A project with twenty checks cannot draw them all on
+ * a day card any more than it draws its twenty activities; a rule can now
+ * *require* an answer, which reminds you better than a chip does; and — the
+ * part that was actually wrong — **a check you did not answer is not a check
+ * you failed**, and resolving it to `no` asserted that it was.
+ *
+ * So a check behaves like every other counter: recorded when it happens,
+ * absent when it does not. Absence is not a state, so `checkState()` returns
+ * `null` for it. See `spec 011`, Part 2.
  */
-export type CheckState = "unknown" | "yes" | "no" | "skip"
+export type CheckState = "yes" | "no" | "skip"
 
 /**
  * The two marks a count cannot express, and therefore the only two that get
@@ -237,12 +245,12 @@ export interface Day {
    */
   ruleFreezes?: string[]
   /**
-   * `unitId -> "no" | "skip"` for the check counters — the two states a count
-   * cannot carry. See `CheckMark`; `checkState()` is the only place the four
-   * states are worked out from these two plus the count.
+   * `unitId -> "no" | "skip"` for the check counters — the two answers a count
+   * cannot carry. See `CheckMark`; `checkState()` is the only place the three
+   * are worked out from these two plus the count.
    *
-   * A unit with no key here is `yes` when it has a count, `unknown` while its
-   * day is still running, and `no` once that day is over.
+   * A unit with no key here and no count has **not been answered**, which is
+   * not an answer and never resolves into one.
    */
   checks?: Record<string, CheckMark>
   /**

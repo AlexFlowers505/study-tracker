@@ -20,18 +20,22 @@
    been answered at all: an answer wears the unit's colour, an unanswered chip
    is plain ink.
 
-   Which chips appear depends on whether the day can still be written:
+   **Only answered checks appear.** Every check used to be drawn on every
+   writable day, because the card was the checklist and the blanks were the
+   point of looking. That does not survive a project with twenty of them — the
+   card does not draw its twenty activities either — and it stopped being
+   necessary once a streak rule could require an answer, which reminds you
+   better than a chip ever did. An unanswered check is added the way everything
+   else is: through the "+".
 
-   - while it can, **all of them**, because that is the day's checklist and the
-     unanswered ones are the point of looking;
-   - once it cannot, only the ones with something to say — yes and skipped. A
-     `no` is what an untouched day resolves to anyway, so a chip for it on
-     every card would be a row of "nothing happened" on every card.
+   So a chip means *this was answered, and here is the answer*. Absence means
+   nothing was said, which is now a thing the app is willing to leave
+   unsaid — see `spec 011`, Part 2.
 --------------------------------------------------------------- */
 
-import { Check, Ghost, Minus, X } from "lucide-react"
+import { Check, Ghost, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import type { CheckState, CounterUnit, Day, DayKey } from "../types/model"
+import type { CheckState, CounterUnit, Day } from "../types/model"
 import { CHECK_CHOICES, CHECK_LABELS, checkState } from "../lib/checks"
 import { btnBase, cardTiny } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
@@ -43,7 +47,6 @@ const CHECK_GLYPH: Record<CheckState, LucideIcon> = {
   yes: Check,
   no: X,
   skip: Ghost,
-  unknown: Minus,
 }
 
 /**
@@ -52,14 +55,11 @@ const CHECK_GLYPH: Record<CheckState, LucideIcon> = {
  *
  * `yes` is the only one at full strength: a check that happened is a thing
  * that is *there*, the way a tally with a count is. The other two answers are
- * the same chip turned down, and an unanswered one drops the unit's colour
- * altogether — it has nothing to report yet.
+ * the same chip turned down — said, but not something that happened.
  */
 const chipStyle = (state: CheckState, color: string) => {
   if (state === "yes")
     return { className: "", style: { color, backgroundColor: `${color}1F` } }
-  if (state === "unknown")
-    return { className: "text-ink/35 bg-ink/[0.05]", style: undefined }
   return {
     className: "",
     style: { color: `${color}99`, backgroundColor: `${color}0F` },
@@ -69,30 +69,27 @@ const chipStyle = (state: CheckState, color: string) => {
 export function CheckChips({
   units,
   day,
-  dayKey,
-  todayKey,
   roomy,
   onSet,
 }: {
   /** Checks only — the caller has already split by kind. */
   units: CounterUnit[]
   day: Day | undefined
-  dayKey: DayKey
-  todayKey: DayKey
   roomy?: boolean
-  /** Absent on a day that cannot be written, which makes the chips inert. */
-  onSet?: (unitId: string, next: CheckState) => void
+  /**
+   * Absent on a day that cannot be written, which makes the chips inert.
+   * Null takes an answer back — a deletion, not a fourth answer.
+   */
+  onSet?: (unitId: string, next: CheckState | null) => void
 }) {
-  const shown = units.filter((u) => {
-    const state = checkState(day, u.id, dayKey, todayKey)
-    return onSet ? true : state === "yes" || state === "skip"
-  })
-  if (!shown.length) return null
+  const answered = units
+    .map((unit) => ({ unit, state: checkState(day, unit.id) }))
+    .filter((x): x is { unit: CounterUnit; state: CheckState } => !!x.state)
+  if (!answered.length) return null
 
   return (
     <>
-      {shown.map((unit) => {
-        const state = checkState(day, unit.id, dayKey, todayKey)
+      {answered.map(({ unit, state }) => {
         const { className, style } = chipStyle(state, unit.color)
         const Glyph = CHECK_GLYPH[state]
         // The state glyph goes last, where the tally's number goes, so the two
@@ -164,22 +161,20 @@ export function CheckChips({
                 })}
                 {/* Clearing is not a fourth answer, it is taking the answer
                     back — so it sits below a rule rather than in the list, and
-                    it is absent when there is nothing to take back. */}
-                {state !== "unknown" && (
-                  <>
-                    <span className="block h-px my-1 mx-2 bg-ink/10" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSet(unit.id, "unknown")
-                        close()
-                      }}
-                      className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono text-ink/45 hover:bg-ink/5 hover:text-ink`}
-                    >
-                      Clear
-                    </button>
-                  </>
-                )}
+                    it hands `null` rather than a state. There is always
+                    something to take back here: a chip only exists once the
+                    check has been answered. */}
+                <span className="block h-px my-1 mx-2 bg-ink/10" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSet(unit.id, null)
+                    close()
+                  }}
+                  className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono text-ink/45 hover:bg-ink/5 hover:text-ink`}
+                >
+                  Clear
+                </button>
               </div>
             )}
           </PopoverMenu>

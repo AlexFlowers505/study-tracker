@@ -30,8 +30,22 @@ do that a rule cannot say better.
       tooltip stays on screen; the icon grid names its icons after a dwell;
       Done looks like a button; Setup's tabs scroll and its modal has a fixed
       height; a month cell caps its counter dots; a missed day costs three.
-- [ ] **Stage 1 — Checks lose `unset`.** Part 2. Smallest, and everything in
-      the form's check handling depends on the answer being one of three.
+- [x] **Stage 1 — Checks lose `unset`.** Part 2.
+      *Landed. `CheckState` is three answers; `checkState()` returns null for
+      an unanswered check and no longer takes a date, since an answer that
+      depended on what day it was is precisely what was removed. The date
+      argument fell out of `readClauseDay`, `readDay` and `freezeCost` with
+      it — nothing else was reading it.*
+
+      *Streak arithmetic is unchanged: an unanswered day already read as zero,
+      because the old `unknown` resolved to `no` and a `no` is zero. What
+      changed is what the app **says** — it no longer asserts that a check you
+      never got round to is one you failed.*
+
+      *Day cards draw answered checks only. The refinement in Part 2 — also
+      showing the ones a participating rule is waiting on — is **not** built:
+      it needs the rules inside a card component, and the risk bar already
+      says which rule is unmet while there is still time to act.*
 - [ ] **Stage 2 — The Counters section.** Part 1a. Multi-select targets,
       sets by category/tag, and the kind narrowing that follows from them.
 - [ ] **Stage 3 — Days & Slots & Conditions.** Part 1b. Per-day numbers,

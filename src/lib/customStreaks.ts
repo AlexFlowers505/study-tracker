@@ -436,7 +436,6 @@ export function readClauseDay(
   ctx: StreakContext,
   day: Day | undefined,
   dayKey: DayKey,
-  todayKey: DayKey,
 ): ClauseReading {
   const applies = clauseCoversDay(clause, dayKey)
   const base = { clause, applies }
@@ -446,7 +445,7 @@ export function readClauseDay(
   const info = targetInfo(target, ctx)
 
   if (info.check) {
-    const state = checkState(day, target.id || "", dayKey, todayKey)
+    const state = checkState(day, target.id || "")
     if (state === "skip")
       return { ...base, value: 0, deficit: 1, skipped: true }
     const value = state === "yes" ? 1 : 0
@@ -481,10 +480,9 @@ export function readDay(
   ctx: StreakContext,
   day: Day | undefined,
   dayKey: DayKey,
-  todayKey: DayKey,
 ): ClauseReading[] {
   return ruleClauses(rule).map((clause) =>
-    readClauseDay(clause, ctx, day, dayKey, todayKey),
+    readClauseDay(clause, ctx, day, dayKey),
   )
 }
 
@@ -533,7 +531,7 @@ export function ruleDayState(
 ): RuleState {
   if (dayKey > todayKey || !judgesDay(rule, dayKey)) return "unjudged"
   if (isFrozenFor(day, rule.id)) return "frozen"
-  const deficit = totalDeficit(readDay(rule, ctx, day, dayKey, todayKey))
+  const deficit = totalDeficit(readDay(rule, ctx, day, dayKey))
   if (deficit === 0) return "met"
   return dayKey === todayKey ? "pending" : "missed"
 }
@@ -559,7 +557,7 @@ export function readWeek(
     const measure = targetMeasure(clauseTarget(clause), ctx)
     const covered = keys.filter((k) => clauseCoversDay(clause, k))
     const value = covered.reduce(
-      (sum, k) => sum + readClauseDay(clause, ctx, days[k], k, todayKey).value,
+      (sum, k) => sum + readClauseDay(clause, ctx, days[k], k).value,
       0,
     )
     return {
@@ -639,7 +637,7 @@ export function clauseLostOn(
     // Days that have not happened contribute nothing and settle nothing; the
     // walk stops there and the week stays open.
     if (key > todayKey) break
-    value += readClauseDay(clause, ctx, days[key], key, todayKey).value
+    value += readClauseDay(clause, ctx, days[key], key).value
 
     if (clause.op === "atMost") {
       // Already over. There is no doing less of something done.
@@ -780,7 +778,7 @@ export function weekPace(
           state: "future" as const,
         }
 
-      cumulative += readClauseDay(clause, ctx, days[key], key, todayKey).value
+      cumulative += readClauseDay(clause, ctx, days[key], key).value
       seen += 1
 
       const bar =
@@ -895,10 +893,9 @@ export function freezeCost(
   ctx: StreakContext,
   day: Day | undefined,
   dayKey: DayKey,
-  todayKey: DayKey,
 ): number {
   if (rule.scope === "week") return 1
-  return Math.max(1, totalDeficit(readDay(rule, ctx, day, dayKey, todayKey)))
+  return Math.max(1, totalDeficit(readDay(rule, ctx, day, dayKey)))
 }
 
 export interface RuleFreezes {
@@ -995,7 +992,7 @@ export function ruleStatus(
       const key = toKey(date)
       const day = days[key]
       if (!isFrozenFor(day, rule.id)) return sum
-      return sum + freezeCost(rule, ctx, day, key, todayKey)
+      return sum + freezeCost(rule, ctx, day, key)
     }, 0)
     // The weekly allowance goes first: it is the one that expires, so
     // spending it last would burn a banked reward and let a grant evaporate.
@@ -1066,7 +1063,7 @@ export function freezeOffer(
     ? weekDates(weekStart).some((d) => isEditableDay(toKey(d), todayKey))
     : isEditableDay(dayKey, todayKey)
   if (!open) return { ok: false, cost: 0, available, key: dayKey }
-  const cost = freezeCost(rule, ctx, day, dayKey, todayKey)
+  const cost = freezeCost(rule, ctx, day, dayKey)
   // Where the freeze is actually written. A week has no row of its own, so it
   // goes on the Monday — and the caller must not have to remember that.
   const key = week ? toKey(weekStart) : dayKey

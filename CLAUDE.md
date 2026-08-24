@@ -694,9 +694,8 @@ there would read as the same control drawn twice.
 - **Tallies** answer *how many*. A number per slot, an optional known total,
   and everything counters already were.
 - **Checks** answer *whether or not*. Day-level, no slots, no total, and
-  **four** states rather than two: at nine in the morning you do not yet know
-  whether you overslept, and a "no" recorded then is a claim about the rest of
-  the day you are not entitled to make.
+  **three** answers rather than two: a skip is a different thing from a no —
+  you chose not to, rather than failed to.
 
 `lib/checks.ts` owns all of it. `counterKind()` falls back to the deprecated
 `oncePerDay`, and that reading is exact rather than a guess — the flag was only
@@ -709,9 +708,20 @@ everything recorded against it.
 
 **`yes` is not a stored state. It is a count of one**, in `counters` where it
 already lived, and `days.checks` (`migrations/011_check_marks.sql`) carries only
-the two a count cannot express — `"no"` and `"skip"`. `unknown` is the absence
-of both and resolves to `no` once the day is over, so an ordinary day writes
-nothing at all, exactly like a tally that stayed at zero.
+the two a count cannot express — `"no"` and `"skip"`. A check with none of the
+three has **not been answered**, and `checkState()` returns null for it: an
+ordinary day writes nothing at all, exactly like a tally that stayed at zero.
+
+**There used to be a fourth state and it is gone** (`spec 011`, Part 2). An
+`unknown` was the resting state of an unanswered day and resolved to `no` once
+that day was over, which is what let a day card draw every check as a checklist
+you were meant to clear. It went with the checklist: a project with twenty
+checks cannot draw them all any more than it draws its twenty activities, a
+streak rule can now *require* an answer and reminds you better than a chip
+does, and — the part that was actually wrong — **a check you did not answer is
+not a check you failed**. Nothing is inferred now, and `checkState()` no longer
+takes a date, because an answer that depended on what day it was is exactly
+what was removed.
 
 That split is what makes the feature cheap rather than clever: every existing
 reader of counts — the day badges, the period chips, the count filter, both
@@ -725,21 +735,26 @@ directly.
 `CheckChips` draws them on a day card, beside the count badges rather than in a
 row of their own — same question about the same day, and a second row would
 claim they were a different sort of fact. A chip carries two glyphs: the unit's
-own icon, saying which question this is, and **the state as a mark** — a tick
-for yes, a cross for no, a ghost for skipped, a dash for not yet said. It used
-to be the chip's *outline* that said so (filled, hollow, dashed and struck
-through, dotted), and four kinds of border is a legend you have to have been
-told; nobody has to be told what a tick means. The choices in the chip's menu
-wear the same four marks, which is where they are learned.
+own icon, saying which question this is, and **the answer as a mark** — a tick
+for yes, a cross for no, a ghost for skipped. It used to be the chip's
+*outline* that said so (filled, hollow, dashed and struck through), and kinds
+of border are a legend you have to have been told; nobody has to be told what a
+tick means. The choices in the chip's menu wear the same three marks, which is
+where they are learned. **Clear** sits below them under a hairline: taking an
+answer back is a deletion, not a fourth answer, and it hands `null`.
 
 **Never a good or bad colour, which is why the tick and the cross are the same
 one.** Yes is bad for Overslept and good for Went to bed on time, and nothing
 on the card can tell which — that is a streak rule's job. Both answers are the
-unit's own colour and differ only in the glyph. The colour says one thing only:
-an answered check wears the unit's colour, an unanswered one is plain ink.
-While a day can still be written every check appears, because that is the day's
-checklist and the unanswered ones are the point of looking; once it cannot,
-only yes and skipped do.
+unit's own colour and differ only in the glyph. `yes` is the only one at full
+strength — a check that happened is a thing that is *there*, the way a tally
+with a count is; the other two are the same chip turned down.
+
+**Only answered checks appear.** Every check used to be drawn on every writable
+day, because the card was the checklist and the blanks were the point of
+looking. A chip now means *this was answered, and here is the answer*; an
+unanswered one is added through the "+" like everything else, and the reminder
+to answer it is a streak rule's job.
 
 ## Custom streaks
 

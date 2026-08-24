@@ -158,7 +158,7 @@ export function CustomStreakSection({
     const key = toKey(date)
     const state = stateOf(date, key)
     const offer = freezeOffer(rule, project, key, todayKey, status)
-    const readings = readDay(rule, ctx, project.days[key], key, todayKey)
+    const readings = readDay(rule, ctx, project.days[key], key)
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
     // `ok` false is exactly that case: the day is freezable and the freezes
@@ -230,7 +230,7 @@ export function CustomStreakSection({
           const key = toKey(d)
           return rowFor(
             fmtShort(key),
-            readDay(rule, ctx, project.days[key], key, todayKey),
+            readDay(rule, ctx, project.days[key], key),
             stateOf(d, key),
           )
         })

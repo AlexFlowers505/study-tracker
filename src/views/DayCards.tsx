@@ -62,7 +62,6 @@ function FullDayCard({
   isFuture,
   isBeforeStart,
   ignored,
-  todayKey,
   verdict,
   canFreeze,
   onFreeze,
@@ -101,7 +100,6 @@ function FullDayCard({
   isFuture: boolean
   isBeforeStart: boolean
   ignored: boolean
-  todayKey: DayKey
   /** How the day came out, across every rule with a vote on it. */
   verdict: DayReport
   canFreeze?: boolean
@@ -458,8 +456,6 @@ function FullDayCard({
           <CheckChips
             units={checkUnits}
             day={entry}
-            dayKey={toKey(date)}
-            todayKey={todayKey}
             roomy={big}
             onSet={
               onUpdateDay
@@ -715,7 +711,6 @@ export function FullCardGrid({
             isFuture={isFuture}
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
-            todayKey={todayKey}
             verdict={verdictOf(key)}
             canFreeze={!locked && canFreezeDay ? canFreezeDay(key) : false}
             onFreeze={

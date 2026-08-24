@@ -43,10 +43,11 @@ import { slotUnitValue } from "../lib/counters"
 import {
   CHECK_CHOICES,
   CHECK_LABELS,
+  UNANSWERED,
   checkState,
   splitByKind,
 } from "../lib/checks"
-import { fromKey, toKey } from "../lib/date"
+import { fromKey } from "../lib/date"
 import { makeId } from "../lib/id"
 import { fmtHours, nowTime, spanMinutes } from "../lib/time"
 import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from "../lib/theme"
@@ -239,7 +240,6 @@ export function QuickAddEntryModal({
           {checking ? (
             <CheckFields
               units={checkUnits}
-              dateKey={dateKey}
               counters={counters}
               marks={checks}
               unitId={checkUnitId}
@@ -526,7 +526,6 @@ function CounterFields({
  */
 function CheckFields({
   units,
-  dateKey,
   counters,
   marks,
   unitId,
@@ -535,7 +534,6 @@ function CheckFields({
   setAnswer,
 }: {
   units: CounterUnit[]
-  dateKey: DayKey
   counters: DayCounters
   marks: Record<string, CheckMark>
   unitId: string
@@ -545,14 +543,9 @@ function CheckFields({
 }) {
   const c = usePalette()
   const unit = units.find((u) => u.id === unitId)
-  // `checkState` is the only place the four states are worked out, and it
+  // `checkState` is the only place the three answers are worked out, and it
   // reads a whole day. The two fields it looks at are the two we were handed.
-  const now = checkState(
-    { counters, checks: marks },
-    unitId,
-    dateKey,
-    toKey(new Date()),
-  )
+  const now = checkState({ counters, checks: marks }, unitId)
 
   return (
     <>
@@ -577,9 +570,9 @@ function CheckFields({
         <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
           Answer
         </span>
-        {/* The same shape every other "pick one of these" wears. `unknown` is
-            not among them: it is the absence of an answer, arrived at by
-            clearing one, not something you would come here to record. */}
+        {/* The same shape every other "pick one of these" wears, and it holds
+            all three: there is no fourth, and no state you can only arrive at
+            by clearing. */}
         <SegmentedControl
           items={CHECK_CHOICES.map((state) => ({
             id: state,
@@ -600,7 +593,9 @@ function CheckFields({
         )}
         <span className="text-ink/60">
           This day says{" "}
-          <strong className="text-ink">{CHECK_LABELS[now]}</strong>
+          <strong className="text-ink">
+            {now ? CHECK_LABELS[now] : UNANSWERED}
+          </strong>
           {" → will say "}
           <strong style={{ color: c.accent }}>{CHECK_LABELS[answer]}</strong>
         </span>

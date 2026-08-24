@@ -1,10 +1,15 @@
 /* ---------------------------------------------------------------
    Checks — the counters that answer "did it happen" rather than "how many".
 
-   Four states, two of them stored. `yes` is a count of one, where it already
-   lived; `unknown` is the absence of everything and resolves to `no` once the
-   day is over. What is left — an explicit `no` and a `skip` — is the whole of
-   `Day.checks`.
+   Three answers, two of them stored. `yes` is a count of one, where it already
+   lived; the other two — an explicit `no` and a `skip` — are the whole of
+   `Day.checks`. A check with none of the three has **not been answered**, and
+   that is an absence rather than a fourth state: `checkState()` returns null.
+
+   There used to be an `unknown` that resolved to `no` once the day was over.
+   It existed so a day card could draw every check as a checklist; it went with
+   the checklist, because an unanswered check is not a failed one and the app
+   should not say that it is. `spec 011`, Part 2.
 
    Everything here exists so that rule is written down once. Working the state
    out at a call site means every call site has to remember that a count of one
@@ -17,7 +22,6 @@ import type {
   CounterKind,
   CounterUnit,
   Day,
-  DayKey,
 } from "../types/model"
 import { UNSLOTTED, dayCounters, setSlotCount, unitDayTotal } from "./counters"
 
@@ -39,33 +43,40 @@ export const splitByKind = (units: CounterUnit[]) => ({
   checks: units.filter(isCheck),
 })
 
-/** The three a person can choose. `unknown` is only ever arrived at by clearing. */
+/** All of them. There is no fourth, and no state you can only arrive at. */
 export const CHECK_CHOICES: CheckState[] = ["yes", "no", "skip"]
 
 export const CHECK_LABELS: Record<CheckState, string> = {
-  unknown: "Not set",
   yes: "Yes",
   no: "No",
   skip: "Skipped",
 }
 
+/** What an unanswered check reads as, wherever one has to be named. */
+export const UNANSWERED = "Not answered"
+
 /**
- * What a check says about one day — the one place the four states are worked
+ * What a check says about one day — the one place the three answers are worked
  * out, and the only place that knows a count of one means yes.
  *
- * A day that has not happened stays `unknown`: nothing is owed on it yet, and
- * resolving it to `no` would report a verdict on a day nobody has lived.
+ * **Null is not an answer.** It used to resolve to `no` on a day that had
+ * ended, which quietly turned every check you never got round to into a check
+ * you failed. Nothing is inferred now: a day with no mark and no count simply
+ * has nothing to say about this check, exactly as it has nothing to say about
+ * a tally you never counted.
+ *
+ * The date arguments are gone with the inference. A check's answer no longer
+ * depends on what day it is or on whether that day has ended, and a signature
+ * that still asked would be inviting somebody to make it depend on them again.
  */
 export function checkState(
   day: Day | undefined,
   unitId: string,
-  dayKey: DayKey,
-  todayKey: DayKey,
-): CheckState {
+): CheckState | null {
   const mark = day?.checks?.[unitId]
   if (mark) return mark
   if (unitDayTotal(dayCounters(day || {}), unitId) > 0) return "yes"
-  return dayKey < todayKey ? "no" : "unknown"
+  return null
 }
 
 const withoutUnit = (
@@ -89,7 +100,8 @@ const withoutUnit = (
 export function setCheck(
   day: Day | undefined,
   unitId: string,
-  next: CheckState,
+  /** Null takes the answer back, which is a deletion rather than an answer. */
+  next: CheckState | null,
 ): Pick<Day, "counters" | "checks"> {
   const checks = { ...(day?.checks || {}) }
   if (next === "no" || next === "skip") checks[unitId] = next

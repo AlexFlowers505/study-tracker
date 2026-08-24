@@ -290,7 +290,7 @@ export function ruleRisk(
   // by doing the thing, which is always the better answer than a freeze.
   if (yState === "missed") {
     const offer = freezeOffer(rule, project, yesterdayKey, todayKey, status)
-    const readings = readDay(rule, ctx, days[yesterdayKey], yesterdayKey, todayKey)
+    const readings = readDay(rule, ctx, days[yesterdayKey], yesterdayKey)
     const restores = runIfKept(rule, ctx, days, yesterdayKey, todayKey)
     return {
       id,
@@ -307,7 +307,7 @@ export function ruleRisk(
 
   const tState = ruleDayState(rule, ctx, days[todayKey], todayKey, todayKey)
   if (tState === "pending") {
-    const readings = readDay(rule, ctx, days[todayKey], todayKey, todayKey)
+    const readings = readDay(rule, ctx, days[todayKey], todayKey)
     const { level, spent } = todayUrgency(readings, ctx, today)
     if (level === "safe") return { id, level }
     const offer = freezeOffer(rule, project, todayKey, todayKey, status)
