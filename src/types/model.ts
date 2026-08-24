@@ -378,15 +378,23 @@ export interface StreakClause {
   targets?: StreakTarget[]
   /** @deprecated Superseded by `targets`. Read through `clauseTargets()`. */
   target?: StreakTarget
+  /**
+   * The floor: how much there has to be. Absent means no floor.
+   *
+   * **Both bounds at once, and that is the point of the pair.** `op` could say
+   * one or the other and never both, so "between two and four hours" was
+   * unwritable — you got a rule that stopped you overdoing it or a rule that
+   * made you turn up, never the one that meant what you actually wanted.
+   */
+  min?: number
+  /** The ceiling: how much there may be at most. Absent means no ceiling. */
+  max?: number
+  /** @deprecated One bound at a time. Read through `clauseBounds()`. */
+  op?: StreakOp
+  /** @deprecated The number `op` pointed at. Read through `clauseBounds()`. */
+  value?: number
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
-  op: StreakOp
-  /**
-   * The number the target is held to. **Minutes** when the target measures
-   * time, a count when it measures occurrences — the same unit the app stores
-   * everything in, so nothing has to round a duration to say it.
-   */
-  value: number
   /**
    * Take the limit from the project's daily goal for that weekday instead of
    * from `value`.

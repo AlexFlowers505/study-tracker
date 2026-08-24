@@ -80,8 +80,33 @@ do that a rule cannot say better.
       *The form still lays the condition out as one row rather than as the
       headed sections this document describes. That layout is stage 3, which
       rebuilds it anyway.*
-- [ ] **Stage 3 — Days & Slots & Conditions.** Part 1b. Per-day numbers,
-      floors and ceilings together, slot requirements.
+- [~] **Stage 3 — Days & Slots & Conditions.** Part 1b. In pieces, because
+      every one of them moves the arithmetic that prices freezes and decides
+      verdicts on data that is already deployed.
+  - [x] **3a — floors and ceilings together.** `op`/`value` become
+        `min`/`max`, both optional, both allowed at once. `clauseBounds()` is
+        the one place that knows a condition used to carry an operator and a
+        single number, so everything already written still reads.
+        *`deficitOf` takes the worse of the two sides rather than adding them:
+        a floor above its own ceiling is not a condition anybody can write, so
+        only one can break at a time and the result is the single miss it
+        always was.*
+        *A condition with both gets **two** pace rows — a floor is a debt that
+        should reach nothing by Sunday, a ceiling a budget that should not
+        fill, and one chart cannot be both.*
+        *The lock compares each bound in its own direction: a floor that rises
+        is harder, a ceiling that falls is harder, and adding a bound that was
+        not there is automatically no-easier. **A condition carrying both is
+        pulled both ways at once, so any change to its slots is incomparable
+        and waits** — the one-sided test doing exactly what it is for.*
+        *Verified against the live project: 127 days, the same 22-day run,
+        the same two missed days at the start of August, the same banked
+        freezes. Nothing moved.*
+  - [ ] **3b — per-weekday numbers.** `days` replaces `weekdays`; a day with
+        no requirement is a day the rule does not judge.
+  - [ ] **3c — slot requirements.** Day-level and slot-level at once.
+  - [ ] **3d — the form in sections**, labels above fields, and the tab saying
+        that the accounting period is the week.
 - [ ] **Stage 4 — The effectiveness meter goes.** Part 3. Needs a migration
       that turns every `useDailyGoal` condition into explicit per-day numbers,
       and it must run **before** the field is dropped.

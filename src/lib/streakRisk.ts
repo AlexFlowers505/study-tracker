@@ -40,7 +40,7 @@
 import type { Day, DayKey, Project, StreakRule } from "../types/model"
 import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
-  clauseLimit,
+  clauseBounds,
   clauseTarget,
   freezeOffer,
   readDay,
@@ -124,19 +124,22 @@ function shortfall(
       const info = targetInfo(clauseTarget(r.clause), ctx)
       const fmt = (n: number) =>
         info.measure === "time" ? fmtHours(n) : String(n)
+      // The *resolved* bounds, never the stored fields. A condition reading
+      // the daily goal keeps a placeholder there, and printing it says "0m
+      // against at least 0m" about a day that was three hours short.
+      const { min, max } = clauseBounds(r.clause, ctx, dayKey)
       if (info.check)
         return r.skipped
           ? `${info.label} is skipped`
-          : r.clause.op === "atLeast"
+          : min !== undefined
             ? `${info.label} is not yes yet`
             : `${info.label} is already yes`
-      const word = r.clause.op === "atMost" ? "at most" : "at least"
-      // The *resolved* limit, not `clause.value`. A condition reading the
-      // daily goal keeps a placeholder there, and printing it says "0m
-      // against at least 0m" about a day that was three hours short.
-      return `${info.label} ${fmt(r.value)} against ${word} ${fmt(
-        clauseLimit(r.clause, ctx, dayKey),
-      )}`
+      // Only the broken half is worth naming. A condition with both bounds is
+      // over one of them, and saying which is the whole job of this line.
+      const over = max !== undefined && r.value > max
+      return `${info.label} ${fmt(r.value)} against ${
+        over ? `at most ${fmt(max)}` : `at least ${fmt(min ?? 0)}`
+      }`
     })
     .join(" · ")
 }
@@ -148,15 +151,22 @@ const minutesLeftToday = (now: Date) =>
 /** Past this much of the day gone, an unmet count starts to matter. */
 const EVENING_MINUTES = 6 * 60
 
-/** How much of this condition is still owed, in its own unit. */
-const owed = (r: ClauseReading): number =>
-  r.clause.op === "atLeast" ? Math.max(0, r.clause.value - r.value) : 0
+/**
+ * How much of this condition is still owed, in its own unit.
+ *
+ * The floor only. A ceiling owes nothing — it is already spent or it is not,
+ * and there is no amount of doing that fixes having done too much.
+ */
+const owed = (r: ClauseReading, ctx: StreakContext, dayKey: DayKey): number => {
+  const { min } = clauseBounds(r.clause, ctx, dayKey)
+  return min === undefined ? 0 : Math.max(0, min - r.value)
+}
 
 /**
  * How much trouble today is in, condition by condition.
  *
- * An exceeded *at most* is already spent and can only be frozen. An unmet *at
- * least* is judged against the hours left: needing two of the three hours you
+ * An exceeded ceiling is already spent and can only be frozen. An unmet floor
+ * is judged against the hours left: needing two of the three hours you
  * have left is worth saying, and needing two of the twelve you have left is
  * the ordinary shape of a morning.
  */
@@ -166,6 +176,7 @@ function todayUrgency(
   now: Date,
 ): { level: RiskLevel; spent: boolean } {
   const left = minutesLeftToday(now)
+  const todayKey = toKey(now)
   let level: RiskLevel = "safe"
   // Whether the damage is already done, as opposed to merely running late.
   // The two are different sentences: one cannot be undone, the other cannot
@@ -178,11 +189,13 @@ function todayUrgency(
 
   readings.forEach((r) => {
     if (!r.applies || r.deficit === 0) return
-    if (r.clause.op === "atMost") {
+    const bounds = clauseBounds(r.clause, ctx, todayKey)
+    // Over a ceiling is already spent: nothing left to do but freeze it.
+    if (bounds.max !== undefined && r.value > bounds.max) {
       spent = true
       return worse("danger")
     }
-    const need = owed(r)
+    const need = owed(r, ctx, todayKey)
     if (need <= 0) return
     const info = targetInfo(clauseTarget(r.clause), ctx)
     if (info.measure === "time" && !info.check) {
@@ -236,7 +249,7 @@ function weeklyRisk(
   // Still winnable, so the only question left is whether it is getting tight.
   readings.forEach((r) => {
     if (!r.applies) return
-    const need = owed(r)
+    const need = owed(r, ctx, todayKey)
     if (need <= 0) return
     const info = targetInfo(clauseTarget(r.clause), ctx)
     // Every remaining day now has to carry one. Still possible, barely.
@@ -245,7 +258,8 @@ function weeklyRisk(
       return
     }
     // Behind the straight line from here to Sunday.
-    if (need > r.clause.value * (remaining / 7)) worse("warning")
+    const { min } = clauseBounds(r.clause, ctx, todayKey)
+    if (need > (min ?? 0) * (remaining / 7)) worse("warning")
   })
 
   return level

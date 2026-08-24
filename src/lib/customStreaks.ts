@@ -53,7 +53,6 @@ import type {
   RuleVerdict,
   Slot,
   StreakClause,
-  StreakOp,
   StreakRule,
   StreakTarget,
   Tag,
@@ -117,30 +116,53 @@ export const streakContext = (project: Project): StreakContext => ({
 })
 
 /**
+ * What a condition asks for: a floor, a ceiling, or both.
+ *
+ * **The one place that knows a condition used to carry an operator and a
+ * single number.** `atLeast n` was a floor, `atMost n` a ceiling, and neither
+ * could say the other at the same time — so "between two and four hours a day"
+ * had no way of being written. Nothing else may read `op` or `value`.
+ */
+export interface ClauseBounds {
+  min?: number
+  max?: number
+}
+
+/**
  * What this condition is actually held to on this day.
  *
- * The only place `useDailyGoal` is resolved. A weekly rule asks for the sum
- * across the days it covers, which is why this takes a day rather than
- * returning a single number for the rule.
+ * The only place `useDailyGoal` is resolved, and it resolves the **floor**:
+ * "at least the day's goal" is the only thing that phrase ever meant.
  */
-export const clauseLimit = (
+export const clauseBounds = (
   clause: StreakClause,
   ctx: StreakContext,
   dayKey: DayKey,
-): number =>
-  clause.useDailyGoal
-    ? ctx.dailyGoals[fromKey(dayKey).getDay()] || 0
-    : clause.value
+): ClauseBounds => {
+  if (clause.useDailyGoal)
+    return { min: ctx.dailyGoals[fromKey(dayKey).getDay()] || 0 }
+  if (clause.min !== undefined || clause.max !== undefined)
+    return { min: clause.min, max: clause.max }
+  // Written before the pair existed: one bound, whichever the operator named.
+  if (clause.op === "atMost") return { max: clause.value ?? 0 }
+  return { min: clause.value ?? 0 }
+}
 
-/** The same, summed over every day of a week the condition covers. */
-const weekLimit = (
+/** The bounds a week asks for: each present side summed over its days. */
+export const weekBounds = (
   clause: StreakClause,
   ctx: StreakContext,
   keys: DayKey[],
-): number =>
-  clause.useDailyGoal
-    ? keys.reduce((sum, k) => sum + clauseLimit(clause, ctx, k), 0)
-    : clause.value
+): ClauseBounds => {
+  const each = keys.map((k) => clauseBounds(clause, ctx, k))
+  const sum = (pick: (b: ClauseBounds) => number | undefined) =>
+    each.some((b) => pick(b) !== undefined)
+      ? each.reduce((total, b) => total + (pick(b) ?? 0), 0)
+      : undefined
+  return { min: sum((b) => b.min), max: sum((b) => b.max) }
+}
+
+/** The same, summed over every day of a week the condition covers. */
 
 /**
  * What a condition measures — **the list**, and the one place that knows it was
@@ -417,12 +439,10 @@ export function ruleClauses(rule: StreakRule): StreakClause[] {
 export const newClause = (
   target: StreakTarget,
   measure: StreakMeasure = "count",
-): StreakClause => ({
-  id: makeId("clause"),
-  target,
-  op: measure === "time" ? "atLeast" : "atMost",
-  value: measure === "time" ? 60 : 0,
-})
+): StreakClause =>
+  measure === "time"
+    ? { id: makeId("clause"), targets: [target], min: 60 }
+    : { id: makeId("clause"), targets: [target], max: 0 }
 
 /**
  * A rule's own fields, for a freshly added one. `EditableList` supplies the
@@ -477,14 +497,20 @@ export interface ClauseReading {
  * unit — forty minutes short of two hours is one broken promise, not forty —
  * so a time condition costs exactly one however far off it was. The figure you
  * actually missed by is still reported; it is only the *price* that is flat.
+ *
+ * With both bounds only one can be broken at a time, since a floor above its
+ * own ceiling is not a condition anybody can write. So the two are taken at
+ * their worst rather than added, and the result is the same single miss it
+ * always was.
  */
 const deficitOf = (
-  clause: StreakClause,
   value: number,
   measure: StreakMeasure,
-  limit: number,
+  bounds: ClauseBounds,
 ): number => {
-  const short = clause.op === "atLeast" ? limit - value : value - limit
+  const under = bounds.min === undefined ? 0 : bounds.min - value
+  const over = bounds.max === undefined ? 0 : value - bounds.max
+  const short = Math.max(under, over)
   if (short <= 0) return 0
   return measure === "time" ? 1 : short
 }
@@ -534,7 +560,7 @@ export function readClauseDay(
     return {
       ...base,
       value,
-      deficit: deficitOf(clause, value, "count", clause.value),
+      deficit: deficitOf(value, "count", clauseBounds(clause, ctx, dayKey)),
       skipped: false,
     }
   }
@@ -551,7 +577,7 @@ export function readClauseDay(
   return {
     ...base,
     value,
-    deficit: deficitOf(clause, value, info.measure, clauseLimit(clause, ctx, dayKey)),
+    deficit: deficitOf(value, info.measure, clauseBounds(clause, ctx, dayKey)),
     skipped: false,
   }
 }
@@ -647,7 +673,7 @@ export function readWeek(
       applies: covered.length > 0,
       value,
       deficit: covered.length
-        ? deficitOf(clause, value, measure, weekLimit(clause, ctx, covered))
+        ? deficitOf(value, measure, weekBounds(clause, ctx, covered))
         : 0,
       skipped: false,
     }
@@ -712,23 +738,28 @@ export function clauseLostOn(
 ): DayKey | null {
   if (!covered.length) return null
   const measure = targetMeasure(clauseTarget(clause), ctx)
-  const limit = weekLimit(clause, ctx, covered)
+  const { min, max } = weekBounds(clause, ctx, covered)
 
   let value = 0
+  let floorSettled = min === undefined
   for (const key of covered) {
     // Days that have not happened contribute nothing and settle nothing; the
     // walk stops there and the week stays open.
     if (key > todayKey) break
     value += readClauseDay(clause, ctx, days[key], key).value
 
-    if (clause.op === "atMost") {
-      // Already over. There is no doing less of something done.
-      if (value > limit) return key
+    // A ceiling loses the moment it is crossed: there is no doing less of
+    // something already done. It is checked first because it is the only one
+    // that can lose a week nothing else has any quarrel with.
+    if (max !== undefined && value > max) return key
+
+    if (floorSettled) continue
+
+    const need = min! - value
+    if (need <= 0) {
+      floorSettled = true
       continue
     }
-
-    const need = limit - value
-    if (need <= 0) return null
     // Days left to make it up in. Today counts as one of them, because it is
     // not over — which is why a week is never declared lost on a morning.
     const after = covered.filter((k) => k > key).length
@@ -800,7 +831,16 @@ export interface ClausePace {
   /** What is being counted, in words — the target's own name. */
   label: string
   measure: StreakMeasure
-  op: StreakOp
+  /**
+   * Which bound this row is about.
+   *
+   * A condition with both gets **two rows**, because they burn in opposite
+   * directions: the floor is a debt that should reach nothing by Sunday, the
+   * ceiling a budget that should not fill. One chart cannot be both, and
+   * forcing it would put "good" at the top for one half and the bottom for
+   * the other.
+   */
+  side: "min" | "max"
   limit: number
   /** Where it stands right now. */
   value: number
@@ -823,11 +863,10 @@ export interface ClausePace {
  * units have no shared axis, exactly as the chart found; a compound rule gets
  * two rows here rather than one meaningless one.
  *
- * **The two operators burn in opposite directions, and are drawn so.** Under
- * `atLeast` the bar is a debt you pay off and it should reach nothing by
- * Sunday. Under `atMost` it is a budget you spend and it should not fill.
- * Drawing both as one shape would put "good" at the top of the chart on one
- * rule and at the bottom on the next.
+ * **The two bounds burn in opposite directions, and are drawn so.** A floor is
+ * a debt you pay off and it should reach nothing by Sunday; a ceiling is a
+ * budget you spend and it should not fill. A condition carrying both therefore
+ * gets **two rows**, not one compromise between them.
  */
 export function weekPace(
   rule: StreakRule,
@@ -844,55 +883,58 @@ export function weekPace(
     if (!covered.length) return []
 
     const measure = targetMeasure(clauseTarget(clause), ctx)
-    const limit = weekLimit(clause, ctx, covered)
+    const bounds = weekBounds(clause, ctx, covered)
     const lostOn = clauseLostOn(clause, ctx, days, covered, todayKey)
+    const label = targetsLabel(clauseTargets(clause), ctx)
 
+    /* Every day's running total, walked once and shared by both rows: the
+       figures are the same reading whichever bound is being drawn against. */
+    const totals: { key: DayKey; cumulative: number; seen: number }[] = []
     let cumulative = 0
     let seen = 0
-    const rows: PaceDay[] = all.map((key) => {
-      if (!covered.includes(key))
-        return { key, cumulative, bar: 0, state: "outside" as const }
-      if (key > todayKey)
-        return {
-          key,
-          cumulative,
-          bar: clause.op === "atMost" ? cumulative : Math.max(0, limit - cumulative),
-          state: "future" as const,
-        }
+    all.forEach((key) => {
+      if (covered.includes(key) && key <= todayKey) {
+        cumulative += readClauseDay(clause, ctx, days[key], key).value
+        seen += 1
+      }
+      totals.push({ key, cumulative, seen })
+    })
+    const finalTotal = cumulative
 
-      cumulative += readClauseDay(clause, ctx, days[key], key).value
-      seen += 1
-
-      const bar =
-        clause.op === "atMost" ? cumulative : Math.max(0, limit - cumulative)
-
-      // Lost stays lost: every day from the one it broke on wears the colour,
-      // because the week is over as a question even though the days are not.
-      if (lostOn && key >= lostOn)
-        return { key, cumulative, bar, state: "lost" as const }
-
-      // The even line — what you would have by now if you spread the week's
-      // work across the days that judge it. Ahead of it is the only sense in
-      // which a Wednesday can be "on track" for a thing due on Sunday.
-      const pacing = (limit * seen) / covered.length
-      const ahead =
-        clause.op === "atMost" ? cumulative <= pacing : cumulative >= pacing
-      return { key, cumulative, bar, state: ahead ? "ahead" : "behind" }
+    const rowsFor = (side: "min" | "max", limit: number): ClausePace => ({
+      clause,
+      label,
+      measure,
+      side,
+      limit,
+      value: finalTotal,
+      daysLeft: covered.filter((k) => k >= todayKey).length,
+      lostOn,
+      days: totals.map(({ key, cumulative: value, seen: n }) => {
+        const bar = side === "max" ? value : Math.max(0, limit - value)
+        if (!covered.includes(key))
+          return { key, cumulative: value, bar: 0, state: "outside" as const }
+        if (key > todayKey)
+          return { key, cumulative: value, bar, state: "future" as const }
+        // Lost stays lost: every day from the one it broke on wears the
+        // colour, because the week is over as a question even though the days
+        // are not.
+        if (lostOn && key >= lostOn)
+          return { key, cumulative: value, bar, state: "lost" as const }
+        // The even line — what you would have by now if you spread the week's
+        // work across the days that judge it. Ahead of it is the only sense in
+        // which a Wednesday can be "on track" for a thing due on Sunday.
+        const pacing = (limit * n) / covered.length
+        const ahead = side === "max" ? value <= pacing : value >= pacing
+        const state: PaceState = ahead ? "ahead" : "behind"
+        return { key, cumulative: value, bar, state }
+      }),
     })
 
-    return [
-      {
-        clause,
-        label: targetInfo(clauseTarget(clause), ctx).label,
-        measure,
-        op: clause.op,
-        limit,
-        value: cumulative,
-        daysLeft: covered.filter((k) => k >= todayKey).length,
-        lostOn,
-        days: rows,
-      },
-    ]
+    const out: ClausePace[] = []
+    if (bounds.min !== undefined) out.push(rowsFor("min", bounds.min))
+    if (bounds.max !== undefined) out.push(rowsFor("max", bounds.max))
+    return out
   })
 }
 
@@ -1272,17 +1314,35 @@ export function clauseSentence(
     : ""
   // Minutes are printed as hours and minutes, like every other duration in
   // the app: "at least 2h 30m", never "at least 150".
-  const amount = clause.useDailyGoal
-    ? scope === "week"
-      ? "the week's goal"
-      : "the day's goal"
-    : info.measure === "time"
-      ? fmtHours(clause.value)
-      : `${clause.value} ${clause.value === 1 ? "time" : "times"}`
-  return `${named}${where} ${
-    clause.op === "atLeast" ? "at least" : "at most"
-  } ${amount}${when}`
+  const amount = (n: number) =>
+    info.measure === "time" ? fmtHours(n) : `${n} ${n === 1 ? "time" : "times"}`
+
+  if (clause.useDailyGoal)
+    return `${named}${where} at least ${
+      scope === "week" ? "the week's goal" : "the day's goal"
+    }${when}`
+
+  const { min, max } = clauseBounds(clause, ctx, describingDay())
+  // Both bounds read as a range, because "at least 2h and at most 4h" is one
+  // requirement said twice and nobody talks that way.
+  const said =
+    min !== undefined && max !== undefined
+      ? `between ${amount(min)} and ${amount(max)}`
+      : max !== undefined
+        ? `at most ${amount(max)}`
+        : `at least ${amount(min ?? 0)}`
+  return `${named}${where} ${said}${when}`
 }
+
+/**
+ * A day key to resolve a condition's bounds against, for the places describing
+ * the rule rather than judging a date.
+ *
+ * Only `useDailyGoal` ever varied by day, and that branch is taken before this
+ * is reached — so any key gives the same answer, and today's is the honest one
+ * to name.
+ */
+const describingDay = (): DayKey => toKey(new Date())
 
 /** The whole rule in one line — the scope, then every condition joined by "and". */
 export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {
@@ -1365,24 +1425,51 @@ function clauseNarrows(
   slots: Slot[],
 ): boolean {
   if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
-  if (prev.op !== next.op) return false
   // Switching a limit to or from the daily goal swaps one number for seven.
   // Not comparable, therefore not provable, therefore it waits.
   if (!!prev.useDailyGoal !== !!next.useDailyGoal) return false
-  // Both read the same goal, so the limit is unchanged by construction and
-  // only the other dimensions are left to compare.
-  if (
-    !prev.useDailyGoal &&
-    (prev.op === "atLeast" ? next.value < prev.value : next.value > prev.value)
-  )
-    return false
+
+  /* Each bound, in its own direction.
+     - a floor that rises is harder; absent is a floor of nothing;
+     - a ceiling that falls is harder; absent is no ceiling at all.
+     Adding a bound that was not there is therefore automatically no-easier,
+     which is right: one more thing to keep can only ever cost you. */
+  const a = boundsIsh(prev)
+  const b = boundsIsh(next)
+  if (!prev.useDailyGoal && (b.min ?? 0) < (a.min ?? 0)) return false
+  if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+
   // More days covered is harder; dropping one is a day that stops being asked
   // about at all.
   if (!covers(weekdaysOf(next), weekdaysOf(prev))) return false
+
+  /* The slot rows point in opposite directions for the same edit, and that is
+     not a mistake: under a ceiling a slot is a place you can be caught, so
+     adding one narrows the ways through; under a floor a slot is a place the
+     count can come from, so adding one widens them.
+
+     A condition carrying **both** is pulled both ways at once, so any change
+     to its slots is incomparable and waits. That is the one-sided test doing
+     exactly what it is for. */
   const ps = slotsOf(prev, slots)
   const ns = slotsOf(next, slots)
-  return prev.op === "atMost" ? covers(ns, ps) : covers(ps, ns)
+  const hasFloor = b.min !== undefined || a.min !== undefined
+  const hasCeiling = b.max !== undefined || a.max !== undefined
+  if (hasFloor && hasCeiling)
+    return covers(ns, ps) && covers(ps, ns)
+  return hasCeiling ? covers(ns, ps) : covers(ps, ns)
 }
+
+/**
+ * A condition's bounds without a date — the lock compares terms, and a term
+ * that varies by day is handled by the `useDailyGoal` branch above it.
+ */
+const boundsIsh = (clause: StreakClause): ClauseBounds =>
+  clause.min !== undefined || clause.max !== undefined
+    ? { min: clause.min, max: clause.max }
+    : clause.op === "atMost"
+      ? { max: clause.value ?? 0 }
+      : { min: clause.value ?? 0 }
 
 /**
  * Can it be proved that `next` cannot be easier to keep than `prev`?

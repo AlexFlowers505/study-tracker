@@ -66,17 +66,17 @@ import type {
   Settings,
   Slot,
   StreakClause,
-  StreakOp,
   StreakRule,
   StreakTarget,
   StreakTargetKind,
   Tag,
 } from "../types/model"
 import { isCheck, splitByKind } from "../lib/checks"
-import type { StreakContext } from "../lib/customStreaks"
+import type { ClauseBounds, StreakContext } from "../lib/customStreaks"
 import type { RuleProposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
 import {
+  clauseBounds,
   clauseSentence,
   clauseTarget,
   clauseTargets,
@@ -158,7 +158,6 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 )
 
 const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
-const SELECT = `${FIELD_SOFT_INLINE} max-w-52 rounded-lg py-1 text-[11px]`
 /* Narrower than the one beside it, and deliberately: six fixed words against a
    list of the project's own names, and equal widths would read as two halves
    of one answer rather than as a question and its answer. */
@@ -508,6 +507,84 @@ function PickChips({
 }
 
 /**
+ * The bound a condition is not currently stating, offered as a button until it
+ * is wanted.
+ *
+ * Both at once is the whole reason the pair exists — "between two and four
+ * hours" — but most conditions want one, and drawing an empty second field on
+ * every row would be the form asking a question nobody had.
+ */
+function SecondBound({
+  bounds,
+  timed,
+  byWeek,
+  onChange,
+}: {
+  bounds: ClauseBounds
+  timed: boolean
+  byWeek: boolean
+  onChange: (patch: Partial<StreakClause>) => void
+}) {
+  const missing: "min" | "max" = bounds.min === undefined ? "min" : "max"
+  const present = bounds.min ?? bounds.max ?? 0
+  const value = missing === "min" ? bounds.min : bounds.max
+
+  if (value === undefined)
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          onChange(
+            missing === "min"
+              ? { min: 0, op: undefined, value: undefined }
+              : { max: present, op: undefined, value: undefined },
+          )
+        }
+        className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70`}
+      >
+        + {missing === "min" ? "and at least" : "and at most"}
+      </button>
+    )
+
+  return (
+    <>
+      <span className={WORD}>
+        and {missing === "min" ? "at least" : "at most"}
+      </span>
+      {timed ? (
+        <DurationField
+          minutes={value}
+          onChange={(v) =>
+            onChange(missing === "min" ? { min: v } : { max: v })
+          }
+        />
+      ) : (
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => {
+            const v = Math.max(0, Number(e.target.value) || 0)
+            onChange(missing === "min" ? { min: v } : { max: v })
+          }}
+          className={NUM}
+        />
+      )}
+      <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
+      <button
+        type="button"
+        onClick={() =>
+          onChange(missing === "min" ? { min: undefined } : { max: undefined })
+        }
+        className={`${btnBase} px-1.5 py-1 rounded-full text-[10px] font-mono text-ink/30 hover:text-ink/70`}
+      >
+        <X size={11} />
+      </button>
+    </>
+  )
+}
+
+/**
  * Hours and minutes, never decimal hours.
  *
  * The same rule the rest of the app follows: "1.5h" has to be multiplied by 60
@@ -567,6 +644,9 @@ function ClauseForm({
   const target = clauseTarget(clause)
   const info = targetInfo(target, ctx)
   const timed = info.measure === "time"
+  // Resolved, never the stored fields: a condition written before the pair
+  // existed still carries an operator and one number, and only this knows it.
+  const bounds = clauseBounds(clause, ctx, toKey(new Date()))
 
   /* Both chip rows work the same way: everything lit means no restriction, and
      turning the last one off is refused because "count nothing" and "judge no
@@ -611,12 +691,12 @@ function ClauseForm({
             most 0 times" is the same rule and nobody would write it. */}
         {info.check ? (
           <Pills<"yes" | "no">
-            value={clause.op === "atLeast" ? "yes" : "no"}
+            value={bounds.min !== undefined ? "yes" : "no"}
             onChange={(v) =>
               onChange(
                 v === "yes"
-                  ? { op: "atLeast", value: 1 }
-                  : { op: "atMost", value: 0 },
+                  ? { min: 1, max: undefined, op: undefined, value: undefined }
+                  : { min: undefined, max: 0, op: undefined, value: undefined },
               )
             }
             options={[
@@ -626,14 +706,27 @@ function ClauseForm({
           />
         ) : (
           <>
-            <select
-              value={clause.op}
-              onChange={(e) => onChange({ op: e.target.value as StreakOp })}
-              className={SELECT}
-            >
-              <option value="atLeast">at least</option>
-              <option value="atMost">at most</option>
-            </select>
+            {/* **Two switches, not one dropdown.** A floor and a ceiling are
+                different requirements and a condition may carry both — "at
+                least two hours and at most four" was simply unwritable while
+                one select had to choose between them. Turning the last one off
+                is refused: a condition with no bound asks for nothing. */}
+            <Pills<"min" | "max">
+              value={bounds.min !== undefined ? "min" : "max"}
+              onChange={(side) => {
+                const other = side === "min" ? bounds.max : bounds.min
+                if (other === undefined) return
+                onChange(
+                  side === "min"
+                    ? { min: other, max: undefined, op: undefined, value: undefined }
+                    : { max: other, min: undefined, op: undefined, value: undefined },
+                )
+              }}
+              options={[
+                { id: "min", label: "at least" },
+                { id: "max", label: "at most" },
+              ]}
+            />
             {timed ? (
               <>
                 {clause.useDailyGoal ? (
@@ -642,8 +735,14 @@ function ClauseForm({
                   </span>
                 ) : (
                   <DurationField
-                    minutes={clause.value}
-                    onChange={(value) => onChange({ value })}
+                    minutes={bounds.min ?? bounds.max ?? 0}
+                    onChange={(v) =>
+                      onChange(
+                        bounds.min !== undefined
+                          ? { min: v, op: undefined, value: undefined }
+                          : { max: v, op: undefined, value: undefined },
+                      )
+                    }
                   />
                 )}
                 <span className={WORD}>{byWeek ? "a week" : "a day"}</span>
@@ -683,10 +782,15 @@ function ClauseForm({
                 <input
                   type="number"
                   min={0}
-                  value={clause.value}
-                  onChange={(e) =>
-                    onChange({ value: Math.max(0, Number(e.target.value) || 0) })
-                  }
+                  value={bounds.min ?? bounds.max ?? 0}
+                  onChange={(e) => {
+                    const v = Math.max(0, Number(e.target.value) || 0)
+                    onChange(
+                      bounds.min !== undefined
+                        ? { min: v, op: undefined, value: undefined }
+                        : { max: v, op: undefined, value: undefined },
+                    )
+                  }}
                   className={NUM}
                 />
                 <span className={WORD}>
@@ -695,6 +799,18 @@ function ClauseForm({
               </>
             )}
           </>
+        )}
+
+        {/* The bound this condition is *not* currently stating. Offered rather
+            than assumed: most conditions want one, and a second empty field on
+            every row would be a form asking a question nobody had. */}
+        {!info.check && !clause.useDailyGoal && (
+          <SecondBound
+            bounds={bounds}
+            timed={timed}
+            byWeek={byWeek}
+            onChange={onChange}
+          />
         )}
 
         {onRemove && (

@@ -52,7 +52,7 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
   // clipping them would hide the one fact the card exists to report.
   const peak = Math.max(pace.limit, ...pace.days.map((d) => d.bar), 1)
 
-  const done = pace.op === "atLeast" && pace.value >= pace.limit
+  const done = pace.side === "min" && pace.value >= pace.limit
   const status = pace.lostOn
     ? "lost"
     : done
@@ -69,7 +69,7 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
     <div className="rounded-xl bg-ink/[0.04] px-3 py-2.5 mb-2">
       <div className="flex items-baseline justify-between gap-3 mb-2">
         <span className="text-[10px] font-mono uppercase tracking-widest text-ink/55 truncate">
-          {pace.label} · {pace.op === "atMost" ? "at most" : "at least"}{" "}
+          {pace.label} · {pace.side === "max" ? "at most" : "at least"}{" "}
           {fmt(pace.limit)} a week
         </span>
         <span
@@ -123,7 +123,7 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
           cards stack directly on each other, so that single header still reads
           down all of them. */}
       <p className="text-[9px] font-mono text-ink/35 mt-1.5">
-        {pace.op === "atMost"
+        {pace.side === "max"
           ? "The bar is what you have spent of the week's allowance."
           : "The bar is what is still owed. It should reach nothing by Sunday."}
       </p>
