@@ -46,8 +46,40 @@ do that a rule cannot say better.
       showing the ones a participating rule is waiting on — is **not** built:
       it needs the rules inside a card component, and the risk bar already
       says which rule is unmet while there is still time to act.*
-- [ ] **Stage 2 — The Counters section.** Part 1a. Multi-select targets,
-      sets by category/tag, and the kind narrowing that follows from them.
+- [x] **Stage 2 — The Counters section.** Part 1a.
+      *Landed. `StreakClause.targets` is a list; `clauseTargets()` is the one
+      place that knows it was once a single target and before that a bare
+      counter id, so every rule ever written still reads. `clauseUnits()`
+      resolves a whole condition to its units with nothing counted twice, and
+      the day reading unions the activity filters and the unit ids.*
+
+      *Two departures from what this document first said, both found while
+      building:*
+
+      *1. **`All study time` stays.** The argument for dropping it was that
+      selecting every activity says the same thing, and it does not: study
+      time counts whatever was logged, including under an activity created
+      next month, where a list freezes the answer on the day it was written.
+      It is also the only target with no id. Decision 1 is reversed.*
+
+      *2. **A set may count `Any counter`.** The rule here was "a set must name
+      a kind, because the three are not commensurable", and that is half right.
+      A tally and a check both measure occurrences — a `yes` is stored as a
+      count of one — so adding them works. The pair that genuinely cannot be
+      added is time and occurrences, which `measure` already separates. So the
+      choice is Activities / Tallies / Checks / Any counter, and the last is
+      the absence of `memberKind` rather than a legacy hole.*
+
+      *A **lone** check still reads as an answer, where `skip` is a chosen miss
+      priced at one. Several checks fall through to the ordinary count: "at
+      least two of these three" is a number, and opting out of one while
+      meeting it is not an escape from anything. Verified against the live
+      project — legacy single targets, three activities summing, two checks
+      counting, one check skipping.*
+
+      *The form still lays the condition out as one row rather than as the
+      headed sections this document describes. That layout is stage 3, which
+      rebuilds it anyway.*
 - [ ] **Stage 3 — Days & Slots & Conditions.** Part 1b. Per-day numbers,
       floors and ceilings together, slot requirements.
 - [ ] **Stage 4 — The effectiveness meter goes.** Part 3. Needs a migration

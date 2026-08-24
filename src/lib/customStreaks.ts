@@ -67,7 +67,7 @@ import {
   toKey,
   weekDates,
 } from "./date"
-import { checkState, isCheck } from "./checks"
+import { checkState, counterKind, isCheck } from "./checks"
 import { dayCounters, slotUnitValue, unitDayTotal } from "./counters"
 import { entryActivity } from "./entries"
 import { makeId } from "./id"
@@ -143,11 +143,28 @@ const weekLimit = (
     : clause.value
 
 /**
- * What a condition measures. The only place that knows a condition used to be
- * able to name a counter unit and nothing else.
+ * What a condition measures — **the list**, and the one place that knows it was
+ * once a single target, and before that a bare counter id.
+ *
+ * Never empty: a condition with nothing chosen still has to read as something,
+ * and a removed counter names itself as removed rather than vanishing.
+ */
+export const clauseTargets = (clause: StreakClause): StreakTarget[] => {
+  if (clause.targets?.length) return clause.targets
+  if (clause.target) return [clause.target]
+  return [{ kind: "unit", id: clause.unitId || "" }]
+}
+
+/**
+ * The first of them, for the places that genuinely want one — the measure, the
+ * colour, whether this is a lone check.
+ *
+ * Every target in a condition measures the same thing, so "the first" is not a
+ * guess about the others; it is the cheapest way to ask a question they all
+ * answer identically.
  */
 export const clauseTarget = (clause: StreakClause): StreakTarget =>
-  clause.target ?? { kind: "unit", id: clause.unitId || "" }
+  clauseTargets(clause)[0]
 
 /** Minutes, or occurrences. */
 export type StreakMeasure = "time" | "count"
@@ -241,17 +258,67 @@ interface Labelish {
   iconName: string
 }
 
-/** The units a target adds up. Empty for anything that measures time. */
+/**
+ * Several targets, named as one phrase: *Lessons, Q&A or Polishing*.
+ *
+ * **"or", not "and".** They are added together, so any of them moves the
+ * figure — and "Lessons and Q&A at least 3h" reads as a demand for both, which
+ * is the one thing a single condition cannot express.
+ *
+ * Past three it stops listing and counts instead. A sentence you have to
+ * scroll is not a sentence you can check against what you meant, and checking
+ * it is the entire job.
+ */
+export function targetsLabel(
+  targets: StreakTarget[],
+  ctx: StreakContext,
+): string {
+  const names = targets.map((target) => targetInfo(target, ctx).qualified)
+  if (names.length === 1) return names[0]
+  if (names.length > 3) return `any of ${names.length} things`
+  return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`
+}
+
+/**
+ * The units a target adds up. Empty for anything that measures time.
+ *
+ * `memberKind` narrows a set to one kind of counter inside it. Absent means
+ * everything under it, which is how every rule written before that field read.
+ */
 const memberUnits = (
   target: StreakTarget,
   ctx: StreakContext,
 ): CounterUnit[] => {
+  const ofKind = (units: CounterUnit[]) =>
+    target.memberKind
+      ? units.filter((u) => counterKind(u) === target.memberKind)
+      : units
+
   if (target.kind === "unit") return ctx.units.filter((u) => u.id === target.id)
   if (target.kind === "tag")
-    return ctx.units.filter((u) => (u.tagIds || []).includes(target.id || ""))
+    return ofKind(
+      ctx.units.filter((u) => (u.tagIds || []).includes(target.id || "")),
+    )
   if (target.kind === "category")
-    return ctx.units.filter((u) => u.categoryId === target.id)
+    return ofKind(ctx.units.filter((u) => u.categoryId === target.id))
   return []
+}
+
+/** Every unit a whole condition reaches, with no id counted twice. */
+export const clauseUnits = (
+  clause: StreakClause,
+  ctx: StreakContext,
+): CounterUnit[] => {
+  const seen = new Set<string>()
+  const out: CounterUnit[] = []
+  clauseTargets(clause).forEach((target) => {
+    memberUnits(target, ctx).forEach((unit) => {
+      if (seen.has(unit.id)) return
+      seen.add(unit.id)
+      out.push(unit)
+    })
+  })
+  return out
 }
 
 /** Which entries a time target counts. */
@@ -267,6 +334,15 @@ const keepsActivity = (
     return (id) => ids.has(id)
   }
   return () => true
+}
+
+/** Kept by *any* of them — several targets in one condition add up. */
+const keepsAnyActivity = (
+  targets: StreakTarget[],
+  ctx: StreakContext,
+): ((activityId: string) => boolean) => {
+  const keeps = targets.map((target) => keepsActivity(target, ctx))
+  return (id) => keeps.some((keep) => keep(id))
 }
 
 /**
@@ -441,11 +517,17 @@ export function readClauseDay(
   const base = { clause, applies }
   if (!applies) return { ...base, value: 0, deficit: 0, skipped: false }
 
-  const target = clauseTarget(clause)
-  const info = targetInfo(target, ctx)
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
 
-  if (info.check) {
-    const state = checkState(day, target.id || "")
+  /* A **lone** check keeps its own reading, where `skip` is a miss you chose
+     rather than suffered and is priced at one. That only means anything when
+     the condition is about a single answer: across several checks, "at least
+     two of these three" is a count, and opting out of one while meeting the
+     number is not an escape from anything. So several checks fall through to
+     the ordinary count below, where a `yes` is the one it already stores. */
+  if (targets.length === 1 && info.check) {
+    const state = checkState(day, targets[0].id || "")
     if (state === "skip")
       return { ...base, value: 0, deficit: 1, skipped: true }
     const value = state === "yes" ? 1 : 0
@@ -459,10 +541,10 @@ export function readClauseDay(
 
   const value =
     info.measure === "time"
-      ? minutesOn(day, ctx.slots, clause.slotIds, keepsActivity(target, ctx))
+      ? minutesOn(day, ctx.slots, clause.slotIds, keepsAnyActivity(targets, ctx))
       : countOn(
           dayCounters(day || {}),
-          memberUnits(target, ctx).map((u) => u.id),
+          clauseUnits(clause, ctx).map((u) => u.id),
           clause.slotIds,
         )
 
@@ -1166,13 +1248,17 @@ export function clauseSentence(
   ctx: StreakContext,
   scope: StreakRule["scope"] = "day",
 ): string {
-  const info = targetInfo(clauseTarget(clause), ctx)
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+  const named = targetsLabel(targets, ctx)
   const when =
     scope === "day" && clause.weekdays?.length
       ? ` on ${listDays(clause.weekdays)}`
       : ""
 
-  if (info.check)
+  // Only a lone check reads as an answer; several of them are a count, which
+  // is exactly how `readClauseDay` treats them.
+  if (targets.length === 1 && info.check)
     return `${info.qualified} must be ${
       clause.op === "atLeast" ? "yes" : "no"
     }${when}`
@@ -1193,7 +1279,7 @@ export function clauseSentence(
     : info.measure === "time"
       ? fmtHours(clause.value)
       : `${clause.value} ${clause.value === 1 ? "time" : "times"}`
-  return `${info.qualified}${where} ${
+  return `${named}${where} ${
     clause.op === "atLeast" ? "at least" : "at most"
   } ${amount}${when}`
 }

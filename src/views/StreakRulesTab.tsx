@@ -73,12 +73,14 @@ import type {
   Tag,
 } from "../types/model"
 import { isCheck, splitByKind } from "../lib/checks"
-import type { StreakContext, StreakMeasure } from "../lib/customStreaks"
+import type { StreakContext } from "../lib/customStreaks"
 import type { RuleProposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
 import {
   clauseSentence,
   clauseTarget,
+  clauseTargets,
+  clauseUnits,
   lockFrom,
   newClause,
   newStreakRule,
@@ -181,14 +183,56 @@ const PICKS: PickKind[] = [
   "tag",
 ]
 
+/* Plural, because every one of them now takes several: a condition names the
+   counters it watches, not the counter. */
 const PICK_LABEL: Record<PickKind, string> = {
   time: "All study time",
-  activity: "Activity",
-  tally: "Tally",
-  check: "Check",
-  category: "Category",
-  tag: "Tag",
+  activity: "Activities",
+  tally: "Tallies",
+  check: "Checks",
+  category: "Categories",
+  tag: "Tags",
 }
+
+const SET_PICKS: PickKind[] = ["category", "tag"]
+
+/**
+ * Which counters inside a set are counted.
+ *
+ * `any` is the absence of `memberKind` and means every counter under the set.
+ * It is a real answer rather than a legacy hole: a tally and a check both
+ * measure occurrences, so adding them together is arithmetic that works. The
+ * pair that genuinely cannot be added is time and occurrences, and `measure`
+ * is what separates those.
+ */
+type MemberPick = "activity" | "tally" | "check" | "any"
+
+const MEMBER_LABEL: Record<MemberPick, string> = {
+  activity: "Activities",
+  tally: "Tallies",
+  check: "Checks",
+  any: "Any counter",
+}
+
+/** How a set's two stored fields read back as one choice. */
+const memberPickOf = (target: StreakTarget): MemberPick =>
+  target.memberKind === "tally"
+    ? "tally"
+    : target.memberKind === "check"
+      ? "check"
+      : target.measure === "time"
+        ? "activity"
+        : "any"
+
+/** And the same in reverse. */
+const memberFields = (
+  pick: MemberPick,
+): Pick<StreakTarget, "measure" | "memberKind"> =>
+  pick === "activity"
+    ? { measure: "time", memberKind: undefined }
+    : pick === "any"
+      ? { measure: "count", memberKind: undefined }
+      : { measure: "count", memberKind: pick }
 
 const targetKindOf = (pick: PickKind): StreakTargetKind =>
   pick === "tally" || pick === "check" ? "unit" : pick
@@ -226,103 +270,240 @@ function choicesFor(pick: PickKind, ctx: StreakContext): Labeled[] {
  * A kind with nothing in it is absent from the first dropdown, for the same
  * reason a tab is: there is nothing behind it. Study time is always there.
  */
-function TargetPicker({
-  target,
+function CountersPicker({
+  clause,
   ctx,
   onChange,
 }: {
-  target: StreakTarget
+  clause: StreakClause
   ctx: StreakContext
-  onChange: (next: StreakTarget) => void
+  onChange: (targets: StreakTarget[]) => void
 }) {
-  const pick = pickOf(target, ctx)
-  const choices = choicesFor(pick, ctx)
+  const targets = clauseTargets(clause)
+  const first = targets[0]
+  const pick = pickOf(first, ctx)
+  const isSet = SET_PICKS.includes(pick)
+  const member = memberPickOf(first)
+  const chosen = targets.map((t) => t.id || "")
+
+  /* Every kind that has something in it. A kind with nothing behind it is
+     absent for the same reason a tab is.
+
+     **`All study time` stays**, against what `spec 011` first decided. The
+     argument for dropping it was that selecting every activity says the same
+     thing, and that is not true: study time counts whatever was logged,
+     including under an activity that does not exist yet, where a list of
+     activities freezes the answer on the day it was written. It is also the
+     only target with no id, so it cannot be expressed any other way. */
   const kinds = PICKS.filter(
-    (p) => p === "time" || choicesFor(p, ctx).length > 0,
+    (k) => k === "time" || choicesFor(k, ctx).length > 0,
   )
-  // Which halves this category actually holds. The choice is only a question
-  // when it holds both; otherwise there is one answer and it is stamped in
-  // without asking.
-  const hasCounts = ctx.units.some((u) => u.categoryId === target.id)
-  const hasTime = ctx.activities.some((a) => a.categoryId === target.id)
-  const mixed = target.kind === "category" && hasCounts && hasTime
 
-  const defaultMeasure = (id: string): StreakMeasure =>
-    ctx.units.some((u) => u.categoryId === id) ? "count" : "time"
+  const options = choicesFor(pick, ctx)
 
-  /* A category's measure is stored the moment one is picked, never inferred
-     later: filing one more tally under it must not change what a rule written
-     today measures. Picking a *different* category re-stamps it, since the
-     answer belongs to that category rather than to the condition. */
-  const make = (nextPick: PickKind, id: string): StreakTarget =>
-    nextPick === "time"
+  /* A target pointing at something since deleted keeps its chip, named as
+     `targetInfo` names it. Dropping it would quietly rewrite the rule into one
+     about something else. */
+  const ghosts = chosen.filter((id) => id && !options.some((o) => o.id === id))
+
+  const fieldsFor = (kind: PickKind, id: string): StreakTarget =>
+    kind === "time"
       ? { kind: "time" }
-      : nextPick === "category"
-        ? { kind: "category", id, measure: defaultMeasure(id) }
-        : { kind: targetKindOf(nextPick), id }
+      : SET_PICKS.includes(kind)
+        ? { kind: targetKindOf(kind), id, ...memberFields(member) }
+        : { kind: targetKindOf(kind), id }
 
-  // A target pointing at something since deleted keeps its place in the list,
-  // named as `targetInfo` names it. Dropping it would leave the select showing
-  // its first option instead — a silent claim that the rule is about something
-  // it is not.
-  const missing = choices.length > 0 && !choices.some((o) => o.id === target.id)
+  const switchKind = (next: PickKind) => {
+    if (next === "time") return onChange([{ kind: "time" }])
+    const firstId = choicesFor(next, ctx)[0]?.id || ""
+    // A set that has never been asked starts on the half it actually holds,
+    // rather than on "activities" for a category full of tallies.
+    const seed: MemberPick = SET_PICKS.includes(next)
+      ? ctx.units.some((u) =>
+          next === "tag"
+            ? (u.tagIds || []).includes(firstId)
+            : u.categoryId === firstId,
+        )
+        ? "any"
+        : "activity"
+      : "any"
+    onChange([
+      next === "category" || next === "tag"
+        ? { kind: targetKindOf(next), id: firstId, ...memberFields(seed) }
+        : { kind: targetKindOf(next), id: firstId },
+    ])
+  }
+
+  const toggle = (id: string) => {
+    const on = chosen.includes(id)
+    // The last one cannot come off: a condition about nothing is not a
+    // condition, and an empty list would read as "everything" to anyone
+    // glancing at it.
+    if (on && chosen.length === 1) return
+    onChange(
+      on
+        ? targets.filter((t) => t.id !== id)
+        : [...targets, fieldsFor(pick, id)],
+    )
+  }
+
+  const setMember = (next: MemberPick) =>
+    onChange(targets.map((t) => ({ ...t, ...memberFields(next) })))
 
   return (
-    <>
-      <select
-        value={pick}
-        onChange={(e) => {
-          const next = e.target.value as PickKind
-          onChange(make(next, choicesFor(next, ctx)[0]?.id || ""))
-        }}
-        className={KIND_SELECT}
-      >
-        {kinds.map((p) => (
-          <option key={p} value={p}>
-            {PICK_LABEL[p]}
-          </option>
-        ))}
-      </select>
-
-      {choices.length > 0 && (
+    <div className="space-y-2 w-full">
+      <div className="flex flex-wrap items-center gap-1.5">
         <select
-          value={target.id || ""}
-          onChange={(e) => onChange(make(pick, e.target.value))}
-          className={SELECT}
+          value={pick}
+          onChange={(e) => switchKind(e.target.value as PickKind)}
+          className={KIND_SELECT}
         >
-          {missing && (
-            <option value={target.id || ""}>
-              {targetInfo(target, ctx).label}
-            </option>
-          )}
-          {choices.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
+          {kinds.map((k) => (
+            <option key={k} value={k}>
+              {PICK_LABEL[k]}
             </option>
           ))}
         </select>
+        {pick === "time" && (
+          <span className={WORD}>whatever it was filed under</span>
+        )}
+      </div>
+
+      {/* Which ones. Several, and that is the point of the rebuild: "any of
+          Lessons, Q&A or Polishing" is one promise about study, where three
+          rules would be three streaks to keep and three allowances to spend. */}
+      {options.length > 0 && (
+        <PickChips
+          items={[
+            ...options.map((o) => ({ id: o.id, label: o.label, ghost: false })),
+            ...ghosts.map((id) => ({
+              id,
+              label: targetInfo({ kind: targetKindOf(pick), id }, ctx).label,
+              ghost: true,
+            })),
+          ]}
+          chosen={chosen}
+          onToggle={toggle}
+          onAll={() =>
+            onChange(options.map((o) => fieldsFor(pick, o.id)))
+          }
+        />
       )}
 
-      {mixed && (
-        <Tip
-          multiline
-          text={
-            "This category holds both things that record time and things that record a count, so it has to be told which half to measure." +
-            String.fromCharCode(10, 10) +
-            "Stored with the rule rather than worked out from the members, so filing one more counter under the category cannot change what an existing rule means."
-          }
-        >
-          <Pills<StreakMeasure>
-            value={targetMeasure(target, ctx)}
-            onChange={(measure) => onChange({ ...target, measure })}
-            options={[
-              { id: "time", label: "Hours" },
-              { id: "count", label: "Times" },
-            ]}
+      {/* A set holds more than one kind of thing, so it has to say which. The
+          three kinds are not one question: an activity is minutes, a tally is
+          occurrences, a check is an answer. `Any counter` adds the last two,
+          which is arithmetic that works — the pair that cannot be added is
+          time and occurrences, and that is the choice being made here. */}
+      {isSet && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={WORD}>counting</span>
+          <Pills<MemberPick>
+            value={member}
+            onChange={setMember}
+            options={(["activity", "tally", "check", "any"] as MemberPick[]).map(
+              (m) => ({ id: m, label: MEMBER_LABEL[m] }),
+            )}
           />
-        </Tip>
+        </div>
       )}
-    </>
+
+      {/* What the set actually comes to, read-only. Choosing a shelf entitles
+          you to see what is on it — and it is deliberately not editable, since
+          wanting to edit it means you wanted the counters rather than the
+          shelf, which is the other path through this control. */}
+      {isSet && <Resolved clause={clause} ctx={ctx} member={member} />}
+    </div>
+  )
+}
+
+/** What a set resolves to today. Named, not counted: a number tells you nothing
+ *  about whether you picked the right shelf. */
+function Resolved({
+  clause,
+  ctx,
+  member,
+}: {
+  clause: StreakClause
+  ctx: StreakContext
+  member: MemberPick
+}) {
+  const names =
+    member === "activity"
+      ? ctx.activities
+          .filter((a) =>
+            clauseTargets(clause).some((t) =>
+              t.kind === "category" ? a.categoryId === t.id : false,
+            ),
+          )
+          .map((a) => a.label)
+      : clauseUnits(clause, ctx).map((u) => u.label)
+
+  return (
+    <p className="text-[10px] font-mono text-ink/40 leading-relaxed">
+      {names.length ? (
+        <>
+          Counts {names.length} today: <span className="text-ink/60">{names.join(", ")}</span>
+        </>
+      ) : (
+        <span style={{ color: "inherit" }}>
+          Nothing is filed here yet, so this condition counts nothing.
+        </span>
+      )}
+    </p>
+  )
+}
+
+/** Pick several. Chosen is filled, unchosen is an outline you can click. */
+function PickChips({
+  items,
+  chosen,
+  onToggle,
+  onAll,
+}: {
+  items: { id: string; label: string; ghost: boolean }[]
+  chosen: string[]
+  onToggle: (id: string) => void
+  onAll: () => void
+}) {
+  const c = usePalette()
+  const allOn = items.every((i) => chosen.includes(i.id))
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {items.length > 1 && (
+        <button
+          type="button"
+          onClick={onAll}
+          disabled={allOn}
+          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
+        >
+          All
+        </button>
+      )}
+      {items.map((item) => {
+        const on = chosen.includes(item.id)
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onToggle(item.id)}
+            aria-pressed={on}
+            style={
+              on
+                ? { backgroundColor: `${c.accent}1F`, color: c.accent }
+                : undefined
+            }
+            className={`${btnBase} text-[10px] font-mono px-2 py-1 rounded-full ${
+              on
+                ? "font-bold"
+                : "text-ink/45 bg-ink/[0.05] hover:bg-ink/10 hover:text-ink/70"
+            } ${item.ghost ? "line-through decoration-ink/40" : ""}`}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -404,20 +585,23 @@ function ClauseForm({
 
   return (
     <div className="space-y-2">
-      <Row label="Entity">
-        <TargetPicker
-          target={target}
+      <Row label="Counters">
+        <CountersPicker
+          clause={clause}
           ctx={ctx}
-          onChange={(next) => {
-            const measure = targetMeasure(next, ctx)
+          onChange={(targets) => {
+            const measure = targetMeasure(targets[0], ctx)
             // Changing what is measured changes what the number means, so the
             // number goes back to its default for the new measure. "At most 0
             // minutes of lessons" is a legal sentence nobody has ever meant.
             const same = measure === info.measure
+            const seed = newClause(targets[0], measure)
             onChange({
-              target: next,
-              ...(same ? {} : { op: newClause(next, measure).op }),
-              ...(same ? {} : { value: newClause(next, measure).value }),
+              targets,
+              // The old single field would otherwise go on being read by
+              // `clauseTargets` for any condition that never had a list.
+              target: undefined,
+              ...(same ? {} : { op: seed.op, value: seed.value }),
             })
           }}
         />

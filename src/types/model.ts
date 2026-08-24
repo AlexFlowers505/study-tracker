@@ -338,6 +338,16 @@ export interface StreakTarget {
    * rule measures.
    */
   measure?: "time" | "count"
+  /**
+   * Which kind of counter inside a category or tag is counted — the finer half
+   * of `measure`, and only meaningful when that is `count`.
+   *
+   * A tally and a check both measure occurrences, and they are still not the
+   * same question: "three slips" and "three days answered yes" are different
+   * promises that a set can hold at once. Absent means every counter under the
+   * set, which is how every rule written before this read, so nothing moves.
+   */
+  memberKind?: CounterKind
 }
 
 /**
@@ -354,10 +364,19 @@ export interface StreakTarget {
 export interface StreakClause {
   id: string
   /**
-   * What is being measured. Absent on a condition written when the only
-   * answer was a counter unit — `clauseTarget()` is the only place that
-   * fallback lives.
+   * What is being measured — **one or more things, added together**.
+   *
+   * "Any of Lessons, Q&A or Polishing, at least three hours" is one promise
+   * about study, and writing it as three rules would be three streaks to keep
+   * and three allowances to spend. Every target here must measure the same
+   * thing; the form will not let you mix minutes with occurrences, because a
+   * condition carries one number.
+   *
+   * `clauseTargets()` is the only place that knows this was once a single
+   * target, and before that a bare counter id.
    */
+  targets?: StreakTarget[]
+  /** @deprecated Superseded by `targets`. Read through `clauseTargets()`. */
   target?: StreakTarget
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
