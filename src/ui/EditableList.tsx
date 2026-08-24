@@ -13,7 +13,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react"
 import type { Labeled } from "../types/model"
 import { makeId } from "../lib/id"
 import { PALETTE, btnBase } from "../lib/theme"
-import { ICON_LIBRARY } from "./iconLibrary"
+import { IconGrid } from "./IconGrid"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
 import { usePalette } from "./useTheme"
@@ -128,29 +128,17 @@ export function EditableList<T extends Labeled>({
                     <RenderIcon name={item.iconName} size={15} />
                   </button>
                   {openPickerId === item.id && (
-                    <div className="absolute z-30 top-10 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-56">
+                    <div className="absolute z-30 top-10 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-64">
                       <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Icon
                       </p>
-                      {/* Capped and scrolled: the library is long enough now
-                          that an uncapped grid would make this popover taller
-                          than the modal it opens inside. */}
-                      <div className="grid grid-cols-6 gap-1 mb-3 max-h-40 overflow-y-auto pr-1">
-                        {ICON_LIBRARY.map((opt) => (
-                          <button
-                            key={opt.name}
-                            onClick={() =>
-                              updateItem(item.id, { iconName: opt.name })
-                            }
-                            className={`${btnBase} p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
-                              item.iconName === opt.name
-                                ? "bg-ink/10 ring-1 ring-ink/30"
-                                : ""
-                            }`}
-                          >
-                            <RenderIcon name={opt.name} size={14} />
-                          </button>
-                        ))}
+                      <div className="mb-3">
+                        <IconGrid
+                          value={item.iconName}
+                          onPick={(name) =>
+                            updateItem(item.id, { iconName: name })
+                          }
+                        />
                       </div>
                       <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Color

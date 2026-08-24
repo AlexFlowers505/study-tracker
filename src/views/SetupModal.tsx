@@ -46,7 +46,7 @@ import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from '../lib/theme'
 import { DateField } from '../ui/DateField'
 import { EditableList } from '../ui/EditableList'
 import { Field } from '../ui/Field'
-import { ICON_LIBRARY } from '../ui/iconLibrary'
+import { IconGrid } from '../ui/IconGrid'
 import { RenderIcon } from '../ui/icons'
 import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
@@ -549,29 +549,17 @@ function ProjectDetailsTab({
               <RenderIcon name={projectIcon} size={18} />
             </button>
             {iconPickerOpen && (
-              <div className="absolute z-30 top-12 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-56">
+              <div className="absolute z-30 top-12 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-64">
                 <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                   Project icon
                 </p>
-                <div className="grid grid-cols-6 gap-1">
-                  {ICON_LIBRARY.map((opt) => (
-                    <button
-                      key={opt.name}
-                      type="button"
-                      onClick={() => {
-                        setProjectIcon(opt.name)
-                        setIconPickerOpen(false)
-                      }}
-                      className={`${btnBase} p-1.5 rounded-md hover:bg-ink/10 flex items-center justify-center ${
-                        projectIcon === opt.name
-                          ? "bg-ink/10 ring-1 ring-ink/30"
-                          : ""
-                      }`}
-                    >
-                      <RenderIcon name={opt.name} size={14} />
-                    </button>
-                  ))}
-                </div>
+                <IconGrid
+                  value={projectIcon}
+                  onPick={(name) => {
+                    setProjectIcon(name)
+                    setIconPickerOpen(false)
+                  }}
+                />
               </div>
             )}
           </div>
