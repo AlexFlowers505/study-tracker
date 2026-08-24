@@ -12,7 +12,16 @@
    inside a month. So it asks, it says what it will leave you with, and it says
    out loud that the point is to go and actually have the thing.
 
-   Nothing is refundable and the history stays. That purchase happened.
+   **The account is a card, and the rest of the arithmetic is a footnote to
+   it.** The balance had four figures on one recessed strip, all the same size,
+   and the one you look at before spending — what you have — had to be found
+   among the three you do not. Earned, spent and not-yet-counted are how the
+   number got there; they belong under it, not beside it.
+
+   Nothing is refundable and the history stays. That purchase happened. A
+   reward can be taken more than once, so a taken item stays on the shelf and
+   says when it last went — struck through and removed would be a different
+   promise from the one the ledger makes.
 --------------------------------------------------------------- */
 
 import { useState } from "react"
@@ -78,25 +87,35 @@ export function ShopSection({
       onClose={onClose}
     >
       {balance && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl bg-ink/[0.04] px-3.5 py-2.5 mb-3 text-[10px] font-mono uppercase tracking-widest text-ink/45">
-          <span>
-            <strong
-              className="text-[15px] tabular-nums"
-              style={{ color: available < 0 ? c.exam : c.goalMet }}
-            >
-              {available}
-            </strong>{" "}
-            to spend
-          </span>
-          <span className="tabular-nums">{balance.earned} earned</span>
-          <span className="tabular-nums">{balance.spent} spent</span>
-          {(balance.pendingKept > 0 || balance.pendingMissed > 0) && (
-            <Tip text="Today and yesterday can still be written, so they are not counted yet.">
-              <span className="tabular-nums cursor-help">
-                {balance.pendingKept + balance.pendingMissed} not counted yet
+        <div className="rounded-2xl bg-card shadow-sm px-4 py-3 mb-3">
+          <div className="flex items-baseline gap-3">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
+              On the account
+            </span>
+            <span className="ml-auto flex items-baseline gap-1.5">
+              <strong
+                className="text-2xl font-mono font-extrabold tabular-nums leading-none"
+                style={{ color: available < 0 ? c.exam : c.goalMet }}
+              >
+                {available}
+              </strong>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
+                {available === 1 ? "day" : "days"}
               </span>
-            </Tip>
-          )}
+            </span>
+          </div>
+          {/* How it got there, under it rather than beside it. */}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[9px] font-mono uppercase tracking-widest text-ink/30">
+            <span className="tabular-nums">{balance.earned} earned</span>
+            <span className="tabular-nums">{balance.spent} spent</span>
+            {(balance.pendingKept > 0 || balance.pendingMissed > 0) && (
+              <Tip text="Today and yesterday can still be written, so they are not counted yet.">
+                <span className="tabular-nums cursor-help">
+                  {balance.pendingKept + balance.pendingMissed} not counted yet
+                </span>
+              </Tip>
+            )}
+          </div>
         </div>
       )}
 
@@ -104,6 +123,9 @@ export function ShopSection({
         <div className="space-y-2">
           {items.map((item) => {
             const afford = canBuy(item, available)
+            // A reward can be taken more than once, so this is a note on the
+            // row rather than a reason to remove it.
+            const last = history.find((h) => h.itemId === item.id)
             return (
               <div
                 key={item.id}
@@ -127,6 +149,11 @@ export function ShopSection({
                   {!afford && (
                     <p className="text-[10px] font-mono text-ink/40">
                       {item.price - available} more to go
+                    </p>
+                  )}
+                  {last && (
+                    <p className="text-[10px] font-mono text-ink/30 truncate">
+                      last taken {fmtDateLong(boughtOn(last.boughtAt))}
                     </p>
                   )}
                 </div>

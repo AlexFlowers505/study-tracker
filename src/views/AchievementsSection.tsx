@@ -6,16 +6,22 @@
    its own rather than a line in one of the others: a streak is fear, and an
    achievement is what the fear was for.
 
-   **Earned first, then what is close.** An unearned one shows how far it has
-   to go, because a goal you can see pulls harder than a surprise you cannot —
-   and because "13 days to go" is a sentence you can act on this week. They are
-   sorted by how near they are, so the top of that half is always the one worth
-   looking at.
+   **One case, one shape.** Earned and unearned are the same tile, in one grid,
+   earned first. They were two different things for a while — a grid of cards
+   above a stacked list of progress bars — and that drew a line through the
+   middle of the one collection the app has: what you are working towards
+   stopped looking like the same kind of object as what you already hold, when
+   it is the *same object* a few weeks earlier. A locked tile is the earned one
+   with its date not yet written, so it is drawn as exactly that: dashed rather
+   than raised, dimmed rather than absent, with a bar where the date will go.
 
-   A definition that has been deleted since it was earned still shows. That
-   happened; the ledger is not in the business of forgetting, and the row reads
-   from the figure stored with it rather than from a definition that is no
-   longer there.
+   **What is close comes first among the locked.** "Thirteen days to go" is a
+   sentence you can act on this week; a goal you can see pulls harder than a
+   surprise you cannot.
+
+   A definition deleted since it was earned still shows. That happened; the
+   ledger is not in the business of forgetting, and the tile reads from the
+   figure stored with it rather than from a definition that is no longer there.
 --------------------------------------------------------------- */
 
 import { Trophy } from "lucide-react"
@@ -41,6 +47,9 @@ const HOW_IT_WORKS =
   "lands at once." +
   String.fromCharCode(10, 10) +
   "Keep them few. Six that mean something beat thirty that were generated."
+
+/** Wide enough for two lines of a real name, narrow enough for three across. */
+const GRID = "[grid-template-columns:repeat(auto-fill,minmax(150px,1fr))]"
 
 export function AchievementsSection({
   project,
@@ -69,13 +78,14 @@ export function AchievementsSection({
       const value = progressOf(project, def, today)
       return {
         def,
-        measure,
-        value,
-        left: Math.max(0, def.threshold - value),
+        left: fmtProgress(Math.max(0, def.threshold - value), measure),
         share: def.threshold > 0 ? Math.min(1, value / def.threshold) : 0,
+        text: `${fmtProgress(value, measure)} of ${fmtProgress(def.threshold, measure)}`,
       }
     })
     .sort((a, b) => b.share - a.share)
+
+  const total = done.length + open.length
 
   return (
     <PanelSection
@@ -83,8 +93,8 @@ export function AchievementsSection({
       icon={Trophy}
       title="History"
       subtitle={
-        defs.length || done.length
-          ? `${done.length} earned${open.length ? ` · ${open.length} still to reach` : ""}`
+        total
+          ? `${done.length} of ${total} earned`
           : "Nothing written yet — Setup has the tab"
       }
       action={
@@ -97,51 +107,30 @@ export function AchievementsSection({
       closeLabel="Hide the history"
       onClose={onClose}
     >
-      {done.length > 0 && (
-        <div className="grid gap-2 mb-3 sm:grid-cols-2 lg:grid-cols-3">
+      {total > 0 && (
+        <div className={`grid gap-2 ${GRID}`}>
           {done.map(({ badge, def }) => (
-            <div
+            <TrophyTile
               key={badge.achievementId}
-              className="rounded-2xl bg-card shadow-sm px-3.5 py-3"
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span
-                  className="flex items-center shrink-0"
-                  style={{ color: def?.color || c.project }}
-                >
-                  {def ? (
-                    <RenderIcon name={def.iconName} size={15} />
-                  ) : (
-                    <Trophy size={15} />
-                  )}
-                </span>
-                <span className="text-[11px] font-mono font-bold truncate">
-                  {def?.label || "a deleted achievement"}
-                </span>
-              </div>
-              <p className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-                {fmtDateLong(earnedOn(badge.earnedAt))}
-              </p>
-            </div>
+              def={def}
+              fallbackColor={c.project}
+              when={fmtDateLong(earnedOn(badge.earnedAt))}
+            />
           ))}
-        </div>
-      )}
-
-      {open.length > 0 && (
-        <div className="space-y-1.5">
-          {open.map(({ def, measure, value, left, share }) => (
-            <Progress
+          {open.map(({ def, left, share, text }) => (
+            <TrophyTile
               key={def.id}
               def={def}
-              text={`${fmtProgress(value, measure)} of ${fmtProgress(def.threshold, measure)}`}
-              left={`${fmtProgress(left, measure)} to go`}
+              fallbackColor={c.project}
+              when={`${left} to go`}
               share={share}
+              tip={def.description || text}
             />
           ))}
         </div>
       )}
 
-      {!done.length && !open.length && (
+      {!total && (
         <p className="text-[11px] font-mono text-ink/40 leading-relaxed">
           Write a few in Setup — the streak you are proudest of, the hours you
           want to have put in. Six that mean something are worth more than
@@ -152,43 +141,71 @@ export function AchievementsSection({
   )
 }
 
-function Progress({
+/**
+ * One tile. `share` present means not earned yet — which is the only
+ * difference between the two states, and so is the only thing that switches
+ * the drawing.
+ */
+function TrophyTile({
   def,
-  text,
-  left,
+  fallbackColor,
+  when,
   share,
+  tip,
 }: {
-  def: Achievement
-  text: string
-  left: string
-  share: number
+  /** Absent when the definition was deleted after it had been earned. */
+  def?: Achievement
+  fallbackColor: string
+  when: string
+  share?: number
+  tip?: string
 }) {
-  return (
-    <Tip text={def.description || text}>
-      <div className="w-full rounded-2xl bg-ink/[0.04] px-3.5 py-2.5">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="flex items-center shrink-0" style={{ color: def.color }}>
-            <RenderIcon name={def.iconName} size={13} />
-          </span>
-          <span className="text-[11px] font-mono truncate text-ink/70">
-            {def.label}
-          </span>
-          <span className="ml-auto shrink-0 text-[10px] font-mono tabular-nums text-ink/45">
-            {text}
-          </span>
-        </div>
-        {/* The bar is the sentence: how much of the way there you are. The
-            figure beside it is what to do about it. */}
-        <div className="h-1 rounded-full bg-ink/10 overflow-hidden">
+  const locked = share !== undefined
+  const color = def?.color || fallbackColor
+
+  const tile = (
+    <div
+      className={`w-full h-full rounded-2xl px-3.5 py-3 ${
+        locked
+          ? "bg-ink/[0.03] border border-dashed border-ink/15"
+          : "bg-card shadow-sm"
+      }`}
+    >
+      <span
+        className={`flex items-center mb-2 ${locked ? "opacity-45" : ""}`}
+        style={{ color }}
+      >
+        {def ? <RenderIcon name={def.iconName} size={17} /> : <Trophy size={17} />}
+      </span>
+      <p
+        className={`text-[11px] font-mono font-bold leading-snug mb-1 ${
+          locked ? "text-ink/55" : ""
+        }`}
+      >
+        {def?.label || "a deleted achievement"}
+      </p>
+      <p className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+        {when}
+      </p>
+      {locked && (
+        // Where the date will go. The bar is the sentence — how much of the
+        // way there you are — and it sits in the earned tile's date line so
+        // the two tiles are the same object at two moments.
+        <div className="h-[3px] rounded-full bg-ink/10 overflow-hidden mt-2">
           <div
             className="h-full rounded-full"
-            style={{ width: `${share * 100}%`, backgroundColor: def.color }}
+            style={{ width: `${share * 100}%`, backgroundColor: color }}
           />
         </div>
-        <p className="mt-1 text-[9px] font-mono uppercase tracking-widest text-ink/35">
-          {left}
-        </p>
-      </div>
+      )}
+    </div>
+  )
+
+  return tip ? (
+    <Tip text={tip} className="flex">
+      {tile}
     </Tip>
+  ) : (
+    tile
   )
 }
