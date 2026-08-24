@@ -9,6 +9,15 @@ would leak into every other project on the machine.
 
 ## Work in progress
 
+**`specs/011-the-rule-form-rebuilt.md` is agreed and barely started.** It
+rebuilds the streak form around two sections — pick the counters, then state
+the conditions — and three things fall out with it: checks lose their `unset`
+state, the effectiveness meter stops deciding anything (`useDailyGoal` is
+deleted, `migrations/019` expands it first), and the verdict ring gains
+weights and a detail view. Its Status block holds the build order; its
+Decisions section holds the reasoning. Stage 0 has landed; stages 1–5 have
+not.
+
 **`specs/010-day-verdict-and-rewards.md` is agreed, staged and not yet
 started.** It is large and it rewrites things this file currently describes as
 settled — the main goal streak is abolished, the day's colour becomes a
