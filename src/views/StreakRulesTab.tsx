@@ -216,7 +216,7 @@ const Fold = ({
         size={11}
         className="shrink-0 text-ink/35 transition-transform duration-150 group-open:rotate-90"
       />
-      <span className="text-[9px] font-mono uppercase tracking-widest text-ink/50">
+      <span className="shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/50">
         {title}
       </span>
       <span className="ml-auto min-w-0 truncate text-[10px] font-mono text-ink/40 group-open:opacity-0 transition-opacity">
@@ -240,35 +240,18 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   </div>
 )
 
-/**
- * A heading over a group of rows.
- *
- * The form is three questions — which counters, what is asked of them, what it
- * costs to slip — and it was eleven fields in a flat list. A heading heavier
- * than the field labels is what turns the list back into the three.
- */
-const Section = ({
-  title,
-  children,
-}: {
-  title: string
-  children: ReactNode
-}) => (
-  <section className="space-y-2">
-    <h4 className="text-[10px] font-sans font-extrabold uppercase tracking-widest text-ink/70">
-      {title}
-    </h4>
-    <div className="space-y-2 pl-0.5 border-l-2 border-ink/[0.07] pl-3">
-      {children}
-    </div>
-  </section>
-)
-
 const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
 /* Narrower than the one beside it, and deliberately: six fixed words against a
    list of the project's own names, and equal widths would read as two halves
    of one answer rather than as a question and its answer. */
-const KIND_SELECT = `${FIELD_SOFT_INLINE} max-w-36 rounded-lg py-1 text-[11px]`
+/* **Sized by what it says**, between a floor and a ceiling. The options are
+   the project's own names — `Tags` and `Генерация и сбор урока через AI` in one
+   dropdown — so any fixed width is either too wide for half of them or too
+   narrow for the rest. `field-sizing: content` is a progressive enhancement
+   and needs no fallback: without it the control simply keeps the ceiling as
+   its width, which is exactly what it had before. The floor stops an empty
+   list collapsing it to nothing. */
+const KIND_SELECT = `${FIELD_SOFT_INLINE} field-sizing-content min-w-24 max-w-48 rounded-lg py-1 text-[11px]`
 const WORD = "text-[11px] font-mono text-ink/55"
 
 /**
@@ -508,8 +491,17 @@ function CountersPicker({
   return (
     <div className="space-y-2 w-full">
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* **`Counts` and `Of those`, not `Entity` and `Counter type`.**
+
+            Both dropdowns offer the words Activities, Tallies and Checks, so
+            labelled by their types they read as one question asked twice. They
+            are not: the first says what sort of thing this condition *names* —
+            a shelf or the counters themselves — and the second, which appears
+            only for a shelf, says which of the things on it to count. Named
+            for what they ask, `Of those` can only be read as referring to the
+            chips directly above it. */}
         <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
-          Entity
+          Counts
         </span>
         <select
           value={pick}
@@ -561,7 +553,7 @@ function CountersPicker({
       {isSet && (
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
-            Counter type
+            Of those
           </span>
           <Pills<MemberPick>
             value={member}
@@ -881,7 +873,7 @@ function ClauseForm({
       )}
 
       {info.check && !byWeek && (
-        <Row label="Answers each day takes">
+        <Row label="Accepted answers">
           <CheckDayFields clause={clause} onChange={onChange} />
         </Row>
       )}
@@ -1776,25 +1768,29 @@ function RuleForm({
           total matters. It is a property of the rule rather than of any one
           condition — a rule with three conditions has one scope — which is why
           it sits above them rather than inside each. */}
-      <Section title="The rule">
-        <Row label="Judge period">
-          <Pills<"day" | "week">
-            value={draft.scope}
-            onChange={(scope) => patch({ scope })}
-            options={[
-              { id: "day", label: "Every day" },
-              { id: "week", label: "Every week" },
-            ]}
-          />
-          <span className="text-[10px] font-mono text-ink/40">
-            {draft.scope === "week"
-              ? "one figure for the whole week"
-              : "each day judged on its own"}
-          </span>
-        </Row>
-      </Section>
+      <Row label="Judge period">
+        <Pills<"day" | "week">
+          value={draft.scope}
+          onChange={(scope) => patch({ scope })}
+          options={[
+            { id: "day", label: "Every day" },
+            { id: "week", label: "Every week" },
+          ]}
+        />
+        <span className="text-[10px] font-mono text-ink/40">
+          {draft.scope === "week"
+            ? "one figure for the whole week"
+            : "each day judged on its own"}
+        </span>
+      </Row>
 
-      <Section title="Conditions">
+      {/* The conditions are the body of the form, not a section of it. They
+          carried a heading while `The rule` carried one above them, and two
+          headings over four rows is a table of contents for a page you can
+          already see whole. What is left says it better: the scope, a rule
+          across the page, and then the promise itself. */}
+      <div className="h-px bg-ink/10" />
+
       {clauses.map((clause, i) => (
         <div key={clause.id}>
           {/* A hairline between conditions, so two blocks of three rows do not
@@ -1839,7 +1835,6 @@ function RuleForm({
           </button>
         </Tip>
       </Row>
-      </Section>
 
       {/* **When it starts judging.**
 
@@ -1856,7 +1851,13 @@ function RuleForm({
           It is offered while the rule is still being set up. After that the
           rule has judged days, and moving its beginning would rewrite them. */}
       {settingUp && (
-        <Section title="Starts">
+        <Fold
+          title="Starts"
+          summary={
+            startChoices(today).find((o) => o.id === draft.startedOn)?.label ??
+            fmtDateLong(draft.startedOn)
+          }
+        >
           <Row label="">
             <Pills<string>
               value={draft.startedOn}
@@ -1869,10 +1870,20 @@ function RuleForm({
           <p className="text-[10px] font-mono text-ink/40">
             Days before this are not judged by it — the streak begins here.
           </p>
-        </Section>
+        </Fold>
       )}
 
-      <Section title="Freezes">
+      {/* **What a slip costs, and who it costs it to** — the allowance, the
+          bank, and whether the day's verdict hears about it at all. Four
+          settings that are almost always left alone, so they fold, and the lid
+          states every one of them: a fold reading `1 a week, bank 3 · counts`
+          is a sentence you check without opening anything. */}
+      <Fold
+        title="Freezes"
+        summary={`${draft.freezesPerWeek} a week · bank ${draft.freezeCap} · ${
+          draft.inDayVerdict ? "counts in the day" : "own streak"
+        }`}
+      >
       {/* Not a term the lock protects: joining or leaving the day's verdict
           changes what the *day* is worth, never what this rule asks of you. */}
       <Row label="The day">
@@ -1951,7 +1962,7 @@ function RuleForm({
           the weekly one expires; the bank carries over
         </span>
       </Row>
-      </Section>
+      </Fold>
 
       {/* A loosening the clock allows still has to be explained. The box
           appears only then — asking for a reason to *narrow* a rule would be
