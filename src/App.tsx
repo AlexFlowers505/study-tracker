@@ -46,7 +46,7 @@ import {
   ruleStatus,
   streakContext,
 } from "./lib/customStreaks"
-import { dayReport, keptDays } from "./lib/dayVerdict"
+import { dayReport, keptDays, keptWeeks } from "./lib/dayVerdict"
 import { withBenchmarkGoals } from "./lib/benchmark"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
@@ -80,6 +80,7 @@ import { CountFilter } from "./views/CountFilter"
 import { StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
+import { KeptCard } from "./views/KeptCard"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
 import { ShopSection } from "./views/ShopSection"
@@ -464,6 +465,7 @@ export default function StudyTrackerApp() {
   )
   /** The run of kept days — the composite streak. */
   const kept = useMemo(() => keptDays(project), [project])
+  const keptWeekly = useMemo(() => keptWeeks(project), [project])
 
   /**
    * The balance, and the day marks still owed to it — `spec 010`, part 4.
@@ -1041,13 +1043,24 @@ export default function StudyTrackerApp() {
           onToggleShop={() => setShowShop((v) => !v)}
         />
 
+        {/* **The composite above the rules that compose it.** It used to be a
+            figure on the collapsed streaks line, which meant it disappeared
+            exactly when that row opened and again when every streak was in
+            trouble — the two moments anybody is looking. A number you have to
+            go and find is a number nobody is afraid of losing, and this one is
+            the whole point of the design. */}
+        {kept && keptWeekly && (
+          <div className="mb-1.5">
+            <KeptCard days={kept} weeks={keptWeekly} />
+          </div>
+        )}
+
         {/* Its own row under the period bar. Streaks are the one project-wide
             thing on a page that is otherwise period-scoped, and there can now
             be several of them — a toggle inside the bar could carry one. */}
         <div className="mb-3">
           <StreakBar
             statuses={ruleStatuses}
-            keptDays={kept?.current ?? null}
             balance={project.settings.balanceStart ? balance : null}
             risks={streakRisks}
             active={openStreak}

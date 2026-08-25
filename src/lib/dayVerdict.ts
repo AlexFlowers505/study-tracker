@@ -26,7 +26,7 @@
 import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
 import { ruleDayState, ruleWeekDayState, streakContext } from "./customStreaks"
-import { addDays, fromKey, toKey } from "./date"
+import { addDays, fromKey, startOfWeek, toKey } from "./date"
 
 /** The day's own standing, drawn wherever a day is drawn. */
 export type DayVerdict = "kept" | "missed" | "frozen" | "pending" | "unjudged"
@@ -205,6 +205,76 @@ export function keptDays(project: Project, today = new Date()): KeptDays | null 
     }
   }
   return { current: run, best }
+}
+
+export interface WeekMark {
+  /** The Monday, which is how every week in this app is named. */
+  start: DayKey
+  state: DayVerdict
+}
+
+export interface KeptWeeks {
+  current: number
+  best: number
+  /** Every week since the first verdict, oldest first. */
+  weeks: WeekMark[]
+}
+
+/**
+ * **The second scale, and the reason there is one.**
+ *
+ * A run of days has exactly one point of loss: 20 → 0. While it is short that
+ * costs almost nothing, so the first week of a new rule is the week you are
+ * least invested in and most likely to drop — which is precisely backwards. A
+ * week-sized unit fixes that from the other end: a bad Tuesday costs you *the
+ * week*, not everything, and on Monday there is always something to start
+ * accumulating again.
+ *
+ * **`kept` in both scales means the same thing**, deliberately: a week is kept
+ * when every day in it held up, and a frozen day held up. Two verbs for one
+ * idea is how a design ends up with a vocabulary nobody can keep straight, so
+ * there is one — `days kept` and `weeks kept`, the same word at two sizes.
+ *
+ * The week you are living in is `pending` and counts towards nothing. It is
+ * still returned, because the point of drawing it is that you can see what is
+ * at stake before it is decided.
+ */
+export function keptWeeks(project: Project, today = new Date()): KeptWeeks | null {
+  const from = verdictStart(project)
+  if (!from) return null
+  const ctx = streakContext(project)
+  const todayKey = toKey(today)
+  if (from > todayKey) return { current: 0, best: 0, weeks: [] }
+
+  const weeks: WeekMark[] = []
+  for (
+    let monday = startOfWeek(fromKey(from));
+    toKey(monday) <= todayKey;
+    monday = addDays(monday, 7)
+  ) {
+    const states: DayVerdict[] = []
+    for (let i = 0; i < 7; i += 1) {
+      const key = toKey(addDays(monday, i))
+      // Days before the first rule started, and days that have not happened,
+      // are not this week's business either way.
+      if (key < from || key > todayKey) continue
+      states.push(dayReport(project, key, todayKey, ctx).state)
+    }
+    weeks.push({ start: toKey(monday), state: foldVerdicts(states) })
+  }
+
+  let best = 0
+  let run = 0
+  for (const week of weeks) {
+    if (week.state === "unjudged" || week.state === "pending") continue
+    if (heldUp(week.state)) {
+      run += 1
+      if (run > best) best = run
+    } else {
+      run = 0
+    }
+  }
+  return { current: run, best, weeks }
 }
 
 /**

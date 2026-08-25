@@ -187,7 +187,6 @@ function RiskBlock({
 
 export function StreakBar({
   statuses,
-  keptDays,
   balance,
   risks,
   active,
@@ -195,11 +194,6 @@ export function StreakBar({
 }: {
   /** One per rule, already computed — see `ruleStatus`. */
   statuses: RuleStatus[]
-  /**
-   * The run of days every voting rule held — the composite. Null when no rule
-   * has a vote yet, which is the only state in which the day has no verdict.
-   */
-  keptDays: number | null
   /**
    * The account, in kept days. Deliberately the quietest thing in this row:
    * it does not motivate — the streak does — and given equal weight it would
@@ -290,23 +284,9 @@ export function StreakBar({
                 ? `${holding} more holding`
                 : `${plural(holding, "streak")} holding`}
             </span>
-            {/* The composite, and the one number here worth being afraid of.
-                It belongs to no single rule, so it wears the project's own
-                tint rather than any streak's. */}
-            {keptDays != null && (
-              <span
-                className="flex items-center gap-1 text-[11px] font-mono font-bold ml-auto"
-                style={{ color: c.project }}
-              >
-                <Flame size={10} strokeWidth={3} />
-                {keptDays}
-                <span className="font-normal text-ink/40 tracking-widest">
-                  KEPT
-                </span>
-              </span>
-            )}
             {balance && (
               <Tip
+                className="ml-auto"
                 text={`${balance.total} kept days banked${
                   balance.pendingKept || balance.pendingMissed
                     ? ` · ${balance.pendingKept + balance.pendingMissed} still inside the writing window and not counted yet`
@@ -326,7 +306,7 @@ export function StreakBar({
             )}
             <ChevronDown
               size={14}
-              className={`text-ink/30 shrink-0 ${keptDays != null || balance ? "" : "ml-auto"}`}
+              className={`text-ink/30 shrink-0 ${balance ? "" : "ml-auto"}`}
             />
           </button>
         )
