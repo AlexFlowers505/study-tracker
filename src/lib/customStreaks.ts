@@ -355,6 +355,20 @@ interface Labelish {
  * scroll is not a sentence you can check against what you meant, and checking
  * it is the entire job.
  */
+/**
+ * **A name or a figure, marked as one.**
+ *
+ * These sentences are read back to check them against what you meant, and at
+ * one weight `Wake up in time and Go to bed in time must each be yes` is a
+ * wall. The quotes go in the string rather than into markup because the same
+ * sentence is handed to tooltips, to the supervisor's plain-text summary and
+ * to the change log, none of which can carry markup — and a bare string with
+ * quotes in it still separates a three-word counter name from the words
+ * around it. `ui/Sentence` gives the same spans weight where it can.
+ */
+export const q = (text: string | number): string =>
+  `“${text}”`
+
 export function targetsLabel(
   targets: StreakTarget[],
   ctx: StreakContext,
@@ -366,10 +380,10 @@ export function targetsLabel(
    */
   join: "or" | "and" = "or",
 ): string {
-  const names = targets.map((target) => targetInfo(target, ctx).qualified)
+  const names = targets.map((target) => q(targetInfo(target, ctx).qualified))
   if (names.length === 1) return names[0]
   if (names.length > 3)
-    return `${join === "and" ? "all" : "any"} of ${names.length} things`
+    return `${join === "and" ? "all" : "any"} of ${q(names.length)} things`
   return `${names.slice(0, -1).join(", ")} ${join} ${names.at(-1)}`
 }
 
@@ -837,9 +851,17 @@ export function readWeek(
        second free. */
     if (clause.states) {
       const tally: Record<string, number> = { yes: 0, no: 0, skip: 0 }
+      /* **Every check the condition names**, not just the first. Two checks
+         and `at least 12 yes a week` is a total across both — the same reading
+         the day-scope count path gives "Wake up or Go to bed at least 2
+         times" — and counting one of them made the week look half as good as
+         it was, in the direction that costs you freezes. */
+      const targets = clauseTargets(clause)
       covered.forEach((k) => {
-        const state = checkState(days[k], clauseTarget(clause).id || "")
-        if (state) tally[state] += 1
+        targets.forEach((target) => {
+          const state = checkState(days[k], target.id || "")
+          if (state) tally[state] += 1
+        })
       })
       const short = CHECK_CHOICES.reduce((sum, answer) => {
         const bound = clause.states?.[answer]
@@ -869,6 +891,26 @@ export function readWeek(
       (sum, k) => sum + readClauseDay(clause, ctx, days[k], k).value,
       0,
     )
+
+    /* **A weekly rule can still carry day-shaped accepted answers**, and then
+       it means what it says: every day of the week must be one of them. That
+       happens whenever a rule is switched from judging days to judging weeks —
+       `allow` stays on the condition, `CheckWeekFields` writes `states`
+       instead, and the bounds were cleared long ago. Summed against
+       `weekBounds` that came to no bounds at all, so the condition judged
+       nothing and every week passed. Sum the days' own deficits instead. */
+    if (clause.allow && !clause.states)
+      return {
+        clause,
+        applies: covered.length > 0,
+        value,
+        deficit: covered.reduce(
+          (sum, k) => sum + readClauseDay(clause, ctx, days[k], k).deficit,
+          0,
+        ),
+        skipped: false,
+      }
+
     return {
       clause,
       applies: covered.length > 0,
@@ -1428,10 +1470,32 @@ export function clauseSentence(
      each — `and`, not `or` — and that is exactly how `readClauseDay` judges
      them. A check condition carrying a floor or a ceiling instead is a count,
      and falls through to the ordinary path below. */
+  if (info.check && clause.states) {
+    /* A week of checks, counted per answer, and it reads the same whether the
+       condition names one check or three — `readWeek` tallies them all into
+       one total, so a sentence gated on there being exactly one described a
+       rule the reader was not applying. */
+    const parts = CHECK_CHOICES.flatMap((answer) => {
+      const b = clause.states?.[answer]
+      if (!b || (b.min === undefined && b.max === undefined)) return []
+      const label = CHECK_LABELS[answer].toLowerCase()
+      if (b.min !== undefined && b.max !== undefined)
+        return [`${q(`${b.min}–${b.max}`)} ${label}`]
+      return [
+        b.max !== undefined
+          ? `at most ${q(b.max)} ${label}`
+          : `at least ${q(b.min ?? 0)} ${label}`,
+      ]
+    })
+    return parts.length
+      ? `${targetsLabel(targets, ctx, "and")}: ${parts.join(", ")} a week`
+      : `${targetsLabel(targets, ctx, "and")} — nothing asked`
+  }
+
   if (info.check && clause.allow && targets.length > 1) {
     const answers = clause.allow[clauseWeekdays(clause)[0]] ?? []
     const said = answers.length
-      ? answers.map((a) => CHECK_LABELS[a].toLowerCase()).join(" or ")
+      ? answers.map((a) => q(CHECK_LABELS[a].toLowerCase())).join(" or ")
       : "nothing"
     return `${targetsLabel(targets, ctx, "and")} must each be ${said}${when}`
   }
@@ -1448,16 +1512,16 @@ export function clauseSentence(
         if (!b || (b.min === undefined && b.max === undefined)) return []
         const label = CHECK_LABELS[answer].toLowerCase()
         if (b.min !== undefined && b.max !== undefined)
-          return [`${b.min}–${b.max} ${label}`]
+          return [`${q(`${b.min}–${b.max}`)} ${label}`]
         return [
           b.max !== undefined
-            ? `at most ${b.max} ${label}`
-            : `at least ${b.min} ${label}`,
+            ? `at most ${q(b.max)} ${label}`
+            : `at least ${q(b.min ?? 0)} ${label}`,
         ]
       })
       return parts.length
-        ? `${info.qualified}: ${parts.join(", ")} a week`
-        : `${info.qualified} — nothing asked`
+        ? `${q(info.qualified)}: ${parts.join(", ")} a week`
+        : `${q(info.qualified)} — nothing asked`
     }
 
     /* Judged by the day, with each weekday naming the answers it takes.
@@ -1476,33 +1540,35 @@ export function clauseSentence(
       })
       const said = (answers: CheckState[]) =>
         answers.length
-          ? answers.map((a) => CHECK_LABELS[a].toLowerCase()).join(" or ")
+          ? answers.map((a) => q(CHECK_LABELS[a].toLowerCase())).join(" or ")
           : "nothing"
       if (groups.length === 1)
-        return `${info.qualified} must be ${said(groups[0].answers)}${when}`
-      return `${info.qualified} must be ${groups
+        return `${q(info.qualified)} must be ${said(groups[0].answers)}${when}`
+      return `${q(info.qualified)} must be ${groups
         .map((g) => `${said(g.answers)} on ${listDays(g.days)}`)
         .join(", ")}`
     }
 
-    return `${info.qualified} must be ${
+    return `${q(info.qualified)} must be ${q(
       clauseBounds(clause, ctx, describingKey()).min !== undefined
         ? "yes"
-        : "no"
-    }${when}`
+        : "no",
+    )}${when}`
   }
 
   const where = clause.slotIds?.length
     ? ` in ${clause.slotIds
-        .map(
-          (id) => ctx.slots.find((s) => s.id === id)?.label || "a removed slot",
+        .map((id) =>
+          q(ctx.slots.find((s) => s.id === id)?.label || "a removed slot"),
         )
         .join(", ")}`
     : ""
   // Minutes are printed as hours and minutes, like every other duration in
   // the app: "at least 2h 30m", never "at least 150".
   const amount = (n: number) =>
-    info.measure === "time" ? fmtHours(n) : `${n} ${n === 1 ? "time" : "times"}`
+    info.measure === "time"
+      ? q(fmtHours(n))
+      : `${q(n)} ${n === 1 ? "time" : "times"}`
 
   // Both bounds read as a range, because "at least 2h and at most 4h" is one
   // requirement said twice and nobody talks that way.
@@ -1513,12 +1579,7 @@ export function clauseSentence(
         ? `at most ${amount(b.max)}`
         : b.min !== undefined
           ? `at least ${amount(b.min)}`
-          : /* A condition with neither bound is satisfied by every day there
-               has ever been. `at least 0 times` said that in words nobody
-               reads as a warning; this says it as one. New ones are refused
-               at the door (`clauseAsksNothing`), so this is for the ones
-               already stored. */
-            "asked for nothing — this condition judges nothing" 
+          : ""
 
   /* Per-day numbers are grouped by what they ask for, so "3h on Mon, Tue,
      Wed, Fri, Sat, Sun and 1h 30m on Thu" reads as two requirements rather
@@ -1547,12 +1608,29 @@ export function clauseSentence(
     ? `, of which ${slotRules
         .map(
           ([slotId, b]) =>
-            `${said(b)} in ${
-              ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot"
-            }`,
+            `${said(b)} in ${q(
+              ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot",
+            )}`,
         )
         .join(" and ")}`
     : ""
+
+  // One group is the ordinary case and keeps the ordinary sentence, with the
+  // weekday suffix `when` already carries. Several always name their own days,
+  // since that is the only thing separating them.
+  /* **A condition with no day figure at all.** `said` returns nothing for it,
+     so the sentence would read `Youtube  ` — or, worse, `Youtube <the
+     warning>, of which at most 0 times in Morning`, which contradicts itself
+     in one line. If a named slot carries the whole requirement, that rider is
+     the sentence; if nothing does, say so plainly. New ones are refused at
+     the door (`clauseAsksNothing`), so this is for the ones already stored. */
+  const anyDayBound = groups.some(
+    (g) => g.bounds.min !== undefined || g.bounds.max !== undefined,
+  )
+  if (!anyDayBound)
+    return slotRules.length
+      ? `${named}${where}${rider.replace(/^, of which /, " ")}${when}`
+      : `${named}${where} — nothing asked, so this condition judges nothing`
 
   // One group is the ordinary case and keeps the ordinary sentence, with the
   // weekday suffix `when` already carries. Several always name their own days,
@@ -1792,13 +1870,19 @@ export const clauseAsksNothing = (
     if (clause.allow) return false
   }
 
-  return !days.some((weekday) => {
-    const bounds = boundsOnWeekday(clause, ctx, weekday)
-    if (bounds.min !== undefined || bounds.max !== undefined) return true
-    return Object.values(slotBoundsOnWeekday(clause, weekday)).some(
-      (b) => b.min !== undefined || b.max !== undefined,
-    )
-  })
+  /* **A floor of nought asks nothing**, and it is not the same as no floor at
+     all — you have to type it. `at least 0 times` is satisfied by every day
+     there has ever been, exactly like the absent bound above, and the only
+     difference is that this one looks deliberate. A ceiling of nought is the
+     opposite and the commonest rule in the app: *never*. */
+  const asks = (b: ClauseBounds) =>
+    b.max !== undefined || (b.min !== undefined && b.min > 0)
+
+  return !days.some(
+    (weekday) =>
+      asks(boundsOnWeekday(clause, ctx, weekday)) ||
+      Object.values(slotBoundsOnWeekday(clause, weekday)).some(asks),
+  )
 }
 
 export interface RuleEdit {

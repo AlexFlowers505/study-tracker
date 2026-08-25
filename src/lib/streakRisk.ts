@@ -42,6 +42,8 @@ import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
   clauseBounds,
   clauseTarget,
+  clauseTargets,
+  q,
   freezeOffer,
   readDay,
   readWeek,
@@ -132,24 +134,49 @@ function shortfall(
          nothing at all once a condition named its allowed answers instead of
          a number. The reading already knows; ask it. */
       if (info.check) {
-        const state = checkState(days[dayKey], clauseTarget(r.clause).id || "")
-        const said =
+        const said = (state: ReturnType<typeof checkState>) =>
           state === null
-            ? "has no answer yet"
+            ? `is ${q("not answered")}`
             : state === "yes"
-              ? "is yes"
+              ? `is ${q("yes")}`
               : state === "no"
-                ? "is no"
-                : "is skipped"
-        return `${info.label} ${said}`
+                ? `is ${q("no")}`
+                : `is ${q("skipped")}`
+
+        /* **Name the checks that broke it, not the first one in the list.**
+           A condition can assert several, and this reported `clauseTarget` —
+           the first — whatever had actually gone wrong. So a rule holding
+           *go to bed on time* and *wake up on time* announced "go to bed in
+           time is yes" while the thing costing you the day was the other one,
+           unanswered. A warning that names the wrong half is worse than no
+           warning: it sends you to look at the thing that is fine. */
+        const allowed = r.clause.allow?.[fromKey(dayKey).getDay()]
+        const targets = clauseTargets(r.clause)
+        const failing = allowed
+          ? targets.filter((t) => {
+              const state = checkState(days[dayKey], t.id || "")
+              return !state || !allowed.includes(state)
+            })
+          : // Written before accepted answers existed: one target, and its
+            // own reading is the whole condition.
+            targets.slice(0, 1)
+
+        return failing
+          .map(
+            (t) =>
+              `${q(targetInfo(t, ctx).label)} ${said(
+                checkState(days[dayKey], t.id || ""),
+              )}`,
+          )
+          .join(" · ")
       }
       // The *resolved* bounds, never the stored fields.
       const { min, max } = clauseBounds(r.clause, ctx, dayKey)
       // Only the broken half is worth naming. A condition with both bounds is
       // over one of them, and saying which is the whole job of this line.
       const over = max !== undefined && r.value > max
-      return `${info.label} ${fmt(r.value)} against ${
-        over ? `at most ${fmt(max)}` : `at least ${fmt(min ?? 0)}`
+      return `${q(info.label)} ${q(fmt(r.value))} against ${
+        over ? `at most ${q(fmt(max))}` : `at least ${q(fmt(min ?? 0))}`
       }`
     })
     .join(" · ")

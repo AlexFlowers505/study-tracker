@@ -62,6 +62,7 @@ import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
+import { Sentence } from "../ui/Sentence"
 import { PanelSection } from "./PanelSection"
 import { FALLBACK_ICON, ICON_MAP } from "../ui/iconLibrary"
 import { StreakChart } from "./StreakChart"
@@ -264,7 +265,7 @@ export function CustomStreakSection({
           {clauses.map((clause) => (
             <span key={clause.id} className="block">
               {compound ? "· " : ""}
-              {clauseSentence(clause, ctx, rule.scope)}
+              <Sentence text={clauseSentence(clause, ctx, rule.scope)} />
             </span>
           ))}
           {rule.description && (

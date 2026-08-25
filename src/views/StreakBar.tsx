@@ -38,6 +38,7 @@ import type { StreakRisk } from "../lib/streakRisk"
 import { byRisk } from "../lib/streakRisk"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
+import { Sentence } from "../ui/Sentence"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
@@ -174,7 +175,7 @@ function RiskBlock({
         </span>
       </div>
       <p className="text-[11px] font-mono text-ink/75 leading-relaxed">
-        {risk.headline}
+        <Sentence text={risk.headline} />
       </p>
       {risk.detail && (
         <p className="text-[10px] font-mono text-ink/45 leading-relaxed mt-0.5">

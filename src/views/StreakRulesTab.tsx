@@ -113,6 +113,7 @@ import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
+import { Sentence } from "../ui/Sentence"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
@@ -1626,7 +1627,7 @@ function RuleSummary({
         {clauses.map((clause) => (
           <li key={clause.id} className="text-[11px] font-mono text-ink/70">
             {clauses.length > 1 && <span className="text-ink/30">· </span>}
-            {clauseSentence(clause, ctx, rule.scope)}
+            <Sentence text={clauseSentence(clause, ctx, rule.scope)} />
           </li>
         ))}
       </ul>
