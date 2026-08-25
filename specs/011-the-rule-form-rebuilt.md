@@ -402,6 +402,12 @@ turns the pointer into the numbers it pointed at. On prod that is the
 `rule-daily-goal` created six commits ago, whose single condition becomes seven
 per-day requirements: 3h Mon–Wed, 1h30 Thu, 3h Fri–Sun.
 
+**Run on dev and on prod.** The field may now be deleted — but the reader's
+fallback in `boundsOnWeekday` should come out only once the column has been
+checked empty in both, because a condition that slipped through falls to
+`min: 0`, which every day clears: the rule would stop judging and its red days
+would turn green without anything appearing to have changed.
+
 ---
 
 # Part 4 — Weights on the ring

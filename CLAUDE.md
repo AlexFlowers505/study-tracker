@@ -9,9 +9,9 @@ would leak into every other project on the machine.
 
 ## Work in progress
 
-**`specs/011-the-rule-form-rebuilt.md` is done, except for `migrations/019`,
-which has not been run anywhere.** Read its Status block before touching
-rules, checks, the daily goal or the ring. Highlights: a condition names
+**`specs/011-the-rule-form-rebuilt.md` is done, and `migrations/019` has now
+run on dev and on prod.** Read its Status block before touching rules,
+checks, the daily goal or the ring. Highlights: a condition names
 several counters and can take a floor and a ceiling at once and a different
 figure on each weekday; a named slot can carry its own figure on top of the
 day's; checks have three answers and nothing is inferred for an unanswered
@@ -26,10 +26,17 @@ of it. Its Decisions section is the reasoning, and two of them have since been
 reversed by `spec 011` — read both before changing anything about streaks,
 freezes, the goal or how a day is coloured.
 
-**Migrations `014`–`019` are written; `019` has been run nowhere.** It is the
-one that rewrites a condition still pointing at the daily goal into the seven
-figures it was pointing at. Nothing breaks until it runs — `boundsOnWeekday`
-keeps a branch for exactly that — but the field cannot go until it has.
+**Migrations `014`–`019` are written and every one of them has run on both
+databases.** `019` was the last outstanding: it rewrites a condition still
+pointing at the daily goal into the seven figures it was pointing at.
+
+`boundsOnWeekday` **keeps its `useDailyGoal` branch anyway**, and should keep
+it until someone has checked the column is empty in both projects. The
+migration is what made removal safe, not what makes it done: a condition that
+slipped through and fell to the default `min: 0` would be cleared by every
+day, so a rule would quietly stop judging and its red days would turn
+green — a silent loosening, which is the one failure this codebase is built
+to refuse.
 
 ## Commands
 
