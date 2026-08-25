@@ -28,7 +28,7 @@ import { Heatmap } from './Heatmap'
 import { SECTION_HEADING } from '../lib/theme'
 import { MonthGrid } from './MonthGrid'
 import { NoteCard } from './NoteCard'
-import { CounterControls, CounterGroupList } from './CounterTotals'
+import { CounterGroupList, CounterMenu } from './CounterTotals'
 import type { DayReport } from '../lib/dayVerdict'
 import { periodCounterGroups } from '../lib/periodCounters'
 import type { CounterGrouping } from '../lib/periodCounters'
@@ -330,58 +330,63 @@ export function LogView({
         />
       )}
 
-      {counterGroups.length > 0 && (
-        <div className="mb-4">
-          {/* The switches ride on the heading's line, hard right. They say
-              what you are looking at; the box below is what you are looking
-              at, and stacked together inside it the switches read as the
-              first row of the data. `min-w-0` on the heading so a long one
-              shrinks rather than pushing them off the edge. */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
-            <h3 className={`${SECTION_HEADING} min-w-0`}>Counters</h3>
-            <CounterControls
-              className="ml-auto"
-              groups={counterGroups}
-              grouping={grouping}
-              onGrouping={regroup}
-              hidden={hidden}
-              onToggle={toggleGroup}
-              onSetAll={(hideAll) =>
-                setHiddenGroups(
-                  hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
-                )
-              }
-            />
-          </div>
-          {allHidden ? (
-            /* A line rather than nothing, and no surface under it: an empty
-               box is a thing that failed to load, where a sentence is a state
-               you put it in. It carries no background for the same reason —
-               there is nothing here to hold. */
-            <p className="text-[10px] font-mono uppercase tracking-widest text-ink/30">
-              All counters hidden
-            </p>
-          ) : (
-            /* A surface of its own, and a **recessed** one: recessed rather
-               than raised because the streak row above it is raised, and this
-               is the period's reference rather than the thing you came to
-               protect. */
-            <div className="rounded-2xl bg-ink/[0.04] px-3 py-3 sm:px-4">
-              <CounterGroupList
-                groups={counterGroups.filter((g) => !hidden.has(g.id))}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {sleepSection}
 
-      {/* The days themselves. It needed a name once Counters had one — two
-          unlabelled blocks under one heading read as one block with a gap in
-          it. "Days" rather than "Calendar" because it has to be true in every
-          period: one day, seven of them, a month of them, a year of them. */}
-      <h3 className={`${SECTION_HEADING} mb-2`}>Days</h3>
+      {/* **`Days` is one section, and the counters are its first block.**
+
+          They were a section of their own, which made them a peer of the log
+          and gave them a heading at the same weight — and a heading is a
+          promise that what follows is a different subject. It is not: the
+          totals are what the period's days came to, read across instead of
+          down, and every figure in them comes from the cards below. Two
+          headings said two subjects where there is one.
+
+          The switches move to the far right of this line for the same reason
+          they were on the old heading's: they say what you are looking at,
+          where the block below is what you are looking at. What changed is
+          that they are now behind one small trigger — a dozen group names and
+          two segmented pills is a control the width of the page, permanently,
+          for a question most mornings do not ask. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
+        <h3 className={`${SECTION_HEADING} min-w-0`}>Days</h3>
+        {counterGroups.length > 0 && (
+          <CounterMenu
+            className="ml-auto"
+            groups={counterGroups}
+            grouping={grouping}
+            onGrouping={regroup}
+            hidden={hidden}
+            onToggle={toggleGroup}
+            onSetAll={(hideAll) =>
+              setHiddenGroups(
+                hideAll ? new Set(counterGroups.map((g) => g.id)) : new Set(),
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* **Absent when everything is folded, not an empty box saying so.**
+
+          It used to print `All counters hidden`, which earned its place while
+          this was a section: a section that vanishes leaves a hole, and a hole
+          in a page reads as something that failed to load. A block inside a
+          section has no such problem — the days follow immediately, nothing
+          looks broken, and the trigger on the heading is where you go to bring
+          it back. The state is not lost, it is just not shouted.
+
+          Recessed rather than raised: the cards below it are raised, and this
+          is the period's reference rather than the thing you came to read. */}
+      {counterGroups.length > 0 && !allHidden && (
+        <div className="rounded-2xl bg-ink/[0.04] px-3 py-3 sm:px-4 mb-3">
+          <h4 className="text-[9px] font-mono uppercase tracking-widest text-ink/40 mb-2">
+            Counters total
+          </h4>
+          <CounterGroupList
+            groups={counterGroups.filter((g) => !hidden.has(g.id))}
+          />
+        </div>
+      )}
 
       {granularity === "month" && (
         <MonthGrid

@@ -26,7 +26,7 @@
    of them.
 --------------------------------------------------------------- */
 
-import { Flame } from "lucide-react"
+import { ChevronDown, Flame } from "lucide-react"
 import type { KeptWeeks, WeekMark } from "../lib/dayVerdict"
 import { fromKey, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
@@ -134,13 +134,18 @@ export function KeptCard({
     (w) => w.state === "kept" || w.state === "frozen",
   ).length
 
+  /* **The chevron is the only thing saying this opens.** A raised card with a
+     hover lift is a card; the row of streaks under it carries the same
+     chevron and opens the same way, so one glyph teaches both. It turns
+     rather than swapping, because what is behind it is the same panel either
+     way — a different icon would claim a different destination. */
   const body = (
     /* `@container`, not a breakpoint: this sits at the full width of the page
        on a phone and inside a column on a desktop, and what decides whether
        the two scales share a line is the room here, not the size of the
        window. */
-    <div className="@container w-full">
-      <div className="flex flex-col @sm:flex-row @sm:items-center gap-2 @sm:gap-0">
+    <div className="flex items-center gap-2 w-full">
+      <div className="@container flex-1 min-w-0 flex flex-col @sm:flex-row @sm:items-center gap-2 @sm:gap-0">
         {/* Days. The figure is the loudest thing in the row because it is the
             one being guarded. */}
         <div className="flex items-baseline gap-2 @sm:pr-4 min-w-0">
@@ -201,6 +206,19 @@ export function KeptCard({
           </div>
         </div>
       </div>
+
+      {/* Outside the two scales rather than a third one: stacked on a phone a
+          chevron inside them would drop to a line of its own, where it reads
+          as something the weeks row does. */}
+      {onOpen && (
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className={`shrink-0 text-ink/30 transition-transform duration-150 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      )}
     </div>
   )
 

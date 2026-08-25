@@ -185,6 +185,69 @@ function RiskBlock({
   )
 }
 
+/**
+ * The row's own view of a rule. Shared, so the alarms above the composite and
+ * the row below it can never disagree about a figure.
+ */
+const entriesFrom = (statuses: RuleStatus[]): Entry[] =>
+  statuses.map((s) => ({
+    id: s.rule.id,
+    tint: s.rule.color,
+    icon: s.rule.iconName,
+    label: s.rule.label,
+    days: s.current,
+    weekly: s.freezes.weeklyLeft,
+    banked: s.freezes.banked,
+    tip: `${plural(s.current, s.rule.scope === "week" ? "week" : "day")} in a row · ${s.freezes.weeklyLeft} of ${s.freezes.weeklyTotal} left this week · ${plural(s.freezes.banked, "freeze")} banked`,
+  }))
+
+/**
+ * **The alarms, and they sit above the composite rather than under it.**
+ *
+ * They were part of `StreakBar`, which put them below the card — so the page
+ * opened with the run you are guarding, then the thing threatening it, in that
+ * order. That is the wrong way round for something you can still act on: a
+ * warning under the number it is about reads as a footnote to it, and a
+ * footnote is something you finish reading rather than something you do.
+ *
+ * Split out rather than reordered inside one component, because the composite
+ * card belongs to neither half and had to go between them.
+ */
+export function StreakAlarms({
+  statuses,
+  risks,
+  active,
+  onSelect,
+}: {
+  statuses: RuleStatus[]
+  risks: StreakRisk[]
+  active: StreakId
+  onSelect: (id: StreakId) => void
+}) {
+  const entries = entriesFrom(statuses)
+  const byId = new Map(entries.map((e) => [e.id, e]))
+  // Sorted by danger, never by the order they were created in.
+  const troubled = risks
+    .filter((r) => r.level !== "safe" && byId.has(r.id))
+    .slice()
+    .sort(byRisk)
+  if (!troubled.length) return null
+
+  return (
+    <div className="space-y-1.5 mb-1.5">
+      {troubled.map((risk) => (
+        <RiskBlock
+          key={risk.id}
+          entry={byId.get(risk.id) as Entry}
+          risk={risk}
+          active={active === risk.id}
+          onClick={() => onSelect(active === risk.id ? null : risk.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function StreakBar({
   statuses,
   balance,
@@ -211,18 +274,7 @@ export function StreakBar({
   // reload, like the counter folds and the entry comments.
   const [open, setOpen] = useState(false)
 
-  const entries: Entry[] = [
-    ...statuses.map((s) => ({
-      id: s.rule.id,
-      tint: s.rule.color,
-      icon: s.rule.iconName,
-      label: s.rule.label,
-      days: s.current,
-      weekly: s.freezes.weeklyLeft,
-      banked: s.freezes.banked,
-      tip: `${plural(s.current, s.rule.scope === "week" ? "week" : "day")} in a row · ${s.freezes.weeklyLeft} of ${s.freezes.weeklyTotal} left this week · ${plural(s.freezes.banked, "freeze")} banked`,
-    })),
-  ]
+  const entries = entriesFrom(statuses)
   if (!entries.length) return null
 
   const byId = new Map(entries.map((e) => [e.id, e]))
@@ -235,17 +287,6 @@ export function StreakBar({
 
   return (
     <div className="space-y-1.5">
-      {/* Sorted by danger, never by the order they were created in. */}
-      {troubled.map((risk) => (
-        <RiskBlock
-          key={risk.id}
-          entry={byId.get(risk.id) as Entry}
-          risk={risk}
-          active={active === risk.id}
-          onClick={() => pick(risk.id)}
-        />
-      ))}
-
       {open ? (
         // Scrolls rather than wraps: the row keeps one line at any width, and
         // the padding is inside the scroll box because the buttons' own ring

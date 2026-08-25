@@ -77,7 +77,7 @@ import {
   opProject,
 } from "./data/ops"
 import { CountFilter } from "./views/CountFilter"
-import { StreakBar } from "./views/StreakBar"
+import { StreakAlarms, StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { KeptCard } from "./views/KeptCard"
@@ -1047,6 +1047,19 @@ export default function StudyTrackerApp() {
           onToggleHistory={() => setShowHistory((v) => !v)}
           showShop={showShop}
           onToggleShop={() => setShowShop((v) => !v)}
+        />
+
+        {/* **What is on fire comes first.** The alarms used to sit under
+            the composite, so the page opened with the run you are guarding and
+            then, below it, the thing threatening it. That is backwards for
+            something you can still act on: a warning under the number it is
+            about reads as a footnote to it, and a footnote is something you
+            finish reading rather than something you do. */}
+        <StreakAlarms
+          statuses={ruleStatuses}
+          risks={streakRisks}
+          active={openStreak}
+          onSelect={setOpenStreak}
         />
 
         {/* **The composite above the rules that compose it.** It used to be a

@@ -32,7 +32,9 @@
 --------------------------------------------------------------- */
 
 import type { CounterChip, CounterGroup, CounterGrouping } from "../lib/periodCounters"
+import { ChevronDown, Hash } from "lucide-react"
 import { btnBase } from "../lib/theme"
+import { PopoverMenu } from "../ui/PopoverMenu"
 import { RenderIcon } from "../ui/icons"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { Tip } from "../ui/Tip"
@@ -110,6 +112,73 @@ export function CounterGroupList({
  * How the counters are arranged and which of them are showing — the section's
  * settings, drawn on the section's heading line.
  */
+/**
+ * **The same switches, behind one trigger.**
+ *
+ * Laid out flat they are two segmented pills and one name per group — on a
+ * project with a dozen groups that is a control the width of the page, sitting
+ * on the heading permanently to answer a question most mornings do not ask.
+ * The trigger states the answer instead (`6 of 9`, or `Counters` when nothing
+ * is shown), which is all the line needs to carry, and the switches are one
+ * tap away.
+ *
+ * `PopoverMenu` rather than a hand-rolled panel: it portals to the body, so
+ * the month grid and the modal shell cannot clip it, and it flips above the
+ * trigger where there is no room below — this sits at the top of a long log,
+ * so "below" is usually fine, but the last period of a short one is not.
+ */
+export function CounterMenu({
+  groups,
+  grouping,
+  onGrouping,
+  hidden,
+  onToggle,
+  onSetAll,
+  className = "",
+}: {
+  groups: CounterGroup[]
+  grouping: CounterGrouping
+  onGrouping: (next: CounterGrouping) => void
+  hidden: Set<string>
+  onToggle: (id: string) => void
+  onSetAll: (hideAll: boolean) => void
+  className?: string
+}) {
+  if (!groups.length) return null
+  const shown = groups.filter((g) => !hidden.has(g.id))
+  const chips = shown.reduce((n, g) => n + g.chips.length, 0)
+  const all = groups.reduce((n, g) => n + g.chips.length, 0)
+
+  return (
+    <PopoverMenu
+      width={280}
+      wrapClassName={className}
+      label="Which counters this period shows"
+      trigger={
+        <span className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest">
+          <Hash size={11} className="text-ink/35" />
+          <span className={shown.length ? "text-ink/60" : "text-ink/35"}>
+            {shown.length ? `${chips} of ${all}` : "Counters"}
+          </span>
+          <ChevronDown size={11} className="text-ink/35" />
+        </span>
+      }
+      triggerClassName={`${btnBase} px-2 py-1 rounded-full bg-ink/[0.04] hover:bg-ink/[0.09]`}
+    >
+      <div className="p-1">
+        <CounterControls
+          groups={groups}
+          grouping={grouping}
+          onGrouping={onGrouping}
+          hidden={hidden}
+          onToggle={onToggle}
+          onSetAll={onSetAll}
+        />
+      </div>
+    </PopoverMenu>
+  )
+}
+
 export function CounterControls({
   groups,
   grouping,
