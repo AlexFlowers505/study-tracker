@@ -780,6 +780,43 @@ looking. A chip now means *this was answered, and here is the answer*; an
 unanswered one is added through the "+" like everything else, and the reminder
 to answer it is a streak rule's job.
 
+## The words
+
+Four things, and they are not interchangeable. Use these names in the code,
+in the interface and when talking about it, because the feature is now large
+enough that a loose word costs a conversation.
+
+| word | what it is | where |
+| --- | --- | --- |
+| **rule** | one promise you wrote — *no youtube in the evening* | `StreakRule`, Setup's Streaks tab |
+| **condition** | one clause of a rule; all of them must hold | `StreakClause` |
+| **a rule's streak** | that one promise's own run of days or weeks | `ruleStatus`, the chips in `StreakBar` |
+| **the composite** | the run of days on which *every voting rule* held | `keptDays`, `KeptCard` |
+
+**"Streak" is still the word**, and it belongs to a rule. What it no longer
+means on its own is "the app's streak" — there is no hard-coded promise left
+to own that, which is the whole of `spec 010`.
+
+**The composite has two scales and one verb.** `days kept` and `weeks kept`
+(`keptDays`, `keptWeeks` in `lib/dayVerdict.ts`), where a week is kept when
+every judged day in it held up — the day's own rule at a larger size, and
+nothing else. Not "perfect weeks": two words for one idea is how a design
+ends up with a vocabulary nobody can keep straight.
+
+The second scale exists because **a run of days has exactly one point of
+loss**. Twenty goes to nought, and while it is short there is almost nothing
+there to protect — so the first week of a new rule is the week you are least
+invested in and the likeliest to drop, which is precisely backwards. A
+week-sized unit fixes it from the other end: a bad Tuesday costs the week
+rather than everything, and on Monday there is always something to start
+accumulating again.
+
+`KeptCard` sits **above** `StreakBar`, always, and is not part of it. It was
+a figure on the collapsed streaks line for a while, which meant the number the
+whole design exists to make you afraid of losing disappeared the moment that
+row was opened and again whenever every streak was in trouble — the two
+moments anybody is looking.
+
 ## Custom streaks
 
 Streaks of your own making — `spec 009`, part 2. `lib/customStreaks.ts` holds
