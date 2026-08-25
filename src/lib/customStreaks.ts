@@ -163,7 +163,15 @@ export const boundsOnWeekday = (
     return { min: clause.min, max: clause.max }
   // Written before the pair existed: one bound, whichever the operator named.
   if (clause.op === "atMost") return { max: clause.value ?? 0 }
-  return { min: clause.value ?? 0 }
+  if (clause.op === "atLeast" || clause.value !== undefined)
+    return { min: clause.value ?? 0 }
+  /* **Nothing asked reads as nothing**, not as `min: 0`.
+     That last line used to be `return { min: clause.value ?? 0 }`, which
+     invented a floor of nought for a condition carrying no bound and no
+     operator at all — the very failure the comment above warns about, written
+     into the fallback itself. It made a bound-less condition look constrained
+     to anything checking, so `clauseAsksNothing` could not see it. */
+  return {}
 }
 
 /**
@@ -350,11 +358,19 @@ interface Labelish {
 export function targetsLabel(
   targets: StreakTarget[],
   ctx: StreakContext,
+  /**
+   * `or` for a count — the condition adds them up, so any of them can supply
+   * the number. `and` where each one is asserted separately, which is what
+   * a set of checks against an accepted answer is. Getting this backwards
+   * describes a promise nobody made.
+   */
+  join: "or" | "and" = "or",
 ): string {
   const names = targets.map((target) => targetInfo(target, ctx).qualified)
   if (names.length === 1) return names[0]
-  if (names.length > 3) return `any of ${names.length} things`
-  return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`
+  if (names.length > 3)
+    return `${join === "and" ? "all" : "any"} of ${names.length} things`
+  return `${names.slice(0, -1).join(", ")} ${join} ${names.at(-1)}`
 }
 
 /**
@@ -610,24 +626,45 @@ export function readClauseDay(
      two of these three" is a count, and opting out of one while meeting the
      number is not an escape from anything. So several checks fall through to
      the ordinary count below, where a `yes` is the one it already stores. */
-  if (targets.length === 1 && info.check) {
-    const state = checkState(day, targets[0].id || "")
-
+  if (info.check) {
     /* **The day names which answers it will take.** A check is not a number,
        so a floor and a ceiling say nothing useful about one; what a day asks
        is which of the three answers is acceptable today. An unanswered check
        satisfies nothing — that is the reminder, and a weekday you did not want
-       to be asked about is one you left out of the map. */
+       to be asked about is one you left out of the map.
+
+       **Every named check is judged, not just the first.** This used to be
+       gated on there being exactly one, on the reasoning that several checks
+       are a count — "at least two of these three". That reading is still here,
+       below, for a condition carrying a floor or a ceiling. But the form draws
+       the answers grid the moment the *first* target is a check, whatever the
+       rest are, and writing in it clears the bounds; so a condition naming two
+       checks was drawn as an assertion, stored as one, and then read as a
+       count with no bounds left to compare against. `deficitOf` with neither
+       bound is nought, so the condition judged nothing and every day passed —
+       unanswered, answered `no`, answered anything.
+
+       Judged separately and the deficits added, for the reason every other
+       compound thing here adds: two promises broken on one day cost two, and
+       a freeze covering both for the price of one would make the second
+       free. */
     const allowed = clause.allow?.[fromKey(dayKey).getDay()]
     if (allowed) {
-      const ok = !!state && allowed.includes(state)
-      return {
-        ...base,
-        value: state === "yes" ? 1 : 0,
-        deficit: ok ? 0 : 1,
-        skipped: state === "skip",
+      let deficit = 0
+      let yeses = 0
+      let skipped = false
+      for (const target of targets) {
+        const state = checkState(day, target.id || "")
+        if (state === "yes") yeses += 1
+        if (state === "skip") skipped = true
+        if (!state || !allowed.includes(state)) deficit += 1
       }
+      return { ...base, value: yeses, deficit, skipped }
     }
+  }
+
+  if (targets.length === 1 && info.check) {
+    const state = checkState(day, targets[0].id || "")
 
     /* Written before that existed: a floor of one means yes, a ceiling of
        nothing means no, and a skip is a miss you chose rather than suffered.
@@ -1387,6 +1424,18 @@ export function clauseSentence(
       ? ` on ${listDays(clause.weekdays)}`
       : ""
 
+  /* A set of checks against accepted answers reads as an assertion about
+     each — `and`, not `or` — and that is exactly how `readClauseDay` judges
+     them. A check condition carrying a floor or a ceiling instead is a count,
+     and falls through to the ordinary path below. */
+  if (info.check && clause.allow && targets.length > 1) {
+    const answers = clause.allow[clauseWeekdays(clause)[0]] ?? []
+    const said = answers.length
+      ? answers.map((a) => CHECK_LABELS[a].toLowerCase()).join(" or ")
+      : "nothing"
+    return `${targetsLabel(targets, ctx, "and")} must each be ${said}${when}`
+  }
+
   // Only a lone check reads as an answer; several of them are a count, which
   // is exactly how `readClauseDay` treats them.
   if (targets.length === 1 && info.check) {
@@ -1462,7 +1511,14 @@ export function clauseSentence(
       ? `between ${amount(b.min)} and ${amount(b.max)}`
       : b.max !== undefined
         ? `at most ${amount(b.max)}`
-        : `at least ${amount(b.min ?? 0)}`
+        : b.min !== undefined
+          ? `at least ${amount(b.min)}`
+          : /* A condition with neither bound is satisfied by every day there
+               has ever been. `at least 0 times` said that in words nobody
+               reads as a warning; this says it as one. New ones are refused
+               at the door (`clauseAsksNothing`), so this is for the ones
+               already stored. */
+            "asked for nothing — this condition judges nothing" 
 
   /* Per-day numbers are grouped by what they ask for, so "3h on Mon, Tue,
      Wed, Fri, Sat, Sun and 1h 30m on Thu" reads as two requirements rather
@@ -1699,6 +1755,52 @@ export function isNarrowing(
   })
 }
 
+/**
+ * **Does this condition ask anything at all?**
+ *
+ * A condition with no floor, no ceiling and no accepted answer is satisfied by
+ * every day there has ever been. It is not an error the arithmetic can see —
+ * `deficitOf` with neither bound is nought, correctly — but a rule containing
+ * one has quietly stopped being a rule, and its red days turn green without
+ * anything appearing to have changed. That is the one failure this codebase is
+ * built to refuse, so it is refused at the door instead of being read
+ * charitably later.
+ *
+ * Reachable two ways, both of them ordinary: clearing both bounds with the
+ * crosses beside them, and — before the reader was fixed — writing accepted
+ * answers into a condition naming several checks, which cleared the bounds and
+ * then went unread.
+ */
+export const clauseAsksNothing = (
+  clause: StreakClause,
+  ctx: StreakContext,
+): boolean => {
+  // No weekday judged is the same nothing said a different way: an `allow` map
+  // emptied on every day, or a `days` map with no entries left in it.
+  const days = clauseWeekdays(clause)
+  if (!days.length) return true
+
+  const info = targetInfo(clauseTarget(clause), ctx)
+  if (info.check) {
+    if (clause.states)
+      return !CHECK_CHOICES.some((answer) => {
+        const bound = clause.states?.[answer]
+        return !!bound && (bound.min !== undefined || bound.max !== undefined)
+      })
+    // A weekday is in `days` only when it accepts an answer, so an `allow` map
+    // that survived the check above is asking for something.
+    if (clause.allow) return false
+  }
+
+  return !days.some((weekday) => {
+    const bounds = boundsOnWeekday(clause, ctx, weekday)
+    if (bounds.min !== undefined || bounds.max !== undefined) return true
+    return Object.values(slotBoundsOnWeekday(clause, weekday)).some(
+      (b) => b.min !== undefined || b.max !== undefined,
+    )
+  })
+}
+
 export interface RuleEdit {
   /** Do the terms differ at all? A cosmetic edit is never blocked. */
   changed: boolean
@@ -1720,6 +1822,12 @@ export interface RuleEdit {
    * the wrong thing.
    */
   needsReason: boolean
+  /**
+   * A condition that asks nothing, named. Refused whatever the clock says and
+   * whatever the rule was before — this is not a loosening to be rationed, it
+   * is a rule that would stop judging.
+   */
+  asksNothing: string | null
   allowed: boolean
   /** The rule as it should be stored, with the clock moved if it had to be. */
   next: StreakRule
@@ -1765,7 +1873,24 @@ export function ruleEdit(
     settingUp,
     needsReason: false,
     needsApproval: false,
+    asksNothing: null,
   }
+
+  /* **Before every other gate, including the day it was written.** The lock
+     rations loosenings; this is not one. A condition that asks nothing makes
+     the rule pass every day there has ever been, and no amount of clock or
+     explanation makes that a promise. */
+  const empty = ruleClauses(draft).find((clause) =>
+    clauseAsksNothing(clause, ctx),
+  )
+  if (empty)
+    return {
+      ...base,
+      asksNothing: targetsLabel(clauseTargets(empty), ctx),
+      allowed: false,
+      next: prev,
+    }
+
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing) return { ...base, allowed: true, next: draft }
   if (settingUp) return { ...base, allowed: true, next: draft }

@@ -2080,18 +2080,32 @@ function RuleForm({
           {edit.needsApproval ? "Send for approval" : "Done"}
         </button>
 
-        {!edit.changed && (
+        {!edit.changed && !edit.asksNothing && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/40">
             No change to the terms.
           </span>
         )}
-        {edit.changed && edit.settingUp && (
+        {/* **Ahead of every other verdict, because it outranks them.** The
+            rest of these say what the lock decided; this one says the rule
+            would stop being a rule, which no clock and no explanation can
+            make acceptable. */}
+        {edit.asksNothing && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: c.exam }}
+          >
+            <TriangleAlert size={11} />
+            {edit.asksNothing} is asked for nothing — give it a floor, a
+            ceiling or an answer, or drop the condition.
+          </span>
+        )}
+        {edit.changed && edit.settingUp && !edit.asksNothing && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
             <ShieldCheck size={11} />
             Today is yours to get this right on.
           </span>
         )}
-        {edit.changed && !edit.settingUp && edit.narrowing && (
+        {edit.changed && !edit.settingUp && edit.narrowing && !edit.asksNothing && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
             <ShieldCheck size={11} />
             This only narrows the rule.
@@ -2122,7 +2136,7 @@ function RuleForm({
             Say why first. It goes on the record, not into a log that can fail.
           </span>
         )}
-        {!edit.allowed && !edit.needsReason && edit.changed && (
+        {!edit.allowed && !edit.needsReason && edit.changed && !edit.asksNothing && (
           <span
             className="flex items-center gap-1 text-[10px] font-mono"
             style={{ color: c.exam }}
