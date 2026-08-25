@@ -29,6 +29,18 @@
    **It opens.** Clicking it shows the day rule by rule — what each asked for
    and what it got. On a kept day that is the thing worth looking at, which is
    half the reason to keep one.
+
+   **Today is drawn as provisional, never as kept.** A rule like *no YouTube
+   after six* is satisfied at nine in the morning by having done nothing yet,
+   and drawing that as a closed green ring congratulates you for a day you have
+   not lived. So while the day is still running, a held arc is the kept colour
+   turned down and the centre figure stays neutral: the ring says *so far*,
+   which is the only thing anybody can honestly say before midnight.
+
+   It is a **drawing** and nothing else — the verdict, the streak and the
+   balance are untouched. Making today genuinely unjudged would drop the
+   headline number by one every morning and restore it at midnight, which is a
+   worse lie than the one it fixes.
 --------------------------------------------------------------- */
 
 import type { RuleState } from "../lib/customStreaks"
@@ -57,10 +69,13 @@ const MISS_FLOOR = 0.12
 export function VerdictRing({
   report,
   size = 40,
+  provisional = false,
 }: {
   report: DayReport
   /** The outer box. The stroke scales with it, not the other way round. */
   size?: number
+  /** The day is still running, so nothing it holds is settled. */
+  provisional?: boolean
 }) {
   const c = usePalette()
   const n = report.judged
@@ -104,21 +119,25 @@ export function VerdictRing({
 
   // The centre figure carries the verdict, not the count of what held: a day
   // at four of five is a missed day, and printing "4" in the kept colour would
-  // be the drawing quietly disagreeing with the ledger.
+  // be the drawing quietly disagreeing with the ledger. A miss is a miss even
+  // today — nothing undoes it — so only the *kept* reading waits for midnight.
   const centre =
     report.state === "missed"
       ? c.exam
       : report.state === "frozen"
         ? c.freeze
-        : report.state === "kept"
+        : report.state === "kept" && !provisional
           ? c.goalMet
           : `${c.ink}55`
 
   const missed = report.readings.filter((x) => x.state === "missed")
   const frozen = report.readings.filter((x) => x.state === "frozen")
+  // Said in words as well as drawn, since a screen reader gets the label and
+  // not the opacity.
+  const sofar = provisional ? " so far — the day is not over" : ""
   const tip =
     report.state === "kept"
-      ? `All ${n} kept`
+      ? `All ${n} kept${sofar}`
       : [
           missed.length
             ? `Missed: ${missed.map((x) => x.rule.label).join(", ")}`
@@ -126,7 +145,7 @@ export function VerdictRing({
           frozen.length
             ? `Frozen: ${frozen.map((x) => x.rule.label).join(", ")}`
             : "",
-          `${report.kept} of ${n} kept`,
+          `${report.kept} of ${n} kept${sofar}`,
         ]
           .filter(Boolean)
           .join(String.fromCharCode(10))
@@ -166,6 +185,12 @@ export function VerdictRing({
                 cy={size / 2}
                 r={r}
                 stroke={colourFor(reading.state)}
+                /* Turned down while the day can still turn. Only what is
+                   *held* is provisional: a miss cannot be un-missed by the
+                   afternoon, and a freeze is already spent. */
+                strokeOpacity={
+                  provisional && reading.state === "met" ? 0.45 : 1
+                }
                 strokeDasharray={`${arc} ${circumference - arc}`}
                 strokeDashoffset={-(start + gap / 2)}
               />

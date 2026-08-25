@@ -1723,7 +1723,12 @@ export function ruleEdit(
   // left with is the one the app guessed. Nothing here is at risk: the rule
   // has judged nothing yet, so there is no verdict a kinder version could
   // rescue.
-  const settingUp = todayKey === prev.startedOn
+  /* **A rule that has judged nothing is still being set up**, which is what
+     this always meant — `=== startedOn` was only ever a way of saying "today
+     is its first day". Once a rule can be told to start tomorrow, that
+     spelling stops matching the idea: such a rule has no verdict a kinder
+     version could rescue, so nothing is at risk and nothing needs a lock. */
+  const settingUp = todayKey <= prev.startedOn
   const base = {
     changed,
     narrowing,

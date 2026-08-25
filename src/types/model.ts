@@ -464,6 +464,18 @@ export interface StreakClause {
    * A state left out is unconstrained, which is what "skipped: any" means.
    */
   states?: Partial<Record<CheckState, { min?: number; max?: number }>>
+  /**
+   * A note on this condition — why it is here, in your own words.
+   *
+   * The rule already carries one, and with several conditions that is the
+   * wrong grain: *no YouTube in the evening* and *two hours of lessons* are
+   * one promise for two different reasons, and a single note has to be about
+   * neither of them to be about both.
+   *
+   * Not a term. Nothing the lock protects, because nothing here changes what
+   * a day is worth.
+   */
+  note?: string
   /** Slotted targets only. Empty means the whole day. */
   slotIds?: string[]
   /**

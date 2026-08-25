@@ -120,6 +120,14 @@ export function StreakStrip({
             )
 
           const tint = tintFor(cell.state)
+          /* **A freezable day says so at rest.**
+
+             It used to differ from its neighbours only by `hover:brightness`,
+             which is no affordance at all: you had to already know that some
+             of these cells do something in order to go looking for the one
+             that does. An inset hairline in the freeze colour is the cheapest
+             mark that survives being 26 pixels tall, and it uses the colour
+             that already means "freeze" everywhere else in the app. */
           const body = (
             <div
               className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg"
@@ -127,6 +135,9 @@ export function StreakStrip({
                 backgroundColor: tint ? `${tint}24` : `${c.ink}0A`,
                 color: tint || `${c.ink}55`,
                 minHeight: roomy ? 40 : 26,
+                ...(cell.freeze
+                  ? { boxShadow: `inset 0 0 0 1.5px ${c.freeze}80` }
+                  : {}),
               }}
             >
               <span
@@ -161,7 +172,7 @@ export function StreakStrip({
                 width={210}
                 label={cell.tooltip}
                 wrapClassName="flex-1 min-w-0 flex"
-                triggerClassName={`${btnBase} flex w-full rounded-lg hover:brightness-110`}
+                triggerClassName={`${btnBase} flex w-full rounded-lg cursor-pointer hover:brightness-110`}
                 trigger={body}
               >
                 {(close) => (

@@ -290,7 +290,11 @@ function FullDayCard({
                 a sixth button. Beside the date it reads as what it is — the
                 day, and how the day went — and it lands the same way on a
                 compact card as on a wide one, which the corner did not. */}
-            <VerdictRing report={verdict} size={big ? 34 : 22} />
+            <VerdictRing
+              report={verdict}
+              size={big ? 34 : 22}
+              provisional={isToday}
+            />
             {onExpand && (
               <Tip text="Open this day in a larger view">
                 <button

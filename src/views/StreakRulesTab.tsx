@@ -74,7 +74,11 @@ import type {
   Tag,
 } from "../types/model"
 import { isCheck, splitByKind } from "../lib/checks"
-import type { ClauseBounds, StreakContext } from "../lib/customStreaks"
+import type {
+  ClauseBounds,
+  StreakContext,
+  StreakMeasure,
+} from "../lib/customStreaks"
 import type { RuleProposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
 import {
@@ -94,7 +98,14 @@ import {
   targetInfo,
   targetMeasure,
 } from "../lib/customStreaks"
-import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
+import {
+  WEEKDAY_LABELS,
+  WEEKDAY_ORDER,
+  addDays,
+  fmtDateLong,
+  startOfWeek,
+  toKey,
+} from "../lib/date"
 import { CHECK_CHOICES, CHECK_LABELS } from "../lib/checks"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
@@ -254,13 +265,60 @@ const PICK_LABEL: Record<PickKind, string> = {
 const SET_PICKS: PickKind[] = ["category", "tag"]
 
 /**
+ * When a new rule may begin: today, tomorrow, or the coming Monday.
+ *
+ * Forward only. A start date in the past is not a start — it is a claim about
+ * days the promise had not been made on, and `startedOn` exists precisely so a
+ * rule judges the days it was in force for.
+ *
+ * Monday rather than "next week" as a phrase, because the accounting period
+ * *is* the Monday-to-Sunday week: starting there is the only choice that gives
+ * the rule a whole first week to earn its first freeze in.
+ */
+function startChoices(today: Date): { id: string; label: string }[] {
+  const monday = startOfWeek(addDays(today, 7))
+  const out = [
+    { id: toKey(today), label: "Today" },
+    { id: toKey(addDays(today, 1)), label: "Tomorrow" },
+  ]
+  const mondayKey = toKey(monday)
+  if (!out.some((o) => o.id === mondayKey))
+    out.push({ id: mondayKey, label: "Monday" })
+  return out
+}
+
+/**
+ * What a fresh condition points at.
+ *
+ * The project's first activity, else its first tally, and only then all study
+ * time — which is the fallback for a project that has defined nothing at all,
+ * where there is genuinely nothing else to name. `All study time` is no longer
+ * offered, and a new rule landing on it was what kept it on the menu: the
+ * picker must show whatever a condition currently says, so seeding there put
+ * it back for everybody.
+ */
+function seedFor(ctx: StreakContext): {
+  target: StreakTarget
+  measure: StreakMeasure
+} {
+  const { tallies } = splitByKind(ctx.units)
+  if (ctx.activities.length)
+    return { target: { kind: "activity", id: ctx.activities[0].id }, measure: "time" }
+  if (tallies.length)
+    return { target: { kind: "unit", id: tallies[0].id }, measure: "count" }
+  return { target: { kind: "time" }, measure: "time" }
+}
+
+/**
  * Which counters inside a set are counted.
  *
- * `any` is the absence of `memberKind` and means every counter under the set.
- * It is a real answer rather than a legacy hole: a tally and a check both
- * measure occurrences, so adding them together is arithmetic that works. The
- * pair that genuinely cannot be added is time and occurrences, and `measure`
- * is what separates those.
+ * **Three, and no "any".** The arithmetic of adding tallies to checks works —
+ * a `yes` is stored as a count of one — and that was the argument for offering
+ * it. Arithmetic working is not the test. "Three slips and two days answered
+ * yes make five" is a number with no meaning behind it, and a set exists to
+ * say *which kind of thing* inside it this rule is about. `any` is still the
+ * shape of a condition written before the choice existed, so it reads; it is
+ * simply not offered.
  */
 type MemberPick = "activity" | "tally" | "check" | "any"
 
@@ -452,9 +510,8 @@ function CountersPicker({
           ]}
           chosen={chosen}
           onToggle={toggle}
-          onAll={() =>
-            onChange(options.map((o) => fieldsFor(pick, o.id)))
-          }
+          onAll={() => onChange(options.map((o) => fieldsFor(pick, o.id)))}
+          onNone={() => onChange([targets[0]])}
         />
       )}
 
@@ -471,9 +528,16 @@ function CountersPicker({
           <Pills<MemberPick>
             value={member}
             onChange={setMember}
-            options={(["activity", "tally", "check", "any"] as MemberPick[]).map(
-              (m) => ({ id: m, label: MEMBER_LABEL[m] }),
-            )}
+            options={(
+              [
+                "activity",
+                "tally",
+                "check",
+                // Offered only while it is what the condition already says, so
+                // an older rule reads as itself and cannot be returned to.
+                ...(member === "any" ? (["any"] as MemberPick[]) : []),
+              ] as MemberPick[]
+            ).map((m) => ({ id: m, label: MEMBER_LABEL[m] }))}
           />
         </div>
       )}
@@ -530,25 +594,43 @@ function PickChips({
   chosen,
   onToggle,
   onAll,
+  onNone,
 }: {
   items: { id: string; label: string; ghost: boolean }[]
   chosen: string[]
   onToggle: (id: string) => void
   onAll: () => void
+  /** Down to one, since a condition about nothing is not a condition. */
+  onNone: () => void
 }) {
   const c = usePalette()
   const allOn = items.every((i) => chosen.includes(i.id))
   return (
     <div className="flex flex-wrap items-center gap-1">
       {items.length > 1 && (
-        <button
-          type="button"
-          onClick={onAll}
-          disabled={allOn}
-          className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
-        >
-          All
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onAll}
+            disabled={allOn}
+            className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
+          >
+            All
+          </button>
+          {/* The way back. Taking all of forty and then clicking thirty-nine
+              of them off to keep one is not a way to choose one. It clears to
+              the first rather than to nothing, because a condition watching
+              nothing is not a condition — and starting from one is the state
+              you were heading for anyway. */}
+          <button
+            type="button"
+            onClick={onNone}
+            disabled={chosen.length <= 1}
+            className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
+          >
+            Clear
+          </button>
+        </>
       )}
       {items.map((item) => {
         const on = chosen.includes(item.id)
@@ -667,14 +749,32 @@ function ClauseForm({
             // Changing what is measured changes what the number means, so the
             // number goes back to its default for the new measure. "At most 0
             // minutes of lessons" is a legal sentence nobody has ever meant.
-            const same = measure === info.measure
             const seed = newClause(targets[0], measure)
+            /* **Every figure goes when the subject does.**
+
+               A number means nothing without the thing it counts: sixty is an
+               hour of lessons, sixty slips, or sixty days answered yes, and
+               carrying it across is how "at least 60 minutes" quietly became
+               "at least 60 times" — a freeze that cost fifty-nine.
+
+               Cleared unconditionally rather than only when the *measure*
+               changes. Two counts are the same measure and still not the same
+               question, and a stale figure is worse than a default. */
             onChange({
               targets,
-              // The old single field would otherwise go on being read by
-              // `clauseTargets` for any condition that never had a list.
+              // The old single fields would otherwise go on being read by
+              // `clauseTargets` and `boundsOnWeekday` for any condition that
+              // never had a list.
               target: undefined,
-              ...(same ? {} : { op: seed.op, value: seed.value }),
+              unitId: undefined,
+              op: undefined,
+              value: undefined,
+              min: seed.min,
+              max: seed.max,
+              days: undefined,
+              allow: undefined,
+              states: undefined,
+              slots: undefined,
             })
           }}
         />
@@ -775,6 +875,20 @@ function ClauseForm({
           <CheckDayFields clause={clause} onChange={onChange} />
         </Row>
       )}
+
+      {/* Why this condition is here. Its own rather than the rule's, since a
+          compound rule is one promise made for several reasons — and it is not
+          a term, so the lock never sees it. */}
+      <Row label="Note">
+        <AutoTextarea
+          value={clause.note ?? ""}
+          onChange={(e) => onChange({ note: e.target.value || undefined })}
+          placeholder="Why this condition is here"
+          rows={1}
+          maxHeight={100}
+          className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
+        />
+      </Row>
 
       {/* On top of where the day's own figure is counted, a named slot may
           carry a figure of its own. That is the promise the old model could
@@ -1549,7 +1663,7 @@ function RuleForm({
   // Held beside the draft rather than inside it: it explains the change, so it
   // has no meaning until there is one, and it is thrown away with Cancel.
   const [reason, setReason] = useState("")
-  const settingUp = toKey(today) === rule.startedOn
+  const settingUp = toKey(today) <= rule.startedOn
   const locked = !settingUp && toKey(today) < rule.lockedUntil
 
   // Normalised on both sides, so a rule being written through for the first
@@ -1663,7 +1777,13 @@ function RuleForm({
             type="button"
             onClick={() =>
               patch({
-                clauses: [...clauses, newClause({ kind: "time" }, "time")],
+                clauses: [
+                  ...clauses,
+                  (() => {
+                    const s = seedFor(ctx)
+                    return newClause(s.target, s.measure)
+                  })(),
+                ],
               })
             }
             className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono bg-ink/[0.06] text-ink/55 hover:text-ink hover:bg-ink/[0.10]`}
@@ -1674,6 +1794,37 @@ function RuleForm({
         </Tip>
       </Row>
       </Section>
+
+      {/* **When it starts judging.**
+
+          A rule you think of at nine in the evening, having already broken it
+          today, used to leave you two bad choices: create it now and lose the
+          day, or hold it in your head until morning. Neither is a decision
+          about the promise — they are both about the clock.
+
+          Only forward, and only three: today, tomorrow, the coming Monday. A
+          date in the past is not a start, it is a claim about days you did not
+          make the promise on, and the whole point of `startedOn` is that a
+          rule judges the days it was actually in force for.
+
+          It is offered while the rule is still being set up. After that the
+          rule has judged days, and moving its beginning would rewrite them. */}
+      {settingUp && (
+        <Section title="Starts">
+          <Row label="">
+            <Pills<string>
+              value={draft.startedOn}
+              onChange={(startedOn) =>
+                patch({ startedOn, inDayVerdictSince: startedOn, lockedUntil: startedOn })
+              }
+              options={startChoices(today)}
+            />
+          </Row>
+          <p className="text-[10px] font-mono text-ink/40">
+            Days before this are not judged by it — the streak begins here.
+          </p>
+        </Section>
+      )}
 
       <Section title="Freezes">
       {/* Not a term the lock protects: joining or leaving the day's verdict
@@ -1916,6 +2067,8 @@ export function StreakRulesTab({
     dailyGoals: settings.dailyGoals || {},
   }
 
+  const seed = seedFor(ctx)
+
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
@@ -1943,9 +2096,12 @@ export function StreakRulesTab({
         onChange={(streakRules) => onSave({ ...settings, streakRules })}
         noun="streak"
         minItems={0}
-        /* A new rule is about all study time: the one target every project
-           has, whether or not it has ever defined a counter. */
-        newItem={() => newStreakRule({ kind: "time" }, "time", today)}
+        /* Seeded from the project's own first activity rather than from all
+           study time. `All study time` is no longer offered, and a new rule
+           landing on it was the one thing keeping it on the menu — the picker
+           has to show whatever the condition currently says, so a fresh rule
+           starting there put it back for everybody. */
+        newItem={() => newStreakRule(seed.target, seed.measure, today)}
         warningNote={(label) =>
           `Remove "${label}"? Its streak goes with it, and so does every freeze banked against it. The days you marked stay exactly as they are.`
         }

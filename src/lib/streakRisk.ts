@@ -52,6 +52,7 @@ import {
   targetInfo,
 } from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey, weekDates } from "./date"
+import { checkState } from "./checks"
 import { fmtHours } from "./time"
 
 export type RiskLevel = "danger" | "warning" | "safe"
@@ -116,6 +117,7 @@ function runIfKept(
 function shortfall(
   readings: ClauseReading[],
   ctx: StreakContext,
+  days: Record<DayKey, Day>,
   dayKey: DayKey,
 ): string {
   return readings
@@ -124,16 +126,25 @@ function shortfall(
       const info = targetInfo(clauseTarget(r.clause), ctx)
       const fmt = (n: number) =>
         info.measure === "time" ? fmtHours(n) : String(n)
-      // The *resolved* bounds, never the stored fields. A condition reading
-      // the daily goal keeps a placeholder there, and printing it says "0m
-      // against at least 0m" about a day that was three hours short.
+      /* **A check reports the answer it has, not the bound it was compared
+         against.** It used to infer the answer from which bound was set —
+         which said "is not yes yet" whatever you had actually put, and said
+         nothing at all once a condition named its allowed answers instead of
+         a number. The reading already knows; ask it. */
+      if (info.check) {
+        const state = checkState(days[dayKey], clauseTarget(r.clause).id || "")
+        const said =
+          state === null
+            ? "has no answer yet"
+            : state === "yes"
+              ? "is yes"
+              : state === "no"
+                ? "is no"
+                : "is skipped"
+        return `${info.label} ${said}`
+      }
+      // The *resolved* bounds, never the stored fields.
       const { min, max } = clauseBounds(r.clause, ctx, dayKey)
-      if (info.check)
-        return r.skipped
-          ? `${info.label} is skipped`
-          : min !== undefined
-            ? `${info.label} is not yes yet`
-            : `${info.label} is already yes`
       // Only the broken half is worth naming. A condition with both bounds is
       // over one of them, and saying which is the whole job of this line.
       const over = max !== undefined && r.value > max
@@ -287,7 +298,7 @@ export function ruleRisk(
     return {
       id,
       level,
-      headline: shortfall(readings, ctx, todayKey) || "this week is short",
+      headline: shortfall(readings, ctx, days, todayKey) || "this week is short",
       detail:
         level === "danger"
           ? offer.ok
@@ -309,7 +320,7 @@ export function ruleRisk(
     return {
       id,
       level: "danger",
-      headline: `Yesterday — ${shortfall(readings, ctx, yesterdayKey)}`,
+      headline: `Yesterday — ${shortfall(readings, ctx, days, yesterdayKey)}`,
       detail: offer.ok
         ? `${freezes(offer.cost)} · keeps ${plural(restores, "day")} · ${offer.available} available`
         : offer.cost > 0
@@ -330,7 +341,7 @@ export function ruleRisk(
     return {
       id,
       level,
-      headline: `Today — ${shortfall(readings, ctx, todayKey)}`,
+      headline: `Today — ${shortfall(readings, ctx, days, todayKey)}`,
       detail:
         level === "danger"
           ? offer.ok
