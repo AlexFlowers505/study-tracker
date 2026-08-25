@@ -777,6 +777,22 @@ condition carrying a floor or a ceiling, but it is not what the form draws,
 and a condition drawn as an assertion and read as a bound-less count judged
 nothing at all.
 
+**A weekly condition reads every check it names too**, and a weekly rule
+still carrying day-shaped `allow` — which is what a rule switched from days to
+weeks keeps — means what `allow` says: every day of the week must be an
+accepted answer. Both used to judge one target or nothing at all.
+
+**A floor of nought is not a requirement.** `at least 0` is satisfied by every
+day there has ever been, exactly like no floor, and only looks deliberate
+because you typed it. A *ceiling* of nought is the opposite and the commonest
+rule in the app.
+
+**Names and figures in a generated sentence are quoted**, and `ui/Sentence`
+renders those spans bold. The quotes live in the string rather than in markup
+because the same sentence goes to tooltips, to the supervisor's plain-text
+summary and to the change log, none of which can carry markup — so the
+disambiguation has to survive being a bare string.
+
 **A condition that asks nothing is refused when you save it**
 (`clauseAsksNothing`, ahead of every other gate in `ruleEdit` — including the
 clock and the day-it-was-written exemption, since this is not a loosening to
