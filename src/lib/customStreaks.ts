@@ -621,15 +621,37 @@ export function readClauseDay(
       }
     }
 
-    // Written before that existed: a floor of one means yes, a ceiling of
-    // nothing means no, and a skip is a miss you chose rather than suffered.
+    /* Written before that existed: a floor of one means yes, a ceiling of
+       nothing means no, and a skip is a miss you chose rather than suffered.
+
+       **Read as the binary it is, not as arithmetic.** A day can answer a
+       check once, so the only readings a bound has here are *must be yes* and
+       *must not be*, and the deficit is one or nothing. Handing the figure to
+       `deficitOf` instead priced a miss at whatever the number happened to
+       say — and the numbers cannot all be trusted, because a condition that
+       once measured time and was switched onto a check kept its minutes. That
+       is the bug that asked for 61 freezes to cover two unanswered checks:
+       60 of them were an hour, still sitting in `min` from when the same
+       condition was about lessons.
+
+       Fixed in the reader rather than by rewriting the rules, since the
+       arithmetic was never right for a check even when the figure was: `at
+       least 2` on a day that can only reach 1 is not a promise anyone can
+       keep, and no stored number makes it one. */
     if (state === "skip")
       return { ...base, value: 0, deficit: 1, skipped: true }
     const value = state === "yes" ? 1 : 0
+    const { min, max } = clauseBounds(clause, ctx, dayKey)
+    const wants =
+      min !== undefined && min >= 1
+        ? 1
+        : max !== undefined && max <= 0
+          ? 0
+          : undefined
     return {
       ...base,
       value,
-      deficit: deficitOf(value, "count", clauseBounds(clause, ctx, dayKey)),
+      deficit: wants === undefined || value === wants ? 0 : 1,
       skipped: false,
     }
   }
