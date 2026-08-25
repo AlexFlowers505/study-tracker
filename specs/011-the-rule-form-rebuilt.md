@@ -508,15 +508,45 @@ installed in this repository — **search it before touching this form again.**
       *`@container` rather than a viewport breakpoint — the form sits in a
       modal that is 512px on a desktop and full width on a phone.*
 
+- [x] **The rule's own settings fold as well.** `Starts` and `Freezes` sit
+      beside the conditions as folds with their values on the lid — `Tomorrow`,
+      `0 a week · bank 15 · counts in the day`. Both headings are gone: `The
+      rule` held one control, and `Conditions` named the thing the form is
+      *for*. What is left reads top to bottom as the promise — the scope, a
+      rule across the page, the conditions, then what a slip costs.
+      The fold's title takes `shrink-0`, or a long one wraps mid-phrase and the
+      lid becomes two ragged lines on a phone.
+- [x] **Two labels stopped being the same word twice.** `Entity` and `Counter
+      type` both offered Activities, Tallies and Checks. They ask different
+      things — what sort of thing the condition *names*, and which of the
+      things on that shelf to count — so they are `Counts` and `Of those`,
+      named for what they ask. `Answers each day takes` is `Accepted answers`.
+- [x] **The kind dropdown is sized by its content** (`field-sizing`, from the
+      guidance). Its options are the project's own names, so any fixed width is
+      too wide for half of them and too narrow for the rest. A progressive
+      enhancement needing no fallback: without support it keeps the ceiling it
+      already had.
+
+Two bugs surfaced while checking the form against the live dev project, both
+fixed and both worth recording, because neither is a drawing problem:
+
+- [x] **A lone check reads as a binary, not as arithmetic.** The streaks row
+      offered to save a day for **61 freezes** when the honest price was two.
+      Sixty of them were an hour: a condition switched from time onto a check
+      kept its minutes in `min`, and the reader handed that to `deficitOf`.
+      The switch stopped carrying figures across in `855d6a7`, but every rule
+      edited before that still holds one. Fixed in the *reader* — a day answers
+      a check once, so the only readings a bound has are *must be yes* and
+      *must not be*, and the deficit is one or nothing. **No migration: the
+      rules on prod repair themselves the moment this deploys.**
+- [x] **One weekday control per condition.** A day-scoped check drew its
+      weekdays twice, and only one of the two decided anything:
+      `clauseWeekdays` never read `allow`, so the grid's `not judged` was a
+      lie. It reads it now, the way it already reads `days`, and the `Days`
+      fold goes for checks.
+
 ### Still open
 
-- [ ] **Fold the rule-level sections too.** `Starts` and `Freezes & the
-      verdict` are refinements by the same argument and should fold with their
-      values on the lid — `today`, `1 a week, bank 15 · counts`. `The rule`
-      (judge period) is one control and wants no section around it at all;
-      `Conditions` is the body of the form and needs no heading. Started and
-      backed out mid-edit rather than leave the file half-refactored; the
-      per-condition half is committed and works.
 - [ ] **Deferred edits.** A *new* rule can start today, tomorrow or the coming
       Monday. An **edit** cannot yet be scheduled, and that is not a field —
       it needs the rule to carry two versions, the old terms judging days
@@ -524,6 +554,18 @@ installed in this repository — **search it before touching this form again.**
       lock, `readClauseDay` and the verdict. Design it before building it.
 - [ ] **Weekly-rule slots** ignore the shared/per-day switch, correctly, but
       the fold's summary does not say so.
+- [ ] **Type size against iOS.** The `forms` guide asks for 16px inputs, since
+      anything smaller makes Safari zoom the page on focus and not zoom back,
+      and 48px tap targets. This form is 9–11px mono throughout, which is the
+      app's deliberate density (`CLAUDE.md`, Conventions) — so this is a
+      decision about the whole app, not a fix to one form, and it is not mine
+      to make quietly.
+- [ ] **`Pills` is a set of `aria-pressed` buttons**, where the guidance's
+      matrix wants a radio group for an exclusive choice of two to five.
+      Deliberately left: `role="radio"` without roving `tabindex` and arrow
+      keys reads *worse* to assistive tech than correct toggle buttons, so it
+      is a real change to `Pills` and to `SegmentedControl` together, or
+      nothing.
 
 ## Decisions
 
