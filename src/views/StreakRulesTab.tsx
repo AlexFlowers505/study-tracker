@@ -49,6 +49,7 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
 import {
+  ChevronRight,
   Gauge,
   Hourglass,
   Lock,
@@ -174,6 +175,58 @@ function Pills<T extends string>({
  * tall, and the eye has to pair them back up on every row. Above is where the
  * question goes, and the answer under it.
  */
+/**
+ * A refinement, folded away with its current value on the lid.
+ *
+ * The rule form grew from four fields to about twenty, and the answer to that
+ * is not smaller type — it is that **most of them are refinements of an answer
+ * you have already given**. Judged by the day, at least two hours: that is a
+ * rule. Which slots, which weekdays, what it costs to slip and when it starts
+ * are all *and also*, and a form that asks all of them at once reads as twenty
+ * equal questions.
+ *
+ * **The summary is what makes folding safe.** A closed fold that says nothing
+ * hides state; one that says `Mon, Wed, Fri` or `the whole day` is a sentence
+ * you can check without opening anything, and you open only the one that is
+ * wrong.
+ *
+ * Native `<details>`, not a `useState` toggle. It is Baseline widely
+ * available, it is keyboard- and screen-reader-correct with no ARIA of our
+ * own, and — the part that matters in a twenty-field form — the browser's own
+ * find-in-page reveals a closed fold that contains the match.
+ */
+const Fold = ({
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  /** What it currently says, read without opening it. */
+  summary: ReactNode
+  defaultOpen?: boolean
+  children: ReactNode
+}) => (
+  <details
+    open={defaultOpen}
+    className="group rounded-xl bg-ink/[0.03] open:bg-ink/[0.05]"
+  >
+    <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden rounded-xl hover:bg-ink/[0.04]">
+      <ChevronRight
+        size={11}
+        className="shrink-0 text-ink/35 transition-transform duration-150 group-open:rotate-90"
+      />
+      <span className="text-[9px] font-mono uppercase tracking-widest text-ink/50">
+        {title}
+      </span>
+      <span className="ml-auto min-w-0 truncate text-[10px] font-mono text-ink/40 group-open:opacity-0 transition-opacity">
+        {summary}
+      </span>
+    </summary>
+    <div className="px-3 pb-3 pt-1 space-y-2">{children}</div>
+  </details>
+)
+
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="space-y-1">
     {label && (
@@ -194,21 +247,6 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
  * costs to slip — and it was eleven fields in a flat list. A heading heavier
  * than the field labels is what turns the list back into the three.
  */
-/**
- * A heading inside one condition, dividing *what it watches* from *what it
- * asks of it*.
- *
- * Lighter than a `Section`, which groups whole parts of the rule, and heavier
- * than a field label, which names one control. Without it a condition is
- * eleven fields in a row and the first — the counters, which everything below
- * is about — reads as just another one of them.
- */
-const SubHead = ({ children }: { children: ReactNode }) => (
-  <p className="text-[9px] font-sans font-extrabold uppercase tracking-widest text-ink/45 pt-1">
-    {children}
-  </p>
-)
-
 const Section = ({
   title,
   children,
@@ -700,6 +738,25 @@ function DurationField({
   )
 }
 
+/** What the slot restriction currently says, for a closed fold. */
+const slotsSummary = (clause: StreakClause, ctx: StreakContext): string => {
+  const named = clause.slotIds?.length
+    ? clause.slotIds
+        .map((id) => ctx.slots.find((x) => x.id === id)?.label || "removed")
+        .join(", ")
+    : "the whole day"
+  const extra = Object.keys(slotBoundsOnWeekday(clause, 0)).length
+  return extra ? `${named} · ${extra} with a figure` : named
+}
+
+/** And the weekdays. */
+const daysSummary = (clause: StreakClause): string => {
+  const judged = clauseWeekdays(clause)
+  if (judged.length === WEEKDAY_ORDER.length)
+    return clause.days ? "every day, figures per day" : "every day"
+  return judged.map((wd) => WEEKDAY_LABELS[wd]).join(", ")
+}
+
 /** One condition: what is measured, where, and on which days. */
 function ClauseForm({
   clause,
@@ -738,17 +795,27 @@ function ClauseForm({
   }
 
   return (
-    <div className="space-y-2">
-      <SubHead>Counters</SubHead>
+    /* **A condition is one answer and a few refinements**, and the refinements
+       are folded with their current value on the lid.
+
+       The form grew from four fields to about twenty, and the answer to that
+       is not smaller type: most of the twenty refine something you have
+       already said. *Every day, at least two hours of lessons* is a rule. Which
+       slots, which weekdays and why are all "and also".
+
+       `@container` rather than a viewport breakpoint — this sits in a modal
+       that is 512px on a desktop and the full width of a phone, and the fields
+       should pair up when there is room for two regardless of which. */
+    <div className="@container space-y-2">
+      {/* What it watches. Always open: it is the subject of every sentence
+          below it, and a fold here would hide the one thing that makes the
+          rest mean anything. */}
       <Row label="">
         <CountersPicker
           clause={clause}
           ctx={ctx}
           onChange={(targets) => {
             const measure = targetMeasure(targets[0], ctx)
-            // Changing what is measured changes what the number means, so the
-            // number goes back to its default for the new measure. "At most 0
-            // minutes of lessons" is a legal sentence nobody has ever meant.
             const seed = newClause(targets[0], measure)
             /* **Every figure goes when the subject does.**
 
@@ -762,9 +829,6 @@ function ClauseForm({
                question, and a stale figure is worse than a default. */
             onChange({
               targets,
-              // The old single fields would otherwise go on being read by
-              // `clauseTargets` and `boundsOnWeekday` for any condition that
-              // never had a list.
               target: undefined,
               unitId: undefined,
               op: undefined,
@@ -791,75 +855,21 @@ function ClauseForm({
         )}
       </Row>
 
-      <SubHead>Days &amp; Slots &amp; Conditions</SubHead>
-      {/* Slots narrow anything that is logged into one — hours as much as
-          counts. A check is a fact about the whole day and has none. */}
-      {!info.check && (
-        <Row label="In">
-          <div className="flex flex-wrap gap-1">
-            {ctx.slots.map((s) => {
-              const on = !clause.slotIds?.length || clause.slotIds.includes(s.id)
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      slotIds: toggleIn(
-                        clause.slotIds,
-                        ctx.slots.map((x) => x.id),
-                        s.id,
-                      ),
-                    })
-                  }
-                  aria-pressed={on}
-                  style={
-                    on
-                      ? { backgroundColor: `${s.color}24`, color: s.color }
-                      : undefined
-                  }
-                  className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
-                    on ? "" : "text-ink/35 hover:text-ink/70"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              )
-            })}
-          </div>
-          {!clause.slotIds?.length && (
-            <span className="text-[9px] font-mono text-ink/35">whole day</span>
-          )}
-        </Row>
-      )}
-
-
-      {/* **Two labelled fields, not a sentence with switches in it.**
-
-          It used to read *must be [at least ▾] [2h] a day*, with the operator
-          a pill and the unit a word — and a form built out of clickable
-          fragments of prose gives you nothing to scan: the label and the input
-          are the same object, so there is no column to run your eye down and
-          no way to see at a glance what the condition asks. A minimum and a
-          maximum are two things; they get two fields, both always visible,
-          both able to be empty. */}
+      {/* What it asks of them. Also always open — together with the line above
+          it, this *is* the condition. */}
       {!info.check && (
         <Row label={byWeek ? "Per week" : "Per day"}>
           <BoundField
             label="Minimum"
             value={bounds.min}
             timed={timed}
-            onChange={(v) =>
-              onChange({ min: v, op: undefined, value: undefined })
-            }
+            onChange={(v) => onChange({ min: v, op: undefined, value: undefined })}
           />
           <BoundField
             label="Maximum"
             value={bounds.max}
             timed={timed}
-            onChange={(v) =>
-              onChange({ max: v, op: undefined, value: undefined })
-            }
+            onChange={(v) => onChange({ max: v, op: undefined, value: undefined })}
           />
         </Row>
       )}
@@ -876,10 +886,70 @@ function ClauseForm({
         </Row>
       )}
 
-      {/* Why this condition is here. Its own rather than the rule's, since a
-          compound rule is one promise made for several reasons — and it is not
-          a term, so the lock never sees it. */}
-      <Row label="Note">
+      {/* Where it counts, and whether any one slot carries a figure of its
+          own. One fold, because they are one question asked twice — and the
+          lid says which slots, so the common answer needs no opening. */}
+      {!info.check && ctx.slots.length > 0 && (
+        <Fold title="Slots" summary={slotsSummary(clause, ctx)}>
+          <Row label="Counts in">
+            <div className="flex flex-wrap gap-1">
+              {ctx.slots.map((slot) => {
+                const on =
+                  !clause.slotIds?.length || clause.slotIds.includes(slot.id)
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        slotIds: toggleIn(
+                          clause.slotIds,
+                          ctx.slots.map((x) => x.id),
+                          slot.id,
+                        ),
+                      })
+                    }
+                    aria-pressed={on}
+                    style={
+                      on
+                        ? { backgroundColor: `${slot.color}24`, color: slot.color }
+                        : undefined
+                    }
+                    className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+                      on ? "" : "text-ink/35 hover:text-ink/70"
+                    }`}
+                  >
+                    {slot.label}
+                  </button>
+                )
+              })}
+            </div>
+          </Row>
+
+          <Row label="Of which">
+            <SlotBounds
+              clause={clause}
+              ctx={ctx}
+              timed={timed}
+              byWeek={byWeek}
+              onChange={onChange}
+            />
+          </Row>
+        </Fold>
+      )}
+
+      {/* A weekly rule counts the whole week; which weekdays it fell on is not
+          a question it can ask. */}
+      {!byWeek && (
+        <Fold title="Days" summary={daysSummary(clause)}>
+          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
+        </Fold>
+      )}
+
+      {/* Why this condition is here — its own rather than the rule's, since a
+          compound rule is one promise made for several reasons. Not a term, so
+          the lock never sees it. */}
+      <Fold title="Note" summary={clause.note || "none"}>
         <AutoTextarea
           value={clause.note ?? ""}
           onChange={(e) => onChange({ note: e.target.value || undefined })}
@@ -888,31 +958,7 @@ function ClauseForm({
           maxHeight={100}
           className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
         />
-      </Row>
-
-      {/* On top of where the day's own figure is counted, a named slot may
-          carry a figure of its own. That is the promise the old model could
-          not make: *two hours on Monday, of which at least one in the morning,
-          and the rest wherever.* */}
-      {!info.check && ctx.slots.length > 0 && (
-        <Row label="Of which">
-          <SlotBounds
-            clause={clause}
-            ctx={ctx}
-            timed={timed}
-            byWeek={byWeek}
-            onChange={onChange}
-          />
-        </Row>
-      )}
-
-      {/* A weekly rule counts the whole week; which weekdays it fell on is not
-          a question it can ask. */}
-      {!byWeek && (
-        <Row label="On">
-          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
-        </Row>
-      )}
+      </Fold>
     </div>
   )
 }
