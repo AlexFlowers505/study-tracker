@@ -817,6 +817,28 @@ whole design exists to make you afraid of losing disappeared the moment that
 row was opened and again whenever every streak was in trouble — the two
 moments anybody is looking.
 
+**The two halves answer different questions and are drawn from different
+scopes, deliberately.** The days half is the *streak* — project-wide, the
+thing you are guarding, and it does not change when you step the period. The
+weeks half is *this period's record*, `3/8`, and its squares are the period's
+weeks. Both said "in a row" for a while, which was one fact drawn twice; and
+before that the squares were the last twelve weeks whatever the page showed,
+which in Week mode is eleven weeks nobody asked about and, on any real
+history, mostly red. **A wall of old failures is not information, it is a
+mood.** The period bar is already the control for seeing further back and
+should not need a second one hiding in a card.
+
+`KeptSection` is the card opened up, sharing `openStreak` with the rule
+panels so one panel at a time falls out rather than being arranged. It answers
+what the card cannot, which on a bad month is not *how am I doing* but **which
+promise keeps doing this to me**: the period as days, then `keptBreakdown` —
+per rule, the days it broke and, separately, the days it broke **alone** — and
+then rules-held against rules-voting, which is the day card's ring along a
+time axis. `alone` is the sharp one: a rule missing eight days of which one
+was its own fault is keeping bad company, while a rule whose misses are nearly
+all its own is the whole problem, and the two want opposite things done about
+them.
+
 ## Custom streaks
 
 Streaks of your own making — `spec 009`, part 2. `lib/customStreaks.ts` holds
