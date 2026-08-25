@@ -250,9 +250,17 @@ which are Node config and get their own lint block.
     component wearing different tints.
     All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
     `StreaksSection.tsx`, `ChangeLogSection.tsx`.
-  - `CounterTotals.tsx` — **everything a period counted**, under the heading
-    and above each week's days in the month grid: activities in hours,
-    tallies and checks in counts. All three are counters, so all three report
+  - `CounterTotals.tsx` — **everything a period counted**, the first block
+    *inside* `Days` and above each week's days in the month grid: activities
+    in hours, tallies and checks in counts. It was a section of its own with a
+    heading of its own, and a heading is a promise that what follows is a
+    different subject — which it is not: the totals are the period's days read
+    across instead of down, and every figure in them comes from the cards
+    below. `Counters total` wears a block heading, quieter than
+    `SECTION_HEADING`, inside the recessed surface it labels. **Everything
+    folded means the block is absent**, not a box saying `All counters
+    hidden`: that line earned its place while this was a section, because a
+    section that vanishes leaves a hole and a hole reads as a failed load. All three are counters, so all three report
     together; hours answered "how long" and a period showing only those was
     reporting a fraction of itself. `lib/periodCounters.ts` builds the groups.
     **Only what actually happened appears** — an activity with no time and a
@@ -287,6 +295,12 @@ which are Node config and get their own lint block.
     carries a dot on the period bar. One set of switches governs the heading
     *and* every week in the month grid: the same chips answering the same
     question, and two controls for that is one too many.
+    **They live behind one trigger on the `Days` line** (`CounterMenu`, a
+    `PopoverMenu`). Laid flat they are two segmented pills plus a name per
+    group, which on a real project is a control the width of the page sitting
+    there permanently to answer a question most mornings do not ask. The
+    trigger states the answer instead — `18 of 18`, or `Counters` when nothing
+    is shown — and the switches are one tap away.
     `LogView` holds them in `useState` beside `commentsOpen`. `null` is
     "nothing chosen yet" and reads as **everything folded**, which is how the
     page opens: a project with forty counters otherwise put a wall of chips
@@ -810,6 +824,16 @@ invested in and the likeliest to drop, which is precisely backwards. A
 week-sized unit fixes it from the other end: a bad Tuesday costs the week
 rather than everything, and on Monday there is always something to start
 accumulating again.
+
+**The order of the three is the whole argument**: `StreakAlarms`, then
+`KeptCard`, then `StreakBar`. What is on fire comes first — a warning placed
+under the number it is about reads as a footnote to it, and a footnote is
+something you finish reading rather than something you do. The alarms are
+split out of `StreakBar` rather than reordered inside it, because the card
+belongs to neither half and had to go between them; both build their rows from
+one `entriesFrom`, so they cannot disagree about a figure. The card carries a
+chevron for the same reason the row does — a raised surface with a hover lift
+is every card in this app, and nothing else said this one opens.
 
 `KeptCard` sits **above** `StreakBar`, always, and is not part of it. It was
 a figure on the collapsed streaks line for a while, which meant the number the
