@@ -56,6 +56,7 @@ import {
   Pencil,
   Plus,
   ShieldCheck,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react"
@@ -251,6 +252,10 @@ const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
    and needs no fallback: without it the control simply keeps the ceiling as
    its width, which is exactly what it had before. The floor stops an empty
    list collapsing it to nothing. */
+/* The two set actions. Deliberately not the chips' shape: they act on the row
+   rather than being part of it. */
+const PICK_ACTION = `${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`
+
 const KIND_SELECT = `${FIELD_SOFT_INLINE} field-sizing-content min-w-24 max-w-48 rounded-lg py-1 text-[11px]`
 const WORD = "text-[11px] font-mono text-ink/55"
 
@@ -517,6 +522,36 @@ function CountersPicker({
         {pick === "time" && (
           <span className={WORD}>whatever it was filed under</span>
         )}
+
+        {/* **The two actions sit on the question's line, not among the
+            answers.** They wore the chips' own shape a gap away from them,
+            so `All Clear Lessons Exams` read as a row of four counters, two
+            of which were greyed out. Up here they are unmistakably things you
+            do rather than things you pick. */}
+        {options.length > 1 && (
+          <span className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onChange(options.map((o) => fieldsFor(pick, o.id)))}
+              disabled={options.every((o) => chosen.includes(o.id))}
+              className={PICK_ACTION}
+            >
+              All
+            </button>
+            {/* The way back. Taking all of forty and then clicking thirty-nine
+                off to keep one is not a way to choose one. It clears to the
+                first rather than to nothing, because a condition watching
+                nothing is not a condition. */}
+            <button
+              type="button"
+              onClick={() => onChange([targets[0]])}
+              disabled={chosen.length <= 1}
+              className={PICK_ACTION}
+            >
+              Clear
+            </button>
+          </span>
+        )}
       </div>
 
       {options.length === 0 && pick !== "time" && (
@@ -540,8 +575,6 @@ function CountersPicker({
           ]}
           chosen={chosen}
           onToggle={toggle}
-          onAll={() => onChange(options.map((o) => fieldsFor(pick, o.id)))}
-          onNone={() => onChange([targets[0]])}
         />
       )}
 
@@ -623,45 +656,14 @@ function PickChips({
   items,
   chosen,
   onToggle,
-  onAll,
-  onNone,
 }: {
   items: { id: string; label: string; ghost: boolean }[]
   chosen: string[]
   onToggle: (id: string) => void
-  onAll: () => void
-  /** Down to one, since a condition about nothing is not a condition. */
-  onNone: () => void
 }) {
   const c = usePalette()
-  const allOn = items.every((i) => chosen.includes(i.id))
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {items.length > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={onAll}
-            disabled={allOn}
-            className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
-          >
-            All
-          </button>
-          {/* The way back. Taking all of forty and then clicking thirty-nine
-              of them off to keep one is not a way to choose one. It clears to
-              the first rather than to nothing, because a condition watching
-              nothing is not a condition — and starting from one is the state
-              you were heading for anyway. */}
-          <button
-            type="button"
-            onClick={onNone}
-            disabled={chosen.length <= 1}
-            className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent`}
-          >
-            Clear
-          </button>
-        </>
-      )}
       {items.map((item) => {
         const on = chosen.includes(item.id)
         return (
@@ -754,12 +756,15 @@ function ClauseForm({
   clause,
   ctx,
   byWeek,
+  ordinal,
   onChange,
   onRemove,
 }: {
   clause: StreakClause
   ctx: StreakContext
   byWeek: boolean
+  /** Which of several this is, or null when it is the only one. */
+  ordinal: number | null
   onChange: (patch: Partial<StreakClause>) => void
   /** Absent on the only condition — a rule with none is not a rule. */
   onRemove?: () => void
@@ -798,24 +803,49 @@ function ClauseForm({
        `@container` rather than a viewport breakpoint — this sits in a modal
        that is 512px on a desktop and the full width of a phone, and the fields
        should pair up when there is room for two regardless of which. */
-    <div className="@container relative space-y-2">
-      {/* **Pinned to the condition's corner, not to a row inside it.** It
-          belongs to the whole block, and on the counters row it wrapped: the
-          picker is full-width, so `ml-auto` put the cross on a line of its own
-          in the middle of the condition, where it read as one more control
-          rather than as the way out. */}
-      {onRemove && (
-        <Tip text="Drop this condition">
-          <button
-            type="button"
-            onClick={onRemove}
-            className={`${btnBase} absolute -top-1 right-0 z-10 p-1 rounded-full text-ink/30 hover:text-ink hover:bg-ink/5`}
-          >
-            <X size={12} />
-          </button>
-        </Tip>
-      )}
+    /* **A `<fieldset>`, because a condition is a group of related controls
+       and that is what the element is for.** It costs nothing to look at — the
+       browser's border and padding are reset — and it is what tells a screen
+       reader where one condition ends and the next begins, which a sighted
+       reader gets from the hairline for free. `min-w-0` because a fieldset
+       refuses to shrink below its content otherwise, which is the same bug it
+       fixes everywhere else in this layout.
 
+       The number appears only when there is more than one: `Condition 1` over
+       a lone condition is a heading that tells you nothing you could not see,
+       and this form has just had two of those taken out of it. */
+    <fieldset className="@container space-y-2 min-w-0 border-0 p-0 m-0">
+      {/* **The name of the block and the way out of it, on one line.**
+
+          Both appear under exactly the same condition — there is more than one
+          condition — so there is no case where one needs the other's space and
+          nothing to position around. The cross used to be pinned to the
+          corner, which left it floating a line below the heading it belonged
+          to; a `<legend>` at full width holds them both.
+
+          **A bin, not a cross.** A cross two lines down empties a bound, and
+          one glyph doing both "clear this field" and "delete this whole block"
+          is a difference nobody should have to learn from the size of the
+          icon. The bin is what `EditableList` already deletes with. */}
+      {ordinal !== null && (
+        <legend className="w-full flex items-center gap-2 p-0 mb-1">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Condition {ordinal}
+          </span>
+          {onRemove && (
+            <Tip className="ml-auto" text="Drop this condition">
+              <button
+                type="button"
+                onClick={onRemove}
+                aria-label={`Drop condition ${ordinal}`}
+                className={`${btnBase} block p-1 rounded-full text-ink/30 hover:text-exam hover:bg-ink/5`}
+              >
+                <Trash2 size={12} />
+              </button>
+            </Tip>
+          )}
+        </legend>
+      )}
       {/* What it watches. Always open: it is the subject of every sentence
           below it, and a fold here would hide the one thing that makes the
           rest mean anything. */}
@@ -963,7 +993,7 @@ function ClauseForm({
           className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
         />
       </Fold>
-    </div>
+    </fieldset>
   )
 }
 
@@ -1780,7 +1810,7 @@ function RuleForm({
           total matters. It is a property of the rule rather than of any one
           condition — a rule with three conditions has one scope — which is why
           it sits above them rather than inside each. */}
-      <Row label="Judge period">
+      <Row label="Judged">
         <Pills<"day" | "week">
           value={draft.scope}
           onChange={(scope) => patch({ scope })}
@@ -1812,6 +1842,7 @@ function RuleForm({
             clause={clause}
             ctx={ctx}
             byWeek={byWeek}
+            ordinal={clauses.length > 1 ? i + 1 : null}
             onChange={(next) => patchClause(clause.id, next)}
             onRemove={
               clauses.length > 1
