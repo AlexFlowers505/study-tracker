@@ -491,6 +491,40 @@ stage is those.
       about the rule changes until a figure does. Absent for a weekly
       condition, which does not ask which day the hour fell on.
 
+## Stage 7 — the form as an interface, and what is still open
+
+The functionality is done; the form had become twenty fields in a list. This
+stage is the drawing, and it is guided by `modern-web-guidance`, which is
+installed in this repository — **search it before touching this form again.**
+
+- [x] **A condition folds.** What it watches and what it asks stay open —
+      together they *are* the condition. Slots, Days and Note fold behind
+      native `<details>`, each with **its current value on the lid**: a closed
+      fold that says nothing hides state, one that says `Mon, Wed, Fri` is a
+      sentence you can check without opening it.
+      *`<details>` rather than `useState`, on the guidance's advice: Baseline
+      widely available, correct for keyboard and screen readers with no ARIA
+      of ours, and find-in-page reveals a closed fold containing the match.*
+      *`@container` rather than a viewport breakpoint — the form sits in a
+      modal that is 512px on a desktop and full width on a phone.*
+
+### Still open
+
+- [ ] **Fold the rule-level sections too.** `Starts` and `Freezes & the
+      verdict` are refinements by the same argument and should fold with their
+      values on the lid — `today`, `1 a week, bank 15 · counts`. `The rule`
+      (judge period) is one control and wants no section around it at all;
+      `Conditions` is the body of the form and needs no heading. Started and
+      backed out mid-edit rather than leave the file half-refactored; the
+      per-condition half is committed and works.
+- [ ] **Deferred edits.** A *new* rule can start today, tomorrow or the coming
+      Monday. An **edit** cannot yet be scheduled, and that is not a field —
+      it needs the rule to carry two versions, the old terms judging days
+      before the changeover and the new ones after. Touches `ruleEdit`, the
+      lock, `readClauseDay` and the verdict. Design it before building it.
+- [ ] **Weekly-rule slots** ignore the shared/per-day switch, correctly, but
+      the fold's summary does not say so.
+
 ## Decisions
 
 1. **`All study time` is removed as a target.** It had no id, it existed for
