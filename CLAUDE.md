@@ -19,6 +19,13 @@ one; the effectiveness meter is gone and the day's goal is read from a
 nominated **benchmark** rule (`lib/benchmark.ts`); the verdict ring is
 weighted and opens.
 
+**`specs/012-the-first-target-assumption.md` is written and not started.** A
+condition can name several counters; `clauseTarget()` — the singular reader
+from when it could not — survives in fourteen places. Three of them print the
+wrong name in the streak panel, and **one is in `isNarrowing`, where the lock
+compares only the first target**. Read that spec before touching the panel,
+the risk lines or the lock.
+
 **`specs/010-day-verdict-and-rewards.md` is built, all nine stages.** The main
 goal streak is gone, the day's colour is a composite verdict over every voting
 rule, and a balance, achievements, a shop and an optional supervisor sit on top
