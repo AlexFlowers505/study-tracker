@@ -28,14 +28,32 @@
 
 import { Flame } from "lucide-react"
 import type { KeptWeeks, WeekMark } from "../lib/dayVerdict"
-import { fromKey } from "../lib/date"
+import { fromKey, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
 import type { Palette } from "../lib/theme"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
-/** How many weeks the row of squares shows. */
-const WINDOW = 12
+/**
+ * **The squares are the period's, not the project's.**
+ *
+ * They were the last twelve weeks whatever the page was showing, and in Week
+ * mode that is eleven weeks nobody asked about — most of them, on any real
+ * history, red. A wall of old failures is not information, it is a mood, and
+ * it is the wrong one to put at the top of the page every morning.
+ *
+ * So the strip answers the same question the rest of the page is answering:
+ * how did *this* go. A week shows its week, a month its four or five, and the
+ * longer periods are where you go when you do want the whole record — the
+ * period bar is already the control for that, and it should not need a second
+ * one hiding in a card.
+ *
+ * A cap survives for the long periods: a year is 52 squares and `all` is
+ * however many there are, which at ten pixels each stops being a row you read
+ * and becomes a texture. Past the cap it is the most recent that show, since
+ * the end of a period is the part you can still do something about.
+ */
+const CAP = 26
 
 const fmtWeek = (start: string): string => {
   const d = fromKey(start)
@@ -88,18 +106,33 @@ function WeekSquare({ mark }: { mark: WeekMark }) {
 export function KeptCard({
   days,
   weeks,
+  rangeStart,
+  rangeEnd,
   onOpen,
   open,
 }: {
   /** The run of kept days, and the longest there has ever been. */
   days: { current: number; best: number }
   weeks: KeptWeeks
-  /** Opens the day-by-day panel, if there is one to open. */
+  /** The period the page is showing. The squares follow it. */
+  rangeStart: Date
+  rangeEnd: Date
+  /** Opens the panel underneath. */
   onOpen?: () => void
   open?: boolean
 }) {
   const c = usePalette()
-  const shown = weeks.weeks.slice(-WINDOW)
+  const from = toKey(rangeStart)
+  const to = toKey(rangeEnd)
+  /* By the Monday, so a week counts as this period's when it *starts* inside
+     it. Overlap would put January's last week under February as well, and one
+     week appearing twice in the same row is the kind of thing you only notice
+     after trusting the count for a month. */
+  const inRange = weeks.weeks.filter((w) => w.start >= from && w.start <= to)
+  const shown = inRange.slice(-CAP)
+  const keptHere = inRange.filter(
+    (w) => w.state === "kept" || w.state === "frozen",
+  ).length
 
   const body = (
     /* `@container`, not a breakpoint: this sits at the full width of the page
@@ -139,18 +172,24 @@ export function KeptCard({
         <div className="hidden @sm:block self-stretch w-px bg-ink/10" />
 
         <div className="flex items-center gap-2 @sm:pl-4 min-w-0">
+          {/* **The period's count, not the running one.** The days half is a
+              streak — a thing you are guarding — and the weeks half is this
+              period's record, which is the question the page is already
+              asking everywhere else. Two figures that both said "in a row"
+              would be one fact drawn twice. */}
           <span
             className="text-[13px] font-mono font-bold tabular-nums leading-none"
-            style={{ color: c.goalMet }}
+            style={{ color: keptHere === inRange.length ? c.goalMet : c.ink }}
           >
-            {weeks.current}
+            {keptHere}
+            <span className="text-ink/30">/{inRange.length}</span>
           </span>
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 shrink-0">
-            weeks kept
+            {inRange.length === 1 ? "week kept" : "weeks kept"}
           </span>
-          {weeks.best > weeks.current && (
+          {weeks.current > 0 && (
             <span className="text-[9px] font-mono text-ink/30 tabular-nums shrink-0">
-              best {weeks.best}
+              run {weeks.current}
             </span>
           )}
           {/* Oldest first, so the row reads left to right like everything else

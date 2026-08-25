@@ -109,7 +109,7 @@ import {
   toKey,
 } from "../lib/date"
 import { CHECK_CHOICES, CHECK_LABELS } from "../lib/checks"
-import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
+import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
@@ -2026,8 +2026,24 @@ function RuleForm({
       {/* What this edit counts as, before it costs anything. The lock is
           one-sided, and an unexplained one-sided lock is indistinguishable
           from a bug — so it says which of the four cases it decided, every
-          time, and Done simply refuses in the one case it cannot allow. */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
+          time, and Done simply refuses in the one case it cannot allow.
+
+          **Stuck to the foot of the modal.** The form is a scope, a handful of
+          conditions and three folds, and with four conditions the way out of
+          it was two screens below the field you were changing — so you either
+          scrolled to check what the lock had decided, or you committed
+          blind. `position: sticky` inside the modal's own scrollport puts it
+          where a dialog's buttons belong without lifting the draft out of
+          this component: the lock's four verdicts, the reason box and the
+          approval branch all live here, and threading them up to `SetupModal`
+          would buy the same pixels for a great deal more coupling.
+
+          It carries the row's own surface rather than the card's — a
+          translucent wash needs an opaque base, and `bg-card` alone would
+          show as a lighter patch over the recessed row it floats on. */}
+      <div
+        style={cellSurface(`${c.ink}0A`, c.card)}
+        className="sticky bottom-0 z-20 -mx-1 px-3 py-2 mt-1 rounded-xl ring-1 ring-ink/10 shadow-lg flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setDraft(null)}

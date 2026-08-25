@@ -81,6 +81,7 @@ import { StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { KeptCard } from "./views/KeptCard"
+import { KeptSection } from "./views/KeptSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
 import { ShopSection } from "./views/ShopSection"
@@ -99,6 +100,11 @@ import type { FreezeAsk } from "./views/FreezeConfirm"
 import { DayQuickviewModal } from "./views/DayEditor"
 import { usePalette } from "./ui/useTheme"
 import { entryActivity } from "./lib/entries"
+
+/* The composite's panel shares `openStreak` with the rules', so one panel at a
+   time falls out rather than being arranged. A rule id is a uuid, so this
+   literal cannot collide with one. */
+const KEPT_PANEL = "kept"
 
 const DEFAULT_DATA = buildInitialData()
 
@@ -1051,7 +1057,16 @@ export default function StudyTrackerApp() {
             the whole point of the design. */}
         {kept && keptWeekly && (
           <div className="mb-1.5">
-            <KeptCard days={kept} weeks={keptWeekly} />
+            <KeptCard
+              days={kept}
+              weeks={keptWeekly}
+              rangeStart={range.start}
+              rangeEnd={range.end}
+              open={openStreak === KEPT_PANEL}
+              onOpen={() =>
+                setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
+              }
+            />
           </div>
         )}
 
@@ -1102,6 +1117,18 @@ export default function StudyTrackerApp() {
             width and scrolling with the page — on every screen size. It used
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
+        {openStreak === KEPT_PANEL && kept && keptWeekly && (
+          <KeptSection
+            project={project}
+            days={kept}
+            weeks={keptWeekly}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            today={new Date()}
+            onClose={() => setOpenStreak(null)}
+          />
+        )}
+
         {ruleStatuses
           .filter((s2) => s2.rule.id === openStreak)
           .map((s2) => (

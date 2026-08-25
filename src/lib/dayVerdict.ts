@@ -277,6 +277,70 @@ export function keptWeeks(project: Project, today = new Date()): KeptWeeks | nul
   return { current: run, best, weeks }
 }
 
+export interface KeptBreakdownRow {
+  rule: StreakRule
+  /** Days in the range this rule judged at all. */
+  judged: number
+  /** Of those, the ones it broke. */
+  missed: number
+  /** Of *those*, the ones where nothing else broke — it alone cost the day. */
+  alone: number
+  /** Days it would have broken and a freeze paid for. */
+  frozen: number
+}
+
+/**
+ * **What the composite is made of, over one range.**
+ *
+ * The card says the run is nought and the ring says four of five, and neither
+ * answers the question you actually have on a bad month, which is *which
+ * promise keeps doing this*. `alone` is the sharpest form of it: days where
+ * this rule and nothing else stood between you and a kept day. A rule with a
+ * high `missed` and a low `alone` is keeping bad company; one with `alone`
+ * near its `missed` is the whole problem by itself.
+ *
+ * Rules are returned in the order they were written, never sorted by blame —
+ * a list that reorders itself as the month goes on is a list you have to
+ * re-read from the top every time.
+ */
+export function keptBreakdown(
+  project: Project,
+  from: DayKey,
+  to: DayKey,
+  today = new Date(),
+): KeptBreakdownRow[] {
+  const rules = project.settings.streakRules || []
+  if (!rules.length) return []
+  const ctx = streakContext(project)
+  const todayKey = toKey(today)
+  const rows = new Map<string, KeptBreakdownRow>()
+
+  for (let d = fromKey(from); toKey(d) <= to; d = addDays(d, 1)) {
+    const key = toKey(d)
+    if (key > todayKey) break
+    const { readings } = dayReport(project, key, todayKey, ctx)
+    const missing = readings.filter((r) => r.state === "missed")
+    for (const reading of readings) {
+      const row = rows.get(reading.rule.id) ?? {
+        rule: reading.rule,
+        judged: 0,
+        missed: 0,
+        alone: 0,
+        frozen: 0,
+      }
+      row.judged += 1
+      if (reading.state === "missed") {
+        row.missed += 1
+        if (missing.length === 1) row.alone += 1
+      }
+      if (reading.state === "frozen") row.frozen += 1
+      rows.set(reading.rule.id, row)
+    }
+  }
+
+  return rules.map((r) => rows.get(r.id)).filter((r): r is KeptBreakdownRow => !!r)
+}
+
 /**
  * A stretch of days as one verdict — a week strip in the month grid, or any
  * other block that has to say how the whole of it went.
