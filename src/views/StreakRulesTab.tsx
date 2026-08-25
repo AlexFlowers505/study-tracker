@@ -798,7 +798,24 @@ function ClauseForm({
        `@container` rather than a viewport breakpoint — this sits in a modal
        that is 512px on a desktop and the full width of a phone, and the fields
        should pair up when there is room for two regardless of which. */
-    <div className="@container space-y-2">
+    <div className="@container relative space-y-2">
+      {/* **Pinned to the condition's corner, not to a row inside it.** It
+          belongs to the whole block, and on the counters row it wrapped: the
+          picker is full-width, so `ml-auto` put the cross on a line of its own
+          in the middle of the condition, where it read as one more control
+          rather than as the way out. */}
+      {onRemove && (
+        <Tip text="Drop this condition">
+          <button
+            type="button"
+            onClick={onRemove}
+            className={`${btnBase} absolute -top-1 right-0 z-10 p-1 rounded-full text-ink/30 hover:text-ink hover:bg-ink/5`}
+          >
+            <X size={12} />
+          </button>
+        </Tip>
+      )}
+
       {/* What it watches. Always open: it is the subject of every sentence
           below it, and a fold here would hide the one thing that makes the
           rest mean anything. */}
@@ -834,17 +851,6 @@ function ClauseForm({
             })
           }}
         />
-        {onRemove && (
-          <Tip text="Drop this condition">
-            <button
-              type="button"
-              onClick={onRemove}
-              className={`${btnBase} ml-auto p-1 rounded-full text-ink/35 hover:text-ink hover:bg-ink/5`}
-            >
-              <X size={12} />
-            </button>
-          </Tip>
-        )}
       </Row>
 
       {/* What it asks of them. Also always open — together with the line above
