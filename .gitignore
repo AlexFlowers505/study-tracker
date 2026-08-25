@@ -23,6 +23,18 @@ dist-ssr
 # .claude/settings.json); per-machine overrides are not.
 .claude/settings.local.json
 
+# Skills installed by the plugin manager — 282 files of somebody else's
+# documentation, two copies of it, and not this project's to carry. The
+# lockfile beside them *is* committed: it names the source and the hash, so the
+# content is reinstallable and the version is recorded. Vendoring the pages
+# themselves would mean hand-carrying their updates forever.
+#
+# `.agents/` is where the installer put them; `.claude/skills/` is the copy
+# Claude Code actually reads. Neither is lintable — 141 markdown files and no
+# JavaScript — so this is about the repository's history, not about the build.
+.agents/
+.claude/skills/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

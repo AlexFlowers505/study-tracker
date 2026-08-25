@@ -52,6 +52,29 @@ agent scratch space, including git worktrees — a whole second checkout with it
 own `tsconfig.json` — and with one present typescript-eslint refuses to run at
 all rather than choose between two candidate roots.
 
+## Skills
+
+`skills-lock.json` is committed; the skills themselves are not.
+
+The lockfile names the source and the content hash, so a skill is
+reinstallable and its version is recorded. The pages are 141 markdown files of
+somebody else's documentation, in two copies — `.agents/skills/` where the
+installer puts them and `.claude/skills/` where Claude Code reads them — and
+carrying them in this repository's history would mean hand-carrying their
+updates forever. Both directories are gitignored.
+
+Currently one: **`modern-web-guidance`** (`GoogleChrome/modern-web-guidance`),
+which is a search tool over current web-platform practice — dialogs and
+popovers, anchor positioning, container queries, `:has()`, view transitions,
+scroll-driven animation, Core Web Vitals. It says of itself that it must run
+first on any HTML/CSS or client-side JS task, and the reason is worth
+repeating: web APIs move faster than a model's training data, so the confident
+answer is often the obsolete one.
+
+Installed from the terminal, not from here — `/plugin marketplace add` and
+`/plugin install` open an interactive panel. **A newly installed skill is
+invisible until the session restarts**, since the list is built at start-up.
+
 ## Stack
 
 React 19, Vite 8, Tailwind CSS v4 (via `@tailwindcss/vite`, no config file),
