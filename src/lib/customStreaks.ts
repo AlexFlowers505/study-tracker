@@ -192,9 +192,17 @@ export const clauseBounds = (
 export const clauseWeekdays = (clause: StreakClause): number[] =>
   clause.days
     ? WEEKDAY_ORDER.filter((wd) => clause.days![wd] !== undefined)
-    : clause.weekdays?.length
-      ? clause.weekdays
-      : [...WEEKDAY_ORDER]
+    : /* **A check's accepted answers carry its weekdays too.** The map holds
+         one entry per day it asks about, so a weekday left out of it is one
+         the condition does not judge — exactly as a weekday left out of
+         `days` is. Without this the form drew two controls for one question:
+         a grid whose empty row said `not judged`, which was a lie, and a
+         separate weekday row that was the only thing actually deciding it. */
+      clause.allow
+      ? WEEKDAY_ORDER.filter((wd) => (clause.allow![wd] ?? []).length > 0)
+      : clause.weekdays?.length
+        ? clause.weekdays
+        : [...WEEKDAY_ORDER]
 
 /** The bounds a week asks for: each present side summed over its days. */
 export const weekBounds = (

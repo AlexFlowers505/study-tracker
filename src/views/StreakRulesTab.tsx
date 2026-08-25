@@ -931,8 +931,14 @@ function ClauseForm({
       )}
 
       {/* A weekly rule counts the whole week; which weekdays it fell on is not
-          a question it can ask. */}
-      {!byWeek && (
+          a question it can ask.
+
+          Nor can a day-scoped check, which asks it already: a weekday with no
+          accepted answer is a weekday it does not judge, and that is what its
+          grid says in the row it leaves empty. Two controls for one question
+          is one too many, and the one that goes is the one that was not
+          telling the truth. */}
+      {!byWeek && !info.check && (
         <Fold title="Days" summary={daysSummary(clause)}>
           <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
         </Fold>
