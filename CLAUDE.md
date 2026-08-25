@@ -1364,7 +1364,15 @@ Match the existing file:
   is what made the custom streak's week strip render five hairline days, one
   stretched day half a line below them, and Sunday against the right edge.
   `Tip` takes `className` and `PopoverMenu` takes `wrapClassName` for exactly
-  this — size the wrapper, not only what is inside it. Where the layout is
+  this — size the wrapper, not only what is inside it.
+  **`Tip` keeps that wrapper even with no text**, and must go on doing so. It
+  used to return the bare child, dropping the class with it — and `PopoverMenu`
+  clears `text` while its panel is open, to stop a bubble appearing over the
+  panel. So every trigger placed by `wrapClassName` lost its placement on the
+  click that opened it: the counters menu jumped from the right edge of the
+  `Days` line to the left, and a freeze cell in a streak strip lost its
+  `flex-1` and collapsed to its content while its six neighbours stayed full
+  width. Where the layout is
   fixed and known, say so with a grid (`grid-cols-7` for a week) rather than
   with a `flex-1` that has to survive whatever gets wrapped around it.
 - **One shape for "pick one of these".** `SegmentedControl` and the period

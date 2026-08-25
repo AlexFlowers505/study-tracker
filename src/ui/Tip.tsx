@@ -165,7 +165,25 @@ export function Tip({
     }
   }, [box])
 
-  if (!text) return children
+  /* **No text still means the layout box, if one was asked for.**
+   *
+   * `className` exists because this component puts a span between a parent and
+   * its child, so the parent's layout lands on the span — `ml-auto`, `w-full`,
+   * `flex-1` all have to go there or they act on nothing. Returning the bare
+   * child dropped the class silently, and with it whatever the caller had
+   * placed the element with.
+   *
+   * `PopoverMenu` is where that showed: it clears `text` while its panel is
+   * open, to stop a bubble appearing over the panel. So its trigger lost its
+   * `ml-auto` on the click that opened it and jumped from the right edge of
+   * the row to the left, then jumped back on close.
+   */
+  if (!text)
+    return className ? (
+      <span className={`inline-flex ${className}`}>{children}</span>
+    ) : (
+      children
+    )
 
   const show = () => {
     if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
