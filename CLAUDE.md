@@ -768,6 +768,22 @@ not a check you failed**. Nothing is inferred now, and `checkState()` no longer
 takes a date, because an answer that depended on what day it was is exactly
 what was removed.
 
+**A condition may name several checks, and then every one of them is
+asserted** — `allow` applies to each, and the deficits add, so a day that
+answered one of two costs one freeze and a day that answered neither costs
+two. It read only the first for a while, on the reasoning that several checks
+are a count ("at least two of these three"); that reading survives for a check
+condition carrying a floor or a ceiling, but it is not what the form draws,
+and a condition drawn as an assertion and read as a bound-less count judged
+nothing at all.
+
+**A condition that asks nothing is refused when you save it**
+(`clauseAsksNothing`, ahead of every other gate in `ruleEdit` — including the
+clock and the day-it-was-written exemption, since this is not a loosening to
+be rationed). No floor, no ceiling, no accepted answer means every day there
+has ever been satisfies it, and a rule containing one has quietly stopped
+being a rule.
+
 That split is what makes the feature cheap rather than clever: every existing
 reader of counts — the day badges, the period chips, the count filter, both
 counter chart modes — goes on working on checks without knowing they exist, and
