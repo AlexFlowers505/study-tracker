@@ -18,6 +18,11 @@ export default defineConfig([
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },
+  // The sweep is a Node script: it has `process` and no DOM.
+  {
+    files: ['scripts/**/*.ts'],
+    languageOptions: { globals: globals.node },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

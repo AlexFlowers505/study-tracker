@@ -218,12 +218,52 @@ export const weekBounds = (
   ctx: StreakContext,
   keys: DayKey[],
 ): ClauseBounds => {
+  /* **A flat bound is the week's own figure, and must not be summed.**
+
+     This function summed unconditionally, which multiplied whatever you typed
+     by the number of days in the week: `at least 3 a week` asked for 21 and
+     `at most 3 a week` allowed 21, so every weekly count rule was either
+     unachievable or unbreakable. *Three gym trips a week* — the example this
+     whole shape was designed around — needed twenty-one.
+
+     The form labels that field `Per week`, and it means it. Summing is right
+     for the *other* shape: writing out a figure per weekday is exactly the act
+     of saying each day has its own, and then the week is their total. So the
+     two are told apart by which the condition actually carries. */
+  if (!clause.days && !clause.useDailyGoal)
+    // The weekday is not read when the bound is flat, so any of them will do.
+    return boundsOnWeekday(clause, ctx, 0)
+
   const each = keys.map((k) => clauseBounds(clause, ctx, k))
   const sum = (pick: (b: ClauseBounds) => number | undefined) =>
     each.some((b) => pick(b) !== undefined)
       ? each.reduce((total, b) => total + (pick(b) ?? 0), 0)
       : undefined
   return { min: sum((b) => b.min), max: sum((b) => b.max) }
+}
+
+/**
+ * The same question for a named slot: what that slot is allowed across the
+ * week. Per-weekday slot figures sum; a flat one is the week's.
+ */
+export const weekSlotBounds = (
+  clause: StreakClause,
+  keys: DayKey[],
+): Record<string, ClauseBounds> => {
+  if (!clause.days) return clause.slots ?? {}
+  const out: Record<string, ClauseBounds> = {}
+  keys.forEach((key) => {
+    const weekday = fromKey(key).getDay()
+    Object.entries(slotBoundsOnWeekday(clause, weekday)).forEach(
+      ([slotId, bounds]) => {
+        const at = out[slotId] ?? {}
+        if (bounds.min !== undefined) at.min = (at.min ?? 0) + bounds.min
+        if (bounds.max !== undefined) at.max = (at.max ?? 0) + bounds.max
+        out[slotId] = at
+      },
+    )
+  })
+  return out
 }
 
 /** The same, summed over every day of a week the condition covers. */
@@ -575,38 +615,58 @@ export interface ClauseReading {
   skipped: boolean
 }
 
-/**
- * How far a condition fell short, **in whole units of failure**.
- *
- * For a count that is the shortfall itself: one more slip is one more freeze,
- * which is the arithmetic the whole freeze economy runs on. Time has no such
- * unit — forty minutes short of two hours is one broken promise, not forty —
- * so a time condition costs exactly one however far off it was. The figure you
- * actually missed by is still reported; it is only the *price* that is flat.
- *
- * With both bounds only one can be broken at a time, since a floor above its
- * own ceiling is not a condition anybody can write. So the two are taken at
- * their worst rather than added, and the result is the same single miss it
- * always was.
- */
-const deficitOf = (
-  value: number,
-  measure: StreakMeasure,
-  bounds: ClauseBounds,
-): number => {
-  const under = bounds.min === undefined ? 0 : bounds.min - value
-  const over = bounds.max === undefined ? 0 : value - bounds.max
-  const short = Math.max(under, over)
-  if (short <= 0) return 0
-  return measure === "time" ? 1 : short
-}
-
 /** Does this condition cover this weekday? No list means every one of them. */
 /** A date to describe a condition against, where any date would do. */
 const describingKey = (): DayKey => toKey(new Date())
 
 export const clauseCoversDay = (clause: StreakClause, dayKey: DayKey): boolean =>
   clauseWeekdays(clause).includes(fromKey(dayKey).getDay())
+
+/**
+ * **What a condition counts on one day**, over any set of slots.
+ *
+ * Hoisted out of `readClauseDay` because the week needs the same arithmetic:
+ * a slot's weekly total is its daily totals added up, and two ways of
+ * measuring the same thing is how the day and the week come to disagree.
+ */
+export const measuredOn = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  day: Day | undefined,
+  slotIds: string[] | undefined,
+): number => {
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+  return info.measure === "time"
+    ? minutesOn(day, ctx.slots, slotIds, keepsAnyActivity(targets, ctx))
+    : countOn(
+        dayCounters(day || {}),
+        clauseUnits(clause, ctx).map((u) => u.id),
+        slotIds,
+      )
+}
+
+/**
+ * How far a figure falls outside a pair of bounds. Nought when it is inside.
+ *
+ * With both bounds only one can be broken at a time, since a floor above its
+ * own ceiling is not a condition anybody can write, so the two are taken at
+ * their worst rather than added.
+ *
+ * **This is a shortfall, not a price.** Flattening it into whole units of
+ * failure happens at the end, once the day's own bound and every slot rider
+ * have been added together: a count costs what it actually fell short by —
+ * one more slip is one more freeze, which is the arithmetic the freeze economy
+ * runs on — while time has no such unit, so forty minutes short of two hours
+ * is one broken promise and not forty. Both scopes flatten the same way, which
+ * is what stops a day and a week disagreeing about what a miss costs.
+ */
+const shortOf = (v: number, b: ClauseBounds) =>
+  Math.max(
+    b.min === undefined ? 0 : b.min - v,
+    b.max === undefined ? 0 : v - b.max,
+    0,
+  )
 
 /**
  * One condition, on one day.
@@ -654,8 +714,9 @@ export function readClauseDay(
        the answers grid the moment the *first* target is a check, whatever the
        rest are, and writing in it clears the bounds; so a condition naming two
        checks was drawn as an assertion, stored as one, and then read as a
-       count with no bounds left to compare against. `deficitOf` with neither
-       bound is nought, so the condition judged nothing and every day passed —
+       count with no bounds left to compare against. A shortfall against
+       neither bound is nought, so the condition judged nothing and every day
+       passed —
        unanswered, answered `no`, answered anything.
 
        Judged separately and the deficits added, for the reason every other
@@ -686,7 +747,7 @@ export function readClauseDay(
        **Read as the binary it is, not as arithmetic.** A day can answer a
        check once, so the only readings a bound has here are *must be yes* and
        *must not be*, and the deficit is one or nothing. Handing the figure to
-       `deficitOf` instead priced a miss at whatever the number happened to
+       the shortfall arithmetic instead priced a miss at whatever it happened to
        say — and the numbers cannot all be trusted, because a condition that
        once measured time and was switched onto a check kept its minutes. That
        is the bug that asked for 61 freezes to cover two unanswered checks:
@@ -715,13 +776,8 @@ export function readClauseDay(
     }
   }
 
-  const unitIds = clauseUnits(clause, ctx).map((u) => u.id)
-  const keep = keepsAnyActivity(targets, ctx)
-  /** What this condition counts, over any set of slots. */
   const measured = (slotIds: string[] | undefined) =>
-    info.measure === "time"
-      ? minutesOn(day, ctx.slots, slotIds, keep)
-      : countOn(dayCounters(day || {}), unitIds, slotIds)
+    measuredOn(clause, ctx, day, slotIds)
 
   const value = measured(clause.slotIds)
 
@@ -737,12 +793,6 @@ export function readClauseDay(
      the freeze economy already runs on. */
   const weekday = fromKey(dayKey).getDay()
   const slotRules = slotBoundsOnWeekday(clause, weekday)
-  const shortOf = (v: number, b: ClauseBounds) =>
-    Math.max(
-      b.min === undefined ? 0 : b.min - v,
-      b.max === undefined ? 0 : v - b.max,
-      0,
-    )
 
   let short = shortOf(value, boundsOnWeekday(clause, ctx, weekday))
   Object.entries(slotRules).forEach(([slotId, bounds]) => {
@@ -911,13 +961,35 @@ export function readWeek(
         skipped: false,
       }
 
+    /* **The week reads slot bounds too.** It used to take only each day's
+       *value* from `readClauseDay` and throw the deficit away, recomputing
+       from `weekBounds` alone — so `at most 3 a week, and none in the evening`
+       enforced the three and never the evening, and *never after dark* was
+       a promise only a rule judging days could make.
+
+       Measured across the week rather than day by day, because after the fix
+       above every figure in a weekly condition is the week's: one shape for
+       the whole clause, not a weekly total sitting on top of daily slots. */
+    const slotRules = weekSlotBounds(clause, covered)
+    let short = covered.length
+      ? shortOf(value, weekBounds(clause, ctx, covered))
+      : 0
+    if (covered.length)
+      Object.entries(slotRules).forEach(([slotId, bounds]) => {
+        const inSlot = covered.reduce(
+          (sum, k) => sum + measuredOn(clause, ctx, days[k], [slotId]),
+          0,
+        )
+        short += shortOf(inSlot, bounds)
+      })
+
     return {
       clause,
       applies: covered.length > 0,
       value,
-      deficit: covered.length
-        ? deficitOf(value, measure, weekBounds(clause, ctx, covered))
-        : 0,
+      // A time condition costs one freeze however many of its parts broke;
+      // a count costs what it actually fell short by. Same rule as the day.
+      deficit: short <= 0 ? 0 : measure === "time" ? 1 : short,
       skipped: false,
     }
   })
@@ -983,6 +1055,16 @@ export function clauseLostOn(
   const measure = targetMeasure(clauseTarget(clause), ctx)
   const { min, max } = weekBounds(clause, ctx, covered)
 
+  /* Slot ceilings lose a week exactly as the clause's own does, and for the
+     same reason: *none in the evening* is broken the moment one lands there,
+     and nothing done later in the week takes it back. Only the ceilings — a
+     slot floor is still reachable until the week runs out, which the walk
+     below already handles for the clause as a whole. */
+  const slotCeilings = Object.entries(weekSlotBounds(clause, covered)).filter(
+    ([, b]) => b.max !== undefined,
+  )
+  const inSlot: Record<string, number> = {}
+
   let value = 0
   let floorSettled = min === undefined
   for (const key of covered) {
@@ -995,6 +1077,12 @@ export function clauseLostOn(
     // something already done. It is checked first because it is the only one
     // that can lose a week nothing else has any quarrel with.
     if (max !== undefined && value > max) return key
+
+    for (const [slotId, bounds] of slotCeilings) {
+      inSlot[slotId] =
+        (inSlot[slotId] ?? 0) + measuredOn(clause, ctx, days[key], [slotId])
+      if (inSlot[slotId] > bounds.max!) return key
+    }
 
     if (floorSettled) continue
 
@@ -1838,7 +1926,7 @@ export function isNarrowing(
  *
  * A condition with no floor, no ceiling and no accepted answer is satisfied by
  * every day there has ever been. It is not an error the arithmetic can see —
- * `deficitOf` with neither bound is nought, correctly — but a rule containing
+ * a shortfall against neither bound is nought, correctly — but a rule holding
  * one has quietly stopped being a rule, and its red days turn green without
  * anything appearing to have changed. That is the one failure this codebase is
  * built to refuse, so it is refused at the door instead of being read

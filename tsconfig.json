@@ -24,7 +24,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    // The app is browser-only; `scripts` is the one Node consumer, and it
+    // wants `process` to set an exit code.
+    "types": ["node"]
   },
-  "include": ["src"]
+  // `scripts` holds the streak sweep, which imports from `src` and must be
+  // held to the same types — a sweep that has drifted out of type is a sweep
+  // nobody trusts.
+  "include": ["src", "scripts"]
 }
