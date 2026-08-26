@@ -1,6 +1,6 @@
 # 014 — Achievements, made as flexible as the rules
 
-**Status: written, building.**
+**Status: built.** Covered by `npm run sweep`.
 
 `spec 010` part 5 gave achievements three sources and a note saying why there
 would be no more: *a wider list would turn the editor into a second rule
@@ -21,6 +21,12 @@ rebuilt to escape.
 
 > Reach **N** of **[what]**, counted **[ever / in a day / in a week / in a
 > month]**.
+
+…and, for a run, **[in a row / in all]**, **[days / weeks]**, and optionally
+only on certain weekdays. That last set was added mid-build and is the largest
+part of this: the three sources turned out to be three points in one space, and
+naming them separately hid the axes they differ along. `AchievementRun` writes
+the space out.
 
 Two kinds of *what*, and the split is real rather than cosmetic:
 
