@@ -28,13 +28,14 @@
 --------------------------------------------------------------- */
 
 import { Flame, Snowflake, Trophy } from "lucide-react"
-import type { Project } from "../types/model"
+import type { DayKey, Project } from "../types/model"
 import type {
   ClauseReading,
   RuleState,
   RuleStatus,
 } from "../lib/customStreaks"
 import {
+  clauseReadout,
   clauseSentence,
   clauseTarget,
   freezeOffer,
@@ -141,17 +142,17 @@ export function CustomStreakSection({
    * one about hours and one about slips, and a shared format would be wrong
    * for one of them.
    */
-  const breakdown = (readings: ClauseReading[]) =>
+  const breakdown = (readings: ClauseReading[], key: DayKey) =>
     readings
       .filter((r) => r.applies)
-      .map((r) => {
-        const info = targetInfo(clauseTarget(r.clause), ctx)
-        const value =
-          info.measure === "time" ? fmtHours(r.value) : String(r.value)
-        return `${info.label} ${value}` + (r.skipped ? " (skipped)" : "")
-      })
+      .map((r) => clauseReadout(r, ctx, project.days[key], key, "all"))
       .join(" · ")
 
+  /* **A check has no figure**, and printing one was how `1` ended up in a
+     strip cell: `ClauseReading.value` for a check is the yes count, which is
+     the right number for the chart and nothing a reader can use. The cell's
+     colour is the reading, and the tooltip says which check and what answer. */
+  const soleCheck = !compound && !!sole?.check
   const figure = (readings: ClauseReading[]) =>
     compound ? totalDeficit(readings) : (readings[0]?.value ?? 0)
 
@@ -168,10 +169,11 @@ export function CustomStreakSection({
     return {
       key,
       state,
-      value: state === "unjudged" ? "·" : fmtValue(figure(readings)),
+      value:
+        state === "unjudged" ? "·" : soleCheck ? undefined : fmtValue(figure(readings)),
       tooltip:
         `${fmtDateLong(key)} — ${STATE_WORD[state]}` +
-        (state === "unjudged" ? "" : `. ${breakdown(readings)}`) +
+        (state === "unjudged" ? "" : `. ${breakdown(readings, key)}`) +
         (short
           ? `. Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`
           : ""),

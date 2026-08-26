@@ -1733,6 +1733,73 @@ export function clauseSentence(
 
 
 
+/**
+ * **What a condition did on one day, in words.**
+ *
+ * The third and fourth places to need this wrote it out again, and the fourth
+ * one drifted: the streak panel's tooltip read `Go to bed in time 1 (skipped)`
+ * on a day where *go to bed* was the half that went right — it named the first
+ * target whatever had happened, printed `ClauseReading.value` raw (a yes count,
+ * which means nothing to a reader), and pinned `skipped` — now "any of them
+ * was" — to whichever name it had chosen. So the readout lives here, once, and
+ * both the risk lines and the panel ask it.
+ *
+ * `failing` is the difference between the two callers. A warning says what
+ * went wrong and nothing else; a tooltip on a day you are inspecting says what
+ * happened, kept or not. Same sentence, two lengths.
+ */
+export function clauseReadout(
+  reading: ClauseReading,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+  mode: "failing" | "all" = "all",
+): string {
+  const clause = reading.clause
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+
+  if (info.check) {
+    /* A check written before accepted answers existed carries a bound instead,
+       and `readClauseDay` reads it as the binary it is — a floor of one means
+       yes, a ceiling of nought means no. Deriving the same set here is what
+       lets the callers stop carrying their own legacy branch. */
+    const legacy = clauseBounds(clause, ctx, dayKey)
+    const allowed: CheckState[] =
+      clause.allow?.[fromKey(dayKey).getDay()] ??
+      (legacy.min !== undefined && legacy.min >= 1 ? ["yes"] : ["no"])
+    const said = (state: CheckState | null) =>
+      state === null
+        ? `is ${q("not answered")}`
+        : `is ${q(CHECK_LABELS[state].toLowerCase())}`
+    // Named one by one, because each is asserted one by one — a set of checks
+    // has no combined figure to report and never had.
+    return targets
+      .filter((t) => {
+        if (mode === "all") return true
+        const state = checkState(day, t.id || "")
+        return !state || !allowed.includes(state)
+      })
+      .map((t) => `${q(targetInfo(t, ctx).label)} ${said(checkState(day, t.id || ""))}`)
+      .join(" · ")
+  }
+
+  /* Everything else is a figure, and the figure is the whole set's — the
+     targets are summed, so naming one of them and printing the total would be
+     a number attached to the wrong thing. */
+  const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
+  const named = targetsLabel(targets, ctx)
+  if (mode === "all") return `${named} ${q(fmt(reading.value))}`
+
+  const { min, max } = clauseBounds(clause, ctx, dayKey)
+  // Only the broken half is worth naming. A condition with both bounds is over
+  // one of them, and saying which is the whole job of this line.
+  const over = max !== undefined && reading.value > max
+  return `${named} ${q(fmt(reading.value))} against ${
+    over ? `at most ${q(fmt(max))}` : `at least ${q(fmt(min ?? 0))}`
+  }`
+}
+
 /** The whole rule in one line — the scope, then every condition joined by "and". */
 export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {
   const when = rule.scope === "week" ? "Every week" : "Every day"

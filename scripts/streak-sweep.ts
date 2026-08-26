@@ -25,6 +25,7 @@ import { ruleRisk } from "../src/lib/streakRisk"
 import type { RiskLevel } from "../src/lib/streakRisk"
 import {
   clauseAsksNothing,
+  clauseReadout,
   clauseSentence,
   isNarrowing,
   readDay,
@@ -358,6 +359,56 @@ const RISKS: RiskCase[] = [
     undefined, 23, "danger"),
 ]
 
+/* ---- what a day is reported as -----------------------------------------
+
+   The tooltips and warnings. Three times now the same bug has been fixed in a
+   different copy of this text — the first target named whatever went wrong —
+   so the readout is one function and these are its cases. `failing` says what
+   broke; `all` says what happened. */
+
+interface ReadCase {
+  name: string
+  clause: object
+  day: Day | undefined
+  mode: "failing" | "all"
+  want: string
+}
+
+const reads = (
+  name: string,
+  clause: object,
+  day: Day | undefined,
+  mode: "failing" | "all",
+  want: string,
+): ReadCase => ({ name, clause, day, mode, want })
+
+const READS: ReadCase[] = [
+  reads("two checks · names only the one that broke",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    answered({ "u-wake": "skip", "u-bed": "yes" }), "failing",
+    "“Wake up” is “skipped”"),
+  reads("two checks · both broke",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    undefined, "failing",
+    "“Wake up” is “not answered” · “Go to bed” is “not answered”"),
+  reads("two checks · what happened, kept or not",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    answered({ "u-wake": "skip", "u-bed": "yes" }), "all",
+    "“Wake up” is “skipped” · “Go to bed” is “yes”"),
+  reads("a check written before accepted answers",
+    { id: "c", ...checks("u-wake"), min: 1 },
+    answered({ "u-wake": "no" }), "failing",
+    "“Wake up” is “no”"),
+  reads("a count names the whole set, not one of it",
+    { id: "c", ...checks("u-yt", "u-gym"), max: 0 },
+    counted("u-gym", "s-am", 2), "failing",
+    "“Youtube” or “Gym” “2” against at most “0”"),
+  reads("time reports hours, never minutes",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    studied(90), "failing",
+    "“Lessons” “1h 30m” against at least “3h”"),
+]
+
 /* ---- the lock ----------------------------------------------------------
 
    `isNarrowing` is one-sided: `true` means *proved no easier*, and `false`
@@ -518,6 +569,23 @@ for (const test of RISKS) {
 }
 
 console.log("")
+for (const test of READS) {
+  const rule = ruleOf(test.clause as StreakClause, "day")
+  const proj = project(rule, test.day ? { [MON]: test.day } : {})
+  const ctx = streakContext(proj)
+  const [reading] = readDay(rule, ctx, test.day, MON)
+  const got = clauseReadout(reading, ctx, test.day, MON, test.mode)
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  reads: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  reads: ${test.name}`)
+    console.log(`      got  ${got}`)
+    console.log(`      want ${test.want}`)
+  }
+}
+
+console.log("")
 for (const test of LOCKS) {
   const before = ruleOf(test.before as StreakClause, "day")
   const after = ruleOf(test.after as StreakClause, "day")
@@ -553,5 +621,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${CASES.length + RISKS.length + READS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )
