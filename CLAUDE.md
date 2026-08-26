@@ -878,6 +878,11 @@ enough that a loose word costs a conversation.
 | **the composite** | the run of days on which *every voting rule* held | `keptDays`, `KeptCard` |
 | **points** | the account a day pays into, and the only figure you can spend | `lib/balance.ts`, the shop |
 
+**`specs/015-the-economy.md` is the whole economy in one place** — the three
+numbers, where points come from, which way each lock points, and what is not
+decided. Read it before touching the balance, the shop or an achievement's
+reward.
+
 **Points and the composite are not the same number, and used to share a name.**
 The composite is a *run*: it resets to nought when you break it, and nothing
 spends it — a purchase never touches your streak. Points *accumulate*, go

@@ -369,6 +369,13 @@ which is the question Part 1 has to answer.
 
 # Part 4 — The balance
 
+> **Superseded by `specs/015-the-economy.md`.** The shape here is right and two
+> of its decisions are not: the currency is points rather than kept days, the
+> rate is `+10 / −20` rather than `+1 / −3`, and achievements pay into the
+> account. Read `015` for the economy as it stands; this part is kept for the
+> reasoning that got there, including the argument that was sound and applied
+> to the wrong noun.
+
 ## What it is for
 
 A streak has one failure mode nothing else covers: **the day after it breaks
@@ -441,6 +448,12 @@ cannot drift.
 
 # Part 5 — Achievements
 
+> **Extended by `specs/014` and `specs/015`.** The cap of three sources is
+> gone — an achievement is a run or a total over anything — and they pay points
+> at a price you set. The line this part drew was right and in the wrong place:
+> what makes a rule builder is conditions, weekday bounds and opposing limits,
+> none of which an achievement has.
+
 Everything in this app so far is built on fear: a streak is what you lose, a
 red day is what you avoid. It works and it is one-sided. An achievement is the
 opposite pole — **it cannot be taken away** — and it is what makes the history
@@ -471,6 +484,9 @@ with `earned_at`.
 ---
 
 # Part 6 — The shop
+
+> **Superseded by `specs/015-the-economy.md`** for anything about the currency.
+> The precommitment argument, the permanence and the ceremony are unchanged.
 
 Not a game store. **A precommitment device**: buying the record player in the
 app is permitting yourself to buy it in life. The app is the ledger of a
