@@ -69,12 +69,13 @@ There are no tests, with one deliberate exception. Lint and typecheck are the
 automated checks and **both are clean — expect zero from each and leave them at
 zero.**
 
-`npm run sweep` is the exception: `scripts/streak-sweep.ts`, eighty-two cases
-over the streak engine — every rule shape against a period that should hold and
-one that should break it, the risk levels at both ends of the day, what today
-still asks, what a day is reported as, the lock, and the conditions that must be
-refused rather than judged. **Run it after touching `customStreaks.ts`, `streakRisk.ts` or
-`dayVerdict.ts`.** It exists because the throwaway version of it lived under
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, a hundred and five
+cases over the streak engine — every rule shape against a period that should
+hold and one that should break it, the risk levels at both ends of the day,
+what today still asks, what a day is reported as, the lock, the conditions that
+must be refused rather than judged, and what an achievement reaches and what
+its own lock allows. **Run it after touching `customStreaks.ts`,
+`streakRisk.ts`, `dayVerdict.ts` or `achievements.ts`.** It exists because the throwaway version of it lived under
 `.claude/`, which is gitignored, so it went with a cleanup — and one morning of
 ordinary use then turned up eight bugs, three of them in the engine, every one
 of which it would have caught. Expectations are written out, never derived: the
