@@ -211,6 +211,7 @@ const owed = (r: ClauseReading, ctx: StreakContext, dayKey: DayKey): number => {
 function todayUrgency(
   readings: ClauseReading[],
   ctx: StreakContext,
+  day: Day | undefined,
   now: Date,
 ): { level: RiskLevel; spent: boolean } {
   const left = minutesLeftToday(now)
@@ -227,6 +228,34 @@ function todayUrgency(
 
   readings.forEach((r) => {
     if (!r.applies || r.deficit === 0) return
+    const info = targetInfo(clauseTarget(r.clause), ctx)
+
+    /* **A check has no rate and no headroom.** It is answered or it is not,
+       and this function could not see one at all: the requirement lives in
+       `clause.allow`, so `clauseBounds` returns neither side, the
+       already-spent branch below never fired and `owed()` came to nought — so
+       the loop returned before reaching the evening rule. A rule whose day was
+       already lost said `safe` at nine in the morning, `safe` at ten at night,
+       and then turned up the next morning as yesterday's emergency.
+
+       An answer outside the accepted set is spent the moment it is written,
+       exactly like a breached ceiling: the thing happened, and no amount of
+       remaining day takes it back. No answer yet is the ordinary case, and the
+       day itself is its clock. */
+    if (info.check && r.clause.allow) {
+      const allowed = r.clause.allow[fromKey(todayKey).getDay()] ?? []
+      const answeredWrong = clauseTargets(r.clause).some((t) => {
+        const state = checkState(day, t.id || "")
+        return !!state && !allowed.includes(state)
+      })
+      if (answeredWrong) {
+        spent = true
+        return worse("danger")
+      }
+      if (left <= EVENING_MINUTES) return worse("warning")
+      return
+    }
+
     const bounds = clauseBounds(r.clause, ctx, todayKey)
     // Over a ceiling is already spent: nothing left to do but freeze it.
     if (bounds.max !== undefined && r.value > bounds.max) {
@@ -235,7 +264,6 @@ function todayUrgency(
     }
     const need = owed(r, ctx, todayKey)
     if (need <= 0) return
-    const info = targetInfo(clauseTarget(r.clause), ctx)
     if (info.measure === "time" && !info.check) {
       if (need > left) return worse("danger")
       // More than half of what is left would have to go on this one thing.
@@ -360,7 +388,7 @@ export function ruleRisk(
   const tState = ruleDayState(rule, ctx, days[todayKey], todayKey, todayKey)
   if (tState === "pending") {
     const readings = readDay(rule, ctx, days[todayKey], todayKey)
-    const { level, spent } = todayUrgency(readings, ctx, today)
+    const { level, spent } = todayUrgency(readings, ctx, days[todayKey], today)
     if (level === "safe") return { id, level }
     const offer = freezeOffer(rule, project, todayKey, todayKey, status)
     const restores = runIfKept(rule, ctx, days, todayKey, todayKey)

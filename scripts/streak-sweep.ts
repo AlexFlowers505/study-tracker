@@ -21,12 +21,15 @@
    when the streak engine is touched.
 --------------------------------------------------------------- */
 
+import { ruleRisk } from "../src/lib/streakRisk"
+import type { RiskLevel } from "../src/lib/streakRisk"
 import {
   clauseAsksNothing,
   clauseSentence,
   readDay,
   readWeek,
   ruleDayState,
+  ruleStatus,
   ruleWeekState,
   streakContext,
 } from "../src/lib/customStreaks"
@@ -287,6 +290,73 @@ const CASES: Case[] = [
     ), "missed"),
 ]
 
+/* ---- what the streaks row says about today ------------------------------
+
+   A different axis entirely, and the one where a bug is hardest to see: the
+   verdict can be right while the warning that would have let you act on it
+   never appears. A check answered `no` read `safe` at every hour of the day
+   until `013 §1.3`.
+
+   `RISK_DAY` is a Monday with yesterday held, so the `today` branch of the
+   risk builder is the one reached rather than yesterday's emergency. */
+
+const RISK_DAY: DayKey = "2026-08-24"
+const RISK_YESTERDAY: DayKey = "2026-08-23"
+
+interface RiskCase {
+  name: string
+  clause: object
+  today: Day | undefined
+  hour: number
+  want: RiskLevel
+}
+
+const risky = (
+  name: string,
+  clause: object,
+  today: Day | undefined,
+  hour: number,
+  want: RiskLevel,
+): RiskCase => ({ name, clause, today, hour, want })
+
+const RISKS: RiskCase[] = [
+  risky("check · answered no · morning",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    answered({ "u-wake": "no" }), 9, "danger"),
+  risky("check · answered no · night",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    answered({ "u-wake": "no" }), 22, "danger"),
+  risky("check · skipped · morning",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    answered({ "u-wake": "skip" }), 9, "danger"),
+  risky("check · unanswered · morning is not an emergency",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    undefined, 9, "safe"),
+  risky("check · unanswered · evening is",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    undefined, 22, "warning"),
+  risky("check · answered yes · quiet all day",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    answered({ "u-wake": "yes" }), 22, "safe"),
+  risky("two checks · one wrong · danger even with the other kept",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    answered({ "u-wake": "no", "u-bed": "yes" }), 9, "danger"),
+
+  risky("ceiling · breached · already spent, at any hour",
+    { id: "c", ...target("unit", "u-yt"), max: 0 },
+    counted("u-yt", "s-am", 1), 9, "danger"),
+  risky("ceiling · room left · nothing to say",
+    { id: "c", ...target("unit", "u-yt"), max: 3 },
+    counted("u-yt", "s-am", 1), 9, "safe"),
+
+  risky("time · nothing logged · morning is not an emergency",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    undefined, 9, "safe"),
+  risky("time · nothing logged · an hour before midnight is",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    undefined, 23, "danger"),
+]
+
 /* ---- conditions that must be refused rather than judged ---------------- */
 
 const REFUSED: { name: string; clause: object }[] = [
@@ -340,6 +410,36 @@ for (const test of CASES) {
 }
 
 console.log("")
+for (const test of RISKS) {
+  const rule = {
+    ...ruleOf(test.clause as StreakClause, "day"),
+    startedOn: RISK_YESTERDAY,
+    lockedUntil: RISK_YESTERDAY,
+    freezesPerWeek: 3,
+  } as StreakRule
+  /* Yesterday satisfies every shape these cases use — both checks answered
+     and three hours logged — so the risk builder reaches its `today` branch
+     rather than reporting yesterday's emergency. A fixture that holds for one
+     kind of rule and not another silently tests the wrong branch. */
+  const held = {
+    ...answered({ "u-wake": "yes", "u-bed": "yes" }),
+    ...studied(180),
+  } as Day
+  const proj = project(rule, {
+    [RISK_YESTERDAY]: held,
+    ...(test.today ? { [RISK_DAY]: test.today } : {}),
+  })
+  const at = new Date(`${RISK_DAY}T${String(test.hour).padStart(2, "0")}:00:00`)
+  const got = ruleRisk(ruleStatus(rule, proj, at), proj, at).level
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  risk: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  risk: ${test.name} — ${got}, want ${test.want}`)
+  }
+}
+
+console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
   const ctx = streakContext(project(rule, {}))
@@ -357,4 +457,6 @@ if (failed) {
   console.log(`${RED}${failed} failing${OFF}${deferred ? `, ${deferred} deferred` : ""}`)
   process.exit(1)
 }
-console.log(`${GREEN}all ${CASES.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`)
+console.log(
+  `${GREEN}all ${CASES.length + RISKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+)
