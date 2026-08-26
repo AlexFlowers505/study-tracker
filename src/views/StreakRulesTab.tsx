@@ -90,6 +90,7 @@ import {
   clauseTarget,
   clauseTargets,
   lockFrom,
+  removalGate,
   newClause,
   newStreakRule,
   ruleClauses,
@@ -1813,6 +1814,23 @@ export function StreakRulesTab({
         warningNote={(label) =>
           `Remove "${label}"? Its streak goes with it, and so does every freeze banked against it. The days you marked stay exactly as they are.`
         }
+        /* **Dropping a rule is the largest loosening there is**, so it walks
+           the same gates one does: free on the day it was written, then the
+           clock, then a written reason, then the supervisor. It was free at
+           any hour, which made the week-long wait on lowering a bar a wait you
+           could step around by removing the bar. */
+        removeGate={(rule, reason) =>
+          // A rule's grace day is its `startedOn`, which is the same idea an
+          // achievement spells `createdOn`: the day it began to protect
+          // anything.
+          removalGate(
+            { createdOn: rule.startedOn, lockedUntil: rule.lockedUntil },
+            today,
+            reason,
+            supervised,
+          )
+        }
+        onProposeRemove={(rule, reason) => onPropose?.(rule, rule, reason)}
         extra={(rule, update) => (
           <RuleForm
             rule={rule}

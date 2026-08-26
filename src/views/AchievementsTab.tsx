@@ -38,7 +38,7 @@ import {
   progressOf,
   runOf,
 } from "../lib/achievements"
-import { LOCK_DAYS, lockFrom, streakContext } from "../lib/customStreaks"
+import { LOCK_DAYS, lockFrom, removalGate, streakContext } from "../lib/customStreaks"
 import type { StreakContext } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
@@ -569,6 +569,11 @@ export function AchievementsTab({
         warningNote={(label) =>
           `Remove "${label}"? If it was already earned the record of that stays — it happened. Only the definition goes.`
         }
+        /* The same gates a rule's removal walks. An achievement has no
+           supervisor channel of its own yet — proposals are keyed to rules —
+           so `supervised` is false here and the clock and the reason are what
+           it has. */
+        removeGate={(item, reason) => removalGate(item, today, reason, false)}
         extra={(item, update) => (
           <Form
             project={project}

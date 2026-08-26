@@ -17,6 +17,8 @@ import { IconGrid } from "./IconGrid"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
 import { usePalette } from "./useTheme"
+import type { RemovalGate } from "../lib/customStreaks"
+import { fmtDateLong } from "../lib/date"
 import { AutoTextarea } from "./controls"
 
 export function EditableList<T extends Labeled>({
@@ -24,6 +26,9 @@ export function EditableList<T extends Labeled>({
   onChange,
   noun,
   warningNote,
+  removeGate,
+  onProposeRemove,
+  onRemoved,
   newItem,
   extra,
   minItems = 1,
@@ -32,6 +37,23 @@ export function EditableList<T extends Labeled>({
   onChange: (next: T[]) => void
   noun: string
   warningNote: (label: string) => ReactNode
+  /**
+   * **What it costs to remove this one**, when removing it costs anything.
+   *
+   * Absent for slots, activities and counters: those hold no promise, and a
+   * confirm is the whole ceremony they need. Present for rules and
+   * achievements, where dropping the thing is the largest loosening there is
+   * — see `removalGate`. The policy is the caller's; this component only draws
+   * what the gate says and refuses when it refuses.
+   */
+  removeGate?: (item: T, reason: string) => RemovalGate
+  /**
+   * Where a removal goes when a supervisor has to agree first. Called instead
+   * of removing, with the reason that was written.
+   */
+  onProposeRemove?: (item: T, reason: string) => void
+  /** Called with the reason on an allowed removal, so it can go on a record. */
+  onRemoved?: (item: T, reason: string) => void
   /** Whatever a new item needs beyond id, label, icon and colour. */
   newItem?: () => Omit<T, keyof Labeled>
   /** Fields this kind of item has and the others do not. */
@@ -45,6 +67,7 @@ export function EditableList<T extends Labeled>({
   const c = usePalette()
   const [openPickerId, setOpenPickerId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [removeReason, setRemoveReason] = useState("")
 
   // The union is what lets the shared controls patch the `Labeled` half
   // without the compiler demanding they know about `T`'s own fields.
@@ -86,23 +109,83 @@ export function EditableList<T extends Labeled>({
           className="rounded-xl p-2.5 bg-ink/[0.04]"
         >
           {confirmDeleteId === item.id ? (
-            <div className="flex items-center justify-between gap-3 text-xs font-mono">
-              <span className="text-exam">{warningNote(item.label)}</span>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => setConfirmDeleteId(null)}
-                  className={`${btnBase} px-2 py-1 rounded-md bg-ink/[0.06] hover:bg-ink/[0.10] uppercase tracking-widest text-[10px]`}
-                >
-                  Keep
-                </button>
-                <button
-                  onClick={() => removeItem(item.id)}
-                  className={`${btnBase} px-2 py-1 rounded-md bg-exam text-page hover:bg-exam/85 uppercase tracking-widest text-[10px]`}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
+            (() => {
+              // The reason is this component's state, so the gate has to be
+              // asked with it — asked without, it would answer `needsReason`
+              // forever and the button would never enable.
+              const gate = removeGate?.(item, removeReason)
+              return (
+                <div className="space-y-2 text-xs font-mono">
+                  <span className="block text-exam">
+                    {warningNote(item.label)}
+                  </span>
+
+                  {/* Only where the clock is clear and the reason is what is
+                      missing. Asking for one while it still waits would be
+                      asking you to type into a refusal. */}
+                  {gate && !gate.free && !gate.waitsUntil && (
+                    <AutoTextarea
+                      value={removeReason}
+                      onChange={(e) => setRemoveReason(e.target.value)}
+                      placeholder="Why it is going"
+                      rows={1}
+                      maxHeight={100}
+                      className="w-full bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-[11px] text-ink/70 placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
+                    />
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmDeleteId(null)
+                        setRemoveReason("")
+                      }}
+                      className={`${btnBase} px-2 py-1 rounded-md bg-ink/[0.06] hover:bg-ink/[0.10] uppercase tracking-widest text-[10px]`}
+                    >
+                      Keep
+                    </button>
+                    <button
+                      disabled={!!gate && !gate.allowed && !gate.needsApproval}
+                      onClick={() => {
+                        if (gate?.needsApproval) {
+                          onProposeRemove?.(item, removeReason)
+                        } else {
+                          onRemoved?.(item, removeReason)
+                          removeItem(item.id)
+                        }
+                        setConfirmDeleteId(null)
+                        setRemoveReason("")
+                      }}
+                      className={`${btnBase} px-2 py-1 rounded-md bg-exam text-page hover:bg-exam/85 uppercase tracking-widest text-[10px] disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      {gate?.needsApproval ? "Send for approval" : "Remove"}
+                    </button>
+
+                    {gate?.waitsUntil && (
+                      <span className="text-[10px] text-ink/50">
+                        Dropping it is the largest loosening there is. It waits
+                        until {fmtDateLong(gate.waitsUntil)}.
+                      </span>
+                    )}
+                    {gate?.needsReason && (
+                      <span className="text-[10px] text-ink/50">
+                        Say why first. It goes on the record.
+                      </span>
+                    )}
+                    {gate?.needsApproval && (
+                      <span className="text-[10px] text-ink/50">
+                        The clock is clear — now somebody else has to agree.
+                      </span>
+                    )}
+                    {gate?.free && (
+                      <span className="text-[10px] text-ink/40">
+                        Nothing is at risk yet — today is still yours.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })()
           ) : (
             /* Two rows sharing one left gutter, `w-8` wide on both: the icon
                over the reorder arrows, the name over the description. That is

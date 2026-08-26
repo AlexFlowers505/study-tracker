@@ -2154,6 +2154,63 @@ export const clauseAsksNothing = (
   )
 }
 
+/**
+ * **Deleting is the largest loosening there is, and now costs the same.**
+ *
+ * It used to be free, and `CLAUDE.md` said so in as many words: *that leaves
+ * delete-and-recreate open, deliberately: it costs the streak, which is the
+ * only thing anybody was protecting.* That was true while a rule was only a
+ * promise about days. It stopped being true the moment the rule was the thing
+ * being protected — a rule you can drop on a bad evening is a rule with a
+ * week-long clock on lowering its bar and no clock at all on removing the bar
+ * entirely, which is the lock defending the paperwork rather than the promise.
+ *
+ * So a removal walks the same gates a loosening does, in the same order and
+ * for the same reasons:
+ *
+ * - **The grace day is still yours.** A thing you wrote this morning has
+ *   judged nothing and protects nothing, so dropping it costs nothing.
+ * - **Then the clock**, which is the one the last loosening set. Nothing you
+ *   can do about it but wait.
+ * - **Then the reason**, on the record rather than in a log that can fail.
+ * - **Then the supervisor**, if there is one. The change is not refused, it is
+ *   sent, and nothing happens until somebody else agrees.
+ */
+export interface RemovalGate {
+  /** Nothing is at risk yet, so nothing is asked. */
+  free: boolean
+  /** The clock has not run out; this is the day it does. */
+  waitsUntil: DayKey | null
+  /** The clock is clear and only a written reason is missing. */
+  needsReason: boolean
+  /** Clear and explained, and now waiting on somebody else. */
+  needsApproval: boolean
+  allowed: boolean
+}
+
+export function removalGate(
+  /** The day it was written, and the day its lock lifts. */
+  item: { createdOn: DayKey; lockedUntil: DayKey },
+  today: Date,
+  reason: string,
+  supervised: boolean,
+): RemovalGate {
+  const todayKey = toKey(today)
+  const base = {
+    free: false,
+    waitsUntil: null,
+    needsReason: false,
+    needsApproval: false,
+  }
+  if (todayKey <= item.createdOn)
+    return { ...base, free: true, allowed: true }
+  if (todayKey < item.lockedUntil)
+    return { ...base, waitsUntil: item.lockedUntil, allowed: false }
+  if (!reason.trim()) return { ...base, needsReason: true, allowed: false }
+  if (supervised) return { ...base, needsApproval: true, allowed: false }
+  return { ...base, allowed: true }
+}
+
 export interface RuleEdit {
   /** Do the terms differ at all? A cosmetic edit is never blocked. */
   changed: boolean

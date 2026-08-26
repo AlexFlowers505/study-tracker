@@ -23,6 +23,7 @@
 
 import { achievementNarrows, progressOf } from "../src/lib/achievements"
 import { KEPT_VALUE, MISSED_COST } from "../src/lib/balance"
+import { removalGate } from "../src/lib/customStreaks"
 import { dueToday, ruleRisk } from "../src/lib/streakRisk"
 import type { RiskLevel } from "../src/lib/streakRisk"
 import {
@@ -763,6 +764,48 @@ const A_LOCKS: AchLockCase[] = [
     after: { kind: "total", targets: [{ kind: "time" }, { kind: "activity", id: "a-les" }] } },
 ]
 
+/* ---- what it costs to drop one -----------------------------------------
+
+   Removing a rule or an achievement used to be free, which made the week-long
+   wait on lowering a bar a wait you could step around by removing the bar. It
+   walks the same gates a loosening does now, and the order of those gates is
+   the thing worth pinning: the grace day, then the clock, then the reason,
+   then the supervisor. Getting them out of order would ask you to type a
+   reason into a refusal. */
+
+interface RemovalCase {
+  name: string
+  createdOn: DayKey
+  lockedUntil: DayKey
+  reason: string
+  supervised: boolean
+  want: "free" | "waits" | "needsReason" | "needsApproval" | "allowed"
+}
+
+const REMOVALS: RemovalCase[] = [
+  { name: "the day it was written is still yours",
+    createdOn: "2026-08-24", lockedUntil: "2026-09-01", reason: "", supervised: false,
+    want: "free" },
+  { name: "one written tomorrow cannot be at risk either",
+    createdOn: "2026-08-25", lockedUntil: "2026-09-01", reason: "", supervised: false,
+    want: "free" },
+  { name: "the clock comes before the reason",
+    createdOn: "2026-08-01", lockedUntil: "2026-09-01", reason: "changed my mind",
+    supervised: false, want: "waits" },
+  { name: "the clock clear, the reason missing",
+    createdOn: "2026-08-01", lockedUntil: "2026-08-20", reason: "  ",
+    supervised: false, want: "needsReason" },
+  { name: "clear and explained, and nobody watching",
+    createdOn: "2026-08-01", lockedUntil: "2026-08-20", reason: "it no longer fits",
+    supervised: false, want: "allowed" },
+  { name: "clear and explained, and somebody is",
+    createdOn: "2026-08-01", lockedUntil: "2026-08-20", reason: "it no longer fits",
+    supervised: true, want: "needsApproval" },
+  { name: "a supervisor does not override the clock",
+    createdOn: "2026-08-01", lockedUntil: "2026-09-01", reason: "it no longer fits",
+    supervised: true, want: "waits" },
+]
+
 /* ---- the account -------------------------------------------------------
 
    Not a rule shape, but the one arithmetic here you can *spend*, and its two
@@ -985,6 +1028,37 @@ for (const test of A_LOCKS) {
 }
 
 console.log("")
+for (const test of REMOVALS) {
+  const g = removalGate(
+    { createdOn: test.createdOn, lockedUntil: test.lockedUntil },
+    new Date(`${RISK_DAY}T12:00:00`),
+    test.reason,
+    test.supervised,
+  )
+  const got = g.free
+    ? "free"
+    : g.waitsUntil
+      ? "waits"
+      : g.needsReason
+        ? "needsReason"
+        : g.needsApproval
+          ? "needsApproval"
+          : g.allowed
+            ? "allowed"
+            : "refused"
+  // Only two of the five states may actually go through.
+  const shouldAllow = got === "free" || got === "allowed"
+  if (got === test.want && g.allowed === shouldAllow) {
+    console.log(`${GREEN}  ok${OFF}  dropping: ${test.name} — ${got}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  dropping: ${test.name} — ${got} (allowed=${g.allowed}), want ${test.want}`,
+    )
+  }
+}
+
+console.log("")
 for (const test of BALANCES) {
   const got = test.kept * KEPT_VALUE - test.missed * MISSED_COST - test.spent
   if (got === test.want) {
@@ -1016,5 +1090,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )
