@@ -355,6 +355,12 @@ const RISKS: RiskCase[] = [
   risky("ceiling · at its limit · one more ends it",
     { id: "c", ...target("unit", "u-yt"), max: 3 },
     counted("u-yt", "s-am", 3), 9, "warning"),
+  risky("slot ceiling · breached · the day is already spent",
+    { id: "c", ...target("unit", "u-yt"), max: 3, slots: { "s-pm": { max: 0 } } },
+    counted("u-yt", "s-pm", 1), 9, "danger"),
+  risky("slot ceiling · breached in the evening while the day's own bound is fine",
+    { id: "c", ...target("unit", "u-yt"), max: 9, slots: { "s-pm": { max: 2 } } },
+    counted("u-yt", "s-pm", 3), 9, "danger"),
   risky("slot ceiling · at its limit",
     { id: "c", ...target("unit", "u-yt"), max: 9, slots: { "s-pm": { max: 2 } } },
     counted("u-yt", "s-pm", 2), 9, "warning"),
@@ -371,6 +377,44 @@ const RISKS: RiskCase[] = [
   risky("time · nothing logged · an hour before midnight is",
     { id: "c", ...target("activity", "a-les"), min: 180 },
     undefined, 23, "danger"),
+]
+
+/* ---- yesterday must not swallow today ----------------------------------
+
+   The risk builder answers yesterday first, because yesterday is the one with
+   a deadline — and it used to answer *only* yesterday, so a rule with a broken
+   yesterday said nothing about the ceiling you were standing on this
+   afternoon, which is the day you can still act on. */
+
+interface MaskCase {
+  name: string
+  clause: object
+  yesterday: Day | undefined
+  todayDay: Day | undefined
+  /** A fragment the block's lines must contain. */
+  mentions: string
+}
+
+const MASKS: MaskCase[] = [
+  {
+    name: "a broken yesterday still reports today's spent allowance",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 3 },
+    yesterday: counted("u-yt", "s-am", 9),
+    todayDay: counted("u-yt", "s-am", 3),
+    mentions: "one more ends it",
+  },
+  {
+    name: "a broken yesterday still reports today's breached slot",
+    clause: {
+      id: "c",
+      ...target("unit", "u-yt"),
+      max: 9,
+      slots: { "s-pm": { max: 0 } },
+    },
+    yesterday: counted("u-yt", "s-pm", 5),
+    todayDay: counted("u-yt", "s-pm", 1),
+    mentions: "in “Evening”",
+  },
 ]
 
 /* ---- what today still asks -----------------------------------------------
@@ -464,6 +508,16 @@ const READS: ReadCase[] = [
     { id: "c", ...target("activity", "a-les"), min: 180 },
     studied(90), "all",
     "“Lessons” “1h 30m”"),
+  reads("a broken slot bound names the slot, not the day's own figure",
+    { id: "c", ...target("unit", "u-yt"), max: 3, slots: { "s-pm": { max: 0 } } },
+    counted("u-yt", "s-pm", 1), "failing",
+    "“Youtube” “1” in “Evening” against at most “0”"),
+  reads("both broken · a line each",
+    { id: "c", ...target("unit", "u-yt"), max: 2, slots: { "s-pm": { max: 0 } } },
+    counted("u-yt", "s-pm", 3), "failing",
+    // `clauseReadout` joins the parts with a dot; the callers that lay them
+    // out as lines take `clauseReadoutParts` instead.
+    "“Youtube” “3” against at most “2” · “Youtube” “3” in “Evening” against at most “0”"),
   reads("a count names the whole set, not one of it",
     { id: "c", ...checks("u-yt", "u-gym"), max: 0 },
     counted("u-gym", "s-am", 2), "failing",
@@ -791,6 +845,31 @@ for (const test of RISKS) {
 }
 
 console.log("")
+for (const test of MASKS) {
+  const rule = {
+    ...ruleOf(test.clause as StreakClause, "day"),
+    startedOn: RISK_YESTERDAY,
+    lockedUntil: RISK_YESTERDAY,
+    freezesPerWeek: 3,
+  } as StreakRule
+  const proj = project(rule, {
+    ...(test.yesterday ? { [RISK_YESTERDAY]: test.yesterday } : {}),
+    ...(test.todayDay ? { [RISK_DAY]: test.todayDay } : {}),
+  })
+  const at = new Date(`${RISK_DAY}T09:00:00`)
+  const risk = ruleRisk(ruleStatus(rule, proj, at), proj, at)
+  const said = (risk.lines ?? []).join(" · ")
+  if (said.includes(test.mentions)) {
+    console.log(`${GREEN}  ok${OFF}  both: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  both: ${test.name}`)
+    console.log(`      got  ${risk.headline} — ${said || "(nothing)"}`)
+    console.log(`      want a line containing ${test.mentions}`)
+  }
+}
+
+console.log("")
 for (const test of DUES) {
   const rule = {
     ...ruleOf(test.clause as StreakClause, "day"),
@@ -896,5 +975,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

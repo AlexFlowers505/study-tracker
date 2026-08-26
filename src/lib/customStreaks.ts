@@ -1801,7 +1801,7 @@ export function clauseReadoutParts(
      a number attached to the wrong thing. */
   const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
   const named = targetsLabel(targets, ctx)
-  const { min, max } = clauseBounds(clause, ctx, dayKey)
+  const { max } = clauseBounds(clause, ctx, dayKey)
 
   /* **A ceiling reports what is left, not just what is spent.** `2` on its own
      is a number; `2 of 3` is the thing you actually want to know, and the
@@ -1816,14 +1816,46 @@ export function clauseReadoutParts(
         : `${named} ${q(fmt(reading.value))}`,
     ]
 
-  // Only the broken half is worth naming. A condition with both bounds is over
-  // one of them, and saying which is the whole job of this line.
-  const over = max !== undefined && reading.value > max
-  return [
-    `${named} ${q(fmt(reading.value))} against ${
-      over ? `at most ${q(fmt(max))}` : `at least ${q(fmt(min ?? 0))}`
-    }`,
-  ]
+  /* **Name the bound that actually broke, and where.**
+   *
+   * This reported the clause's own day bound whatever had gone wrong, which is
+   * a description of a rule nobody wrote the moment a slot rider is the thing
+   * at fault: `at most 3, of which none in the evening` with one slip in the
+   * evening printed `“--Pinterest” “1” against at least “0”` — the wrong
+   * comparison, the wrong direction and no mention of the evening. The day's
+   * figure was one, comfortably under its ceiling of three, so the `over` test
+   * said no and the fallback invented a floor.
+   *
+   * A line each, because both can break at once and they are two separate
+   * facts about the day.
+   */
+  const said = (v: number, b: ClauseBounds, where: string): string | null => {
+    if (b.max !== undefined && v > b.max)
+      return `${named} ${q(fmt(v))}${where} against at most ${q(fmt(b.max))}`
+    if (b.min !== undefined && v < b.min)
+      return `${named} ${q(fmt(v))}${where} against at least ${q(fmt(b.min))}`
+    return null
+  }
+
+  const parts: string[] = []
+  const own = said(reading.value, clauseBounds(clause, ctx, dayKey), "")
+  if (own) parts.push(own)
+
+  Object.entries(slotBoundsOnWeekday(clause, fromKey(dayKey).getDay())).forEach(
+    ([slotId, bounds]) => {
+      const label = ctx.slots.find((sl) => sl.id === slotId)?.label
+      const line = said(
+        measuredOn(clause, ctx, day, [slotId]),
+        bounds,
+        ` in ${q(label || "a removed slot")}`,
+      )
+      if (line) parts.push(line)
+    },
+  )
+
+  // A deficit with nothing named is a shape this has not met; say the figure
+  // rather than nothing at all.
+  return parts.length ? parts : [`${named} ${q(fmt(reading.value))}`]
 }
 
 /**

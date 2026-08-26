@@ -340,6 +340,25 @@ function todayUrgency(
       spent = true
       return worse("danger")
     }
+
+    /* **A slot ceiling is a ceiling.** This read the clause's own day bound and
+       nothing else, so `at most 3, of which none in the evening` with one slip
+       in the evening said nothing at all: the day's figure was one, well under
+       three, and the loop went on to `owed`, which looks only at floors and
+       found none. A day already lost sat there reading `safe` until midnight —
+       the same shape as the checks that could not be seen, in the other half
+       of the condition. */
+    const brokenSlot = Object.entries(
+      slotBoundsOnWeekday(r.clause, fromKey(todayKey).getDay()),
+    ).some(([slotId, b]) => {
+      if (b.max === undefined) return false
+      return measuredOn(r.clause, ctx, day, [slotId]) > b.max
+    })
+    if (brokenSlot) {
+      spent = true
+      return worse("danger")
+    }
+
     const need = owed(r, ctx, todayKey)
     if (need <= 0) return
     if (info.measure === "time" && !info.check) {
@@ -409,6 +428,36 @@ function weeklyRisk(
   return level
 }
 
+/**
+ * What today has to say, if anything — the lines only, no level and no offer.
+ *
+ * Split out so yesterday's block can carry them too. It used to return before
+ * today was looked at, which meant a broken yesterday hid a ceiling you were
+ * standing on this afternoon.
+ */
+function todayLines(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  now: Date,
+  todayKey: DayKey,
+): string[] {
+  const state = ruleDayState(rule, ctx, days[todayKey], todayKey, todayKey)
+  if (state !== "pending" && state !== "met") return []
+  const readings = readDay(rule, ctx, days[todayKey], todayKey)
+  const { level, brink } = todayUrgency(readings, ctx, days[todayKey], now)
+  if (level === "safe") return []
+  const short = shortfall(readings, ctx, days, todayKey)
+  if (short.length) return short
+  return brink.map((r) => {
+    const at = spentAllowance(r, ctx, days[todayKey], todayKey)
+    const named = targetsLabel(clauseTargets(r.clause), ctx)
+    return at
+      ? `${named} ${q(at.used)} of ${q(at.max)} used — one more ends it`
+      : named
+  })
+}
+
 /** One custom rule's standing. */
 export function ruleRisk(
   status: RuleStatus,
@@ -451,11 +500,20 @@ export function ruleRisk(
     const offer = freezeOffer(rule, project, yesterdayKey, todayKey, status)
     const readings = readDay(rule, ctx, days[yesterdayKey], yesterdayKey)
     const restores = runIfKept(rule, ctx, days, yesterdayKey, todayKey)
+    /* **Yesterday does not swallow today.** This returned here and today was
+       never read, so a rule with a broken yesterday said nothing at all about
+       the ceiling you were standing on this afternoon — and a day you can
+       still act on is precisely the one worth mentioning. Yesterday keeps the
+       lead, because it is the one with a deadline; today comes after it. */
+    const alsoToday = todayLines(rule, ctx, days, today, todayKey)
     return {
       id,
       level: "danger",
       headline: "Yesterday",
-      lines: shortfall(readings, ctx, days, yesterdayKey),
+      lines: [
+        ...shortfall(readings, ctx, days, yesterdayKey),
+        ...(alsoToday.length ? [`Today — ${alsoToday.join(" · ")}`] : []),
+      ],
       detail: offer.ok
         ? `${freezes(offer.cost)} · keeps ${plural(restores, "day")} · ${offer.available} available`
         : offer.cost > 0
