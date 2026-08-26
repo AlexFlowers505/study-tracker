@@ -665,22 +665,98 @@ export interface Purchase {
 }
 
 /**
+ * **A count of days that went well** — `spec 014`.
+ *
+ * The three separate sources this replaces were three points in one space, and
+ * naming them separately hid the axes they differ along. Written out, the same
+ * shape says a great deal more than the three did:
+ *
+ * | you want | `ruleId` | `consecutive` | `weekdays` | `scale` |
+ * | --- | --- | --- | --- | --- |
+ * | 30 kept days in a row | — | yes | — | day |
+ * | 100 kept days in all | — | no | — | day |
+ * | 10 kept weeks in a row | — | yes | — | week |
+ * | 30 days of one rule, ever | that rule | no | — | day |
+ * | 4 green Mondays in a row | — | yes | `[1]` | day |
+ *
+ * **`consecutive` is the axis that was missing entirely.** Every source was a
+ * run, so *thirty days of studying* could only ever mean thirty in a row —
+ * and *thirty days of it, whenever they happened* is a different and equally
+ * real thing to have done.
+ *
+ * **The weekdays are a filter on which days are looked at**, not a bound on
+ * them. Consecutive means consecutive *among those* — four Mondays in a row is
+ * four Mondays with no broken Monday between them, whatever the Tuesdays did.
+ */
+export interface AchievementRun {
+  /** Whose verdict decides a day. Absent is the composite: every voting rule. */
+  ruleId?: string
+  /** In a row, or however many there have ever been. */
+  consecutive: boolean
+  /** Which weekdays are counted. Absent is all of them. */
+  weekdays?: number[]
+  /** Days, or whole weeks. A week has no weekday to filter on. */
+  scale: "day" | "week"
+}
+
+/**
+ * The stretch a total is measured over — `spec 014`.
+ *
+ * **`ever` makes most totals inevitable.** Study at all and you will pass a
+ * hundred hours; the only question is when, and an achievement you cannot fail
+ * to earn is a calendar rather than a goal. A window turns the same figure
+ * into a record — the best single day, week or month there has ever been — and
+ * `100h in one month` can be missed forever.
+ *
+ * Read as the maximum over every window in the history, so it is earned the
+ * first time one clears the bar and, like every ledger here, never un-earned
+ * by what a later one does.
+ */
+export type AchievementWindow = "ever" | "day" | "week" | "month"
+
+/**
  * What an achievement counts.
  *
- * Deliberately a short list. Every source is a number the app already knows
- * how to compute, and a wider one would turn the editor into a second rule
- * builder — which is a thing this app has exactly one of on purpose.
+ * Two kinds, and the split is real rather than cosmetic: a **run** is a figure
+ * the app keeps for you and you pick one of them, while a **total** is
+ * anything you record, named the way a streak condition names it.
+ *
+ * `spec 010` capped this at three sources, on the reasoning that a wider list
+ * would make the editor a second rule builder. That instinct was right and the
+ * line was in the wrong place: what makes a rule builder is conditions,
+ * weekday maps, slot bounds and a pair of opposing limits, and an achievement
+ * has none of those. It may count anything it likes.
  *
  * - `keptDays` — the composite streak: days on which every voting rule held.
+ * - `keptWeeks` — the same at the larger scale, which is the one that survives
+ *   a single bad Tuesday.
  * - `ruleStreak` — one rule's own streak, for a promise you want counted
  *   separately from the day's verdict.
- * - `total` — everything ever recorded against a target, in its own measure:
- *   minutes for an activity or study time, occurrences for a counter or tag.
+ * - `total` — what was recorded against one or more targets, in its own
+ *   measure: minutes for an activity or study time, occurrences for a counter
+ *   or tag.
  */
 export type AchievementSource =
+  | { kind: "run"; run: AchievementRun }
+  /** @deprecated Read through `runOf()`. `{ consecutive, scale: "day" }`. */
   | { kind: "keptDays" }
+  /** @deprecated Read through `runOf()`. `{ consecutive, scale: "week" }`. */
+  | { kind: "keptWeeks" }
+  /** @deprecated Read through `runOf()`. A run with a `ruleId` on it. */
   | { kind: "ruleStreak"; ruleId: string }
-  | { kind: "total"; target: StreakTarget }
+  | {
+      kind: "total"
+      /**
+       * @deprecated Read through `achievementTargets()`, which knows this was
+       * once a single target. Kept so an achievement written before several
+       * were allowed still reads as itself.
+       */
+      target?: StreakTarget
+      /** One or more, summed. `100h of “Lessons” or “Q&A”` is one goal. */
+      targets?: StreakTarget[]
+      /** Absent means `ever`, which is what every one of these used to be. */
+      window?: AchievementWindow
+    }
 
 /**
  * A thing you reached once and cannot lose — `spec 010`, part 5.

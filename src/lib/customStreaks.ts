@@ -453,13 +453,20 @@ const memberUnits = (
 }
 
 /** Every unit a whole condition reaches, with no id counted twice. */
-export const clauseUnits = (
-  clause: StreakClause,
+/**
+ * The units a set of targets adds up, without duplicates.
+ *
+ * Split out from `clauseUnits` so anything holding targets can ask — an
+ * achievement names them too, and `spec 014` gave it the same picker, which
+ * has to resolve a shelf into its contents the same way.
+ */
+export const targetsUnits = (
+  targets: StreakTarget[],
   ctx: StreakContext,
 ): CounterUnit[] => {
   const seen = new Set<string>()
   const out: CounterUnit[] = []
-  clauseTargets(clause).forEach((target) => {
+  targets.forEach((target) => {
     memberUnits(target, ctx).forEach((unit) => {
       if (seen.has(unit.id)) return
       seen.add(unit.id)
@@ -468,6 +475,12 @@ export const clauseUnits = (
   })
   return out
 }
+
+/** The same, for a condition. */
+export const clauseUnits = (
+  clause: StreakClause,
+  ctx: StreakContext,
+): CounterUnit[] => targetsUnits(clauseTargets(clause), ctx)
 
 /** Which entries a time target counts. */
 const keepsActivity = (
@@ -1527,7 +1540,7 @@ export function freezeOffer(
 
 /* ---- Saying it back ------------------------------------------------------ */
 
-const listDays = (weekdays: number[]) =>
+export const listDays = (weekdays: number[]) =>
   weekdays
     .slice()
     .sort((a, b) => WEEKDAY_ORDER.indexOf(a) - WEEKDAY_ORDER.indexOf(b))

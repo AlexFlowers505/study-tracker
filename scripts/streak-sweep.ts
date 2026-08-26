@@ -21,6 +21,7 @@
    when the streak engine is touched.
 --------------------------------------------------------------- */
 
+import { achievementNarrows, progressOf } from "../src/lib/achievements"
 import { dueToday, ruleRisk } from "../src/lib/streakRisk"
 import type { RiskLevel } from "../src/lib/streakRisk"
 import {
@@ -37,6 +38,7 @@ import {
 } from "../src/lib/customStreaks"
 import { toKey, weekDates } from "../src/lib/date"
 import type {
+  Achievement,
   Activity,
   CounterUnit,
   Day,
@@ -549,6 +551,163 @@ const LOCKS: LockCase[] = [
     { id: "c", ...target("unit", "u-yt"), max: 0 }, true),
 ]
 
+/* ---- achievements ------------------------------------------------------
+
+   `spec 014` gave these the flexibility the rules have, which means they now
+   have axes that can be got the wrong way round: in a row against in all, a
+   window against ever, and a set of targets under the lock. Every one of them
+   is a direction, and a direction is exactly what a sweep is for.
+
+   The fixture is a fortnight where Mon/Wed/Fri held and Tue/Thu did not, so a
+   weekday filter has something to bite on. */
+
+const A_START: DayKey = "2026-08-03"        // a Monday
+const A_TODAY: DayKey = "2026-08-17"
+
+/** A rule that asks for any study at all, so a logged day is a kept day. */
+const A_RULE: StreakRule = {
+  id: "r-study",
+  label: "Study",
+  color: "#888",
+  iconName: "Circle",
+  scope: "day",
+  clauses: [
+    { id: "c", targets: [{ kind: "activity", id: "a-les" }], min: 1 },
+  ] as never,
+  freezesPerWeek: 0,
+  freezeCap: 0,
+  startedOn: A_START,
+  lockedUntil: A_START,
+  inDayVerdict: true,
+} as StreakRule
+
+/** Mon, Wed and Fri studied; Tue and Thu did not. Weekends untouched. */
+const A_DAYS: Record<DayKey, Day> = (() => {
+  const out: Record<DayKey, Day> = {}
+  for (let i = 0; i < 14; i += 1) {
+    const d = new Date(`${A_START}T12:00:00`)
+    d.setDate(d.getDate() + i)
+    const wd = d.getDay()
+    if (wd === 0 || wd === 6) continue
+    out[toKey(d)] = wd === 2 || wd === 4 ? ({} as Day) : studied(60)
+  }
+  return out
+})()
+
+const achievement = (source: object, threshold: number): Achievement =>
+  ({
+    id: "a",
+    label: "A",
+    color: "#888",
+    iconName: "Circle",
+    source,
+    threshold,
+    createdOn: A_START,
+    lockedUntil: A_START,
+  }) as Achievement
+
+const A_PROJECT: Project = {
+  id: "p",
+  settings: { streakRules: [A_RULE], dailyGoals: {} },
+  slots: SLOTS,
+  activities: ACTIVITIES,
+  counterUnits: UNITS,
+  days: A_DAYS,
+  weekNotes: {},
+  monthNotes: {},
+  weekIgnore: {},
+  monthIgnore: {},
+} as unknown as Project
+
+interface ProgressCase {
+  name: string
+  source: object
+  want: number
+}
+
+const PROGRESS: ProgressCase[] = [
+  { name: "kept days in a row · the longest stretch, not the current one",
+    source: { kind: "run", run: { consecutive: true, scale: "day" } }, want: 1 },
+  { name: "kept days in all · every day that held",
+    source: { kind: "run", run: { consecutive: false, scale: "day" } }, want: 6 },
+  { name: "Mondays in a row · consecutive among Mondays only",
+    source: { kind: "run", run: { consecutive: true, scale: "day", weekdays: [1] } },
+    want: 2 },
+  { name: "Tuesdays in all · none of them held",
+    source: { kind: "run", run: { consecutive: false, scale: "day", weekdays: [2] } },
+    want: 0 },
+  { name: "one rule's own days, in all",
+    source: { kind: "run", run: { ruleId: "r-study", consecutive: false, scale: "day" } },
+    want: 6 },
+  { name: "the old keptDays spelling still reads",
+    source: { kind: "keptDays" }, want: 1 },
+
+  { name: "a total, ever",
+    source: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "ever" },
+    want: 360 },
+  { name: "a total, in a single day",
+    source: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "day" },
+    want: 60 },
+  { name: "a total, in a single week",
+    source: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "week" },
+    want: 180 },
+  { name: "the old singular target still reads",
+    source: { kind: "total", target: { kind: "activity", id: "a-les" } },
+    want: 360 },
+]
+
+interface AchLockCase {
+  name: string
+  before: object
+  after: object
+  beforeN?: number
+  afterN?: number
+  lands: boolean
+}
+
+const A_LOCKS: AchLockCase[] = [
+  { name: "raise the figure", lands: true, beforeN: 30, afterN: 40,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day" } } },
+  { name: "lower the figure", lands: false, beforeN: 30, afterN: 20,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day" } } },
+  { name: "in all becomes in a row — harder", lands: true,
+    before: { kind: "run", run: { consecutive: false, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day" } } },
+  { name: "in a row becomes in all — easier", lands: false,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: false, scale: "day" } } },
+  { name: "days become weeks — incomparable", lands: false,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "week" } } },
+  { name: "the weekdays change at all — incomparable", lands: false,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day", weekdays: [1] } } },
+  { name: "swap whose verdict — incomparable", lands: false,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { ruleId: "r-study", consecutive: true, scale: "day" } } },
+  { name: "a run becomes a total — incomparable", lands: false,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }] } },
+
+  { name: "narrow the window — harder", lands: true,
+    before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "ever" },
+    after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "month" } },
+  { name: "widen the window — easier", lands: false,
+    before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "week" },
+    after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "ever" } },
+  { name: "add a target it can come from — easier", lands: false,
+    before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }] },
+    after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }, { kind: "time" }] } },
+  { name: "drop a target it could come from — harder", lands: true,
+    before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }, { kind: "time" }] },
+    after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }] } },
+  { name: "the same targets in another order is not an edit", lands: true,
+    before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }, { kind: "time" }] },
+    after: { kind: "total", targets: [{ kind: "time" }, { kind: "activity", id: "a-les" }] } },
+]
+
 /* ---- conditions that must be refused rather than judged ---------------- */
 
 const REFUSED: { name: string; clause: object }[] = [
@@ -686,6 +845,39 @@ for (const test of LOCKS) {
 }
 
 console.log("")
+for (const test of PROGRESS) {
+  const got = progressOf(
+    A_PROJECT,
+    achievement(test.source, 999),
+    new Date(`${A_TODAY}T12:00:00`),
+  )
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  reaches: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  reaches: ${test.name} — ${got}, want ${test.want}`,
+    )
+  }
+}
+
+console.log("")
+for (const test of A_LOCKS) {
+  const before = achievement(test.before, test.beforeN ?? 30)
+  const after = achievement(test.after, test.afterN ?? 30)
+  const got = achievementNarrows(before, after)
+  const word = (v: boolean) => (v ? "lands at once" : "waits")
+  if (got === test.lands) {
+    console.log(`${GREEN}  ok${OFF}  earned: ${test.name} — ${word(got)}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  earned: ${test.name} — ${word(got)}, want ${word(test.lands)}`,
+    )
+  }
+}
+
+console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
   const ctx = streakContext(project(rule, {}))
@@ -704,5 +896,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + DUES.length + READS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${CASES.length + RISKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )
