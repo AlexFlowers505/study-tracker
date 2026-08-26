@@ -42,7 +42,7 @@ import { fmtHours } from "./time"
 import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
   clauseBounds,
-  clauseReadout,
+  clauseReadoutParts,
   clauseTarget,
   clauseTargets,
   freezeOffer,
@@ -69,8 +69,21 @@ export interface StreakRisk {
   /** `"main"` for the goal streak, otherwise the rule's id. */
   id: string
   level: RiskLevel
-  /** What has gone wrong, in the rule's own vocabulary. Absent when safe. */
+  /**
+   * The lead — `Today`, `Yesterday`, or a week's own sentence. Absent when
+   * safe.
+   */
   headline?: string
+  /**
+   * **One entry per thing that has gone wrong**, in the rule's own vocabulary.
+   *
+   * A list rather than a joined string, because that is what it is: a
+   * condition asserting two checks has two things to say, and running them
+   * together behind a dot made the reader do the separating. Whoever draws it
+   * decides whether that is two lines or two clauses — the streaks row gives
+   * them a line each, a tooltip a newline each.
+   */
+  lines?: string[]
   /** What it costs to save it, or what would fix it. */
   detail?: string
   /** The day a freeze would go on, while one still can. */
@@ -126,11 +139,10 @@ function shortfall(
   ctx: StreakContext,
   days: Record<DayKey, Day>,
   dayKey: DayKey,
-): string {
+): string[] {
   return readings
     .filter((r) => r.applies && r.deficit > 0)
-    .map((r) => clauseReadout(r, ctx, days[dayKey], dayKey, "failing"))
-    .join(" · ")
+    .flatMap((r) => clauseReadoutParts(r, ctx, days[dayKey], dayKey, "failing"))
 }
 
 /**
@@ -419,7 +431,8 @@ export function ruleRisk(
     return {
       id,
       level,
-      headline: shortfall(readings, ctx, days, todayKey) || "this week is short",
+      headline: "This week",
+      lines: shortfall(readings, ctx, days, todayKey),
       detail:
         level === "danger"
           ? offer.ok
@@ -441,7 +454,8 @@ export function ruleRisk(
     return {
       id,
       level: "danger",
-      headline: `Yesterday — ${shortfall(readings, ctx, days, yesterdayKey)}`,
+      headline: "Yesterday",
+      lines: shortfall(readings, ctx, days, yesterdayKey),
       detail: offer.ok
         ? `${freezes(offer.cost)} · keeps ${plural(restores, "day")} · ${offer.available} available`
         : offer.cost > 0
@@ -472,21 +486,20 @@ export function ruleRisk(
     /* Nothing is short, so `shortfall` has nothing to say: what is worth
        saying is which ceiling you are standing on. */
     const short = shortfall(readings, ctx, days, todayKey)
-    const said =
-      short ||
-      brink
-        .map((r) => {
+    const said = short.length
+      ? short
+      : brink.map((r) => {
           const at = spentAllowance(r, ctx, days[todayKey], todayKey)
           const named = targetsLabel(clauseTargets(r.clause), ctx)
           return at
             ? `${named} ${q(at.used)} of ${q(at.max)} used — one more ends it`
             : named
         })
-        .join(" · ")
     return {
       id,
       level,
-      headline: `Today — ${said}`,
+      headline: "Today",
+      lines: said,
       detail:
         level === "danger"
           ? offer.ok
@@ -494,7 +507,7 @@ export function ruleRisk(
             : `${lost} · ${plural(offer.cost, "freeze")} needed and you have ${offer.available}`
           : // Standing on a ceiling is not the day running out — nothing is
             // owed and no hour of the day changes it. Only what is at stake.
-            short
+            short.length
             ? `${plural(restores, "day")} at stake · the day is running out`
             : `${plural(restores, "day")} at stake`,
       freezeDay: offer.ok ? offer.key : undefined,

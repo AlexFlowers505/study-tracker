@@ -35,7 +35,7 @@ import type {
   RuleStatus,
 } from "../lib/customStreaks"
 import {
-  clauseReadout,
+  clauseReadoutParts,
   clauseSentence,
   clauseTarget,
   freezeOffer,
@@ -142,11 +142,12 @@ export function CustomStreakSection({
    * one about hours and one about slips, and a shared format would be wrong
    * for one of them.
    */
-  const breakdown = (readings: ClauseReading[], key: DayKey) =>
+  const breakdown = (readings: ClauseReading[], key: DayKey): string[] =>
     readings
       .filter((r) => r.applies)
-      .map((r) => clauseReadout(r, ctx, project.days[key], key, "all"))
-      .join(" · ")
+      .flatMap((r) =>
+        clauseReadoutParts(r, ctx, project.days[key], key, "all"),
+      )
 
   /* **A check has no figure**, and printing one was how `1` ended up in a
      strip cell: `ClauseReading.value` for a check is the yes count, which is
@@ -171,12 +172,18 @@ export function CustomStreakSection({
       state,
       value:
         state === "unjudged" ? "·" : soleCheck ? undefined : fmtValue(figure(readings)),
-      tooltip:
-        `${fmtDateLong(key)} — ${STATE_WORD[state]}` +
-        (state === "unjudged" ? "" : `. ${breakdown(readings, key)}`) +
-        (short
-          ? `. Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`
-          : ""),
+      /* The date and the verdict on the first line, then one line per thing
+         the condition had to say. `Tip` renders it with `whitespace-pre-line`,
+         so a bubble listing two checks reads as two checks. */
+      tooltip: [
+        `${fmtDateLong(key)} — ${STATE_WORD[state]}`,
+        ...(state === "unjudged" ? [] : breakdown(readings, key)),
+        ...(short
+          ? [
+              `Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`,
+            ]
+          : []),
+      ].join("\n"),
       freeze: offer.ok
         ? {
             cost: offer.cost,

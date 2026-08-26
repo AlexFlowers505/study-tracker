@@ -96,13 +96,12 @@ export function KeptSection({
         /* The two numbers the ring carries, in words. A day that missed says
            which rules did it — that is the whole reason to hover a red
            square, and counting them off the ring is not an answer. */
-        tooltip:
-          report.state === "missed"
-            ? `${report.kept} of ${report.judged} held — ${report.readings
-                .filter((r) => r.state === "missed")
-                .map((r) => r.rule.label)
-                .join(", ")}`
-            : `${report.kept} of ${report.judged} held`,
+        tooltip: [
+          `${report.kept} of ${report.judged} held`,
+          ...report.readings
+            .filter((r) => r.state === "missed")
+            .map((r) => `${r.rule.label} missed`),
+        ].join("\n"),
       })
       rows.push({
         label: key.slice(5),

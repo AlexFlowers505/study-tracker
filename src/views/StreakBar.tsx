@@ -183,9 +183,25 @@ function RiskBlock({
           {entry.days}
         </span>
       </div>
-      <p className="text-[11px] font-mono text-ink/75 leading-relaxed">
-        <Sentence text={risk.headline} />
-      </p>
+      {/* **A line each, not a dot between them.** Two conditions — or two
+          checks inside one — are two things to look at, and running them
+          together behind a `·` made the reader do the separating before they
+          could start reading. The lead keeps its own line, so `Today` sits
+          over the list rather than in front of the first item, which is what
+          makes them read as a set rather than as a sentence and its tail. */}
+      {risk.headline && (
+        <p className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+          {risk.headline}
+        </p>
+      )}
+      {risk.lines?.map((line, i) => (
+        <p
+          key={i}
+          className="text-[11px] font-mono text-ink/75 leading-relaxed"
+        >
+          <Sentence text={line} />
+        </p>
+      ))}
       {risk.detail && (
         <p className="text-[10px] font-mono text-ink/45 leading-relaxed mt-0.5">
           {risk.detail}

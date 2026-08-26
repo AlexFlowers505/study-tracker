@@ -39,6 +39,7 @@ const roomFor = (box: DOMRect) =>
 
 export function PopoverMenu({
   label,
+  multiline = false,
   icon: Icon = MoreVertical,
   width = MENU_WIDTH,
   trigger,
@@ -47,6 +48,14 @@ export function PopoverMenu({
   children,
 }: {
   label?: string
+  /**
+   * Passed straight to the label's `Tip`. A trigger whose tooltip is a list —
+   * a strip cell naming every check it judged — needs `whitespace-pre-line`,
+   * or the newlines collapse to spaces and the splitting was for nothing.
+   * Off by default: the usual label is a short phrase, and `nowrap` is what
+   * keeps it from wrapping under its own trigger.
+   */
+  multiline?: boolean
   icon?: LucideIcon
   width?: number
   /** Replaces the icon inside the trigger button — a pill, a label, anything. */
@@ -99,7 +108,11 @@ export function PopoverMenu({
 
   return (
     <>
-      <Tip text={open ? undefined : label} className={wrapClassName}>
+      <Tip
+        text={open ? undefined : label}
+        multiline={multiline}
+        className={wrapClassName}
+      >
         <button
           ref={triggerRef}
           type="button"

@@ -1748,13 +1748,13 @@ export function clauseSentence(
  * went wrong and nothing else; a tooltip on a day you are inspecting says what
  * happened, kept or not. Same sentence, two lengths.
  */
-export function clauseReadout(
+export function clauseReadoutParts(
   reading: ClauseReading,
   ctx: StreakContext,
   day: Day | undefined,
   dayKey: DayKey,
   mode: "failing" | "all" = "all",
-): string {
+): string[] {
   const clause = reading.clause
   const targets = clauseTargets(clause)
   const info = targetInfo(targets[0], ctx)
@@ -1781,7 +1781,6 @@ export function clauseReadout(
         return !state || !allowed.includes(state)
       })
       .map((t) => `${q(targetInfo(t, ctx).label)} ${said(checkState(day, t.id || ""))}`)
-      .join(" · ")
   }
 
   /* Everything else is a figure, and the figure is the whole set's — the
@@ -1798,17 +1797,40 @@ export function clauseReadout(
      in the sentence above the strip, and repeating it in every cell would say
      the same thing forty times. */
   if (mode === "all")
-    return max !== undefined
-      ? `${named} ${q(fmt(reading.value))} of ${q(fmt(max))}`
-      : `${named} ${q(fmt(reading.value))}`
+    return [
+      max !== undefined
+        ? `${named} ${q(fmt(reading.value))} of ${q(fmt(max))}`
+        : `${named} ${q(fmt(reading.value))}`,
+    ]
 
   // Only the broken half is worth naming. A condition with both bounds is over
   // one of them, and saying which is the whole job of this line.
   const over = max !== undefined && reading.value > max
-  return `${named} ${q(fmt(reading.value))} against ${
-    over ? `at most ${q(fmt(max))}` : `at least ${q(fmt(min ?? 0))}`
-  }`
+  return [
+    `${named} ${q(fmt(reading.value))} against ${
+      over ? `at most ${q(fmt(max))}` : `at least ${q(fmt(min ?? 0))}`
+    }`,
+  ]
 }
+
+/**
+ * The same, as one string.
+ *
+ * **The parts are the real shape** — a condition asserting two checks has two
+ * things to say and always did; joining them was the renderer's convenience,
+ * and it cost the reader a line they had to parse a separator out of. Callers
+ * that can lay out lines take the parts; callers that need one string say so
+ * here, and choose their own separator: a tooltip joins with a newline and
+ * asks `Tip` for `multiline`, a plain-text log joins with a dot.
+ */
+export const clauseReadout = (
+  reading: ClauseReading,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+  mode: "failing" | "all" = "all",
+  join = " · ",
+): string => clauseReadoutParts(reading, ctx, day, dayKey, mode).join(join)
 
 /** The whole rule in one line — the scope, then every condition joined by "and". */
 export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {

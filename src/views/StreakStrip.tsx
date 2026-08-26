@@ -159,7 +159,16 @@ export function StreakStrip({
           if (!cell.freeze)
             return (
               <div key={key} className="flex min-w-0">
-                <Tip text={cell.tooltip} className="flex-1 min-w-0 flex">
+                {/* `multiline`, because a cell's tooltip is now a list: the
+                    date, then one line per thing that condition had to say.
+                    `whitespace-pre-line` is what turns the newlines into
+                    lines, and without it they collapse to spaces and the
+                    splitting was for nothing. */}
+                <Tip
+                  multiline
+                  text={cell.tooltip}
+                  className="flex-1 min-w-0 flex"
+                >
                   {body}
                 </Tip>
               </div>
@@ -171,6 +180,7 @@ export function StreakStrip({
               <PopoverMenu
                 width={210}
                 label={cell.tooltip}
+                multiline
                 wrapClassName="flex-1 min-w-0 flex"
                 triggerClassName={`${btnBase} flex w-full rounded-lg cursor-pointer hover:brightness-110`}
                 trigger={body}
