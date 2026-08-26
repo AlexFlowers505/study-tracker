@@ -18,7 +18,7 @@ import {
   DEFAULT_SLOTS,
 } from "../lib/defaults"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
-import type { RuleProposal } from "../types/model"
+import type { Proposal, ProposalAction, ProposalSubject } from "../types/model"
 import type { Client } from "./supabase"
 import { PAGE_SIZE } from "./supabase"
 import { DAY_SELECT, PROPOSAL_SELECT } from "./schema"
@@ -252,21 +252,25 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
    * `projects` policy only ever returns projects you own, so a proposal whose
    * project is not among them is one you were asked to decide.
    */
-  const supervising: RuleProposal[] = []
+  const supervising: Proposal[] = []
   proposalRows.forEach((r) => {
-    const proposal: RuleProposal = {
+    const proposal: Proposal = {
       id: r.id,
       projectId: r.project_id,
       ownerId: r.owner_id,
       supervisorId: r.supervisor_id,
-      ruleId: r.rule_id,
+      // The column is still `rule_id`: renaming it would be a migration that
+      // buys nothing, and the row already says which kind it is.
+      subject: (r.subject as ProposalSubject) || "rule",
+      action: (r.action as ProposalAction) || "edit",
+      subjectId: r.rule_id,
       projectName: r.project_name || "",
-      ruleLabel: r.rule_label || "",
+      subjectLabel: r.rule_label || "",
       beforeText: r.before_text || "",
       afterText: r.after_text || "",
       reason: r.reason || "",
-      nextRule: r.next_rule as RuleProposal["nextRule"],
-      state: r.state as RuleProposal["state"],
+      next: (r.next_rule ?? undefined) as Proposal["next"],
+      state: r.state as Proposal["state"],
       createdAt: r.created_at,
       decidedAt: r.decided_at,
     }

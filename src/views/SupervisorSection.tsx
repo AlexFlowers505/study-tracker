@@ -17,7 +17,7 @@
 --------------------------------------------------------------- */
 
 import { ShieldCheck } from "lucide-react"
-import type { RuleProposal } from "../types/model"
+import type { Proposal } from "../types/model"
 import { fmtDateLong } from "../lib/date"
 import { CARD, btnBase } from "../lib/theme"
 import { usePalette } from "../ui/useTheme"
@@ -27,8 +27,8 @@ export function SupervisorSection({
   onDecide,
 }: {
   /** Only the pending ones reach here; the rest are somebody else's history. */
-  proposals: RuleProposal[]
-  onDecide: (proposal: RuleProposal, allow: boolean) => void
+  proposals: Proposal[]
+  onDecide: (proposal: Proposal, allow: boolean) => void
 }) {
   const c = usePalette()
   if (!proposals.length) return null
@@ -58,7 +58,7 @@ export function SupervisorSection({
               className="text-[11px] font-mono font-bold uppercase tracking-wide"
               style={{ color: c.sleep }}
             >
-              {p.ruleLabel}
+              {p.subjectLabel}
             </span>
             <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
               in {p.projectName}

@@ -24,7 +24,7 @@ import type {
   Activity,
   CounterUnit,
   Project,
-  RuleProposal,
+  Proposal,
   StreakRule,
   Settings,
   Slot,
@@ -62,6 +62,7 @@ export function SetupModal({
   supervised,
   proposals,
   onPropose,
+  onProposeRemoval,
   inviteUrl,
   inviteNote,
   onMakeInvite,
@@ -88,8 +89,16 @@ export function SetupModal({
   onSaveSettings: (next: Settings) => void
   /** The second person — `spec 010` part 7. */
   supervised: boolean
-  proposals: RuleProposal[]
+  proposals: Proposal[]
   onPropose: (prev: StreakRule, next: StreakRule, reason: string) => void
+  /** A rule or an achievement sent to be dropped, rather than dropped. */
+  onProposeRemoval?: (
+    subject: "rule" | "achievement",
+    subjectId: string,
+    subjectLabel: string,
+    beforeText: string,
+    reason: string,
+  ) => void
   inviteUrl: string | null
   inviteNote: string | null
   onMakeInvite: () => void
@@ -238,6 +247,8 @@ export function SetupModal({
           )}
           {tab === "achievements" && (
             <AchievementsTab
+              supervised={supervised}
+              onProposeRemoval={onProposeRemoval}
               project={
                 projects.find((p) => p.id === activeProjectId) || projects[0]
               }
@@ -250,6 +261,7 @@ export function SetupModal({
               supervised={supervised}
               proposals={proposals}
               onPropose={onPropose}
+              onProposeRemoval={onProposeRemoval}
               supervisorBlock={
                 <SupervisorBlock
                   count={supervisorCount}

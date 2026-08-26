@@ -10,7 +10,9 @@ import type {
   PeriodId,
   Project,
   Settings,
-  RuleProposal,
+  Achievement,
+  Proposal,
+  ProposalSubject,
   ShopItem,
   StreakRule,
   Slot,
@@ -51,7 +53,12 @@ import { withBenchmarkGoals } from "./lib/benchmark"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
 import { purchaseOf } from "./lib/shop"
-import { applyProposal, hasSupervisor, proposalFor } from "./lib/supervisor"
+import {
+  applyProposal,
+  hasSupervisor,
+  proposalFor,
+  ruleText,
+} from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
 import { dueToday, ruleRisk } from "./lib/streakRisk"
 import {
@@ -614,9 +621,48 @@ export default function StudyTrackerApp() {
     if (!supervisorId || !session) return
     const proposal = proposalFor({
       project,
-      ctx: verdictCtx,
-      prev,
+      subject: "rule",
+      action: "edit",
+      subjectId: prev.id,
+      subjectLabel: prev.label,
+      beforeText: ruleText(prev, verdictCtx),
+      afterText: ruleText(next, verdictCtx),
       next,
+      reason,
+      ownerId: session.user.id,
+      supervisorId,
+    })
+    patchProject(
+      { proposals: { ...(project.proposals || {}), [proposal.id]: proposal } },
+      [opProposalNew(project.id, proposal.id)],
+    )
+  }
+
+  /**
+   * **A removal sent rather than done** — a rule's or an achievement's.
+   *
+   * The same channel an edit uses, because it is the same question asked of
+   * the same person: *may this promise get weaker.* Removal carries no
+   * `next` — there is nothing to write afterwards, only a thing to take away —
+   * and the `afterText` is the sentence that says so.
+   */
+  const proposeRemoval = (
+    subject: ProposalSubject,
+    subjectId: string,
+    subjectLabel: string,
+    beforeText: string,
+    reason: string,
+  ) => {
+    const supervisorId = (project.supervisors || [])[0]
+    if (!supervisorId || !session) return
+    const proposal = proposalFor({
+      project,
+      subject,
+      action: "remove",
+      subjectId,
+      subjectLabel,
+      beforeText,
+      afterText: "Gone.",
       reason,
       ownerId: session.user.id,
       supervisorId,
@@ -632,8 +678,8 @@ export default function StudyTrackerApp() {
    * in the database by the trigger in `018`, not here: a check that lives only
    * in the client is a check anybody can skip.
    */
-  const decideProposal = (proposal: RuleProposal, allow: boolean) => {
-    const next: RuleProposal = {
+  const decideProposal = (proposal: Proposal, allow: boolean) => {
+    const next: Proposal = {
       ...proposal,
       state: allow ? "approved" : "refused",
       decidedAt: new Date().toISOString(),
@@ -690,22 +736,50 @@ export default function StudyTrackerApp() {
       (p) => p.state === "approved" || p.state === "refused",
     )
     if (!answered.length) return
-    const rules = [...(project.settings.streakRules || [])]
+    let rules = [...(project.settings.streakRules || [])]
+    let achievements = [...(project.settings.achievements || [])]
     const proposals = { ...(project.proposals || {}) }
     const ops: WriteOp[] = []
     answered.forEach((p) => {
-      const i = rules.findIndex((r) => r.id === p.ruleId)
-      if (i >= 0)
-        rules[i] =
-          p.state === "approved"
-            ? applyProposal(p, rules[i])
-            : { ...rules[i], lockedUntil: lockFrom(new Date()) }
+      const allowed = p.state === "approved"
+      /* **A refusal restarts the clock, whatever was asked.** Changing your
+         mind is free; being told no is expensive, and without that the rate
+         limit is decorative — you would ask again the same evening. */
+      const refuse = <T extends { lockedUntil: DayKey }>(item: T): T => ({
+        ...item,
+        lockedUntil: lockFrom(new Date()),
+      })
+
+      if (p.subject === "achievement") {
+        const i = achievements.findIndex((a) => a.id === p.subjectId)
+        if (i >= 0) {
+          if (!allowed) achievements[i] = refuse(achievements[i])
+          else if (p.action === "remove")
+            achievements = achievements.filter((a) => a.id !== p.subjectId)
+          else
+            achievements[i] = {
+              ...(p.next as Achievement),
+              lockedUntil: lockFrom(new Date()),
+            }
+        }
+      } else {
+        const i = rules.findIndex((r) => r.id === p.subjectId)
+        if (i >= 0) {
+          if (!allowed) rules[i] = refuse(rules[i])
+          else if (p.action === "remove")
+            rules = rules.filter((r) => r.id !== p.subjectId)
+          else rules[i] = applyProposal(p, rules[i])
+        }
+      }
       proposals[p.id] = { ...p, state: "closed" }
       ops.push(opProposalState(p.id))
     })
     // eslint-disable-next-line react-hooks/set-state-in-effect
     patchProject(
-      { settings: { ...project.settings, streakRules: rules }, proposals },
+      {
+        settings: { ...project.settings, streakRules: rules, achievements },
+        proposals,
+      },
       ops,
     )
   }, [loaded, loadFailed, project, patchProject])
@@ -1384,6 +1458,7 @@ export default function StudyTrackerApp() {
           supervised={supervised}
           proposals={Object.values(project.proposals || {})}
           onPropose={proposeChange}
+          onProposeRemoval={proposeRemoval}
           inviteUrl={inviteUrl}
           inviteNote={inviteNote}
           onMakeInvite={makeInvite}

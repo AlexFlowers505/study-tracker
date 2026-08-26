@@ -79,7 +79,7 @@ import type {
   StreakContext,
   StreakMeasure,
 } from "../lib/customStreaks"
-import type { RuleProposal } from "../types/model"
+import type { Proposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
 import {
   boundsOnWeekday,
@@ -111,6 +111,7 @@ import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { Pills } from "../ui/Pills"
+import { ruleText } from "../lib/supervisor"
 import { Sentence } from "../ui/Sentence"
 import { CountersPicker } from "./CountersPicker"
 import { WORD } from "./countersPick"
@@ -1302,7 +1303,7 @@ function RuleForm({
   /** Sends the change for approval instead of applying it. */
   onPropose: (next: StreakRule, reason: string) => void
   /** The request already waiting on this rule, if any. */
-  pending?: RuleProposal
+  pending?: Proposal
   supervised: boolean
   isBenchmark: boolean
   onBenchmark: (on: boolean) => void
@@ -1745,6 +1746,7 @@ export function StreakRulesTab({
   supervised = false,
   proposals = [],
   onPropose,
+  onProposeRemoval,
   supervisorBlock,
   today = new Date(),
 }: {
@@ -1756,8 +1758,16 @@ export function StreakRulesTab({
   /** Whether a loosening has to be agreed by somebody else. */
   supervised?: boolean
   /** Requests already waiting, so a rule with one is not edited twice. */
-  proposals?: RuleProposal[]
+  proposals?: Proposal[]
   onPropose?: (prev: StreakRule, next: StreakRule, reason: string) => void
+  /** A rule or an achievement sent to be dropped, rather than dropped. */
+  onProposeRemoval?: (
+    subject: "rule" | "achievement",
+    subjectId: string,
+    subjectLabel: string,
+    beforeText: string,
+    reason: string,
+  ) => void
   /** The invite and the list of supervisors, drawn by the shell. */
   supervisorBlock?: ReactNode
   today?: Date
@@ -1830,7 +1840,15 @@ export function StreakRulesTab({
             supervised,
           )
         }
-        onProposeRemove={(rule, reason) => onPropose?.(rule, rule, reason)}
+        onProposeRemove={(rule, reason) =>
+          onProposeRemoval?.(
+            "rule",
+            rule.id,
+            rule.label,
+            ruleText(rule, ctx),
+            reason,
+          )
+        }
         extra={(rule, update) => (
           <RuleForm
             rule={rule}
@@ -1847,7 +1865,7 @@ export function StreakRulesTab({
               })
             }
             pending={proposals.find(
-              (p) => p.ruleId === rule.id && p.state === "pending",
+              (p) => p.subjectId === rule.id && p.state === "pending",
             )}
             onPropose={(next, reason) => onPropose?.(rule, next, reason)}
             onChange={(next) => update(next)}

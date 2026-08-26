@@ -867,20 +867,48 @@ export type ProposalState =
  * therefore keeps the policy it has always had: yours, and nobody else's. If
  * this ever stops being true, the blast radius comes back.
  */
-export interface RuleProposal {
+/** What a request is about, and what it would do to it. */
+export type ProposalSubject = "rule" | "achievement"
+export type ProposalAction = "edit" | "remove"
+
+/**
+ * A change sent for a second yes.
+ *
+ * **It was `Proposal` and only ever covered loosening a rule.** Removal
+ * then became a locked act too, and achievements grew the same lock, and a
+ * channel that only carries one of the three is a channel two of them route
+ * around. So the request names its subject and its action, and everything else
+ * it already carried — the labels, the before and after in words — works for
+ * all four combinations unchanged.
+ *
+ * **Still self-describing.** It carries the project's name, the subject's
+ * label and the terms as text, so the decision needs nothing from the project
+ * itself. That is what lets every other table keep the policy it has, and it
+ * is why the supervisor's app can read a request about an achievement it has
+ * never seen the definition of.
+ */
+export interface Proposal {
   id: string
   projectId: string
   ownerId: string
   supervisorId: string
-  ruleId: string
+  /** `"rule"` unless said otherwise — every request before this was one. */
+  subject: ProposalSubject
+  /** `"edit"` unless said otherwise, for the same reason. */
+  action: ProposalAction
+  /** The id of the rule or achievement it is about. */
+  subjectId: string
   projectName: string
-  ruleLabel: string
-  /** The rule as it reads now, and as it would read. */
+  subjectLabel: string
+  /** How it reads now, and how it would read. Empty `after` on a removal. */
   beforeText: string
   afterText: string
   reason: string
-  /** Applied verbatim by the owner's app once allowed. */
-  nextRule: StreakRule
+  /**
+   * Applied verbatim by the owner's app once allowed. Absent on a removal —
+   * there is no *after* to write, only a thing to take away.
+   */
+  next?: StreakRule | Achievement
   state: ProposalState
   createdAt: string
   decidedAt?: string | null
@@ -1028,7 +1056,7 @@ export interface Project {
    */
   supervisors?: string[]
   /** Loosenings raised against this project, keyed by proposal id. */
-  proposals?: Record<string, RuleProposal>
+  proposals?: Record<string, Proposal>
 }
 
 export interface AppData {
@@ -1038,7 +1066,7 @@ export interface AppData {
    * Loosenings waiting on **you**, in projects you do not own and cannot see.
    * Everything needed to decide one is on the proposal itself.
    */
-  supervising?: RuleProposal[]
+  supervising?: Proposal[]
 }
 
 /**

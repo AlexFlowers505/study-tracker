@@ -570,11 +570,23 @@ export function AchievementsTab({
   project,
   settings,
   onSave,
+  supervised = false,
+  onProposeRemoval,
   today = new Date(),
 }: {
   project: Project
   settings: Settings
   onSave: (next: Settings) => void
+  /** Whether this project's loosenings need a second yes. */
+  supervised?: boolean
+  /** A rule or an achievement sent to be dropped, rather than dropped. */
+  onProposeRemoval?: (
+    subject: "rule" | "achievement",
+    subjectId: string,
+    subjectLabel: string,
+    beforeText: string,
+    reason: string,
+  ) => void
   today?: Date
 }) {
   const items = settings.achievements || []
@@ -600,7 +612,22 @@ export function AchievementsTab({
            supervisor channel of its own yet — proposals are keyed to rules —
            so `supervised` is false here and the clock and the reason are what
            it has. */
-        removeGate={(item, reason) => removalGate(item, today, reason, false)}
+        /* The same gates a rule's removal walks — the grace day, the clock,
+           the reason, then the second pair of eyes. It had no supervisor
+           channel of its own until `Proposal` stopped being about rules only;
+           now the same request carries all four combinations. */
+        removeGate={(item, reason) =>
+          removalGate(item, today, reason, supervised)
+        }
+        onProposeRemove={(item, reason) =>
+          onProposeRemoval?.(
+            "achievement",
+            item.id,
+            item.label,
+            achievementSentence(project, item),
+            reason,
+          )
+        }
         extra={(item, update) => (
           <Form
             project={project}

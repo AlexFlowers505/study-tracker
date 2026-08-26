@@ -22,7 +22,14 @@
    it has always had. See the header of `migrations/018`.
 --------------------------------------------------------------- */
 
-import type { Project, RuleProposal, StreakRule } from "../types/model"
+import type {
+  Achievement,
+  Project,
+  Proposal,
+  ProposalAction,
+  ProposalSubject,
+  StreakRule,
+} from "../types/model"
 import { clauseSentence, lockFrom, ruleClauses } from "./customStreaks"
 import type { StreakContext } from "./customStreaks"
 import { toKey } from "./date"
@@ -32,21 +39,21 @@ import { makeId } from "./id"
 export const hasSupervisor = (project: Project): boolean =>
   (project.supervisors || []).length > 0
 
-/** The pending request against a rule, if there is one. Only ever one. */
+/** The pending request about one rule or achievement. Only ever one. */
 export const pendingFor = (
   project: Project,
-  ruleId: string,
-): RuleProposal | undefined =>
+  subjectId: string,
+): Proposal | undefined =>
   Object.values(project.proposals || {}).find(
-    (p) => p.ruleId === ruleId && p.state === "pending",
+    (p) => p.subjectId === subjectId && p.state === "pending",
   )
 
 /** Approved and waiting for the owner's app to write it into the rules. */
-export const approvedProposals = (project: Project): RuleProposal[] =>
+export const approvedProposals = (project: Project): Proposal[] =>
   Object.values(project.proposals || {}).filter((p) => p.state === "approved")
 
 /** Decided, seen, and worth showing once — refusals the owner has not read. */
-export const refusedProposals = (project: Project): RuleProposal[] =>
+export const refusedProposals = (project: Project): Proposal[] =>
   Object.values(project.proposals || {}).filter((p) => p.state === "refused")
 
 /** The whole rule in words, the same sentence the panel and the tab read. */
@@ -67,35 +74,46 @@ export const ruleText = (rule: StreakRule, ctx: StreakContext): string => {
  */
 export function proposalFor({
   project,
-  ctx,
-  prev,
+  subject,
+  action,
+  subjectId,
+  subjectLabel,
+  beforeText,
+  afterText,
   next,
   reason,
   ownerId,
   supervisorId,
 }: {
   project: Project
-  ctx: StreakContext
-  prev: StreakRule
-  next: StreakRule
+  subject: ProposalSubject
+  action: ProposalAction
+  subjectId: string
+  subjectLabel: string
+  /** How it reads now, and how it would read. Empty `after` on a removal. */
+  beforeText: string
+  afterText: string
+  next?: StreakRule | Achievement
   reason: string
   ownerId: string
   supervisorId: string
-}): RuleProposal {
+}): Proposal {
   return {
     id: makeId("prop"),
     projectId: project.id,
     ownerId,
     supervisorId,
-    ruleId: prev.id,
+    subject,
+    action,
+    subjectId,
     projectName: project.settings.projectName || "a project",
-    ruleLabel: prev.label,
-    beforeText: ruleText(prev, ctx),
-    afterText: ruleText(next, ctx),
+    subjectLabel,
+    beforeText,
+    afterText,
     reason: reason.trim(),
     // Stored without the lock date: the clock is set when it is *applied*, not
     // when it was asked for, or a slow answer would shorten the wait.
-    nextRule: next,
+    next,
     state: "pending",
     createdAt: new Date().toISOString(),
   }
@@ -109,11 +127,11 @@ export function proposalFor({
  * back six weeks later.
  */
 export const applyProposal = (
-  proposal: RuleProposal,
+  proposal: Proposal,
   prev: StreakRule,
   today = new Date(),
 ): StreakRule => ({
-  ...proposal.nextRule,
+  ...(proposal.next as StreakRule),
   lockedUntil: lockFrom(today),
   looseningLog: [
     ...(prev.looseningLog || []),
