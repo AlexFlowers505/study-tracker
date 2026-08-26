@@ -397,7 +397,7 @@ quietly swapped its engine for its accountant.
 
 ## The rules of it
 
-- `+1` for a kept day, `−1` for a missed one. **The rate is a constant of the
+- `+10` for a kept day, `−20` for a missed one. **The rate is a constant of the
   design, not a setting** — a configurable rate is the forgeable part.
 - **No floor. It goes negative.** Debt is the honest record of a bad month.
 - A **frozen** day counts as kept, `+1`. A freeze is part of the rule you
@@ -477,11 +477,16 @@ app is permitting yourself to buy it in life. The app is the ledger of a
 promise you made yourself about spending, which puts it in the same family as
 the edit lock rather than in the same family as points.
 
-- **Priced in days**, the balance's unit. "50,000 points" is a number you
-  invented and can re-invent; "40 kept days" is not, and cannot be
-  underestimated. Pricing in the same unit the streak counts is also what stops
-  a second economy existing at all — there is nothing to play off against
-  anything.
+- ~~**Priced in days**, the balance's unit.~~ **Reversed. The currency is
+  points** — `spec 014`'s follow-on, `migrations/020`. The argument here was
+  that pricing in the unit the streak counts leaves nothing to play off against
+  the promise, and it was sound; the *name* was not. `keptDays` is a run that
+  resets and is never spent; the balance is an account that accumulates and is.
+  One name over two numbers behaving in opposite ways produced the obvious
+  confusion — *we mark days with the streak and then they get spent* — and they
+  were never the same days. What actually stops a second economy is that
+  nothing but a finished day mints a point and the rate is not a setting, and
+  that survives the rename intact.
 - **Prices under the same lock.** Lowering a price is a loosening and waits a
   week; raising it is a narrowing and lands. Without this the record player
   drops from 500 days to 150 on a bad evening.

@@ -876,6 +876,17 @@ enough that a loose word costs a conversation.
 | **condition** | one clause of a rule; all of them must hold | `StreakClause` |
 | **a rule's streak** | that one promise's own run of days or weeks | `ruleStatus`, the chips in `StreakBar` |
 | **the composite** | the run of days on which *every voting rule* held | `keptDays`, `KeptCard` |
+| **points** | the account a day pays into, and the only figure you can spend | `lib/balance.ts`, the shop |
+
+**Points and the composite are not the same number, and used to share a name.**
+The composite is a *run*: it resets to nought when you break it, and nothing
+spends it — a purchase never touches your streak. Points *accumulate*, go
+negative, and are what the shop takes. A finished day pays **10**, a missed one
+takes **20**, so the account grows above a two-thirds keep rate; neither figure
+is a setting, and the one to watch when changing them is the ratio rather than
+either number. `migrations/020` multiplied every stored price by ten when the
+scale changed — the balance is a fold and revalues itself, prices are stored
+numbers and do not.
 
 **"Streak" is still the word**, and it belongs to a rule. What it no longer
 means on its own is "the app's streak" — there is no hard-coded promise left
