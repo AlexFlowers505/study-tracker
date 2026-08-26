@@ -333,6 +333,7 @@ export async function applyWriteOp(
             achievement_id: badge.achievementId,
             earned_at: badge.earnedAt,
             value: badge.value,
+            reward: badge.reward ?? 0,
           },
           { onConflict: "project_id,achievement_id", ignoreDuplicates: true },
         ),

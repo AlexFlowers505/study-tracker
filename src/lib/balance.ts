@@ -106,6 +106,16 @@ export function balanceOf(project: Project, today = new Date()): Balance {
     earnedDays += mark.kept ? KEPT_VALUE : -MISSED_COST
     sealed += 1
   })
+
+  /* **Achievements pay in**, at whatever they were worth when they were
+     reached — `spec 015`. Read off the ledger row rather than the definition,
+     so editing an achievement afterwards cannot move an account that has
+     already been spent against. A row written before rewards existed paid
+     nothing, because nothing was on offer. */
+  const fromAchievements = Object.values(project.earned || {}).reduce(
+    (sum, e) => sum + Math.max(0, Number(e.reward) || 0),
+    0,
+  )
   // Purchases come straight off the top. A reward taken is a reward paid for,
   // and there is no refund — see `spec 010` part 6.
   const spent = Object.values(project.purchases || {}).reduce(
@@ -127,8 +137,8 @@ export function balanceOf(project: Project, today = new Date()): Balance {
   }
 
   return {
-    total: earnedDays - spent,
-    earned: earnedDays,
+    total: earnedDays + fromAchievements - spent,
+    earned: earnedDays + fromAchievements,
     spent,
     sealed,
     pendingKept,

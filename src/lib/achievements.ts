@@ -308,7 +308,15 @@ export function dueAchievements(
     .filter((a) => !earned[a.id])
     .map((a) => ({ a, value: progressOf(project, a, today) }))
     .filter(({ a, value }) => a.threshold > 0 && value >= a.threshold)
-    .map(({ a, value }) => ({ achievementId: a.id, earnedAt: at, value }))
+    .map(({ a, value }) => ({
+      achievementId: a.id,
+      earnedAt: at,
+      value,
+      // Recorded here rather than read back later: the account is spent
+      // against this figure, and a definition edited afterwards must not move
+      // a balance somebody has already bought something with.
+      reward: Math.max(0, a.reward ?? 0),
+    }))
 }
 
 /**
@@ -394,6 +402,10 @@ export const achievementNarrows = (
   next: Achievement,
 ): boolean => {
   if (next.threshold < prev.threshold) return false
+  /* **The reward reads backwards from the threshold.** Asking for more points
+     in exchange for the same work is a loosening of the bargain even though
+     nothing about the bar moved, so raising one waits; lowering lands. */
+  if ((next.reward ?? 0) > (prev.reward ?? 0)) return false
 
   const wasRun = runOf(prev.source)
   const isRun = runOf(next.source)
@@ -448,6 +460,7 @@ const terms = (a: Achievement) => {
   const run = runOf(a.source)
   if (run)
     return JSON.stringify({
+      reward: a.reward ?? 0,
       kind: "run",
       ruleId: run.ruleId || "",
       consecutive: run.consecutive,
@@ -456,6 +469,7 @@ const terms = (a: Achievement) => {
       threshold: a.threshold,
     })
   return JSON.stringify({
+    reward: a.reward ?? 0,
     kind: a.source.kind,
     // Normalised, so re-picking the same targets in another order is not an
     // edit and the singular spelling is not a difference from the plural one.
@@ -506,6 +520,7 @@ export const newAchievement = (
 ): Omit<Achievement, "id" | "label" | "color" | "iconName"> => ({
   source: { kind: "run", run: { consecutive: true, scale: "day" } },
   threshold: 30,
+  reward: 100,
   createdOn: toKey(today),
   lockedUntil: toKey(today),
 })

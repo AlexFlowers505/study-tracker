@@ -91,7 +91,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     fetchAllRows<EarnedRow>(() =>
       client
         .from("achievements")
-        .select("project_id,achievement_id,earned_at,value"),
+        .select("project_id,achievement_id,earned_at,value,reward"),
     ),
     fetchAllRows<MemberRow>(() =>
       client.from("project_members").select("project_id,user_id,role"),
@@ -221,6 +221,7 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     if (!p?.earned) return
     p.earned[r.achievement_id] = {
       achievementId: r.achievement_id,
+      reward: Number(r.reward) || 0,
       earnedAt: r.earned_at,
       value: Number(r.value) || 0,
     }

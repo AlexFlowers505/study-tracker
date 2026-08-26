@@ -774,6 +774,26 @@ export interface Achievement extends Labeled {
   source: AchievementSource
   /** The number to reach. Minutes when the source measures time. */
   threshold: number
+  /**
+   * **Points paid when it is reached** — `spec 015`.
+   *
+   * Achievements used to pay nothing, on the reasoning that the thing which
+   * cannot be taken away should not be wired into the thing you can spend. The
+   * reasoning held and the consequence did not: an achievement that gives
+   * nothing is one nobody tries for, and *cannot be taken away* answers why it
+   * is worth having afterwards rather than why it is worth reaching.
+   *
+   * What made it safe was the rename. While the currency was "kept days" a
+   * reward would have been minting days you never kept; points are their own
+   * unit, and a reward paid in them adds to the account without touching the
+   * run. The achievement itself is still never spent — it stays in the ledger
+   * with its date.
+   *
+   * **You set it, and the lock reads it backwards from the threshold.**
+   * Raising a reward is asking more for the same work, so it waits; lowering
+   * one lands at once.
+   */
+  reward?: number
   /** The day it was written. Its own grace day, like a rule's `startedOn`. */
   createdOn: DayKey
   /** No **lowering** of the threshold before this date. See `ruleEdit`. */
@@ -794,6 +814,16 @@ export interface EarnedAchievement {
   earnedAt: string
   /** What the figure stood at. Kept so a deleted definition still reads. */
   value: number
+  /**
+   * The points it paid, recorded at the moment it was reached.
+   *
+   * Stored rather than read back off the definition, and for the same reason a
+   * purchase stores its price: the account was already spent against this
+   * figure, and re-reading a definition somebody has since edited would move a
+   * balance that was settled. Absent on anything earned before rewards existed,
+   * which read as nought — they paid nothing, because nothing was on offer.
+   */
+  reward?: number
 }
 
 /**

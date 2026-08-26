@@ -650,7 +650,11 @@ const A_DAYS: Record<DayKey, Day> = (() => {
   return out
 })()
 
-const achievement = (source: object, threshold: number): Achievement =>
+const achievement = (
+  source: object,
+  threshold: number,
+  reward = 0,
+): Achievement =>
   ({
     id: "a",
     label: "A",
@@ -658,6 +662,7 @@ const achievement = (source: object, threshold: number): Achievement =>
     iconName: "Circle",
     source,
     threshold,
+    reward,
     createdOn: A_START,
     lockedUntil: A_START,
   }) as Achievement
@@ -718,6 +723,8 @@ interface AchLockCase {
   after: object
   beforeN?: number
   afterN?: number
+  beforeR?: number
+  afterR?: number
   lands: boolean
 }
 
@@ -759,6 +766,14 @@ const A_LOCKS: AchLockCase[] = [
   { name: "drop a target it could come from — harder", lands: true,
     before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }, { kind: "time" }] },
     after: { kind: "total", targets: [{ kind: "activity", id: "a-les" }] } },
+  { name: "lower the reward — harder bargain", lands: true,
+    beforeR: 200, afterR: 100,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day" } } },
+  { name: "raise the reward — same work, more points", lands: false,
+    beforeR: 100, afterR: 200,
+    before: { kind: "run", run: { consecutive: true, scale: "day" } },
+    after: { kind: "run", run: { consecutive: true, scale: "day" } } },
   { name: "the same targets in another order is not an edit", lands: true,
     before: { kind: "total", targets: [{ kind: "activity", id: "a-les" }, { kind: "time" }] },
     after: { kind: "total", targets: [{ kind: "time" }, { kind: "activity", id: "a-les" }] } },
@@ -819,6 +834,8 @@ interface BalanceCase {
   kept: number
   missed: number
   spent: number
+  /** Points from achievements already reached, as their ledger rows record. */
+  paid?: number
   want: number
 }
 
@@ -829,6 +846,9 @@ const BALANCES: BalanceCase[] = [
   { name: "above two thirds it grows", kept: 3, missed: 1, spent: 0, want: 10 },
   { name: "below two thirds it shrinks", kept: 1, missed: 1, spent: 0, want: -10 },
   { name: "a purchase comes off the top", kept: 10, missed: 0, spent: 40, want: 60 },
+  { name: "an achievement pays in", kept: 1, missed: 0, spent: 0, paid: 100, want: 110 },
+  { name: "what it paid is what was recorded, not what it says now",
+    kept: 0, missed: 0, spent: 0, paid: 250, want: 250 },
   { name: "it goes negative from misses, never from buying",
     kept: 0, missed: 2, spent: 0, want: -40 },
 ]
@@ -1013,8 +1033,8 @@ for (const test of PROGRESS) {
 
 console.log("")
 for (const test of A_LOCKS) {
-  const before = achievement(test.before, test.beforeN ?? 30)
-  const after = achievement(test.after, test.afterN ?? 30)
+  const before = achievement(test.before, test.beforeN ?? 30, test.beforeR ?? 0)
+  const after = achievement(test.after, test.afterN ?? 30, test.afterR ?? 0)
   const got = achievementNarrows(before, after)
   const word = (v: boolean) => (v ? "lands at once" : "waits")
   if (got === test.lands) {
@@ -1060,7 +1080,11 @@ for (const test of REMOVALS) {
 
 console.log("")
 for (const test of BALANCES) {
-  const got = test.kept * KEPT_VALUE - test.missed * MISSED_COST - test.spent
+  const got =
+    test.kept * KEPT_VALUE -
+    test.missed * MISSED_COST +
+    (test.paid ?? 0) -
+    test.spent
   if (got === test.want) {
     console.log(`${GREEN}  ok${OFF}  points: ${test.name}`)
   } else {

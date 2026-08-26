@@ -205,8 +205,14 @@ function Form({
         </p>
         <p className="text-[10px] font-mono text-ink/40">
           {project.earned?.[item.id]
-            ? `Earned ${fmtDateLong(earnedOn(project.earned[item.id].earnedAt))}`
-            : `${fmtProgress(value, measure)} so far`}
+            ? `Earned ${fmtDateLong(earnedOn(project.earned[item.id].earnedAt))}${
+                project.earned[item.id].reward
+                  ? ` · paid ${project.earned[item.id].reward} points`
+                  : ""
+              }`
+            : `${fmtProgress(value, measure)} so far${
+                item.reward ? ` · worth ${item.reward} points` : ""
+              }`}
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
           <button
@@ -424,6 +430,27 @@ function Form({
           </Fold>
         </>
       )}
+
+      {/* **What it pays.** Set per achievement, because what one is worth is
+          a judgement about that one — six that mean something are not six
+          equal things. The lock reads it backwards from the threshold above:
+          asking more points for the same work is a loosening of the bargain
+          even though the bar has not moved. */}
+      <Row label="Worth">
+        <input
+          type="number"
+          min={0}
+          value={draft.reward ?? 0}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              reward: Math.max(0, Number(e.target.value) || 0),
+            })
+          }
+          className={NUM}
+        />
+        <span className={WORD}>points</span>
+      </Row>
 
       <Row label="Reaching">
         {measure === "time" ? (

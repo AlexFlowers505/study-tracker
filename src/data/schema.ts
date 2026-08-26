@@ -153,6 +153,7 @@ export interface PurchaseRow {
 export interface EarnedRow {
   project_id: string
   achievement_id: string
+  reward?: number
   earned_at: string
   value: number
 }
