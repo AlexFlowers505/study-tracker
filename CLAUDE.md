@@ -27,11 +27,13 @@ day, a lock comparing only the first of several targets, four places that
 printed the wrong counter's name, and today being credited as a day already
 kept. `npm run sweep` covers all of it.
 
-**The one item left is `013 §2.3`, and it wants a decision rather than code.**
-Everything owed today is knowable at breakfast, and saying it in danger red is
-crying wolf — so there is a case for a fourth, quieter tier: a reminder, not an
-alarm. What it must not do is appear every morning, because the whole design of
-that row is that it stays quiet while everything holds.
+`dueToday` closed the last of them: **what today still asks, as a line inside
+the opened streaks row rather than a fourth `RiskLevel`.** A new level would
+have made `StreakBar` draw a block for it every morning, which is exactly what
+the quiet-unless-it-matters design of that row exists to prevent. Under the
+chevron you go and look; it never comes and finds you. It asks only for what
+can still be done — a floor short, a check unanswered — and never for what the
+clock has already ruled out.
 
 **`specs/010-day-verdict-and-rewards.md` is built, all nine stages.** The main
 goal streak is gone, the day's colour is a composite verdict over every voting
@@ -67,11 +69,11 @@ There are no tests, with one deliberate exception. Lint and typecheck are the
 automated checks and **both are clean — expect zero from each and leave them at
 zero.**
 
-`npm run sweep` is the exception: `scripts/streak-sweep.ts`, seventy-six cases
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, eighty-two cases
 over the streak engine — every rule shape against a period that should hold and
-one that should break it, the risk levels at both ends of the day, what a day is
-reported as, the lock, and the conditions that must be refused rather than
-judged. **Run it after touching `customStreaks.ts`, `streakRisk.ts` or
+one that should break it, the risk levels at both ends of the day, what today
+still asks, what a day is reported as, the lock, and the conditions that must be
+refused rather than judged. **Run it after touching `customStreaks.ts`, `streakRisk.ts` or
 `dayVerdict.ts`.** It exists because the throwaway version of it lived under
 `.claude/`, which is gitignored, so it went with a cleanup — and one morning of
 ordinary use then turned up eight bugs, three of them in the engine, every one

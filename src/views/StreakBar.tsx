@@ -45,6 +45,15 @@ import { usePalette } from "../ui/useTheme"
 /** `"main"` is the goal streak; anything else is a rule id. */
 export type StreakId = string | null
 
+/** One rule's "here is what today needs of you" line. */
+export interface DueLine {
+  id: string
+  tint: string
+  label: string
+  /** Already quoted, so `Sentence` can pick out the names and figures. */
+  text: string
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 /** Everything the row needs about one streak, whichever kind it is. */
@@ -252,6 +261,7 @@ export function StreakAlarms({
 export function StreakBar({
   statuses,
   balance,
+  due,
   risks,
   active,
   onSelect,
@@ -267,6 +277,11 @@ export function StreakBar({
   balance: Balance | null
   /** One per streak, keyed by the same ids — see `lib/streakRisk`. */
   risks: StreakRisk[]
+  /**
+   * What today still asks, one entry per rule that asks anything. Computed by
+   * `App` from `dueToday`, since it is the only place that holds the project.
+   */
+  due: DueLine[]
   active: StreakId
   onSelect: (id: StreakId) => void
 }) {
@@ -289,27 +304,61 @@ export function StreakBar({
   return (
     <div className="space-y-1.5">
       {open ? (
-        // Scrolls rather than wraps: the row keeps one line at any width, and
-        // the padding is inside the scroll box because the buttons' own ring
-        // would otherwise be shaved off by `overflow-x-auto`.
-        <div className="flex items-center gap-1.5 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
-          {entries.map((entry) => (
-            <StreakButton
-              key={entry.id}
-              entry={entry}
-              active={active === entry.id}
-              onClick={() => pick(entry.id)}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className={`${btnBase} p-1.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5`}
-            aria-label="Collapse the streaks"
-          >
-            <ChevronDown size={14} className="rotate-180" />
-          </button>
-        </div>
+        <>
+          {/* Scrolls rather than wraps: the row keeps one line at any width,
+              and the padding is inside the scroll box because the buttons' own
+              ring would otherwise be shaved off by `overflow-x-auto`. */}
+          <div className="flex items-center gap-1.5 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
+            {entries.map((entry) => (
+              <StreakButton
+                key={entry.id}
+                entry={entry}
+                active={active === entry.id}
+                onClick={() => pick(entry.id)}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className={`${btnBase} p-1.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5`}
+              aria-label="Collapse the streaks"
+            >
+              <ChevronDown size={14} className="rotate-180" />
+            </button>
+          </div>
+
+          {/* **What today still asks of you — under the chevron, not above
+              it.** Everything owed today is knowable at breakfast, and the
+              alarms deliberately say none of it until the evening, because one
+              that fires every morning is one nobody reads. This is the other
+              half of that: not an alarm, and not nothing. You open the row and
+              it is there; it never comes and finds you, which is the whole
+              reason it can afford to appear on a day where everything holds.
+
+              No surface, no border, no red — a reminder wearing the volume of
+              a caption. The rule's own tint on the dot is the only colour, and
+              it is there to pair the line with its chip above rather than to
+              raise an alarm. */}
+          {due.length > 0 && (
+            <ul className="pt-0.5 space-y-0.5">
+              {due.map(({ id, tint, label, text }) => (
+                <li
+                  key={id}
+                  className="flex items-baseline gap-2 text-[10px] font-mono text-ink/45 leading-relaxed"
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0 translate-y-[-1px]"
+                    style={{ backgroundColor: tint }}
+                  />
+                  <span className="text-ink/35 shrink-0">{label}</span>
+                  <span className="min-w-0">
+                    <Sentence text={text} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       ) : (
         holding > 0 && (
           <button

@@ -38,6 +38,7 @@
 --------------------------------------------------------------- */
 
 import type { Day, DayKey, Project, StreakRule } from "../types/model"
+import { fmtHours } from "./time"
 import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
   clauseBounds,
@@ -45,6 +46,7 @@ import {
   clauseTarget,
   clauseTargets,
   freezeOffer,
+  judgesDay,
   measuredOn,
   q,
   readDay,
@@ -129,6 +131,74 @@ function shortfall(
     .filter((r) => r.applies && r.deficit > 0)
     .map((r) => clauseReadout(r, ctx, days[dayKey], dayKey, "failing"))
     .join(" · ")
+}
+
+/**
+ * **What today still asks of you, said quietly.**
+ *
+ * Everything owed today is knowable at breakfast, and the row above says none
+ * of it until the evening — by design, because a warning that fires every
+ * morning is a warning nobody reads. But *not an alarm* is not the same as
+ * *nothing*, and the gap between them is where this lives: a reminder, in the
+ * opened streaks row, under the chevron. You go and look; it does not come and
+ * find you.
+ *
+ * **Only what you can still do.** A floor short of its figure and a check with
+ * no answer yet are both things this morning can fix. A ceiling is not: there
+ * is no doing less of something not yet done, and printing `2 of 3 left` here
+ * would be reading out an allowance as if it were a chore.
+ *
+ * Day-scope only. A weekly rule's "today" is a question about pace, which
+ * `PaceCard` already answers properly and a one-line reminder would answer
+ * badly.
+ */
+export function dueToday(
+  rule: StreakRule,
+  project: Project,
+  now = new Date(),
+): string | null {
+  if (rule.scope === "week") return null
+  const todayKey = toKey(now)
+  if (todayKey < rule.startedOn || !judgesDay(rule, todayKey)) return null
+
+  const ctx = streakContext(project)
+  const day = project.days[todayKey]
+  const parts: string[] = []
+
+  for (const r of readDay(rule, ctx, day, todayKey)) {
+    if (!r.applies) continue
+    const info = targetInfo(clauseTarget(r.clause), ctx)
+
+    if (info.check) {
+      // Unanswered, not "answered wrongly" — a `no` you meant is not a chore
+      // left undone, and the row above is already shouting about it.
+      const waiting = clauseTargets(r.clause).filter(
+        (t) => !checkState(day, t.id || ""),
+      )
+      if (waiting.length)
+        parts.push(
+          `${waiting.map((t) => q(targetInfo(t, ctx).label)).join(", ")} to answer`,
+        )
+      continue
+    }
+
+    const need = owed(r, ctx, todayKey)
+    if (need <= 0) continue
+
+    /* **Nothing is asked for that can no longer be done.** Three hours at
+       eleven at night is not a reminder, it is a taunt — and the alarm above
+       has already said the day is out of reach. Time only: it is the one
+       measure the clock can rule out, and the same arithmetic `todayUrgency`
+       uses to decide the day is lost. */
+    if (info.measure === "time" && need > minutesLeftToday(now)) continue
+
+    const said = info.measure === "time" ? fmtHours(need) : String(need)
+    parts.push(
+      `${q(said)} more of ${targetsLabel(clauseTargets(r.clause), ctx)}`,
+    )
+  }
+
+  return parts.length ? parts.join(" · ") : null
 }
 
 /** Minutes between now and midnight — what is left to act in. */

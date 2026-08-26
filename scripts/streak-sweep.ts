@@ -21,7 +21,7 @@
    when the streak engine is touched.
 --------------------------------------------------------------- */
 
-import { ruleRisk } from "../src/lib/streakRisk"
+import { dueToday, ruleRisk } from "../src/lib/streakRisk"
 import type { RiskLevel } from "../src/lib/streakRisk"
 import {
   clauseAsksNothing,
@@ -371,6 +371,49 @@ const RISKS: RiskCase[] = [
     undefined, 23, "danger"),
 ]
 
+/* ---- what today still asks -----------------------------------------------
+
+   The quiet line under the streaks row. It has one rule of its own worth
+   testing: it asks only for what can still be done, so a floor the clock has
+   ruled out drops out rather than taunting you with it. */
+
+interface DueCase {
+  name: string
+  clause: object
+  day: Day | undefined
+  hour: number
+  want: string | null
+}
+
+const dues = (
+  name: string,
+  clause: object,
+  day: Day | undefined,
+  hour: number,
+  want: string | null,
+): DueCase => ({ name, clause, day, hour, want })
+
+const DUES: DueCase[] = [
+  dues("a floor short, with the day ahead of it",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    studied(60), 9, "“2h” more of “Lessons”"),
+  dues("a floor already met asks nothing",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    studied(180), 9, null),
+  dues("a floor the clock has ruled out is not asked for",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    studied(60), 23, null),
+  dues("an unanswered check",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    answered({ "u-bed": "yes" }), 9, "“Wake up” to answer"),
+  dues("a check answered wrongly is the alarm's business, not this line",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    answered({ "u-wake": "no" }), 9, null),
+  dues("a ceiling asks nothing — there is no doing less of it",
+    { id: "c", ...target("unit", "u-yt"), max: 3 },
+    counted("u-yt", "s-am", 1), 9, null),
+]
+
 /* ---- what a day is reported as -----------------------------------------
 
    The tooltips and warnings. Three times now the same bug has been fixed in a
@@ -589,6 +632,26 @@ for (const test of RISKS) {
 }
 
 console.log("")
+for (const test of DUES) {
+  const rule = {
+    ...ruleOf(test.clause as StreakClause, "day"),
+    startedOn: RISK_DAY,
+    lockedUntil: RISK_DAY,
+  } as StreakRule
+  const proj = project(rule, test.day ? { [RISK_DAY]: test.day } : {})
+  const at = new Date(`${RISK_DAY}T${String(test.hour).padStart(2, "0")}:00:00`)
+  const got = dueToday(rule, proj, at)
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  due: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  due: ${test.name}`)
+    console.log(`      got  ${got === null ? "(nothing)" : got}`)
+    console.log(`      want ${test.want === null ? "(nothing)" : test.want}`)
+  }
+}
+
+console.log("")
 for (const test of READS) {
   const rule = ruleOf(test.clause as StreakClause, "day")
   const proj = project(rule, test.day ? { [MON]: test.day } : {})
@@ -641,5 +704,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + READS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${CASES.length + RISKS.length + DUES.length + READS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

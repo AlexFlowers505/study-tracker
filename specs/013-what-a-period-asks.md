@@ -1,14 +1,12 @@
 # 013 — What a period asks, and when a day is decided
 
-**Status: built, bar §2.3.** Found 2026-08-26 from a list of eight things the
+**Status: built.** Found 2026-08-26 from a list of eight things the
 user hit in one sitting; built the next day. Sibling of
 `012-the-first-target-assumption.md`, which holds the display half of the same
 week's findings and is also built.
 
 Every fix in this file is covered by `npm run sweep`
 (`scripts/streak-sweep.ts`), which is checked in for the reason Part 3 gives.
-**§2.3 — the quiet morning tier — is the one thing left, and it wants a
-decision before it wants code.**
 
 Three of the eight are bugs, and one of them makes **every weekly rule with a
 flat bound wrong by a factor of seven**. The rest are a single design question
@@ -151,19 +149,31 @@ contributes nothing until it is breached. A ceiling at its limit is exactly
 `c.warn`'s case — behind but not lost — which is what that colour was added
 for.
 
-### 2.3 A quieter tier: the morning reminder
+### 2.3 A quieter tier: the morning reminder — *done*
 
-Everything owed today is knowable at breakfast, and saying it in `danger` red
-is crying wolf. The user asks for a third weight — *primary/secondary*, a
-reminder rather than an alarm: **here is what today needs of you.**
+**Not a fourth `RiskLevel`.** Adding one would have made `StreakBar` draw a
+block for it, since it draws one for anything not `safe`, and then the
+reminder would appear every morning above the composite — which is precisely
+what the quiet-unless-it-matters design of that row exists to prevent.
 
-`RiskLevel` is `danger | warning | safe` and `StreakBar` draws a `RiskBlock`
-for anything not safe. A fourth level (`due`? `owed`?) would need its own,
-much quieter block — no red, no border, arguably folded into the streak row
-rather than above the composite. Decide the visual weight *before* the
-plumbing: the whole design of that row is that it is quiet when everything
-holds, and a reminder that appears every single morning is exactly the thing
-that would break it.
+It is `dueToday` in `lib/streakRisk.ts` and a line **inside the opened streaks
+row, under the chevron**: you go and look, it never comes and finds you. That
+is what lets it appear on a day where everything holds. No surface, no border,
+no red — a caption's volume, with the rule's own tint on a dot to pair the line
+with its chip above.
+
+Two rules of its own:
+
+- **Only what you can still do.** A floor short of its figure and a check with
+  no answer yet. A ceiling is not asked for — there is no doing less of
+  something not yet done, and printing `2 of 3 left` here would read an
+  allowance out as a chore.
+- **Nothing the clock has ruled out.** Three hours at eleven at night is not a
+  reminder, it is a taunt, and the alarm above has already said the day is out
+  of reach. Same arithmetic `todayUrgency` uses to call a day lost.
+
+Day scope only. A weekly rule's "today" is a question about pace, which
+`PaceCard` answers properly and a one-line reminder would answer badly.
 
 ### 2.4 `held 1` on a rule written this morning — *fixed*
 

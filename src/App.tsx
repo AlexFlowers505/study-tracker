@@ -53,7 +53,7 @@ import { dueAchievements } from "./lib/achievements"
 import { purchaseOf } from "./lib/shop"
 import { applyProposal, hasSupervisor, proposalFor } from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
-import { ruleRisk } from "./lib/streakRisk"
+import { dueToday, ruleRisk } from "./lib/streakRisk"
 import {
   periodRange,
 } from "./lib/period"
@@ -78,7 +78,7 @@ import {
 } from "./data/ops"
 import { CountFilter } from "./views/CountFilter"
 import { StreakAlarms, StreakBar } from "./views/StreakBar"
-import type { StreakId } from "./views/StreakBar"
+import type { DueLine, StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { KeptCard } from "./views/KeptCard"
 import { KeptSection } from "./views/KeptSection"
@@ -470,6 +470,23 @@ export default function StudyTrackerApp() {
     [project, verdictCtx],
   )
   /** The run of kept days — the composite streak. */
+  /* What today still asks of each rule, for the quiet line under the streaks
+     row. Not a risk and deliberately not one: the alarms stay silent until the
+     evening so they mean something when they speak, and this is what fills the
+     gap between "not an alarm" and "nothing at all". */
+  const dueLines: DueLine[] = useMemo(
+    () =>
+      (project.settings.streakRules || [])
+        .map((rule) => ({
+          id: rule.id,
+          tint: rule.color,
+          label: rule.label,
+          text: dueToday(rule, project) ?? "",
+        }))
+        .filter((line) => line.text !== ""),
+    [project],
+  )
+
   const kept = useMemo(() => keptDays(project), [project])
   const keptWeekly = useMemo(() => keptWeeks(project), [project])
 
@@ -1089,6 +1106,7 @@ export default function StudyTrackerApp() {
         <div className="mb-3">
           <StreakBar
             statuses={ruleStatuses}
+            due={dueLines}
             balance={project.settings.balanceStart ? balance : null}
             risks={streakRisks}
             active={openStreak}
