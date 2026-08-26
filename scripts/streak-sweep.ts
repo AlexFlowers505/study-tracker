@@ -22,6 +22,7 @@
 --------------------------------------------------------------- */
 
 import { achievementNarrows, progressOf } from "../src/lib/achievements"
+import { KEPT_VALUE, MISSED_COST } from "../src/lib/balance"
 import { dueToday, ruleRisk } from "../src/lib/streakRisk"
 import type { RiskLevel } from "../src/lib/streakRisk"
 import {
@@ -762,6 +763,33 @@ const A_LOCKS: AchLockCase[] = [
     after: { kind: "total", targets: [{ kind: "time" }, { kind: "activity", id: "a-les" }] } },
 ]
 
+/* ---- the account -------------------------------------------------------
+
+   Not a rule shape, but the one arithmetic here you can *spend*, and its two
+   constants are the kind that get changed without anyone re-deriving what they
+   mean. The figure worth pinning is the **ratio**: the account grows above a
+   two-thirds keep rate and shrinks below it, and a purchase comes off the top
+   without touching the streak. */
+
+interface BalanceCase {
+  name: string
+  kept: number
+  missed: number
+  spent: number
+  want: number
+}
+
+const BALANCES: BalanceCase[] = [
+  { name: "a kept day pays ten", kept: 1, missed: 0, spent: 0, want: 10 },
+  { name: "a missed day takes twenty", kept: 0, missed: 1, spent: 0, want: -20 },
+  { name: "two thirds kept is break-even", kept: 2, missed: 1, spent: 0, want: 0 },
+  { name: "above two thirds it grows", kept: 3, missed: 1, spent: 0, want: 10 },
+  { name: "below two thirds it shrinks", kept: 1, missed: 1, spent: 0, want: -10 },
+  { name: "a purchase comes off the top", kept: 10, missed: 0, spent: 40, want: 60 },
+  { name: "it goes negative from misses, never from buying",
+    kept: 0, missed: 2, spent: 0, want: -40 },
+]
+
 /* ---- conditions that must be refused rather than judged ---------------- */
 
 const REFUSED: { name: string; clause: object }[] = [
@@ -957,6 +985,19 @@ for (const test of A_LOCKS) {
 }
 
 console.log("")
+for (const test of BALANCES) {
+  const got = test.kept * KEPT_VALUE - test.missed * MISSED_COST - test.spent
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  points: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  points: ${test.name} — ${got}, want ${test.want}`,
+    )
+  }
+}
+
+console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
   const ctx = streakContext(project(rule, {}))
@@ -975,5 +1016,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

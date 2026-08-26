@@ -8,14 +8,26 @@
    is the week that follows it, and a streak has nothing to say about that
    week.
 
-   So a second counter runs beside it, with a different job. A kept day is
-   `+1`, a missed day is `−1`, and it never resets. The streak is fear; this
-   is the account.
+   So a second counter runs beside it, with a different job. A kept day pays
+   **points**, a missed day takes them, and it never resets. The streak is
+   fear; this is the account.
 
-   **Denominated in the same thing the streak counts**, which is what stops a
-   second economy existing at all: there is no game currency to optimise
-   against the promise, because the currency *is* the promise. A reward priced
-   at forty kept days cannot be underestimated the way "50,000 points" can.
+   **Points, not "kept days", and the rename is a correction rather than a
+   coat of paint.** They shared a name and an argument: pricing in the unit the
+   streak counts was supposed to stop a second economy existing, because the
+   currency *was* the promise. In practice it made two completely different
+   numbers wear one name. `keptDays` is a **run** — it resets to nought the
+   moment you break it, and it is never spent. This is an **account** — it
+   accumulates, it goes negative, and it is the only figure here you can spend.
+   Calling both "kept days" produced exactly the confusion you would expect:
+   *we mark days with the streak, and then somehow they get spent.* They are
+   not the same days. They were never the same days.
+
+   The old worry does not survive the split either. A second economy is
+   dangerous when it can be played off against the promise, and points cannot
+   be: they are minted by the day's verdict and by nothing else, at a rate that
+   is not a setting. What the rename buys is that the thing you spend stops
+   pretending to be the thing you are guarding.
 
    **It goes negative.** A floor at zero would mean that after a bad enough
    month, a bad day is free again — which is the hole this exists to close.
@@ -26,12 +38,15 @@
    a balance a purchase was already priced against. Today and yesterday are
    therefore visible but not yet counted.
 
-   **A kept day is `+1`; a missed day is `−3`.** It was symmetric at first, on
-   the grounds that a symmetric rate keeps the shop reachable for anyone above
-   half — which is true, and was the wrong thing to optimise. A reward you can
-   reach while keeping barely half your promises is a reward that says half is
-   enough. At `−3` the account only grows above a **75%** keep rate, and that
-   is the point: the price of the shop is a standard, not a grind.
+   **A kept day is `+10`; a missed day is `−20`.** It was symmetric at first,
+   on the grounds that a symmetric rate keeps the shop reachable for anyone
+   above half — which is true, and was the wrong thing to optimise: a reward
+   you can reach while keeping barely half your promises is a reward that says
+   half is enough. What matters is the **ratio**, not either number: at two to
+   one the account grows above a **two-thirds** keep rate.
+
+   The tens are so the ratio has somewhere to move. At `+1` the only
+   asymmetries expressible were whole multiples of a day.
 
    Neither figure is a setting. A configurable rate is the forgeable part of
    any economy — the number you quietly edit on the evening you need it to be
@@ -46,13 +61,22 @@ import { isEditableDay } from "./freezes"
 import { makeIsIgnored } from "./stats"
 
 /** What a kept day adds. Not a setting — see the note above. */
-export const KEPT_VALUE = 1
+export const KEPT_VALUE = 10
 
 /**
- * What a missed day takes. Three, deliberately: break-even sits at a 75% keep
- * rate, so the balance grows only while the promise is mostly being kept.
+ * What a missed day takes.
+ *
+ * **Twice what a day pays**, so the account grows only above a **two-thirds**
+ * keep rate. It was three times, and break-even sat at 75%; loosening it to
+ * two is a deliberate choice about how hard the shop should be to reach, and
+ * the figure to watch when changing it is that ratio rather than either number
+ * on its own.
+ *
+ * The tens are what make the ratio adjustable at all. At `+1` the only
+ * asymmetries available were whole multiples — 1:2, 1:3 — and a scale with
+ * room under it can say 10:15 as easily as 10:20.
  */
-export const MISSED_COST = 3
+export const MISSED_COST = 20
 
 export interface Balance {
   /** What is left to spend: every sealed mark, less everything bought. */

@@ -42,8 +42,12 @@ const HOW_IT_WORKS =
   "the ledger of a promise you made yourself about spending; nothing else " +
   "enforces it." +
   String.fromCharCode(10, 10) +
-  "Prices are in kept days — the same days the streak counts, which is why " +
-  "there is no second currency to game." +
+  "Prices are in points. A finished day pays 10 and a missed one takes 20 — " +
+  "nothing else mints them, and the rate is not a setting, so there is " +
+  "nothing here to game." +
+  String.fromCharCode(10, 10) +
+  "Buying spends points and nothing else. Your streak is a run of days and " +
+  "is never touched by it." +
   String.fromCharCode(10, 10) +
   "Raising a price lands at once. Lowering one waits a week, like loosening a " +
   "rule. A purchase is never refunded."
@@ -270,7 +274,7 @@ function BuyConfirm({
         </div>
 
         <p className="text-[11px] font-mono text-ink/50 leading-relaxed mb-4">
-          {item.price} kept days, spent for good — there is no refund and the
+          {item.price} points, spent for good — there is no refund and the
           record stays. Then go and actually have it: the app cannot do that
           half, and it is the half that makes the rest mean anything.
         </p>

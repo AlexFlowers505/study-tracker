@@ -98,7 +98,7 @@ function Form({
           }
           className={NUM}
         />
-        <span className="text-[11px] font-mono text-ink/55">kept days</span>
+        <span className="text-[11px] font-mono text-ink/55">points</span>
       </div>
 
       {/* Only when it is going the easy way. Asking you to justify raising
@@ -188,10 +188,11 @@ export function ShopTab({
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        Things you have decided to let yourself have, priced in kept days.
-        Taking one here is permitting yourself to buy it in life — the app keeps
-        the ledger, you keep the promise. Price them so that having the thing
-        would feel earned rather than allowed.
+        Things you have decided to let yourself have, priced in points — a
+        finished day pays 10, a missed one takes 20. Taking one here is
+        permitting yourself to buy it in life: the app keeps the ledger, you
+        keep the promise. Price them so that having the thing would feel earned
+        rather than allowed.
       </p>
 
       <EditableList<ShopItem>

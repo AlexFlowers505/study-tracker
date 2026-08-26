@@ -149,10 +149,21 @@ function RiskBlock({
   onClick: () => void
 }) {
   const c = usePalette()
-  // Danger takes the miss colour whatever the streak's own is: it is the same
-  // red as a broken day everywhere else, and that is a word the reader already
-  // knows. A warning stays in the streak's own tint — nothing is lost yet.
-  const tint = risk.level === "danger" ? c.exam : entry.tint
+  /* **Three levels, three colours, and none of them the streak's own.**
+   *
+   * Danger takes the miss colour whatever the rule's tint is: it is the same
+   * red as a broken day everywhere else, and that is a word the reader already
+   * knows. A warning takes `c.warn`, the amber added for exactly this state —
+   * *behind but not lost* — and it had never reached this block, which drew a
+   * warning in the streak's own colour. That colour says nothing about danger:
+   * a rule tinted green or blue read as an ordinary row, and `“--Pinterest”
+   * “3” of “3” used — one more ends it` is not an ordinary row.
+   *
+   * The rule's own tint loses its place here as a result, and that is the
+   * trade: on a block that only ever appears when something is wrong, the
+   * level is the thing worth colouring. Its icon and its name are still there
+   * to say which rule. */
+  const tint = risk.level === "danger" ? c.exam : c.warn
   return (
     <button
       type="button"
@@ -285,7 +296,7 @@ export function StreakBar({
   /** One per rule, already computed — see `ruleStatus`. */
   statuses: RuleStatus[]
   /**
-   * The account, in kept days. Deliberately the quietest thing in this row:
+   * The account, in points. Deliberately the quietest thing in this row:
    * it does not motivate — the streak does — and given equal weight it would
    * win, because watching a number grow is pleasanter than guarding one that
    * can be zeroed. It moves beside the shop once there is one.
@@ -394,11 +405,11 @@ export function StreakBar({
             {balance && (
               <Tip
                 className="ml-auto"
-                text={`${balance.total} kept days banked${
+                text={`${balance.total} points banked${
                   balance.pendingKept || balance.pendingMissed
                     ? ` · ${balance.pendingKept + balance.pendingMissed} still inside the writing window and not counted yet`
                     : ""
-                }. A kept day is +1, a missed one −1, and it never resets.`}
+                }. A finished day pays 10, a missed one takes 20, and it never resets. Your streak is a separate number and is never spent.`}
               >
                 <span
                   className={`text-[10px] font-mono tabular-nums ${

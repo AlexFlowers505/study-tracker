@@ -8,11 +8,14 @@
 
    Three things keep that from rotting:
 
-   **Priced in kept days.** "50,000 points" is a number you invented and can
-   re-invent on a bad evening. Forty kept days is not — and it is the same
-   thing the streak already counts, which is what stops a second economy
-   existing at all: the currency *is* the promise, so there is nothing to play
-   off against anything.
+   **Priced in points, and the points are minted only by the day's verdict.**
+   They were called kept days, on the reasoning that pricing in the unit the
+   streak counts leaves nothing to play off against the promise. The reasoning
+   was sound and the name was not: `keptDays` is a run that resets and is never
+   spent, and this is an account that accumulates and is, so one name covered
+   two numbers that behave in opposite ways. What stopped a second economy was
+   never the *name* — it is that nothing but a finished day mints a point, and
+   the rate is not a setting.
 
    **Prices are locked like rules.** Lowering one is a loosening and waits;
    raising one lands at once. Without it the record player drops from five

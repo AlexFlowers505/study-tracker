@@ -266,7 +266,7 @@ export function PeriodBar({
             icon={Gift}
             active={showShop}
             onClick={onToggleShop}
-            tip={showShop ? "Hide the rewards" : "What your kept days will buy"}
+            tip={showShop ? "Hide the rewards" : "What your points will buy"}
           />
           <PanelToggle
             icon={Trophy}
