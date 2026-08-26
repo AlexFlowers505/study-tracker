@@ -80,7 +80,6 @@ import { CountFilter } from "./views/CountFilter"
 import { StreakAlarms, StreakBar } from "./views/StreakBar"
 import type { DueLine, StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
-import { KeptCard } from "./views/KeptCard"
 import { KeptSection } from "./views/KeptSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
@@ -1085,29 +1084,24 @@ export default function StudyTrackerApp() {
             trouble — the two moments anybody is looking. A number you have to
             go and find is a number nobody is afraid of losing, and this one is
             the whole point of the design. */}
-        {kept && keptWeekly && (
-          <div className="mb-1.5">
-            <KeptCard
-              days={kept}
-              weeks={keptWeekly}
-              rangeStart={range.start}
-              rangeEnd={range.end}
-              open={openStreak === KEPT_PANEL}
-              onOpen={() =>
-                setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
-              }
-            />
-          </div>
-        )}
-
-        {/* Its own row under the period bar. Streaks are the one project-wide
-            thing on a page that is otherwise period-scoped, and there can now
-            be several of them — a toggle inside the bar could carry one. */}
+        {/* **One row under the period bar**, carrying everything that has to
+            be visible without asking: the run you are guarding, what you have
+            to spend, and whether anything is in trouble. The composite used to
+            have a card of its own directly above this, which was two stacked
+            surfaces answering the same question. */}
         <div className="mb-3">
           <StreakBar
             statuses={ruleStatuses}
             due={dueLines}
             balance={project.settings.balanceStart ? balance : null}
+            days={kept ?? { current: 0, best: 0 }}
+            keptWeeks={keptWeekly}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            keptOpen={openStreak === KEPT_PANEL}
+            onOpenKept={() =>
+              setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
+            }
             risks={streakRisks}
             active={openStreak}
             onSelect={setOpenStreak}

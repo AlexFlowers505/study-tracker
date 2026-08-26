@@ -38,9 +38,11 @@ import type { StreakRisk } from "../lib/streakRisk"
 import { byRisk } from "../lib/streakRisk"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
+import type { KeptWeeks } from "../lib/dayVerdict"
 import { Sentence } from "../ui/Sentence"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
+import { KeptFigure, WeeksRow } from "./KeptCard"
 
 /** `"main"` is the goal streak; anything else is a rule id. */
 export type StreakId = string | null
@@ -288,6 +290,12 @@ export function StreakAlarms({
 export function StreakBar({
   statuses,
   balance,
+  days,
+  keptWeeks,
+  rangeStart,
+  rangeEnd,
+  keptOpen,
+  onOpenKept,
   due,
   risks,
   active,
@@ -302,6 +310,16 @@ export function StreakBar({
    * can be zeroed. It moves beside the shop once there is one.
    */
   balance: Balance | null
+  /** The composite's run, and the longest there has ever been. */
+  days: { current: number; best: number }
+  /** Its weeks, for the strip inside the fold. Null before any rule votes. */
+  keptWeeks: KeptWeeks | null
+  /** The period the page is showing. The week squares follow it. */
+  rangeStart: Date
+  rangeEnd: Date
+  /** Whether the composite's own panel is open, and how to toggle it. */
+  keptOpen: boolean
+  onOpenKept: () => void
   /** One per streak, keyed by the same ids — see `lib/streakRisk`. */
   risks: StreakRisk[]
   /**
@@ -329,9 +347,89 @@ export function StreakBar({
   const pick = (id: string) => onSelect(active === id ? null : id)
 
   return (
-    <div className="space-y-1.5">
-      {open ? (
-        <>
+    /* **One row, not two.** The composite had a card of its own above this,
+       and two stacked surfaces both answering *how am I doing* is one too
+       many. Everything that must always be visible is on this line now — the
+       run you are guarding, what you have to spend, and whether anything is in
+       trouble — and everything else is behind the chevron.
+
+       Not one big button, because the row has two different destinations: the
+       days figure opens the breakdown, the rest opens the fold. Nesting them
+       is invalid and hiding one of them behind the other costs a click. */
+    <div className="rounded-2xl bg-card shadow-sm">
+      <div className="flex items-center gap-3 px-3.5 py-2">
+        <KeptFigure days={days} onOpen={onOpenKept} open={keptOpen} />
+
+        {/* **The account, always on screen.** It used to appear only on the
+            collapsed line, so it vanished the moment anyone opened the row —
+            and a currency you cannot see is one you never spend, which makes
+            the shop decorative. Quiet, though: it does not motivate, the
+            streak does, and given equal weight the pleasanter number wins. */}
+        {balance && (
+          <Tip
+            multiline
+            text={`${balance.total} points to spend${
+              balance.pendingKept || balance.pendingMissed
+                ? ` · ${balance.pendingKept + balance.pendingMissed} day(s) still inside the writing window and not counted yet`
+                : ""
+            }.${String.fromCharCode(10, 10)}A finished day pays 10, a missed one takes 20, and it never resets. Your streak is a separate number and is never spent.`}
+          >
+            <span className="flex items-baseline gap-1 cursor-help">
+              <span
+                className="text-[13px] font-mono font-bold tabular-nums leading-none"
+                style={balance.total < 0 ? { color: c.exam } : undefined}
+              >
+                {balance.total}
+              </span>
+              <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+                pts
+              </span>
+            </span>
+          </Tip>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className={`${btnBase} ml-auto flex items-center gap-2 rounded-full px-2 py-1 -mr-1 hover:bg-ink/5`}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{
+              backgroundColor: troubled.length ? c.warn : c.goalMet,
+            }}
+          />
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45">
+            {troubled.length
+              ? `${holding} of ${entries.length} holding`
+              : plural(holding, "streak")}
+          </span>
+          <ChevronDown
+            size={13}
+            aria-hidden
+            className={`text-ink/30 shrink-0 transition-transform duration-150 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Grows to whatever is inside it — `interpolate-size`, so nothing has
+          to measure the chips. Where that is unsupported it snaps open, which
+          is what it did before. */}
+      <div className="grow-open" data-open={open}>
+        <div className="px-3.5 pb-3 space-y-2">
+          <div className="h-px bg-ink/[0.07]" />
+
+          {keptWeeks && (
+            <WeeksRow
+              weeks={keptWeeks}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+            />
+          )}
+
           {/* Scrolls rather than wraps: the row keeps one line at any width,
               and the padding is inside the scroll box because the buttons' own
               ring would otherwise be shaved off by `overflow-x-auto`. */}
@@ -344,14 +442,6 @@ export function StreakBar({
                 onClick={() => pick(entry.id)}
               />
             ))}
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className={`${btnBase} p-1.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5`}
-              aria-label="Collapse the streaks"
-            >
-              <ChevronDown size={14} className="rotate-180" />
-            </button>
           </div>
 
           {/* **What today still asks of you — under the chevron, not above
@@ -367,7 +457,7 @@ export function StreakBar({
               it is there to pair the line with its chip above rather than to
               raise an alarm. */}
           {due.length > 0 && (
-            <ul className="pt-0.5 space-y-0.5">
+            <ul className="space-y-0.5">
               {due.map(({ id, tint, label, text }) => (
                 <li
                   key={id}
@@ -385,50 +475,8 @@ export function StreakBar({
               ))}
             </ul>
           )}
-        </>
-      ) : (
-        holding > 0 && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className={`${btnBase} w-full flex items-center gap-2 rounded-full bg-card shadow-sm px-3.5 py-2 hover:brightness-105`}
-          >
-            <span
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: c.goalMet }}
-            />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
-              {troubled.length
-                ? `${holding} more holding`
-                : `${plural(holding, "streak")} holding`}
-            </span>
-            {balance && (
-              <Tip
-                className="ml-auto"
-                text={`${balance.total} points banked${
-                  balance.pendingKept || balance.pendingMissed
-                    ? ` · ${balance.pendingKept + balance.pendingMissed} day(s) still inside the writing window and not counted yet`
-                    : ""
-                }. A finished day pays 10, a missed one takes 20, and it never resets. Your streak is a separate number and is never spent.`}
-              >
-                <span
-                  className={`text-[10px] font-mono tabular-nums ${
-                    balance.total < 0 ? "text-ink/45" : "text-ink/35"
-                  }`}
-                  style={balance.total < 0 ? { color: c.exam } : undefined}
-                >
-                  {balance.total > 0 ? "+" : ""}
-                  {balance.total}
-                </span>
-              </Tip>
-            )}
-            <ChevronDown
-              size={14}
-              className={`text-ink/30 shrink-0 ${balance ? "" : "ml-auto"}`}
-            />
-          </button>
-        )
-      )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -80,3 +80,37 @@ html {
 *::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in oklab, var(--color-ink) 40%, transparent);
 }
+
+/* ---------------------------------------------------------------
+   Opening a section to its own height, without measuring it.
+
+   `block-size: 0 → auto` has never been animatable, which is why every
+   accordion on the web is either a `max-height` guess or a `ResizeObserver`.
+   `interpolate-size: allow-keywords` makes the browser interpolate to an
+   intrinsic keyword, so the streaks row can grow to exactly the height of the
+   chips and reminders inside it and nothing has to know what that is.
+
+   **Limited availability — Chromium only at the time of writing.** It needs no
+   fallback code: where it is unsupported the section snaps open at once, which
+   is precisely what it did before, and nothing about the layout depends on the
+   transition happening. The opt-in is per-subtree rather than global, so
+   nothing else in the app starts animating its height by surprise.
+--------------------------------------------------------------- */
+
+.grow-open {
+  interpolate-size: allow-keywords;
+  block-size: 0;
+  overflow: hidden;
+  transition: block-size 200ms ease-out;
+}
+
+.grow-open[data-open="true"] {
+  block-size: auto;
+}
+
+/* Sizing animations are the ones that make people ill. */
+@media (prefers-reduced-motion: reduce) {
+  .grow-open {
+    transition: none;
+  }
+}
