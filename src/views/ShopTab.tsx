@@ -5,7 +5,7 @@
    one-sided lock: raising a price lands at once because it can only ask more
    of you; lowering one waits a week. That is the edit the whole mechanism
    exists to slow down — without it the record player quietly drops from five
-   hundred days to a hundred and fifty at exactly the moment you most want it
+   thousand points to fifteen hundred at exactly the moment you most want it
    to.
 --------------------------------------------------------------- */
 
@@ -51,7 +51,7 @@ function Form({
     return (
       <div className="space-y-1.5 pl-1 pt-1">
         <p className="text-[11px] font-mono text-ink/70">
-          {item.price} kept {item.price === 1 ? "day" : "days"}
+          {item.price} {item.price === 1 ? "point" : "points"}
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
           <button

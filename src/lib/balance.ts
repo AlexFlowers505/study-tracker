@@ -83,7 +83,7 @@ export interface Balance {
   total: number
   /** The marks alone, before anything was taken out. */
   earned: number
-  /** Kept days already spent in the shop. */
+  /** Points already spent in the shop. */
   spent: number
   /** Days marked so far. */
   sealed: number

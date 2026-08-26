@@ -407,7 +407,7 @@ export function StreakBar({
                 className="ml-auto"
                 text={`${balance.total} points banked${
                   balance.pendingKept || balance.pendingMissed
-                    ? ` · ${balance.pendingKept + balance.pendingMissed} still inside the writing window and not counted yet`
+                    ? ` · ${balance.pendingKept + balance.pendingMissed} day(s) still inside the writing window and not counted yet`
                     : ""
                 }. A finished day pays 10, a missed one takes 20, and it never resets. Your streak is a separate number and is never spent.`}
               >

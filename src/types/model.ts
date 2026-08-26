@@ -634,12 +634,12 @@ export interface StreakRule extends Labeled {
  * the same family as points: the app is the ledger of a promise you made
  * yourself about spending.
  *
- * Priced in **kept days**, the balance's unit — a number you cannot
+ * Priced in **points**, the balance's unit — a number you cannot
  * re-invent the way you can re-invent "50,000 points", and the same thing the
  * streak already counts, which is what stops a second economy existing at all.
  */
 export interface ShopItem extends Labeled {
-  /** In kept days. */
+  /** In points. */
   price: number
   /** The day it was written. Its own grace day, like a rule's `startedOn`. */
   createdOn: DayKey

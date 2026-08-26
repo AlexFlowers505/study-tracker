@@ -19,7 +19,7 @@
 
    **Prices are locked like rules.** Lowering one is a loosening and waits;
    raising one lands at once. Without it the record player drops from five
-   hundred days to a hundred and fifty at exactly the moment you most want it
+   thousand points to fifteen hundred at exactly the moment you most want it
    to.
 
    **A purchase is permanent.** No refund, append-only, and it keeps its own

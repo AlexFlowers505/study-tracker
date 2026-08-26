@@ -77,7 +77,7 @@ export function ShopSection({
       title="Rewards"
       subtitle={
         balance
-          ? `${available} kept ${available === 1 ? "day" : "days"} to spend`
+          ? `${available} ${available === 1 ? "point" : "points"} to spend`
           : "The balance has not started counting yet"
       }
       action={
@@ -104,18 +104,25 @@ export function ShopSection({
                 {available}
               </strong>
               <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-                {available === 1 ? "day" : "days"}
+                {available === 1 ? "point" : "points"}
               </span>
             </span>
           </div>
           {/* How it got there, under it rather than beside it. */}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[9px] font-mono uppercase tracking-widest text-ink/30">
-            <span className="tabular-nums">{balance.earned} earned</span>
-            <span className="tabular-nums">{balance.spent} spent</span>
+            <span className="tabular-nums">{balance.earned} pts earned</span>
+            <span className="tabular-nums">{balance.spent} pts spent</span>
             {(balance.pendingKept > 0 || balance.pendingMissed > 0) && (
               <Tip text="Today and yesterday can still be written, so they are not counted yet.">
+                {/* **Days, not points**, and it has to say so: a bare figure
+                    under a strip of points reads as points, and these are the
+                    two days still inside the writing window. */}
                 <span className="tabular-nums cursor-help">
-                  {balance.pendingKept + balance.pendingMissed} not counted yet
+                  {balance.pendingKept + balance.pendingMissed}{" "}
+                  {balance.pendingKept + balance.pendingMissed === 1
+                    ? "day"
+                    : "days"}{" "}
+                  not counted yet
                 </span>
               </Tip>
             )}
@@ -169,7 +176,7 @@ export function ShopSection({
                     {item.price}
                   </p>
                   <p className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
-                    days
+                    {item.price === 1 ? "point" : "points"}
                   </p>
                 </div>
                 <button
@@ -207,7 +214,7 @@ export function ShopSection({
                 <Lock size={9} className="shrink-0" />
                 <span className="truncate">{p.label}</span>
                 <span className="ml-auto shrink-0 tabular-nums">
-                  {p.price} days · {fmtDateLong(boughtOn(p.boughtAt))}
+                  {p.price} pts · {fmtDateLong(boughtOn(p.boughtAt))}
                 </span>
               </div>
             ))}
