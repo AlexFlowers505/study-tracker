@@ -19,20 +19,19 @@ one; the effectiveness meter is gone and the day's goal is read from a
 nominated **benchmark** rule (`lib/benchmark.ts`); the verdict ring is
 weighted and opens.
 
-**`specs/013-what-a-period-asks.md` is written and not started, and it is the
-one to read first.** A weekly rule with a flat bound **multiplies your figure
-by the days in the week** — `at least 3 a week` asks for 21 — so every weekly
-count rule is either unachievable or unbreakable. It also records that a
-weekly rule ignores per-slot bounds, that a failed check warns at no hour of
-the day, and the design question behind four other reports: when is a day
-decided, given a floor is a forecast and a ceiling is a fact.
+**`specs/013-what-a-period-asks.md` and `specs/012-the-first-target-assumption.md`
+are built, bar one item.** Between them they record a week of engine bugs and
+what closed each: a weekly rule multiplying its own figure by seven, a weekly
+rule that never read slot bounds, a failed check that warned at no hour of the
+day, a lock comparing only the first of several targets, four places that
+printed the wrong counter's name, and today being credited as a day already
+kept. `npm run sweep` covers all of it.
 
-**`specs/012-the-first-target-assumption.md` is written and not started.** A
-condition can name several counters; `clauseTarget()` — the singular reader
-from when it could not — survives in fourteen places. Three of them print the
-wrong name in the streak panel, and **one is in `isNarrowing`, where the lock
-compares only the first target**. Read that spec before touching the panel,
-the risk lines or the lock.
+**The one item left is `013 §2.3`, and it wants a decision rather than code.**
+Everything owed today is knowable at breakfast, and saying it in danger red is
+crying wolf — so there is a case for a fourth, quieter tier: a reminder, not an
+alarm. What it must not do is appear every morning, because the whole design of
+that row is that it stays quiet while everything holds.
 
 **`specs/010-day-verdict-and-rewards.md` is built, all nine stages.** The main
 goal streak is gone, the day's colour is a composite verdict over every voting
@@ -60,11 +59,25 @@ npm run dev       # Vite dev server (port 5173)
 npm run build     # production build to dist/
 npm run lint      # ESLint — run before finishing a change
 npm run typecheck # tsc --noEmit — clean, and must stay clean
+npm run sweep     # the streak engine against every rule shape it has
 npm run preview   # serve the built dist/
 ```
 
-There are no tests. Lint and typecheck are the only automated checks, and
-**both are clean — expect zero from each and leave them at zero.** They were
+There are no tests, with one deliberate exception. Lint and typecheck are the
+automated checks and **both are clean — expect zero from each and leave them at
+zero.**
+
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, seventy-six cases
+over the streak engine — every rule shape against a period that should hold and
+one that should break it, the risk levels at both ends of the day, what a day is
+reported as, the lock, and the conditions that must be refused rather than
+judged. **Run it after touching `customStreaks.ts`, `streakRisk.ts` or
+`dayVerdict.ts`.** It exists because the throwaway version of it lived under
+`.claude/`, which is gitignored, so it went with a cleanup — and one morning of
+ordinary use then turned up eight bugs, three of them in the engine, every one
+of which it would have caught. Expectations are written out, never derived: the
+throwaway guessed and flagged three ceilings that were behaving perfectly, and
+a wrong expectation teaches you to ignore the output. They were
 not always: the old `App.jsx` and its dead `App-old.jsx` snapshot carried ~30
 standing errors between them, and that noise is exactly how a real bug (a
 binding mutated mid-render in the heatmap) sat unnoticed for months.

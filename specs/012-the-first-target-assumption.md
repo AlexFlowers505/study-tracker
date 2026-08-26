@@ -1,8 +1,8 @@
 # 012 — The first-target assumption
 
-**Status: written, not built.** Found 2026-08-26 while checking the streak
-panel; deferred to the next session at the user's request. Nothing here is
-started.
+**Status: built.** Found 2026-08-26 while checking the streak panel; built the
+next day. Covered by `npm run sweep`, which grew a readout section and a lock
+section for it.
 
 A condition used to name exactly one thing, and `clauseTarget()` — *the*
 target — was how everything read it. It can name several now (`clauseTargets`),
@@ -44,15 +44,21 @@ Checked with `grep -rn "clauseTarget(" src/`. Read this list as *candidates*,
 not as a list of bugs — the ones marked **correct** are here so nobody has to
 re-derive why.
 
-### Wrong today
+### Wrong, and fixed
 
-| where | what it does | why it is wrong |
+| where | what it did | how it was closed |
 | --- | --- | --- |
-| `views/CustomStreakSection.tsx:148` | `breakdown()` — the strip tooltip | names the first target and prints `r.value` raw |
-| `views/CustomStreakSection.tsx:122` | `sole` — the panel's single-target label | a two-check condition is not `compound` (one clause), so it takes this path and names one of two |
-| `lib/streakRisk.ts:238, 292` | two more risk lines | same singular read as the one already fixed at `:128` |
+| `views/CustomStreakSection.tsx` | `breakdown()` — the strip tooltip | now calls `clauseReadout` |
+| `lib/streakRisk.ts` | `shortfall`, the non-check branch | named the first counter of a set and printed the whole set's figure beside it; `targetsLabel` now |
 
-### Not cosmetic — check this one first
+**Two entries in the first draft of this table were wrong**, and are worth
+recording as such: the panel's `sole` and the two risk lines at what were
+`:238` and `:292` read `clauseTarget` for `.measure` only, never for a name. A
+condition's targets always share a kind, so those are right. Reading a
+`grep` result as a bug list is how a note ends up sending someone to fix
+something that is not broken.
+
+### Not cosmetic — and it was real
 
 `lib/customStreaks.ts:1729`, in `isNarrowing`:
 
@@ -60,15 +66,19 @@ re-derive why.
 if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
 ```
 
-**The lock compares only the first target.** Swapping the *second* check of a
-two-check condition for something else leaves the first unchanged, so the test
-says "same target" and the edit is judged on its bounds alone — which are
-unchanged, so it reads as a narrowing and lands at once.
+**The lock compared only the first target**, and it was exploitable. Traced,
+confirmed and fixed: everything below that line compares bounds and accepted
+answers, which know nothing about targets, so swapping *or dropping* the second
+check of a two-check condition was proved no-easier and landed at once.
 
-Whether that is exploitable depends on what else `clauseNarrows` demands; it
-was not traced. **Trace it before anything else in this file**, because the
-lock quietly permitting a loosening is the one failure this codebase is built
-to refuse, and every other item here is a wrong word on a screen.
+The targets are now compared as a set, in the direction the condition gives
+them — the same argument the slots make, because it is the same argument. Under
+an assertion one more target is one more thing to keep; under a floor it is one
+more place the number can come from, which is easier; under a ceiling it is one
+more way to be caught. `memberKind` joined the key too.
+
+Four of the fifteen lock cases in the sweep fail without the fix, which was
+verified by stashing it.
 
 ### Correct as they stand
 
@@ -101,10 +111,10 @@ that already exists, where everything here is a wrong word on a screen.
 - **`ClauseReading.skipped` means "any of them"** now. Either narrow it to a
   per-target thing or stop attaching it to a single name.
 
-## Then re-run the sweep
+## The sweep is checked in
 
-The audit that found the last four holes was a throwaway script over seventeen
-rule shapes. It is worth rebuilding and keeping this time — `.claude/` is
-gitignored, so it went with the last cleanup. The shape that matters: for every
-combination of target kind, scope, bound and answer, assert that a condition
-claiming to ask something does not pass a period that should break it.
+`scripts/streak-sweep.ts`, `npm run sweep`. Seventy-six cases over four axes:
+what a period comes to, what the streaks row says about today, what a day is
+reported as, and what the lock allows — plus the conditions that must be
+refused rather than judged. Run it after touching `customStreaks.ts`,
+`streakRisk.ts` or `dayVerdict.ts`.

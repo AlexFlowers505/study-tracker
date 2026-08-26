@@ -1,9 +1,14 @@
 # 013 — What a period asks, and when a day is decided
 
-**Status: written, not built.** Found 2026-08-26 from a list of eight things
-the user hit in one sitting; deferred to the next session at their request.
-Nothing here is started. Sibling of `012-the-first-target-assumption.md`, which
-holds the display half of the same week's findings.
+**Status: built, bar §2.3.** Found 2026-08-26 from a list of eight things the
+user hit in one sitting; built the next day. Sibling of
+`012-the-first-target-assumption.md`, which holds the display half of the same
+week's findings and is also built.
+
+Every fix in this file is covered by `npm run sweep`
+(`scripts/streak-sweep.ts`), which is checked in for the reason Part 3 gives.
+**§2.3 — the quiet morning tier — is the one thing left, and it wants a
+decision before it wants code.**
 
 Three of the eight are bugs, and one of them makes **every weekly rule with a
 flat bound wrong by a factor of seven**. The rest are a single design question
@@ -13,9 +18,11 @@ wearing four costumes: *what does today mean before it is over?*
 
 ## Part 1 — Three bugs
 
-### 1.1 A weekly rule multiplies your figure by the days in the week
+### 1.1 A weekly rule multiplies your figure by the days in the week — *fixed*
 
-**The worst one. Fix this first.**
+**The worst one. Fixed first.** `weekBounds` returns a flat bound unchanged and
+sums only a per-weekday map. `PaceCard`, `weekLostOn` and the day's colour all
+build on it and inherit the fix.
 
 `weekBounds` sums each present bound across every covered day:
 
@@ -52,7 +59,12 @@ Check `PaceCard` and `weekLostOn` in the same pass: both build on
 `clauseBounds`/`weekBounds`, so a weekly burn-down is currently drawn against
 the same ×7 limit.
 
-### 1.2 A weekly rule ignores per-slot bounds entirely
+### 1.2 A weekly rule ignores per-slot bounds entirely — *fixed*
+
+`readWeek` measures each named slot across the week and adds its shortfall to
+the clause's own, the way `readClauseDay` always did for a day. `clauseLostOn`
+gained the same reading, so a slot ceiling loses a week the moment it is
+crossed.
 
 The user's report: *at most 3 a week, and at most 0 in Evening and Night; wrote
 one at night; streak still fine.*
@@ -65,7 +77,10 @@ are never consulted.
 
 So *never in the evening* is enforceable only on a rule that judges days.
 
-### 1.3 A failed check produces no warning, at any hour
+### 1.3 A failed check produces no warning, at any hour — *fixed*
+
+`todayUrgency` reads checks: an answer outside the accepted set is spent
+immediately, like a breached ceiling; no answer at all is the evening rule.
 
 The user's report: *wake up = no, streak fine; go to sleep = no, still fine.*
 
@@ -112,14 +127,23 @@ ceiling) and the knowledge does not reach checks (1.3) or the panel.
 
 Four things follow, none of them built:
 
-### 2.1 Headroom on a ceiling
+### 2.1 Headroom on a ceiling — *done*
+
+`clauseReadout` reports `“Youtube” “2” of “3”` for a ceiling, so the tooltip
+and the panel both carry what is left. Ceilings only — a floor's figure is
+already in the sentence above the strip.
 
 *At most 3, and I have used 1.* Nothing shows the remaining two. The strip
 prints the raw count, the panel prints the raw count, and the arithmetic that
 matters — `max - value` — is nowhere. Worth having in the strip cell, the
 tooltip and the panel's figure.
 
-### 2.2 A warning before the last one
+### 2.2 A warning before the last one — *done*
+
+A spent allowance warns: `“--Pinterest” “3” of “3” used — one more ends it`.
+**A ceiling of nought never warns** — it is at its limit from midnight to
+midnight, and *never do X* is the commonest rule in the app, so it would put a
+permanent amber row on the page for a rule nobody has broken.
 
 *Three of three used, one more ends it.* `todayUrgency` has no state between
 "under the ceiling" and "over it". `owed()` looks only at `min`, so a ceiling
@@ -141,7 +165,10 @@ plumbing: the whole design of that row is that it is quiet when everything
 holds, and a reminder that appears every single morning is exactly the thing
 that would break it.
 
-### 2.4 `held 1` on a rule written this morning
+### 2.4 `held 1` on a rule written this morning — *fixed*
+
+Today is credited to neither column. `held 2 · + today`, and a rule with no
+finished day reads `today still open` rather than `held 0`.
 
 > Почему показано, что стрики pin ctrl и sleep ctrl held 1, если они только
 > сегодня появились и день еще не прошел?
@@ -158,7 +185,7 @@ today still open` — which is more honest and more useful.
 
 ---
 
-## Part 3 — Do this in order
+## Part 3 — What was done, in this order
 
 1. **1.1**, the weekly ×7. It is silently wrong about data the user already
    has, and everything else in Part 1 is smaller.
