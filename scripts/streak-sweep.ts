@@ -26,6 +26,7 @@ import type { RiskLevel } from "../src/lib/streakRisk"
 import {
   clauseAsksNothing,
   clauseSentence,
+  isNarrowing,
   readDay,
   readWeek,
   ruleDayState,
@@ -357,6 +358,83 @@ const RISKS: RiskCase[] = [
     undefined, 23, "danger"),
 ]
 
+/* ---- the lock ----------------------------------------------------------
+
+   `isNarrowing` is one-sided: `true` means *proved no easier*, and `false`
+   means *not proved*, which is a wait rather than a verdict. So every case
+   here reads as "does this land at once, or does it wait", and an edit that
+   is genuinely incomparable belongs in the `waits` column.
+
+   The direction of an added target is not obvious and is the whole reason
+   these exist: under an assertion one more target is one more thing to keep;
+   under a floor it is one more place the number can come from. */
+
+interface LockCase {
+  name: string
+  before: object
+  after: object
+  /** True where the edit is proved no-easier and may land at once. */
+  lands: boolean
+}
+
+const lock = (
+  name: string,
+  before: object,
+  after: object,
+  lands: boolean,
+): LockCase => ({ name, before, after, lands })
+
+const LOCKS: LockCase[] = [
+  lock("assertion · swap the second check",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    { id: "c", ...checks("u-wake", "u-gym"), allow: everyDayYes }, false),
+  lock("assertion · drop the second check",
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    { id: "c", ...checks("u-wake"), allow: everyDayYes }, false),
+  lock("assertion · add a check",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes }, true),
+  lock("assertion · accept one fewer answer",
+    { id: "c", ...checks("u-wake"), allow: { ...everyDayYes, 1: ["yes", "skip"] } },
+    { id: "c", ...checks("u-wake"), allow: everyDayYes }, true),
+  lock("assertion · accept one more answer",
+    { id: "c", ...checks("u-wake"), allow: everyDayYes },
+    { id: "c", ...checks("u-wake"), allow: { ...everyDayYes, 1: ["yes", "skip"] } }, false),
+
+  lock("floor · add a counter it can come from",
+    { id: "c", ...checks("u-gym"), min: 3 },
+    { id: "c", ...checks("u-gym", "u-yt"), min: 3 }, false),
+  lock("floor · drop a counter it could come from",
+    { id: "c", ...checks("u-gym", "u-yt"), min: 3 },
+    { id: "c", ...checks("u-gym"), min: 3 }, true),
+  lock("floor · raise it",
+    { id: "c", ...target("unit", "u-gym"), min: 3 },
+    { id: "c", ...target("unit", "u-gym"), min: 4 }, true),
+  lock("floor · lower it",
+    { id: "c", ...target("unit", "u-gym"), min: 3 },
+    { id: "c", ...target("unit", "u-gym"), min: 2 }, false),
+
+  lock("ceiling · add a counter that can breach it",
+    { id: "c", ...target("unit", "u-yt"), max: 0 },
+    { id: "c", ...checks("u-yt", "u-gym"), max: 0 }, true),
+  lock("ceiling · drop one",
+    { id: "c", ...checks("u-yt", "u-gym"), max: 0 },
+    { id: "c", ...target("unit", "u-yt"), max: 0 }, false),
+  lock("ceiling · lower it",
+    { id: "c", ...target("unit", "u-yt"), max: 3 },
+    { id: "c", ...target("unit", "u-yt"), max: 1 }, true),
+  lock("ceiling · raise it",
+    { id: "c", ...target("unit", "u-yt"), max: 1 },
+    { id: "c", ...target("unit", "u-yt"), max: 3 }, false),
+
+  lock("swap the counter entirely",
+    { id: "c", ...target("unit", "u-yt"), max: 0 },
+    { id: "c", ...target("unit", "u-gym"), max: 0 }, false),
+  lock("nothing changed",
+    { id: "c", ...target("unit", "u-yt"), max: 0 },
+    { id: "c", ...target("unit", "u-yt"), max: 0 }, true),
+]
+
 /* ---- conditions that must be refused rather than judged ---------------- */
 
 const REFUSED: { name: string; clause: object }[] = [
@@ -440,6 +518,23 @@ for (const test of RISKS) {
 }
 
 console.log("")
+for (const test of LOCKS) {
+  const before = ruleOf(test.before as StreakClause, "day")
+  const after = ruleOf(test.after as StreakClause, "day")
+  const ctx = streakContext(project(before, {}))
+  const got = isNarrowing(before, after, ctx)
+  const word = (v: boolean) => (v ? "lands at once" : "waits")
+  if (got === test.lands) {
+    console.log(`${GREEN}  ok${OFF}  lock: ${test.name} — ${word(got)}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  lock: ${test.name} — ${word(got)}, want ${word(test.lands)}`,
+    )
+  }
+}
+
+console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
   const ctx = streakContext(project(rule, {}))
@@ -458,5 +553,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${CASES.length + RISKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${CASES.length + RISKS.length + LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

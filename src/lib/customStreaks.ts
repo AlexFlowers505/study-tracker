@@ -1803,10 +1803,17 @@ export const termsChanged = (
  * different, which locks the edit. That is the safe direction — the whole test
  * is one-sided, and "not proven" is always allowed to be wrong.
  */
-const sameTarget = (a: StreakTarget, b: StreakTarget): boolean =>
-  a.kind === b.kind &&
-  (a.id || "") === (b.id || "") &&
-  (a.measure || "") === (b.measure || "")
+/**
+ * A target as one comparable string.
+ *
+ * `memberKind` is in the key even though the old `sameTarget` ignored it:
+ * narrowing a category from every counter to only its tallies changes what is
+ * being counted, and a lock that cannot see that is a lock with a door in it.
+ * Being stricter is always safe here — the worst an extra field costs is an
+ * edit that waits a week when it need not have.
+ */
+const targetKey = (t: StreakTarget): string =>
+  `${t.kind}|${t.id || ""}|${t.measure || ""}|${t.memberKind || ""}`
 
 function clauseNarrows(
   prev: StreakClause,
@@ -1814,8 +1821,6 @@ function clauseNarrows(
   ctx: StreakContext,
   slots: Slot[],
 ): boolean {
-  if (!sameTarget(clauseTarget(prev), clauseTarget(next))) return false
-
   /* **Weekday by weekday**, since a condition can now ask a different thing
      on each. For every weekday the old rule judged:
 
@@ -1862,6 +1867,44 @@ function clauseNarrows(
     }
   }
 
+  const anyBound = (clause: StreakClause, pick: "min" | "max") =>
+    clauseWeekdays(clause).some(
+      (wd) => boundsOnWeekday(clause, ctx, wd)[pick] !== undefined,
+    ) ||
+    CHECK_CHOICES.some((answer) => clause.states?.[answer]?.[pick] !== undefined)
+  const hasFloor = anyBound(prev, "min") || anyBound(next, "min")
+  const hasCeiling = anyBound(prev, "max") || anyBound(next, "max")
+
+  /* **The targets, as a set.**
+   *
+   * This was `sameTarget(clauseTarget(prev), clauseTarget(next))` — the first
+   * target of each, from when a condition could name only one. A condition can
+   * name several now, and everything below this line compares bounds and
+   * answers, which know nothing about targets. So swapping the *second* check
+   * of a two-check condition left the first untouched, the test said "same
+   * target", and an edit that replaced one promise with an easier one landed
+   * at once. Dropping the second was worse: unambiguously easier, and equally
+   * invisible.
+   *
+   * The direction is the same argument the slots make below, because it is the
+   * same argument. Under an assertion — a set of checks against accepted
+   * answers — each target is judged separately and the deficits add, so one
+   * more target is one more thing to keep. Under a **floor** the targets are
+   * summed, so one more is one more place the number can come from, which is
+   * easier. Under a **ceiling** one more is one more way to be caught.
+   * Carrying both pulls in both directions at once, so any change waits. */
+  const pt = new Set(clauseTargets(prev).map(targetKey))
+  const nt = new Set(clauseTargets(next).map(targetKey))
+  const asserted = !!prev.allow || !!next.allow
+  const targetsOk = asserted
+    ? covers(nt, pt)
+    : hasFloor && hasCeiling
+      ? covers(nt, pt) && covers(pt, nt)
+      : hasCeiling
+        ? covers(nt, pt)
+        : covers(pt, nt)
+  if (!targetsOk) return false
+
   /* The slot rows point in opposite directions for the same edit, and that is
      not a mistake: under a ceiling a slot is a place you can be caught, so
      adding one narrows the ways through; under a floor a slot is a place the
@@ -1872,12 +1915,6 @@ function clauseNarrows(
      exactly what it is for. */
   const ps = slotsOf(prev, slots)
   const ns = slotsOf(next, slots)
-  const anyBound = (clause: StreakClause, pick: "min" | "max") =>
-    clauseWeekdays(clause).some(
-      (wd) => boundsOnWeekday(clause, ctx, wd)[pick] !== undefined,
-    )
-  const hasFloor = anyBound(prev, "min") || anyBound(next, "min")
-  const hasCeiling = anyBound(prev, "max") || anyBound(next, "max")
   if (hasFloor && hasCeiling)
     return covers(ns, ps) && covers(ps, ns)
   return hasCeiling ? covers(ns, ps) : covers(ps, ns)
