@@ -45,10 +45,14 @@ import {
   clauseTarget,
   clauseTargets,
   freezeOffer,
+  measuredOn,
+  q,
   readDay,
   readWeek,
   ruleDayState,
   ruleWeekState,
+  slotBoundsOnWeekday,
+  targetsLabel,
   weekLostOn,
   streakContext,
   targetInfo,
@@ -153,12 +157,42 @@ const owed = (r: ClauseReading, ctx: StreakContext, dayKey: DayKey): number => {
  * have left is worth saying, and needing two of the twelve you have left is
  * the ordinary shape of a morning.
  */
+/**
+ * An allowance that has been spent to the last one, if this condition has one.
+ *
+ * **A ceiling of nought is not an allowance and never warns.** It sits at its
+ * limit from midnight to midnight, so warning about it would put a permanent
+ * amber row on the page for a rule nobody has broken — and *never do X* is the
+ * commonest rule in the app. The state worth naming is the one the user asked
+ * for: you had three, you have used three, and the next one ends the day.
+ *
+ * Slot allowances count too. Reported with the slot's own figures, since *two
+ * of two in the evening* is a different sentence from the day's total.
+ */
+const spentAllowance = (
+  r: ClauseReading,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+): { used: number; max: number } | null => {
+  const { max } = clauseBounds(r.clause, ctx, dayKey)
+  if (max !== undefined && max > 0 && r.value === max)
+    return { used: r.value, max }
+  const slotRules = slotBoundsOnWeekday(r.clause, fromKey(dayKey).getDay())
+  for (const [slotId, bounds] of Object.entries(slotRules)) {
+    if (bounds.max === undefined || bounds.max <= 0) continue
+    const used = measuredOn(r.clause, ctx, day, [slotId])
+    if (used === bounds.max) return { used, max: bounds.max }
+  }
+  return null
+}
+
 function todayUrgency(
   readings: ClauseReading[],
   ctx: StreakContext,
   day: Day | undefined,
   now: Date,
-): { level: RiskLevel; spent: boolean } {
+): { level: RiskLevel; spent: boolean; brink: ClauseReading[] } {
   const left = minutesLeftToday(now)
   const todayKey = toKey(now)
   let level: RiskLevel = "safe"
@@ -167,12 +201,29 @@ function todayUrgency(
   // be reached, and telling someone the wrong one is telling them to give up
   // when they could still act.
   let spent = false
+  /** Conditions sitting exactly on a ceiling — one more and the day is gone. */
+  const brink: ClauseReading[] = []
   const worse = (next: RiskLevel) => {
     if (RANK[next] < RANK[level]) level = next
   }
 
   readings.forEach((r) => {
-    if (!r.applies || r.deficit === 0) return
+    if (!r.applies) return
+
+    /* **A ceiling at its limit is the state this app had no word for.** Green
+       says nothing is wrong and red says nothing can be done; three of three
+       Pinterests used is neither — everything still holds, and one more ends
+       it. `c.warn` was added for exactly this stretch, and the check has to
+       sit above the deficit guard below, because a ceiling at its limit is
+       *kept*: its deficit is nought and the loop would return before seeing
+       it. */
+    if (r.deficit === 0) {
+      if (spentAllowance(r, ctx, day, todayKey)) {
+        brink.push(r)
+        worse("warning")
+      }
+      return
+    }
     const info = targetInfo(clauseTarget(r.clause), ctx)
 
     /* **A check has no rate and no headroom.** It is answered or it is not,
@@ -220,7 +271,7 @@ function todayUrgency(
     if (left <= EVENING_MINUTES) return worse("warning")
   })
 
-  return { level, spent }
+  return { level, spent, brink }
 }
 
 /**
@@ -330,24 +381,52 @@ export function ruleRisk(
     }
   }
 
+  /* **`met` as well as `pending`.** A rule sitting exactly on a ceiling is
+     *kept* — its deficit is nought — and the gate used to read `pending`
+     alone, so the one state worth warning about could never be reached. The
+     cost of widening it is one `todayUrgency` call on a day where everything
+     holds, which returns `safe` and takes the early exit below. */
   const tState = ruleDayState(rule, ctx, days[todayKey], todayKey, todayKey)
-  if (tState === "pending") {
+  if (tState === "pending" || tState === "met") {
     const readings = readDay(rule, ctx, days[todayKey], todayKey)
-    const { level, spent } = todayUrgency(readings, ctx, days[todayKey], today)
+    const { level, spent, brink } = todayUrgency(
+      readings,
+      ctx,
+      days[todayKey],
+      today,
+    )
     if (level === "safe") return { id, level }
     const offer = freezeOffer(rule, project, todayKey, todayKey, status)
     const restores = runIfKept(rule, ctx, days, todayKey, todayKey)
     const lost = spent ? "Nothing undoes it" : "No longer reachable today"
+    /* Nothing is short, so `shortfall` has nothing to say: what is worth
+       saying is which ceiling you are standing on. */
+    const short = shortfall(readings, ctx, days, todayKey)
+    const said =
+      short ||
+      brink
+        .map((r) => {
+          const at = spentAllowance(r, ctx, days[todayKey], todayKey)
+          const named = targetsLabel(clauseTargets(r.clause), ctx)
+          return at
+            ? `${named} ${q(at.used)} of ${q(at.max)} used — one more ends it`
+            : named
+        })
+        .join(" · ")
     return {
       id,
       level,
-      headline: `Today — ${shortfall(readings, ctx, days, todayKey)}`,
+      headline: `Today — ${said}`,
       detail:
         level === "danger"
           ? offer.ok
             ? `${lost} · ${freezes(offer.cost)} and keeps ${plural(restores, "day")}`
             : `${lost} · ${plural(offer.cost, "freeze")} needed and you have ${offer.available}`
-          : `${plural(restores, "day")} at stake · the day is running out`,
+          : // Standing on a ceiling is not the day running out — nothing is
+            // owed and no hour of the day changes it. Only what is at stake.
+            short
+            ? `${plural(restores, "day")} at stake · the day is running out`
+            : `${plural(restores, "day")} at stake`,
       freezeDay: offer.ok ? offer.key : undefined,
     }
   }

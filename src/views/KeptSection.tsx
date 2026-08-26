@@ -171,7 +171,14 @@ export function KeptSection({
                 </span>
 
                 <span className="ml-auto flex items-center gap-2 shrink-0 tabular-nums">
-                  {row.missed === 0 ? (
+                  {/* A rule written this morning has judged no finished day,
+                      and saying `held 0` about it would be as wrong in the
+                      other direction as the `held 1` this replaced. */}
+                  {row.judged === 0 ? (
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {row.openToday ? "today still open" : "nothing judged"}
+                    </span>
+                  ) : row.missed === 0 ? (
                     <span
                       className="text-[10px] font-mono"
                       style={{ color: c.goalMet }}
@@ -208,6 +215,13 @@ export function KeptSection({
                         </Tip>
                       )}
                     </>
+                  )}
+                  {/* Today is in neither column, so it is said out loud
+                      rather than silently left out of the total. */}
+                  {row.openToday && row.judged > 0 && (
+                    <span className="text-[10px] font-mono text-ink/35">
+                      + today
+                    </span>
                   )}
                   {row.frozen > 0 && (
                     <Tip text={`${plural(row.frozen, "day")} paid for with a freeze.`}>

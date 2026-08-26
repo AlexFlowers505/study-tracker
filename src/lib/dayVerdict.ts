@@ -279,8 +279,10 @@ export function keptWeeks(project: Project, today = new Date()): KeptWeeks | nul
 
 export interface KeptBreakdownRow {
   rule: StreakRule
-  /** Days in the range this rule judged at all. */
+  /** Days in the range this rule judged and that are **over**. */
   judged: number
+  /** Whether today is one of the days it judges, and still open. */
+  openToday: boolean
   /** Of those, the ones it broke. */
   missed: number
   /** Of *those*, the ones where nothing else broke — it alone cost the day. */
@@ -324,9 +326,21 @@ export function keptBreakdown(
       const row = rows.get(reading.rule.id) ?? {
         rule: reading.rule,
         judged: 0,
+        openToday: false,
         missed: 0,
         alone: 0,
         frozen: 0,
+      }
+      /* **Today is counted by neither column.** `ruleDayState` returns `met`
+         for today the moment a rule's deficit is nought, so a rule written
+         this morning with nothing recorded against it read `held 1` — credited
+         with a day that is not over. `keptDays` has always declined to count
+         today, so the two disagreed, and this was the one that was wrong.
+         Reported instead as what it is: still open. */
+      if (key === todayKey) {
+        row.openToday = true
+        rows.set(reading.rule.id, row)
+        continue
       }
       row.judged += 1
       if (reading.state === "missed") {

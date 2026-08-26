@@ -1789,9 +1789,19 @@ export function clauseReadout(
      a number attached to the wrong thing. */
   const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
   const named = targetsLabel(targets, ctx)
-  if (mode === "all") return `${named} ${q(fmt(reading.value))}`
-
   const { min, max } = clauseBounds(clause, ctx, dayKey)
+
+  /* **A ceiling reports what is left, not just what is spent.** `2` on its own
+     is a number; `2 of 3` is the thing you actually want to know, and the
+     arithmetic that matters — how many more before this day is gone — was
+     nowhere on the page. Only for a ceiling: a floor's own figure is already
+     in the sentence above the strip, and repeating it in every cell would say
+     the same thing forty times. */
+  if (mode === "all")
+    return max !== undefined
+      ? `${named} ${q(fmt(reading.value))} of ${q(fmt(max))}`
+      : `${named} ${q(fmt(reading.value))}`
+
   // Only the broken half is worth naming. A condition with both bounds is over
   // one of them, and saying which is the whole job of this line.
   const over = max !== undefined && reading.value > max

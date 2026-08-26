@@ -350,6 +350,18 @@ const RISKS: RiskCase[] = [
   risky("ceiling · room left · nothing to say",
     { id: "c", ...target("unit", "u-yt"), max: 3 },
     counted("u-yt", "s-am", 1), 9, "safe"),
+  risky("ceiling · at its limit · one more ends it",
+    { id: "c", ...target("unit", "u-yt"), max: 3 },
+    counted("u-yt", "s-am", 3), 9, "warning"),
+  risky("slot ceiling · at its limit",
+    { id: "c", ...target("unit", "u-yt"), max: 9, slots: { "s-pm": { max: 2 } } },
+    counted("u-yt", "s-pm", 2), 9, "warning"),
+  /* A ceiling of nought is at its limit from midnight to midnight, so
+     warning about it would put a permanent amber row on the page for a rule
+     nobody has broken — and *never do X* is the commonest rule here. */
+  risky("ceiling of nought · never warns, it is not an allowance",
+    { id: "c", ...target("unit", "u-yt"), max: 0 },
+    undefined, 9, "safe"),
 
   risky("time · nothing logged · morning is not an emergency",
     { id: "c", ...target("activity", "a-les"), min: 180 },
@@ -399,6 +411,14 @@ const READS: ReadCase[] = [
     { id: "c", ...checks("u-wake"), min: 1 },
     answered({ "u-wake": "no" }), "failing",
     "“Wake up” is “no”"),
+  reads("a ceiling says what is left, not only what is spent",
+    { id: "c", ...target("unit", "u-yt"), max: 3 },
+    counted("u-yt", "s-am", 2), "all",
+    "“Youtube” “2” of “3”"),
+  reads("a floor does not repeat itself in every cell",
+    { id: "c", ...target("activity", "a-les"), min: 180 },
+    studied(90), "all",
+    "“Lessons” “1h 30m”"),
   reads("a count names the whole set, not one of it",
     { id: "c", ...checks("u-yt", "u-gym"), max: 0 },
     counted("u-gym", "s-am", 2), "failing",
