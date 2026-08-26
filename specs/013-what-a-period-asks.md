@@ -1,0 +1,178 @@
+# 013 — What a period asks, and when a day is decided
+
+**Status: written, not built.** Found 2026-08-26 from a list of eight things
+the user hit in one sitting; deferred to the next session at their request.
+Nothing here is started. Sibling of `012-the-first-target-assumption.md`, which
+holds the display half of the same week's findings.
+
+Three of the eight are bugs, and one of them makes **every weekly rule with a
+flat bound wrong by a factor of seven**. The rest are a single design question
+wearing four costumes: *what does today mean before it is over?*
+
+---
+
+## Part 1 — Three bugs
+
+### 1.1 A weekly rule multiplies your figure by the days in the week
+
+**The worst one. Fix this first.**
+
+`weekBounds` sums each present bound across every covered day:
+
+```ts
+const each = keys.map((k) => clauseBounds(clause, ctx, k))
+// sum of each side over the days
+```
+
+For a condition carrying a **per-weekday map** that is exactly right — *3h
+Mon–Wed, 1h30 Thu* summed is the week's total, and that is what the function
+was written for. For a condition carrying a **flat** bound it is a disaster,
+because the form labels that field `Per week` and the reader reads it as *per
+day, summed*.
+
+Proved headlessly on a finished week:
+
+| the rule as typed | what the week actually asks | outcome |
+| --- | --- | --- |
+| `at least 3` a week, three trips made | `min: 21` | **missed** — should hold |
+| `at most 3` a week, four trips made | `max: 21` | **met** — should break |
+
+*Three gym trips a week* is the headline example in `CLAUDE.md` and it needs
+twenty-one. Every weekly count rule in the app is either unachievable or
+unbreakable, depending on which way its bound points.
+
+**The distinction to build:** a flat `min`/`max` on a weekly rule is the
+week's own figure and must not be summed; a `days` map is per-weekday and must
+be. `weekBounds` cannot tell them apart today because `clauseBounds` has
+already collapsed both into one shape — it resolves per day. Either
+`weekBounds` reads the clause directly, or `clauseBounds` gains a way to say
+which it was.
+
+Check `PaceCard` and `weekLostOn` in the same pass: both build on
+`clauseBounds`/`weekBounds`, so a weekly burn-down is currently drawn against
+the same ×7 limit.
+
+### 1.2 A weekly rule ignores per-slot bounds entirely
+
+The user's report: *at most 3 a week, and at most 0 in Evening and Night; wrote
+one at night; streak still fine.*
+
+`readClauseDay` applies slot bounds — `slotBoundsOnWeekday`, added into
+`short` — and it works at day scope (verified: one at night on a daily rule is
+`missed`). But `readWeek` takes only `readClauseDay(...).value` from each day
+and throws the deficit away, recomputing from `weekBounds` alone. Slot rules
+are never consulted.
+
+So *never in the evening* is enforceable only on a rule that judges days.
+
+### 1.3 A failed check produces no warning, at any hour
+
+The user's report: *wake up = no, streak fine; go to sleep = no, still fine.*
+
+They are right that the verdict itself is defensible — today is `pending` until
+it is over, which is the same choice every other state machine here makes. What
+is not defensible is the silence. Verified across the day, with yesterday held
+so the `today` branch is the one reached:
+
+```
+09:00 nothing answered  -> safe
+22:00 nothing answered  -> safe
+09:00 wake = NO         -> safe
+22:00 both = NO         -> safe
+```
+
+`todayUrgency` understands numeric bounds and nothing else. For a check the
+requirement lives in `clause.allow`, so `clauseBounds` returns neither side:
+the *over a ceiling — already spent* branch cannot fire, `owed()` returns
+nought, and the function returns before it reaches the evening rule. A rule
+whose day is already lost says `safe` until midnight, and then yesterday is
+suddenly in danger.
+
+**A check has no rate and no headroom** — it is answered or it is not. The
+urgency reading for one is: an answer outside the accepted set is `spent`
+immediately, like a breached ceiling; no answer at all is the evening rule.
+
+---
+
+## Part 2 — When is a day decided?
+
+Items 3, 5, 6 and the closing question are one idea. The user put it better
+than the code does:
+
+> Там же ведь явно написано значение, которое должно ломать стрик, и не важно,
+> что я могу еще изменить это значение пока день не запечатан, а не так, что
+> еще не дописано значение, которое нужно, но время есть его дописать.
+
+**A floor is a forecast; a ceiling is a fact.** Three hours of study by nine in
+the morning is not a failure — the day has fourteen hours left in it. One
+Pinterest at night against a ceiling of nought is not a forecast at all: the
+thing happened, it is written down, and no amount of remaining day undoes it.
+`todayUrgency` already knows this for counts (`spent = true` on a breached
+ceiling) and the knowledge does not reach checks (1.3) or the panel.
+
+Four things follow, none of them built:
+
+### 2.1 Headroom on a ceiling
+
+*At most 3, and I have used 1.* Nothing shows the remaining two. The strip
+prints the raw count, the panel prints the raw count, and the arithmetic that
+matters — `max - value` — is nowhere. Worth having in the strip cell, the
+tooltip and the panel's figure.
+
+### 2.2 A warning before the last one
+
+*Three of three used, one more ends it.* `todayUrgency` has no state between
+"under the ceiling" and "over it". `owed()` looks only at `min`, so a ceiling
+contributes nothing until it is breached. A ceiling at its limit is exactly
+`c.warn`'s case — behind but not lost — which is what that colour was added
+for.
+
+### 2.3 A quieter tier: the morning reminder
+
+Everything owed today is knowable at breakfast, and saying it in `danger` red
+is crying wolf. The user asks for a third weight — *primary/secondary*, a
+reminder rather than an alarm: **here is what today needs of you.**
+
+`RiskLevel` is `danger | warning | safe` and `StreakBar` draws a `RiskBlock`
+for anything not safe. A fourth level (`due`? `owed`?) would need its own,
+much quieter block — no red, no border, arguably folded into the streak row
+rather than above the composite. Decide the visual weight *before* the
+plumbing: the whole design of that row is that it is quiet when everything
+holds, and a reminder that appears every single morning is exactly the thing
+that would break it.
+
+### 2.4 `held 1` on a rule written this morning
+
+> Почему показано, что стрики pin ctrl и sleep ctrl held 1, если они только
+> сегодня появились и день еще не прошел?
+
+`keptBreakdown` counts a rule's day whenever `dayReport` returned a reading for
+it, and `ruleDayState` returns `met` for today the moment its deficit is
+nought. So a rule created this morning, with nothing yet recorded against it,
+already reads `held 1` — it has been credited with a day that is not over.
+
+Consistent with `keptDays`, which does *not* count today (`pending` neither
+extends nor breaks). So the two disagree, and the breakdown is the one that is
+wrong. Either exclude today from `keptBreakdown`, or show it apart — `held 1 ·
+today still open` — which is more honest and more useful.
+
+---
+
+## Part 3 — Do this in order
+
+1. **1.1**, the weekly ×7. It is silently wrong about data the user already
+   has, and everything else in Part 1 is smaller.
+2. **1.2**, weekly slot bounds — same file, same reading, do it in the same
+   pass.
+3. **1.3**, checks in `todayUrgency`. Small, and it is the one the user
+   noticed first.
+4. `012` — the first-target assumption, starting with `isNarrowing`.
+5. Part 2, which is design before code, and worth talking through rather than
+   guessing at.
+
+**Rebuild the sweep and keep it this time.** The audit that found the last four
+holes was a throwaway under `.claude/`, which is gitignored, so it went with
+the cleanup — and then this set turned up in a morning of ordinary use. For
+every combination of target kind, scope, bound, slot and answer, assert that a
+condition claiming to ask something does not pass a period that should break
+it. Every bug in this file and in `012` would have been caught by it.

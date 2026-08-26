@@ -84,6 +84,11 @@ to refuse, and every other item here is a wrong word on a screen.
   check. Now that the reader agrees, it is right — but it is the pair that has
   to stay in step, so touch neither alone.
 
+**Sibling spec:** `013-what-a-period-asks.md` holds the same week's engine
+findings — the weekly ×7 bound, slot bounds a weekly rule never reads, and a
+failed check that warns at no hour. Read `013` first; it is wrong about data
+that already exists, where everything here is a wrong word on a screen.
+
 ## What "fix" means here
 
 - **One helper, not four call sites.** `shortfall`'s fix was written inline;

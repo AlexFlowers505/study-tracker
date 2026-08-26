@@ -19,6 +19,14 @@ one; the effectiveness meter is gone and the day's goal is read from a
 nominated **benchmark** rule (`lib/benchmark.ts`); the verdict ring is
 weighted and opens.
 
+**`specs/013-what-a-period-asks.md` is written and not started, and it is the
+one to read first.** A weekly rule with a flat bound **multiplies your figure
+by the days in the week** — `at least 3 a week` asks for 21 — so every weekly
+count rule is either unachievable or unbreakable. It also records that a
+weekly rule ignores per-slot bounds, that a failed check warns at no hour of
+the day, and the design question behind four other reports: when is a day
+decided, given a floor is a forecast and a ceiling is a fact.
+
 **`specs/012-the-first-target-assumption.md` is written and not started.** A
 condition can name several counters; `clauseTarget()` — the singular reader
 from when it could not — survives in fourteen places. Three of them print the
