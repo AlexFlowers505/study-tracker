@@ -56,12 +56,15 @@ export function ShopSection({
   project,
   balance,
   onBuy,
+  onOpenAccount,
   onClose,
 }: {
   project: Project
   balance: Balance | null
   /** Takes the reward. The caller owns the confirmation's consequences. */
   onBuy: (item: ShopItem) => void
+  /** Back to the account, which is where the arithmetic lives now. */
+  onOpenAccount?: () => void
   onClose?: () => void
 }) {
   const c = usePalette()
@@ -90,43 +93,37 @@ export function ShopSection({
       closeLabel="Hide the rewards"
       onClose={onClose}
     >
+      {/* **One line, not four** — `spec 016`, part 4. The comment this block
+          used to carry defended the *moment*: you look at an account when you
+          are about to spend it, and that is still true and still served. What
+          moved is the arithmetic — earned, spent, not-yet-counted answer *how
+          did it get there*, which is a different question and now has a panel
+          of its own. */}
       {balance && (
-        <div className="rounded-2xl bg-card shadow-sm px-4 py-3 mb-3">
-          <div className="flex items-baseline gap-3">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
-              On the account
-            </span>
-            <span className="ml-auto flex items-baseline gap-1.5">
-              <strong
-                className="text-2xl font-mono font-extrabold tabular-nums leading-none"
-                style={{ color: available < 0 ? c.exam : c.goalMet }}
-              >
-                {available}
-              </strong>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-                {available === 1 ? "point" : "points"}
-              </span>
-            </span>
-          </div>
-          {/* How it got there, under it rather than beside it. */}
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[9px] font-mono uppercase tracking-widest text-ink/30">
-            <span className="tabular-nums">{balance.earned} pts earned</span>
-            <span className="tabular-nums">{balance.spent} pts spent</span>
-            {(balance.pendingKept > 0 || balance.pendingMissed > 0) && (
-              <Tip text="Today and yesterday can still be written, so they are not counted yet.">
-                {/* **Days, not points**, and it has to say so: a bare figure
-                    under a strip of points reads as points, and these are the
-                    two days still inside the writing window. */}
-                <span className="tabular-nums cursor-help">
-                  {balance.pendingKept + balance.pendingMissed}{" "}
-                  {balance.pendingKept + balance.pendingMissed === 1
-                    ? "day"
-                    : "days"}{" "}
-                  not counted yet
-                </span>
-              </Tip>
-            )}
-          </div>
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
+            On the account
+          </span>
+          <strong
+            className="text-lg font-mono font-extrabold tabular-nums leading-none"
+            style={{ color: available < 0 ? c.exam : c.goalMet }}
+          >
+            {available}
+          </strong>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
+            {available === 1 ? "point" : "points"}
+          </span>
+          {onOpenAccount && (
+            <button
+              type="button"
+              onClick={onOpenAccount}
+              className={`${btnBase} ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide hover:bg-ink/5`}
+              style={{ color: c.accent }}
+            >
+              Where it came from
+              <ArrowRight size={12} />
+            </button>
+          )}
         </div>
       )}
 

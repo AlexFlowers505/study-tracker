@@ -1,9 +1,13 @@
 # 016 — Four levels, and one board to read them on
 
-**Status: designed, not built.** Owns the notice board, the four levels behind
-it, the three new panel toggles, the account panel and the solo view. Read
-`spec 010` part 3 first — this replaces the streak row's alarms outright, and
-the argument it was built on is the argument this is built on.
+**Status: built.** Owns the notice board, the four levels behind it, the three
+new panel toggles, the account panel and the solo view. Read `spec 010` part 3
+first — this replaces the streak row's alarms outright, and the argument it was
+built on is the argument this is built on.
+
+Two things the design did not carry and the building needed, both recorded
+below where they belong: **yesterday** (Part 2) and **narrowing the statuses,
+not only the project** (Part 5).
 
 No migration. Nothing here touches the server: the levels are derived, the
 board's own state lives in `localStorage`, and every figure it prints is
@@ -246,6 +250,24 @@ is something you finish reading rather than something you do.*
 It is therefore not drawn like the panels that open from the toggle row, which
 appear below the streak row. It is the page's own block that happens to fold.
 
+### Yesterday is the exception that says what "about today" means
+
+The old alarms led with a broken **yesterday**, and rightly: a day stays
+writable and freezable until the horizon passes it, so yesterday is the one
+thing on this board with a deadline. The design said nothing about it, and
+dropping it would have meant nothing anywhere told you a freeze was still
+available.
+
+So the board carries it. Every one of its lines is `danger` by construction —
+the day is over, so nothing on it is owed any more — and each is marked
+`Yesterday —`, because a line that does not say which day it is about is a line
+about today. The day is read as **settled**: reading it against the hours left
+in *today* produced `“Wake up in time” to answer` on a day that had already
+ended.
+
+**The board is about today, and "today" is not a date.** It is what you can
+still act on.
+
 ### It is always about today
 
 Every other panel follows the period cursor, and this one must not. A notice is
@@ -417,6 +439,15 @@ only rule that votes.
   is where you are working out which promise keeps doing this to you.
 
 ### What it redraws, and what it must never touch
+
+**How.** As a projection, not a mode: hand every reader a project whose rule
+list is the one rule, with `inDayVerdict` forced on, and the verdict, the ring,
+the week blocks and the composite's figures all redraw without a line of their
+own — the same trick `withBenchmarkGoals` and `visibleProject` already use.
+**The statuses must be narrowed too**, which the design missed: `notices` walks
+the statuses it is handed rather than the project's rule list, so soloing the
+project alone left every other rule still speaking on the one surface that was
+supposed to be showing you a single rule.
 
 **Redrawn:** day colours on the cards, in the month grid and in the heatmap;
 the verdict ring, down to one arc; the week blocks; `KeptCard`'s days and

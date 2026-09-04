@@ -192,6 +192,8 @@ export function PeriodBar({
   keptOpen,
   onToggleKept,
   points,
+  showAccount,
+  onToggleAccount,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -225,6 +227,8 @@ export function PeriodBar({
   onToggleKept: () => void
   /** Points, abbreviated past a thousand. Null while the balance is off. */
   points: number | null
+  showAccount: boolean
+  onToggleAccount: () => void
 }) {
   const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
@@ -333,15 +337,15 @@ export function PeriodBar({
           {points !== null && (
             <PanelToggle
               icon={Coins}
-              active={showShop}
-              onClick={onToggleShop}
+              active={showAccount}
+              onClick={onToggleAccount}
               count={points}
               countLabel={shortPoints(points)}
               /* Never red, however negative. The board is the one place that
                  shouts, and a second alarming badge beside it means neither
                  of them means anything. */
               countColor={c.accent}
-              tip={`${points} points to spend`}
+              tip={showAccount ? "Hide the account" : `${points} points, and where they came from`}
             />
           )}
           <PanelToggle

@@ -62,6 +62,8 @@ import {
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
 import { notices, worstLevel } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
+import { AccountSection } from "./views/AccountSection"
+import { SoloBanner } from "./views/SoloBanner"
 import { useNoticePrefs } from "./ui/useNoticePrefs"
 import {
   periodRange,
@@ -165,6 +167,11 @@ export default function StudyTrackerApp() {
   const [showLog, setShowLog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showShop, setShowShop] = useState(false)
+  const [showAccount, setShowAccount] = useState(false)
+  /* **Solo** — `spec 016`, part 5. Viewing the page as though one rule were
+     the only one that votes. Deliberately not persisted: it is a look, and
+     the whole promise is that it changes nothing. */
+  const [soloRule, setSoloRule] = useState<string | null>(null)
   /**
    * Which streak's panel is open: `"main"`, a rule id, or nothing.
    *
@@ -479,13 +486,41 @@ export default function StudyTrackerApp() {
    * Streaks have always been blind to it, and a day's verdict is a streak's
    * reading of that day.
    */
-  const verdictCtx = useMemo(() => streakContext(project), [project])
+  /**
+   * **Solo, as a projection rather than a special case** — `spec 016`, part 5.
+   *
+   * Everything that colours a day already reads the rules out of the project,
+   * so soloing is not a mode any of them have to learn: hand them a project
+   * whose rule list is the one rule, and the verdict, the ring, the week
+   * blocks, the composite's two figures and the board all redraw under it
+   * without a line of their own. The same trick `withBenchmarkGoals` and
+   * `visibleProject` already use.
+   *
+   * **`inDayVerdict` is forced on**, because soloing a rule that does not vote
+   * is a perfectly good question — *how would this one have gone* — and the
+   * honest answer needs it counted.
+   *
+   * It reaches nothing that is written down. The balance, the achievements,
+   * the freezes and the change log are all built from `project`, not from
+   * this, because they are history rather than drawing and *looking* must not
+   * be able to move them even on screen.
+   */
+  const soloProject = useMemo(() => {
+    if (!soloRule) return project
+    const only = streakRules
+      .filter((r) => r.id === soloRule)
+      .map((r) => ({ ...r, inDayVerdict: true }))
+    if (!only.length) return project
+    return { ...project, settings: { ...project.settings, streakRules: only } }
+  }, [project, soloRule, streakRules])
+
+  const verdictCtx = useMemo(() => streakContext(soloProject), [soloProject])
   const verdictOf = useCallback(
-    (key: DayKey) => dayReport(project, key, toKey(new Date()), verdictCtx),
-    [project, verdictCtx],
+    (key: DayKey) => dayReport(soloProject, key, toKey(new Date()), verdictCtx),
+    [soloProject, verdictCtx],
   )
-  const kept = useMemo(() => keptDays(project), [project])
-  const keptWeekly = useMemo(() => keptWeeks(project), [project])
+  const kept = useMemo(() => keptDays(soloProject), [soloProject])
+  const keptWeekly = useMemo(() => keptWeeks(soloProject), [soloProject])
 
   /**
    * The balance, and the day marks still owed to it — `spec 010`, part 4.
@@ -508,8 +543,17 @@ export default function StudyTrackerApp() {
    * is a judgement about the data, and judgements live in `lib`.
    */
   const noticeList = useMemo(
-    () => notices(project, ruleStatuses),
-    [project, ruleStatuses],
+    () =>
+      notices(
+        soloProject,
+        /* **The statuses are narrowed too, not just the project.** `notices`
+           walks the statuses it is handed rather than the project's rule list,
+           so soloing the project alone left every other rule still speaking on
+           the board — the one surface that was supposed to be showing you one
+           rule at a time. */
+        soloRule ? ruleStatuses.filter((s2) => s2.rule.id === soloRule) : ruleStatuses,
+      ),
+    [soloProject, ruleStatuses, soloRule],
   )
   /* The one figure the streak row still needs from the board: how many rules
      have something wrong. Counted by rule, not by notice — a rule with a
@@ -1150,7 +1194,16 @@ export default function StudyTrackerApp() {
           }
           keptOpen={openStreak === KEPT_PANEL}
           points={project.settings.balanceStart ? balance.total : null}
+          showAccount={showAccount}
+          onToggleAccount={() => setShowAccount((v) => !v)}
         />
+
+        {soloRule && (
+          <SoloBanner
+            rule={streakRules.find((r) => r.id === soloRule)}
+            onClear={() => setSoloRule(null)}
+          />
+        )}
 
         {/* **The board takes the alarms' place**, first under the period
             bar and above the composite — `spec 016`. The placement argument
@@ -1243,6 +1296,8 @@ export default function StudyTrackerApp() {
             rangeStart={range.start}
             rangeEnd={range.end}
             today={new Date()}
+            solo={soloRule}
+            onSolo={(id) => setSoloRule(soloRule === id ? null : id)}
             onClose={() => setOpenStreak(null)}
           />
         )}
@@ -1282,15 +1337,41 @@ export default function StudyTrackerApp() {
                   ],
                 })
               }
+              solo={soloRule === s2.rule.id}
+              onSolo={() =>
+                setSoloRule(soloRule === s2.rule.id ? null : s2.rule.id)
+              }
               onClose={() => setOpenStreak(null)}
             />
           ))}
+
+        {showAccount && project.settings.balanceStart && (
+          <AccountSection
+            project={project}
+            balance={balance}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            onOpenShop={() => {
+              setShowAccount(false)
+              setShowShop(true)
+            }}
+            onClose={() => setShowAccount(false)}
+          />
+        )}
 
         {showShop && (
           <ShopSection
             project={project}
             balance={project.settings.balanceStart ? balance : null}
             onBuy={buyReward}
+            onOpenAccount={
+              project.settings.balanceStart
+                ? () => {
+                    setShowShop(false)
+                    setShowAccount(true)
+                  }
+                : undefined
+            }
             onClose={() => setShowShop(false)}
           />
         )}

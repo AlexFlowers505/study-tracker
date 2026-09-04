@@ -27,12 +27,13 @@
 --------------------------------------------------------------- */
 
 import { useMemo } from "react"
-import { Flame } from "lucide-react"
+import { Flame, Focus } from "lucide-react"
 import type { DayKey, Project } from "../types/model"
 import type { KeptWeeks } from "../lib/dayVerdict"
 import { dayReport, keptBreakdown } from "../lib/dayVerdict"
 import { streakContext } from "../lib/customStreaks"
 import { addDays, fromKey, toKey } from "../lib/date"
+import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
@@ -63,6 +64,8 @@ export function KeptSection({
   rangeStart,
   rangeEnd,
   today,
+  solo,
+  onSolo,
   onClose,
 }: {
   project: Project
@@ -71,6 +74,9 @@ export function KeptSection({
   rangeStart: Date
   rangeEnd: Date
   today: Date
+  /** The rule the page is showing alone, if any — `spec 016`, part 5. */
+  solo?: string | null
+  onSolo?: (ruleId: string) => void
   onClose: () => void
 }) {
   const c = usePalette()
@@ -230,6 +236,35 @@ export function KeptSection({
                       >
                         {row.frozen} frozen
                       </span>
+                    </Tip>
+                  )}
+                  {/* **The other door into solo**, beside the blame. This is
+                      where you find out which promise keeps doing it to you,
+                      and the next question is always *and how is that one
+                      doing on its own* — `spec 016`, part 5. */}
+                  {onSolo && (
+                    <Tip
+                      text={
+                        solo === row.rule.id
+                          ? "Show every rule again"
+                          : `Show the page as though “${row.rule.label}” were the only rule that votes`
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSolo(row.rule.id)}
+                        aria-pressed={solo === row.rule.id}
+                        style={
+                          solo === row.rule.id
+                            ? { backgroundColor: row.rule.color, color: c.onFill }
+                            : { color: row.rule.color }
+                        }
+                        className={`${btnBase} flex items-center rounded-full p-1 ${
+                          solo === row.rule.id ? "" : "hover:bg-ink/10"
+                        }`}
+                      >
+                        <Focus size={12} />
+                      </button>
                     </Tip>
                   )}
                 </span>

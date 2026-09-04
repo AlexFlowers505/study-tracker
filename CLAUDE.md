@@ -27,13 +27,13 @@ day, a lock comparing only the first of several targets, four places that
 printed the wrong counter's name, and today being credited as a day already
 kept. `npm run sweep` covers all of it.
 
-`dueToday` closed the last of them: **what today still asks, as a line inside
-the opened streaks row rather than a fourth `RiskLevel`.** A new level would
-have made `StreakBar` draw a block for it every morning, which is exactly what
-the quiet-unless-it-matters design of that row exists to prevent. Under the
-chevron you go and look; it never comes and finds you. It asks only for what
-can still be done — a floor short, a check unanswered — and never for what the
-clock has already ruled out.
+`dueToday` closed the last of them, as a quiet line under the streaks row
+rather than a fourth `RiskLevel` — **and `spec 016` has since made it the
+fourth level after all.** The reasoning here was that a new level would make
+`StreakBar` draw a block every morning; the answer was that volume is a
+property of the notice rather than of where it is drawn, so `notice` and `good`
+are lines and only `danger` and `warning` are blocks. Both the function and the
+chevron's list are gone.
 
 **`specs/010-day-verdict-and-rewards.md` is built, all nine stages.** The main
 goal streak is gone, the day's colour is a composite verdict over every voting
@@ -77,7 +77,36 @@ rule was added to a day-shaped app and never finished:
 - **`ruleStatus.current` no longer counts today**, matching `keptDays` and
   `keptBreakdown`. A rule shows `0` on the day you write it.
 
-**`specs/016`, `017` and `019` are designed and none of them is
+**`specs/016-four-levels-and-a-board.md` is built.** Read it before touching
+anything that tells you something is wrong.
+
+- **`lib/notices.ts` replaces `streakRisk.ts`.** `ruleRisk` and `dueToday` are
+  gone; `notices(project, statuses, now)` returns the whole board. Four levels
+  on one axis — **is this already spent, or is it still owed?** `danger`
+  irreversible or out of reach today, `warning` reachable with the margin gone,
+  `notice` owed with room, `good` nothing owed and nothing spent. That is the
+  old `RiskLevel` with `safe` split in two. The thresholds are unchanged.
+- **One notice per rule per level**, lines inside it. Five rules make five to
+  nine notices, which is the bound that stops the board being a dashboard.
+  Four sources beyond the rules: the composite, the freeze allowance, unsealed
+  weeks, achievements in reach.
+- **`NoticeBoard` is the only place.** `StreakAlarms` and the chevron's
+  "what today asks" list are deleted; `StreakBar` takes a `troubled` count and
+  draws no alarms. The board sits where the alarms did — first under the period
+  bar, above the composite — is **always about today** whatever the period bar
+  shows, and is **the one panel whose state persists** (`timelens-notices`).
+  Two weights: `danger`/`warning` are blocks, `notice`/`good` are lines.
+- **Three toggles**: `Bell` (every notice, coloured by the worst level),
+  `Flame` (the composite's days, never coloured), `Coins` (points, `4.1k` past
+  a thousand) which opens the **account panel** — the total, signed earning
+  bars off `dayLedger`, and rewards and purchases as a list. The shop keeps the
+  shelf and one line of balance.
+- **Solo** (`SoloBanner`, `soloProject` in `App`) draws the page as though one
+  rule were the only one that votes. It touches no ledger — points,
+  achievements, freezes and the change log are all built from `project`, never
+  from the projection — and it is never persisted.
+
+**`specs/017` and `019` are designed and neither is
 built.** Nothing in the code answers to them yet, so read them as intent rather
 than as description — and when one lands, fold its own Vocabulary table into
 **The words** below and update this block.
@@ -98,9 +127,10 @@ than as description — and when one lands, fold its own Vocabulary table into
   which keeps sleep its own axis; `tagIds` on `Activity`. Independent of each
   other as well.
 
-`016` rewrites `npm run sweep` and must do it in the same commit: `safe` splits
-in two, and fifteen existing cases change their expected answer without any
-behaviour changing. **A sweep left red is a sweep nobody reads.**
+`016` rewrote `npm run sweep` in its own commit, as it said it must: `safe`
+split in two and fifteen cases changed their expected answer without any
+behaviour changing, and two reversed for real reasons and say so in place.
+**A sweep left red is a sweep nobody reads.**
 
 `boundsOnWeekday` **keeps its `useDailyGoal` branch anyway**, and should keep
 it until someone has checked the column is empty in both projects. The
@@ -131,7 +161,7 @@ hold and one that should break it, the risk levels at both ends of the day,
 what today still asks, what a day is reported as, the lock, the conditions that
 must be refused rather than judged, and what an achievement reaches and what
 its own lock allows. **Run it after touching `customStreaks.ts`,
-`streakRisk.ts`, `dayVerdict.ts` or `achievements.ts`.** It exists because the throwaway version of it lived under
+`notices.ts`, `dayVerdict.ts` or `achievements.ts`.** It exists because the throwaway version of it lived under
 `.claude/`, which is gitignored, so it went with a cleanup — and one morning of
 ordinary use then turned up eight bugs, three of them in the engine, every one
 of which it would have caught. Expectations are written out, never derived: the
@@ -936,6 +966,11 @@ enough that a loose word costs a conversation.
 | **watching** | a rule in force on a period it can neither win nor lose — a weekly rule's partial first week. Drawn, never tallied | `RuleState`, `RuleReading.counts` |
 | **pace** | how much of a weekly **floor** is done as of one day. A drawing; the verdict still waits for Sunday | `weekFloorPace`, the ring's partial arc |
 | **headroom** | what is left of a **ceiling**. Never drawn as pace — not having spent it is not having done it | why `weekFloorPace` returns null for a ceiling |
+| **spent** | a deficit nothing can undo before midnight — a breached ceiling, a check answered outside its accepted set | `danger` in `lib/notices.ts` |
+| **owed** | a deficit the rest of the day can still clear — a floor short of its figure, a check with no answer | `notice` / `warning` in `lib/notices.ts` |
+| **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
+| **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
+| **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
 
 **`specs/015-the-economy.md` is the whole economy in one place** — the three
 numbers, where points come from, which way each lock points, and what is not
@@ -970,15 +1005,13 @@ week-sized unit fixes it from the other end: a bad Tuesday costs the week
 rather than everything, and on Monday there is always something to start
 accumulating again.
 
-**The order of the three is the whole argument**: `StreakAlarms`, then
+**The order of the three is the whole argument**: `NoticeBoard`, then
 `KeptCard`, then `StreakBar`. What is on fire comes first — a warning placed
 under the number it is about reads as a footnote to it, and a footnote is
-something you finish reading rather than something you do. The alarms are
-split out of `StreakBar` rather than reordered inside it, because the card
-belongs to neither half and had to go between them; both build their rows from
-one `entriesFrom`, so they cannot disagree about a figure. The card carries a
-chevron for the same reason the row does — a raised surface with a hover lift
-is every card in this app, and nothing else said this one opens.
+something you finish reading rather than something you do. The board took that
+place from `StreakAlarms` in `spec 016` and inherited the argument whole. The
+card carries a chevron for the same reason the row does — a raised surface with
+a hover lift is every card in this app, and nothing else said this one opens.
 
 `KeptCard` sits **above** `StreakBar`, always, and is not part of it. It was
 a figure on the collapsed streaks line for a while, which meant the number the

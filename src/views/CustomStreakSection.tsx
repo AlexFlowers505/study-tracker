@@ -27,7 +27,7 @@
    badges, sleep, a note and an add button is how a card stops being readable.
 --------------------------------------------------------------- */
 
-import { Flame, Snowflake, Trophy } from "lucide-react"
+import { Flame, Focus, Snowflake, Trophy } from "lucide-react"
 import type { DayKey, Project } from "../types/model"
 import type {
   ClauseBounds,
@@ -65,6 +65,7 @@ import {
   toKey,
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
+import { btnBase } from "../lib/theme"
 import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
@@ -95,6 +96,8 @@ export function CustomStreakSection({
   rangeEnd,
   today,
   onSpendFreeze,
+  solo,
+  onSolo,
   onClose,
 }: {
   status: RuleStatus
@@ -109,6 +112,9 @@ export function CustomStreakSection({
    * this is where the deficit was worked out.
    */
   onSpendFreeze: (dayKey: string, cost: number) => void
+  /** Whether the page is currently showing this rule alone — `spec 016`. */
+  solo?: boolean
+  onSolo?: () => void
   onClose?: () => void
 }) {
   const c = usePalette()
@@ -348,6 +354,35 @@ export function CustomStreakSection({
       onClose={onClose}
       action={
         <div className="flex items-center gap-1.5">
+          {/* **One of two doors into solo** — `spec 016`, part 5. This is the
+              one you are already standing at when you ask *how is this one
+              really doing*; the other is the breakdown in the composite's
+              panel, where you work out which promise keeps doing it to you. */}
+          {onSolo && (
+            <Tip
+              text={
+                solo
+                  ? "Show every rule again"
+                  : `Show the page as though “${rule.label}” were the only rule that votes`
+              }
+            >
+              <button
+                type="button"
+                onClick={onSolo}
+                aria-pressed={!!solo}
+                style={
+                  solo
+                    ? { backgroundColor: rule.color, color: c.onFill }
+                    : { color: rule.color }
+                }
+                className={`${btnBase} flex items-center rounded-full p-1 ${
+                  solo ? "" : "hover:bg-ink/10"
+                }`}
+              >
+                <Focus size={12} />
+              </button>
+            </Tip>
+          )}
           <Tip
             text={`${freezes.weeklyLeft} of ${freezes.weeklyTotal} left this week. Granted every Monday and lost unused — this is the allowance you set yourself.`}
           >
