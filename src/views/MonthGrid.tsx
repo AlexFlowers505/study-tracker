@@ -89,7 +89,8 @@ function WeekSummaryStrip({
   ordinal,
   groups,
 }: {
-  total: number
+  /** Null when no benchmark is nominated: no hours are drawn at all. */
+  total: number | null
   goal: number
   ignored: boolean
   /** By days, not by summed hours — see lib/dayVerdict. */
@@ -99,7 +100,7 @@ function WeekSummaryStrip({
   groups: CounterGroup[]
 }) {
   const c = usePalette()
-  const met = !ignored && goal > 0 && total >= goal
+  const met = !ignored && goal > 0 && total !== null && total >= goal
   const goalOutcome = ignored ? null : asOutcome(state)
   return (
     <div className={`px-1 pb-1.5 ${ignored ? "opacity-60" : ""}`}>
@@ -114,9 +115,9 @@ function WeekSummaryStrip({
         className="font-bold shrink-0"
         style={met ? { color: c.goalMet } : undefined}
       >
-        {total > 0 ? fmtHours(total) : "—"}
+        {total === null ? "" : total > 0 ? fmtHours(total) : "—"}
       </span>
-      {goal > 0 && (
+      {goal > 0 && total !== null && (
         <span className="text-ink/40 shrink-0">of {fmtHours(goal)}</span>
       )}
       {goalOutcome && (
@@ -349,6 +350,7 @@ export function MonthGrid({
   hiddenGroups,
   categories,
   verdictOf,
+  benchmarkOf,
 }: {
   cursor: Date
   days: Record<DayKey, Day>
@@ -363,6 +365,15 @@ export function MonthGrid({
   todayKey: DayKey
   /** How each day came out — see `lib/dayVerdict`. Read, never computed here. */
   verdictOf: (key: DayKey) => DayReport
+  /**
+   * A stretch of days as the **benchmark rule** counted it — `spec 019`.
+   *
+   * Null when nothing is nominated, and then the hours are not drawn at all.
+   * Handed in rather than computed here, like `verdictOf`: this component sees
+   * days and slots, not the project, and threading a whole project through it
+   * to answer one question is how a drawing starts making judgements.
+   */
+  benchmarkOf: (dates: Date[]) => number | null
   onEditDay: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
   monthIgnore?: Record<DayKey, boolean>
@@ -407,7 +418,16 @@ export function MonthGrid({
       </div>
       <div className="space-y-6 mt-2">
       {weekRows.map((row, ri) => {
-        const { total: wTotal, goal: wGoal } = rangeStats(
+        /* **The numerator comes from the same rule as the denominator** —
+           `spec 019`. `rangeStats` totals every minute logged whatever it went
+           on, so `12h of 15h` compared a figure the benchmark promised against
+           one nobody promised anything about: an activity called *Did nothing*
+           with twenty hours in it reported twenty hours of work. Measured
+           through the benchmark's own target instead, and absent entirely when
+           nothing is nominated — the same silence the goal line already keeps,
+           for the same reason. */
+        const wTotal = benchmarkOf(row.filter(Boolean) as Date[])
+        const { goal: wGoal } = rangeStats(
           row.filter(Boolean) as Date[],
           days,
           slots,

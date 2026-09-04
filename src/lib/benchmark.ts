@@ -44,10 +44,13 @@ import {
   boundsOnWeekday,
   clauseTarget,
   clauseWeekdays,
+  measuredOn,
   ruleClauses,
   streakContext,
   targetMeasure,
 } from "./customStreaks"
+import type { IsIgnored } from "../types/model"
+import { toKey } from "./date"
 import { WEEKDAY_ORDER } from "./date"
 
 /** Why a rule cannot be the benchmark, in the words the form should use. */
@@ -144,6 +147,51 @@ export function benchmarkGoals(
       : 0
   })
   return goals
+}
+
+/**
+ * **What the benchmark itself counted, over a stretch of days** — `spec 019`.
+ *
+ * The month grid printed a week's total study time beside its goal, and the
+ * two were measured through different things: the goal came from the
+ * benchmark rule, the total from *every minute logged, whatever it went on*.
+ * So `12h of 15h` compared a figure one rule promised against a figure nobody
+ * promised anything about — write an activity called *Did nothing*, put twenty
+ * hours in it, and the week reports twenty hours of work.
+ *
+ * Measured through the rule that supplies the denominator, so `of` means
+ * something. *Did nothing* is then simply not counted, and nothing has to be
+ * excluded by hand — which is the part that matters, because an exclusion list
+ * is a thing you have to remember to maintain.
+ *
+ * **Per day through the condition that covers that weekday**, not through the
+ * first one: *three hours most days, ninety minutes on Thursday* is two
+ * conditions, and they are allowed to name different activities.
+ *
+ * Null when nothing is nominated. Not zero, not a dash — the caller draws
+ * nothing at all, the same silence `benchmarkGoals` keeps for the same reason.
+ */
+export function benchmarkMinutes(
+  project: Project,
+  dates: Date[],
+  isIgnored: IsIgnored = () => false,
+  ctx: StreakContext = streakContext(project),
+): number | null {
+  const rule = benchmarkRule(project, ctx)
+  if (!rule) return null
+  const clauses = ruleClauses(rule)
+
+  let total = 0
+  for (const date of dates) {
+    const key = toKey(date)
+    const day = project.days[key]
+    // An ignored day contributes nothing, exactly as it contributes no goal.
+    if (!day || isIgnored(key, day)) continue
+    const clause = clauses.find((x) => covers(x, date.getDay()))
+    if (!clause) continue
+    total += measuredOn(clause, ctx, day, clause.slotIds)
+  }
+  return total
 }
 
 /**

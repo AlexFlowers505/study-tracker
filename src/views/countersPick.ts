@@ -31,10 +31,18 @@ export const WORD = "text-[11px] font-mono text-ink/55"
  * `unit` in the data and two different questions to a person, and this is the
  * list a person is choosing from. `targetKindOf` is the whole of the mapping.
  */
-export type PickKind = "time" | "activity" | "tally" | "check" | "category" | "tag"
+export type PickKind =
+  | "time"
+  | "sleep"
+  | "activity"
+  | "tally"
+  | "check"
+  | "category"
+  | "tag"
 
 export const PICKS: PickKind[] = [
   "time",
+  "sleep",
   "activity",
   "tally",
   "check",
@@ -46,6 +54,7 @@ export const PICKS: PickKind[] = [
    counters it watches, not the counter. */
 export const PICK_LABEL: Record<PickKind, string> = {
   time: "All study time",
+  sleep: "Sleep",
   activity: "Activities",
   tally: "Tallies",
   check: "Checks",
@@ -110,6 +119,8 @@ export function pickOf(target: StreakTarget, ctx: StreakContext): PickKind {
 /** What the second dropdown offers. Empty for study time, which names nothing. */
 export function choicesFor(pick: PickKind, ctx: StreakContext): Labeled[] {
   const { tallies, checks } = splitByKind(ctx.units)
+  // Sleep names nothing, exactly as study time does: there is one of it.
+  if (pick === "sleep") return []
   if (pick === "activity") return ctx.activities
   if (pick === "tally") return tallies
   if (pick === "check") return checks

@@ -309,9 +309,20 @@ export function targetMeasure(
   ctx: StreakContext,
 ): StreakMeasure {
   if (target.kind === "time" || target.kind === "activity") return "time"
-  if (target.kind !== "category") return "count"
+  if (target.kind === "sleep") return "time"
+  if (target.kind !== "category" && target.kind !== "tag") return "count"
   if (target.measure) return target.measure
-  return ctx.units.some((u) => u.categoryId === target.id) ? "count" : "time"
+  /* **A tag reads like a category now, and for the same reason** — `spec 019`.
+     With activities tagged, a tag can hold things that record time and things
+     that record a count, so it stores its measure explicitly: filing one more
+     counter under it must never change what a rule written months ago is
+     measuring. The fallback is what every existing tag rule means — counts,
+     if it reaches any counters at all. */
+  const holds =
+    target.kind === "category"
+      ? ctx.units.some((u) => u.categoryId === target.id)
+      : ctx.units.some((u) => (u.tagIds || []).includes(target.id || ""))
+  return holds ? "count" : "time"
 }
 
 export interface TargetInfo {
@@ -355,6 +366,8 @@ export function targetInfo(
   })
 
   if (target.kind === "time") return plain("Study time")
+
+  if (target.kind === "sleep") return plain("Sleep")
 
   if (target.kind === "activity") {
     const activity = byId(ctx.activities, target.id)
@@ -495,6 +508,16 @@ const keepsActivity = (
     )
     return (id) => ids.has(id)
   }
+  // A tag reaches activities too since `spec 019`, so it needs the same branch
+  // its sibling has rather than falling through to "everything".
+  if (target.kind === "tag") {
+    const ids = new Set(
+      ctx.activities
+        .filter((a) => (a.tagIds || []).includes(target.id || ""))
+        .map((a) => a.id),
+    )
+    return (id) => ids.has(id)
+  }
   return () => true
 }
 
@@ -520,7 +543,23 @@ const minutesOn = (
   slots: Slot[],
   slotIds: string[] | undefined,
   keep: (activityId: string) => boolean,
+  /**
+   * **Sleep is read off its own list** — `spec 019`.
+   *
+   * `day.sleep` is flat: no slot, no activity, and nothing in `dayBreakdown`
+   * or the goals may ever see it, because sleep is a separate axis rather than
+   * study time. A condition about it therefore carries no slot bounds — there
+   * is nothing for a slot rider to measure — and the nights counted are the
+   * ones that *started* on this day, the same ownership rule `collectNights`
+   * uses and the reason most of them carry a `+1d` mark.
+   */
+  sleep = false,
 ): number => {
+  if (sleep)
+    return (day?.sleep || []).reduce(
+      (sum, entry) => sum + (Number(entry.minutes) || 0),
+      0,
+    )
   const cells = day?.cells
   if (!cells) return 0
   const ids = slotIds?.length ? slotIds : slots.map((slot) => slot.id)
@@ -668,7 +707,13 @@ export const measuredOn = (
   const targets = clauseTargets(clause)
   const info = targetInfo(targets[0], ctx)
   return info.measure === "time"
-    ? minutesOn(day, ctx.slots, slotIds, keepsAnyActivity(targets, ctx))
+    ? minutesOn(
+        day,
+        ctx.slots,
+        slotIds,
+        keepsAnyActivity(targets, ctx),
+        targets.some((t) => t.kind === "sleep"),
+      )
     : countOn(
         dayCounters(day || {}),
         clauseUnits(clause, ctx).map((u) => u.id),

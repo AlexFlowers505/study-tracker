@@ -213,6 +213,7 @@ export function SetupModal({
               settings={settings}
               tags={settings.tags || []}
               units={counterUnits}
+              activities={activities}
               onApply={onUpdateProject}
             />
           )}

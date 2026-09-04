@@ -133,9 +133,36 @@ anything about freezes.
   a week that spent three has spent three forever.
 - Weekly rules stay **flat**: one violation, cost one, on the Monday.
 
-**`specs/019` is designed and not built.** Nothing in the code answers to it
-yet, so read it as intent rather than as description — and when it lands, fold
-its own Vocabulary table into **The words** below and update this block.
+**`specs/019-three-additions.md` is built** — three unrelated small things:
+
+- **The month grid's week hours are measured through the benchmark rule**
+  (`benchmarkMinutes`), not through every minute logged. `12h of 15h` used to
+  compare a figure one rule promised against one nobody promised anything
+  about — an activity called *Did nothing* with twenty hours in it reported
+  twenty hours of work. **Absent entirely when nothing is nominated**, the same
+  silence the goal line already keeps. `MonthGrid` takes a `benchmarkOf`
+  callback, like `verdictOf`: it sees days and slots, not the project.
+- **`StreakTargetKind` gains `sleep`** — the second kind with no id, since
+  there is only one of it. `minutesOn` reads `day.sleep` for it and nothing
+  else changes, so **sleep stays its own axis**: the alternative was making it
+  an ordinary activity, which buys the streak free and costs every total in the
+  app about eight hours a day. A sleep condition carries **no slot bounds** and
+  the form does not offer them — a sleep entry has no slot, so there is nothing
+  for a rider to measure.
+- **`tagIds` on `Activity`.** An activity is one of the three kinds of counter
+  and a condition can already name a tag, so *40h of anything tagged “deep
+  work”* was a sentence the app could nearly say. The consequence is that a tag
+  can now span both measures, so **a tag target stores its `measure`
+  explicitly**, exactly as a category target does and for the same reason:
+  filing one more counter under it must never change what an existing rule is
+  measuring. `keepsActivity` gains the branch its sibling already had.
+
+**Not built from `019`:** the rotated sleep charts offered to any activity. It
+reads as a drawing change and is not one — `collectNights` walks `day.sleep`,
+and generalising it means teaching the one file that must never reach
+`stats.ts` to read what `stats.ts` is built on. Its own spec, when it is wanted.
+
+Everything else through `019` is built.
 
 - **`016-four-levels-and-a-board.md`** — the streak alarms and the "what today
   asks" list under the chevron are replaced by one notice board with four
@@ -306,7 +333,10 @@ which are Node config and get their own lint block.
     `spec 007` is the full design.
   - `sleep.ts` — `collectNights` and `sleepStats`, the whole sleep panel's
     arithmetic on the rotated clock. Its own file because sleep is a separate
-    axis: none of it may ever reach `stats.ts`.
+    axis: none of it may ever reach `stats.ts`. A rule **can** promise
+    something about it — `StreakTargetKind` has a `sleep` member since
+    `spec 019` — and that is one branch in `minutesOn` rather than sleep
+    becoming an activity, which is what keeps the axis separate.
   - `entries.ts` — `patchEntry` and the cell operations (update, remove, move
     between slots). Shared by the day editor and the in-place editor on the
     day cards, so the rule that keeps `minutes` in step with the times has one
@@ -707,9 +737,10 @@ One page, not tabs. A single period drives everything:
     carries a dot while anything is struck out, or a live filter would silently
     shrink every figure. **A hidden category takes everything filed under it,
     its activities as well as its counters** — that is what separates it from a
-    tag, which only ever reaches counters: a tag says what a thing is like, a
-    category says where it belongs, and hiding a shelf means hiding what is on
-    it.
+    tag: a tag says what a thing is like, a category says where it belongs,
+    and hiding a shelf means hiding what is on it. (A tag reaches activities
+    too since `spec 019` — what still separates them is *one* against *many*,
+    not what they can be put on.)
   - `StreaksSection` — the goal streak, project-wide. Its how-it-works bubble
     opens **downwards** (`side="bottom"`): it is the tallest tooltip in the app
     and the panel sits just under the sticky period bar, so anchored above its
@@ -852,7 +883,8 @@ Setup's Counters tab is therefore **two arrangements of the same things**:
 - **By kind** is the editor. Three sub-tabs — Activities, Tallies, Checks — one
   list at a time with everything a row can carry, since the three differ in
   what they have: a tally has a total and slots, a check has neither, an
-  activity has neither and no tags either, because nothing counts it.
+  activity has neither — though it does carry tags since `spec 019`, because
+  it is one of the three kinds of counter and a condition can name a tag.
 - **By category** is the shelf. Every counter under its heading whatever kind
   it is, with a kind badge and the category picker. It edits only the
   shelving and says where the rest lives — two full editors for one row is two

@@ -352,6 +352,7 @@ function ClauseForm({
   const target = clauseTarget(clause)
   const info = targetInfo(target, ctx)
   const timed = info.measure === "time"
+  const sleepTarget = clauseTargets(clause).some((t) => t.kind === "sleep")
   // Resolved, never the stored fields: a condition written before the pair
   // existed still carries an operator and one number, and only this knows it.
   const bounds = clauseBounds(clause, ctx, toKey(new Date()))
@@ -497,7 +498,12 @@ function ClauseForm({
       {/* Where it counts, and whether any one slot carries a figure of its
           own. One fold, because they are one question asked twice — and the
           lid says which slots, so the common answer needs no opening. */}
-      {!info.check && ctx.slots.length > 0 && (
+      {/* **Sleep has no slots, so the fold is absent rather than empty** —
+          `spec 019`. A sleep entry carries no slot at all, so there is nothing
+          for a rider to measure; that is a fact about the data rather than a
+          policy, and a control offering figures that could never be read is
+          worse than one that is not there. */}
+      {!info.check && !sleepTarget && ctx.slots.length > 0 && (
         <Fold title="Slots" summary={slotsSummary(clause, ctx)}>
           <Row label="Counts in">
             <div className="flex flex-wrap gap-1">

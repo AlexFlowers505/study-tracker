@@ -52,6 +52,7 @@ export function LogView({
   onFreezeDay,
   onUpdateDay,
   verdictOf,
+  benchmarkOf,
   sleepSection,
 }: {
   data: Project
@@ -78,6 +79,8 @@ export function LogView({
    * day green.
    */
   verdictOf: (key: string) => DayReport
+  /** A stretch of days as the benchmark rule counted it — `spec 019`. */
+  benchmarkOf: (dates: Date[]) => number | null
   /** The sleep panel, rendered by the shell so it can read the unfiltered
    *  project — sleep has no slots or activities for the filter to act on. */
   sleepSection?: ReactNode
@@ -401,6 +404,7 @@ export function LogView({
           categories={settings.categories || []}
           todayKey={todayKey}
           verdictOf={verdictOf}
+          benchmarkOf={benchmarkOf}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}

@@ -69,7 +69,8 @@ const UNITS: CounterUnit[] = [
   { id: "u-bed", label: "Go to bed", color: "#888", iconName: "Circle", kind: "check" },
 ]
 const ACTIVITIES = [
-  { id: "a-les", label: "Lessons", color: "#888", iconName: "Circle" },
+  // Tagged since `spec 019`: an activity carries tags like any other counter.
+  { id: "a-les", label: "Lessons", color: "#888", iconName: "Circle", tagIds: ["t-deep"] },
 ] as Activity[]
 const SLOTS = [
   { id: "s-am", label: "Morning", color: "#888", iconName: "Circle" },
@@ -104,7 +105,11 @@ const answered = (marks: Record<string, "yes" | "no" | "skip">): Day => {
 const project = (rule: StreakRule, days: Record<DayKey, Day>): Project =>
   ({
     id: "p",
-    settings: { streakRules: [rule], dailyGoals: {} },
+    settings: {
+      streakRules: [rule],
+      dailyGoals: {},
+      tags: [{ id: "t-deep", label: "Deep work", color: "#888", iconName: "Circle" }],
+    },
     slots: SLOTS,
     activities: ACTIVITIES,
     counterUnits: UNITS,
@@ -1610,6 +1615,66 @@ for (const test of LEDGERS) {
   }
 }
 
+/* ---- three additions — `spec 019` ---------------------------------------
+
+   Two of them widen what a condition can point at, and both have the same
+   failure mode if they are wrong: a rule quietly measures something other than
+   what it says. That is silent, so it is pinned here. */
+
+const SLEPT = (minutes: number): Day =>
+  ({ sleep: [{ id: "s", minutes }] }) as unknown as Day
+
+interface AddCase {
+  name: string
+  clause: object
+  day: Day
+  /** What the condition measured. */
+  want: number
+}
+
+const ADDITIONS: AddCase[] = [
+  {
+    /* Sleep is its own axis and stays one: a `sleep` target reads `day.sleep`
+       rather than `day.cells`, so nothing in the study totals moves. */
+    name: "a sleep target counts the night, in minutes",
+    clause: { id: "c", targets: [{ kind: "sleep" }], min: 420 },
+    day: { ...SLEPT(400), ...studied(120) } as Day,
+    want: 400,
+  },
+  {
+    name: "and study time on the same day is untouched by it",
+    clause: { id: "c", ...target("time", ""), min: 60 },
+    day: { ...SLEPT(400), ...studied(120) } as Day,
+    want: 120,
+  },
+  {
+    /* A tag reached counters only until `spec 019`; with activities tagged it
+       reaches them too, so it needs the branch its sibling `category` has
+       rather than falling through to "everything". */
+    name: "a tag reaches the activities wearing it, and nothing else",
+    clause: {
+      id: "c",
+      targets: [{ kind: "tag", id: "t-deep", measure: "time" }],
+      min: 180,
+    },
+    day: studied(120),
+    want: 120,
+  },
+]
+
+console.log("")
+for (const test of ADDITIONS) {
+  const rule = ruleOf(test.clause as StreakClause, "day")
+  const proj = project(rule, { [MON]: test.day })
+  const got = readDay(rule, streakContext(proj), test.day, MON)[0].value
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  adds: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  adds: ${test.name} — ${got}, want ${test.want}`)
+  }
+}
+
 console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
@@ -1629,5 +1694,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

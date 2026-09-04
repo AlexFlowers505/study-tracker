@@ -50,7 +50,8 @@ import {
   streakContext,
 } from "./lib/customStreaks"
 import { dayReport, keptDays, keptWeeks } from "./lib/dayVerdict"
-import { withBenchmarkGoals } from "./lib/benchmark"
+import { benchmarkMinutes, withBenchmarkGoals } from "./lib/benchmark"
+import { makeIsIgnored } from "./lib/stats"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
 import { purchaseOf } from "./lib/shop"
@@ -520,6 +521,25 @@ export default function StudyTrackerApp() {
     (key: DayKey) => dayReport(soloProject, key, toKey(new Date()), verdictCtx),
     [soloProject, verdictCtx],
   )
+  /**
+   * A stretch of days as the **benchmark rule** counted it — `spec 019`.
+   *
+   * Built against `project` rather than `visibleProject` for the same reason
+   * the verdicts are: the count filter is a way of looking at the data and
+   * must not be able to move a figure a rule is answerable for. Null when
+   * nothing is nominated, and then the month grid draws no hours at all.
+   */
+  const benchmarkOf = useCallback(
+    (dates: Date[]) =>
+      benchmarkMinutes(
+        project,
+        dates,
+        makeIsIgnored(project.weekIgnore, project.monthIgnore),
+        verdictCtx,
+      ),
+    [project, verdictCtx],
+  )
+
   const kept = useMemo(() => keptDays(soloProject), [soloProject])
   const keptWeekly = useMemo(() => keptWeeks(soloProject), [soloProject])
 
@@ -1419,6 +1439,7 @@ export default function StudyTrackerApp() {
         <LogView
           data={shownProject}
           verdictOf={verdictOf}
+          benchmarkOf={benchmarkOf}
           period={period}
           range={range}
           cursor={logCursor}

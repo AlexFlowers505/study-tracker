@@ -12,7 +12,7 @@
    the only moment anyone can tidy it is the moment it becomes rubbish.
 --------------------------------------------------------------- */
 
-import type {
+import type { Activity,
   CounterUnit,
   Project,
   Settings,
@@ -24,11 +24,14 @@ export function TagsTab({
   settings,
   tags,
   units,
+  activities,
   onApply,
 }: {
   settings: Settings
   tags: Tag[]
   units: CounterUnit[]
+  /** Tagged too since `spec 019`, so deleting a tag must reach them. */
+  activities: Activity[]
   /**
    * One patch, not two calls. Deleting a tag changes the list in `settings`
    * and strips the id off every unit wearing it; two updates in one tick both
@@ -50,20 +53,19 @@ export function TagsTab({
           const gone = tags
             .filter((t) => !next.some((n) => n.id === t.id))
             .map((t) => t.id)
+          /* **Three arrays, one write.** `settings`, `counterUnits` and now
+             `activities` — since `spec 019` an activity carries tags too, and
+             three calls to `updateProject` in one tick all close over the same
+             project and the last one wins. That is the bug this tab shipped
+             with once; it must not come back through the new array. */
+          const strip = <T extends { tagIds?: string[] }>(x: T): T =>
+            (x.tagIds || []).some((id) => gone.includes(id))
+              ? { ...x, tagIds: (x.tagIds || []).filter((id) => !gone.includes(id)) }
+              : x
           onApply({
             settings: { ...settings, tags: next },
-            counterUnits: gone.length
-              ? units.map((u) =>
-                  (u.tagIds || []).some((id) => gone.includes(id))
-                    ? {
-                        ...u,
-                        tagIds: (u.tagIds || []).filter(
-                          (id) => !gone.includes(id),
-                        ),
-                      }
-                    : u,
-                )
-              : units,
+            counterUnits: gone.length ? units.map(strip) : units,
+            activities: gone.length ? activities.map(strip) : activities,
           })
         }}
         noun="tag"

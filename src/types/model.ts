@@ -30,6 +30,20 @@ export type Slot = Labeled
 export interface Activity extends Labeled {
   /** The category grouping it, if any. See `Category`. */
   categoryId?: string
+  /**
+   * **The tags on this activity** — `spec 019`.
+   *
+   * It used not to have any, on the reasoning that *nothing counts an
+   * activity*. True, and beside the point: an activity **is** one of the three
+   * kinds of counter — it records time where a tally records a count — and a
+   * condition can already name a tag, so *40h of anything tagged “deep work”*
+   * was a sentence the app could nearly say and could not.
+   *
+   * The one real consequence is that a tag can now span both measures, which
+   * is exactly the situation `Category` already has: see `StreakTarget.measure`
+   * for why that is stored explicitly rather than inferred from the members.
+   */
+  tagIds?: string[]
 }
 
 /**
@@ -328,7 +342,24 @@ export type StreakOp = "atLeast" | "atMost"
  *   no id, and the one that makes the project's own daily goal expressible as
  *   a streak of your own.
  */
-export type StreakTargetKind = "unit" | "activity" | "category" | "tag" | "time"
+/**
+ * What a condition can point at.
+ *
+ * `sleep` is the second kind with no id — there is only one of it, like
+ * `time` — and it is what lets a promise be made about sleep **without**
+ * sleep becoming an ordinary activity (`spec 019`). Making it one would have
+ * bought a streak for free and cost every total in the app about eight hours
+ * a day, plus ten separate readers each needing their own answer to *do I
+ * want sleep here*. One branch in `minutesOn` is the cheaper side of that
+ * trade by a wide margin.
+ */
+export type StreakTargetKind =
+  | "unit"
+  | "activity"
+  | "category"
+  | "tag"
+  | "time"
+  | "sleep"
 
 export interface StreakTarget {
   kind: StreakTargetKind

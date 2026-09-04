@@ -494,6 +494,18 @@ export function CounterUnitsTab({
                     categoryId={activity.categoryId}
                     onChange={(categoryId) => update({ categoryId })}
                   />
+                  {/* **An activity wears tags too** — `spec 019`. It used not
+                      to, on the reasoning that nothing counts an activity;
+                      true, and beside the point, since an activity is one of
+                      the three kinds of counter and a condition can already
+                      name a tag. Same row, same component as a tally's. */}
+                  {tags.length > 0 && (
+                    <TagRow
+                      tags={tags}
+                      tagIds={activity.tagIds || []}
+                      onChange={(tagIds) => update({ tagIds })}
+                    />
+                  )}
                 </div>
               )}
             />

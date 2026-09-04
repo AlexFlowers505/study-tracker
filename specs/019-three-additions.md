@@ -1,8 +1,23 @@
 # 019 — Three additions
 
-**Status: designed, not built.** Three unrelated things, batched because each is
-small and none is a prerequisite for any other. Build them in any order, or one
-at a time.
+**Status: built, bar one item.** Three unrelated things, batched because each
+is small and none is a prerequisite for any other. Covered by `npm run sweep`
+for the two that change what a condition measures — the third is a drawing.
+
+**Not built: the rotated clock offered to any activity** (part 2, second half).
+It is written below as *a charts change with no model consequence*, and that
+turned out to be the half-true kind of sentence. The consequence is not to the
+model, it is to `sleep.ts`: `collectNights` walks `day.sleep`, a flat list
+whose entries belong to the date they *started* on, and generalising it to walk
+`day.cells` filtered by activity means teaching the one file that must never
+reach `stats.ts` to read the list `stats.ts` is built on. That is not a small
+change and it is pointed at the invariant this repo defends hardest, so it
+wants its own spec rather than a footnote in a batch of three. Everything else
+here is done.
+
+The two widenings share a failure mode and it is silent: **a rule quietly
+measuring something other than what it says.** That is what the sweep cases
+pin, rather than the plumbing.
 
 They share nothing but size. If a fourth turns up that belongs with one of
 them, take that one out into its own file rather than growing this one.
@@ -145,6 +160,12 @@ anything tagged “deep work”* is a sentence the app can nearly say and cannot
 
 `tagIds?: string[]` on `Activity`. No migration: activities ride in the
 `projects` jsonb, the same reason tags themselves shipped without one.
+
+`TagsTab` now hands `activities` back in the **same** `onApply` patch as
+`settings` and `counterUnits`, which is not optional: three calls to
+`updateProject` in one tick all close over the same project and the last one
+wins. That is the bug this tab shipped with once, and adding a third array is
+exactly how it would have come back.
 
 Setup's Counters tab already lays out all three kinds; the Activities sub-tab
 gains the same `+ Tag` row a counter's row has, drawing **only the tags it
