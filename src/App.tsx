@@ -60,7 +60,9 @@ import {
   ruleText,
 } from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
-import { dueToday, ruleRisk } from "./lib/streakRisk"
+import { notices, worstLevel } from "./lib/notices"
+import { NoticeBoard } from "./views/NoticeBoard"
+import { useNoticePrefs } from "./ui/useNoticePrefs"
 import {
   periodRange,
 } from "./lib/period"
@@ -84,8 +86,8 @@ import {
   opProject,
 } from "./data/ops"
 import { CountFilter } from "./views/CountFilter"
-import { StreakAlarms, StreakBar } from "./views/StreakBar"
-import type { DueLine, StreakId } from "./views/StreakBar"
+import { StreakBar } from "./views/StreakBar"
+import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { KeptSection } from "./views/KeptSection"
 import { ChangeLogSection } from "./views/ChangeLogSection"
@@ -171,6 +173,13 @@ export default function StudyTrackerApp() {
    * off the screen to say it five times.
    */
   const [openStreak, setOpenStreak] = useState<StreakId>(null)
+  /* The board's own state, and the only panel state that survives a reload —
+     see `useNoticePrefs`. */
+  const {
+    prefs: noticePrefs,
+    setOpen: setNoticesOpen,
+    toggleLevel: toggleNoticeLevel,
+  } = useNoticePrefs()
   // Which slots/activities are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
   // of it.
@@ -475,24 +484,6 @@ export default function StudyTrackerApp() {
     (key: DayKey) => dayReport(project, key, toKey(new Date()), verdictCtx),
     [project, verdictCtx],
   )
-  /** The run of kept days — the composite streak. */
-  /* What today still asks of each rule, for the quiet line under the streaks
-     row. Not a risk and deliberately not one: the alarms stay silent until the
-     evening so they mean something when they speak, and this is what fills the
-     gap between "not an alarm" and "nothing at all". */
-  const dueLines: DueLine[] = useMemo(
-    () =>
-      (project.settings.streakRules || [])
-        .map((rule) => ({
-          id: rule.id,
-          tint: rule.color,
-          label: rule.label,
-          text: dueToday(rule, project) ?? "",
-        }))
-        .filter((line) => line.text !== ""),
-    [project],
-  )
-
   const kept = useMemo(() => keptDays(project), [project])
   const keptWeekly = useMemo(() => keptWeeks(project), [project])
 
@@ -510,15 +501,27 @@ export default function StudyTrackerApp() {
   const badgesDue = useMemo(() => dueAchievements(project), [project])
 
   /**
-   * Which streaks are in trouble right now — `spec 010`, part 3.
+   * **Everything true about today, at four volumes** — `spec 016`.
    *
-   * Computed here beside the statuses it reads, because the row itself must
-   * stay a drawing: sorting five streaks by danger is a judgement about the
-   * data, and judgements live in `lib`.
+   * Computed here beside the statuses it reads, because the board itself must
+   * stay a drawing: deciding that a ceiling standing at its limit is a warning
+   * is a judgement about the data, and judgements live in `lib`.
    */
-  const streakRisks = useMemo(
-    () => ruleStatuses.map((s2) => ruleRisk(s2, project)),
+  const noticeList = useMemo(
+    () => notices(project, ruleStatuses),
     [project, ruleStatuses],
+  )
+  /* The one figure the streak row still needs from the board: how many rules
+     have something wrong. Counted by rule, not by notice — a rule with a
+     danger and a warning is one rule in trouble. */
+  const troubledCount = useMemo(
+    () =>
+      new Set(
+        noticeList
+          .filter((n) => n.ruleId && (n.level === "danger" || n.level === "warning"))
+          .map((n) => n.ruleId),
+      ).size,
+    [noticeList],
   )
 
   // The same once-only sealing, for every rule at once: one pass writes them
@@ -1137,20 +1140,37 @@ export default function StudyTrackerApp() {
           onToggleHistory={() => setShowHistory((v) => !v)}
           showShop={showShop}
           onToggleShop={() => setShowShop((v) => !v)}
+          showNotices={noticePrefs.open}
+          onToggleNotices={() => setNoticesOpen(!noticePrefs.open)}
+          noticeCount={noticeList.length}
+          noticeLevel={worstLevel(noticeList)}
+          keptDays={kept?.current ?? null}
+          onToggleKept={() =>
+            setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
+          }
+          keptOpen={openStreak === KEPT_PANEL}
+          points={project.settings.balanceStart ? balance.total : null}
         />
 
-        {/* **What is on fire comes first.** The alarms used to sit under
-            the composite, so the page opened with the run you are guarding and
-            then, below it, the thing threatening it. That is backwards for
-            something you can still act on: a warning under the number it is
-            about reads as a footnote to it, and a footnote is something you
-            finish reading rather than something you do. */}
-        <StreakAlarms
-          statuses={ruleStatuses}
-          risks={streakRisks}
-          active={openStreak}
-          onSelect={setOpenStreak}
-        />
+        {/* **The board takes the alarms' place**, first under the period
+            bar and above the composite — `spec 016`. The placement argument
+            transfers whole: a warning under the number it is about reads as a
+            footnote to it, and a footnote is something you finish reading
+            rather than something you do.
+
+            It is the page's own block rather than one of the panels that open
+            below the streak row, because it is where danger is read and it is
+            open by default. */}
+        {noticePrefs.open && noticeList.length > 0 && (
+          <NoticeBoard
+            notices={noticeList}
+            held={noticePrefs.held}
+            onToggleLevel={toggleNoticeLevel}
+            activeRule={openStreak}
+            onOpenRule={(id) => setOpenStreak(openStreak === id ? null : id)}
+            onClose={() => setNoticesOpen(false)}
+          />
+        )}
 
         {/* **The composite above the rules that compose it.** It used to be a
             figure on the collapsed streaks line, which meant it disappeared
@@ -1166,7 +1186,6 @@ export default function StudyTrackerApp() {
         <div className="mb-3">
           <StreakBar
             statuses={ruleStatuses}
-            due={dueLines}
             balance={project.settings.balanceStart ? balance : null}
             days={kept ?? { current: 0, best: 0 }}
             keptWeeks={keptWeekly}
@@ -1176,7 +1195,7 @@ export default function StudyTrackerApp() {
             onOpenKept={() =>
               setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
             }
-            risks={streakRisks}
+            troubled={troubledCount}
             active={openStreak}
             onSelect={setOpenStreak}
           />

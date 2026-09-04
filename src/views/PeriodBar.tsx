@@ -9,13 +9,16 @@
 
 import type { ReactNode } from "react"
 import {
+  Bell,
   CalendarCheck,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Filter,
+  Flame,
+  Gift,
   History,
   Moon,
-  Gift,
   Trophy,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -33,6 +36,19 @@ import { Tip } from "../ui/Tip"
 import { useRevealOnScrollUp } from "../ui/useRevealOnScrollUp"
 
 import { usePalette } from "../ui/useTheme"
+import type { NoticeLevel } from "../lib/notices"
+import { levelColour } from "../lib/notices"
+
+/**
+ * A balance, short enough for a badge.
+ *
+ * There is not much room up here, so anything past a thousand loses its tail:
+ * `4.1k` rather than `4120`. The exact figure is one tap away in the account,
+ * and a badge that wraps is worse than one that rounds.
+ */
+const shortPoints = (n: number): string =>
+  Math.abs(n) < 1000 ? String(n) : `${(n / 1000).toFixed(1)}k`
+
 /**
  * Pill-style period picker: one rounded trough holding rounded pills, the
  * active one filled. Distinct from `SegmentedControl` (still used for the
@@ -79,6 +95,7 @@ function PanelToggle({
   onClick,
   badge,
   count,
+  countLabel,
   countColor,
   countIcon: CountIcon,
   sub,
@@ -93,6 +110,8 @@ function PanelToggle({
   /** A number in the corner instead of a dot. Zero is worth showing too — a
    *  broken streak is exactly the thing you want to notice. */
   count?: number | null
+  /** What to print instead of the raw figure — `4.1k` for a big balance. */
+  countLabel?: string
   countColor?: string
   countIcon?: LucideIcon
   /** A second count, opposite corner. Streaks carry two numbers that mean
@@ -126,7 +145,7 @@ function PanelToggle({
             style={{ backgroundColor: countColor, color: c.onFill }}
           >
             {CountIcon && <CountIcon size={7} strokeWidth={3} />}
-            {count}
+            {countLabel ?? count}
           </span>
         )}
         {sub != null && (
@@ -165,6 +184,14 @@ export function PeriodBar({
   onToggleHistory,
   showShop,
   onToggleShop,
+  showNotices,
+  onToggleNotices,
+  noticeCount,
+  noticeLevel,
+  keptDays,
+  keptOpen,
+  onToggleKept,
+  points,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -187,7 +214,19 @@ export function PeriodBar({
   onToggleHistory: () => void
   showShop: boolean
   onToggleShop: () => void
+  /** The board — `spec 016`. Its badge is every notice, coloured by the worst. */
+  showNotices: boolean
+  onToggleNotices: () => void
+  noticeCount: number
+  noticeLevel: NoticeLevel | null
+  /** The composite's run. No freezes: there is no shared pool any more. */
+  keptDays: number | null
+  keptOpen: boolean
+  onToggleKept: () => void
+  /** Points, abbreviated past a thousand. Null while the balance is off. */
+  points: number | null
 }) {
+  const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-card shadow-sm hover:bg-ink/5 disabled:opacity-35 disabled:hover:bg-card disabled:cursor-not-allowed`
   const visible = useRevealOnScrollUp()
@@ -260,6 +299,49 @@ export function PeriodBar({
               active={showSleep}
               onClick={onToggleSleep}
               tip={showSleep ? "Hide sleep" : "Show sleep"}
+            />
+          )}
+          {/* **The board's badge is what survives of "it comes and finds
+              you."** The alarms are gone, so a closed board with a red figure
+              on its bell is the only thing left that reaches you — and it
+              costs one prop that already existed. */}
+          {noticeCount > 0 && (
+            <PanelToggle
+              icon={Bell}
+              active={showNotices}
+              onClick={onToggleNotices}
+              count={noticeCount}
+              countColor={noticeLevel ? levelColour(noticeLevel, c) : undefined}
+              tip={showNotices ? "Hide the notices" : `${noticeCount} notices about today`}
+            />
+          )}
+          {/* `Flame` is already the language of streaks everywhere in the app,
+              so this needs no label. It does **not** colour: we have exactly
+              one place to look when something is wrong, and a second red mark
+              two centimetres away means neither of them means anything. */}
+          {keptDays !== null && (
+            <PanelToggle
+              icon={Flame}
+              active={keptOpen}
+              onClick={onToggleKept}
+              count={keptDays}
+              countColor={c.goalMet}
+              tip={keptOpen ? "Hide the composite" : "Days kept in a row"}
+            />
+          )}
+          {/* A gift is what you buy; coins are what you pay with. */}
+          {points !== null && (
+            <PanelToggle
+              icon={Coins}
+              active={showShop}
+              onClick={onToggleShop}
+              count={points}
+              countLabel={shortPoints(points)}
+              /* Never red, however negative. The board is the one place that
+                 shouts, and a second alarming badge beside it means neither
+                 of them means anything. */
+              countColor={c.accent}
+              tip={`${points} points to spend`}
             />
           )}
           <PanelToggle

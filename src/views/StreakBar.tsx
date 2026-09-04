@@ -34,27 +34,15 @@ import { useState } from "react"
 import { ChevronDown, Flame, Snowflake } from "lucide-react"
 import type { RuleStatus } from "../lib/customStreaks"
 import type { Balance } from "../lib/balance"
-import type { StreakRisk } from "../lib/streakRisk"
-import { byRisk } from "../lib/streakRisk"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import type { KeptWeeks } from "../lib/dayVerdict"
-import { Sentence } from "../ui/Sentence"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { KeptFigure, WeeksRow } from "./KeptCard"
 
 /** `"main"` is the goal streak; anything else is a rule id. */
 export type StreakId = string | null
-
-/** One rule's "here is what today needs of you" line. */
-export interface DueLine {
-  id: string
-  tint: string
-  label: string
-  /** Already quoted, so `Sentence` can pick out the names and figures. */
-  text: string
-}
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
@@ -135,99 +123,7 @@ function StreakButton({
   )
 }
 
-/**
- * A streak in trouble. It opens the same panel the chip does — the freeze is
- * spent from the strip in there, so this is not a fourth way to spend one.
- */
-function RiskBlock({
-  entry,
-  risk,
-  active,
-  onClick,
-}: {
-  entry: Entry
-  risk: StreakRisk
-  active: boolean
-  onClick: () => void
-}) {
-  const c = usePalette()
-  /* **Three levels, three colours, and none of them the streak's own.**
-   *
-   * Danger takes the miss colour whatever the rule's tint is: it is the same
-   * red as a broken day everywhere else, and that is a word the reader already
-   * knows. A warning takes `c.warn`, the amber added for exactly this state —
-   * *behind but not lost* — and it had never reached this block, which drew a
-   * warning in the streak's own colour. That colour says nothing about danger:
-   * a rule tinted green or blue read as an ordinary row, and `“--Pinterest”
-   * “3” of “3” used — one more ends it` is not an ordinary row.
-   *
-   * The rule's own tint loses its place here as a result, and that is the
-   * trade: on a block that only ever appears when something is wrong, the
-   * level is the thing worth colouring. Its icon and its name are still there
-   * to say which rule. */
-  const tint = risk.level === "danger" ? c.exam : c.warn
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      style={{
-        backgroundColor: `${tint}14`,
-        boxShadow: `inset 0 0 0 1px ${tint}${active ? "AA" : "55"}`,
-      }}
-      className={`${btnBase} w-full text-left rounded-2xl px-3.5 py-2.5 hover:brightness-105`}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span style={{ color: tint }} className="flex items-center shrink-0">
-          {entry.icon ? (
-            <RenderIcon name={entry.icon} size={13} />
-          ) : (
-            <Flame size={13} />
-          )}
-        </span>
-        <span
-          className="text-[11px] font-mono font-bold uppercase tracking-wide truncate"
-          style={{ color: tint }}
-        >
-          {entry.label}
-        </span>
-        <span className="ml-auto shrink-0 flex items-center gap-1 text-[10px] font-mono text-ink/45">
-          <Flame size={9} strokeWidth={3} />
-          {entry.days}
-        </span>
-      </div>
-      {/* **A line each, not a dot between them.** Two conditions — or two
-          checks inside one — are two things to look at, and running them
-          together behind a `·` made the reader do the separating before they
-          could start reading. The lead keeps its own line, so `Today` sits
-          over the list rather than in front of the first item, which is what
-          makes them read as a set rather than as a sentence and its tail. */}
-      {risk.headline && (
-        <p className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
-          {risk.headline}
-        </p>
-      )}
-      {risk.lines?.map((line, i) => (
-        <p
-          key={i}
-          className="text-[11px] font-mono text-ink/75 leading-relaxed"
-        >
-          <Sentence text={line} />
-        </p>
-      ))}
-      {risk.detail && (
-        <p className="text-[10px] font-mono text-ink/45 leading-relaxed mt-0.5">
-          {risk.detail}
-        </p>
-      )}
-    </button>
-  )
-}
-
-/**
- * The row's own view of a rule. Shared, so the alarms above the composite and
- * the row below it can never disagree about a figure.
- */
+/** The row's own view of a rule. */
 const entriesFrom = (statuses: RuleStatus[]): Entry[] =>
   statuses.map((s) => ({
     id: s.rule.id,
@@ -240,53 +136,6 @@ const entriesFrom = (statuses: RuleStatus[]): Entry[] =>
     tip: `${plural(s.current, s.rule.scope === "week" ? "week" : "day")} in a row · ${s.freezes.weeklyLeft} of ${s.freezes.weeklyTotal} left this week · ${plural(s.freezes.banked, "freeze")} banked`,
   }))
 
-/**
- * **The alarms, and they sit above the composite rather than under it.**
- *
- * They were part of `StreakBar`, which put them below the card — so the page
- * opened with the run you are guarding, then the thing threatening it, in that
- * order. That is the wrong way round for something you can still act on: a
- * warning under the number it is about reads as a footnote to it, and a
- * footnote is something you finish reading rather than something you do.
- *
- * Split out rather than reordered inside one component, because the composite
- * card belongs to neither half and had to go between them.
- */
-export function StreakAlarms({
-  statuses,
-  risks,
-  active,
-  onSelect,
-}: {
-  statuses: RuleStatus[]
-  risks: StreakRisk[]
-  active: StreakId
-  onSelect: (id: StreakId) => void
-}) {
-  const entries = entriesFrom(statuses)
-  const byId = new Map(entries.map((e) => [e.id, e]))
-  // Sorted by danger, never by the order they were created in.
-  const troubled = risks
-    .filter((r) => r.level !== "safe" && byId.has(r.id))
-    .slice()
-    .sort(byRisk)
-  if (!troubled.length) return null
-
-  return (
-    <div className="space-y-1.5 mb-1.5">
-      {troubled.map((risk) => (
-        <RiskBlock
-          key={risk.id}
-          entry={byId.get(risk.id) as Entry}
-          risk={risk}
-          active={active === risk.id}
-          onClick={() => onSelect(active === risk.id ? null : risk.id)}
-        />
-      ))}
-    </div>
-  )
-}
-
 export function StreakBar({
   statuses,
   balance,
@@ -296,8 +145,7 @@ export function StreakBar({
   rangeEnd,
   keptOpen,
   onOpenKept,
-  due,
-  risks,
+  troubled,
   active,
   onSelect,
 }: {
@@ -320,13 +168,15 @@ export function StreakBar({
   /** Whether the composite's own panel is open, and how to toggle it. */
   keptOpen: boolean
   onOpenKept: () => void
-  /** One per streak, keyed by the same ids — see `lib/streakRisk`. */
-  risks: StreakRisk[]
   /**
-   * What today still asks, one entry per rule that asks anything. Computed by
-   * `App` from `dueToday`, since it is the only place that holds the project.
+   * How many rules have a `danger` or a `warning` on the board — `spec 016`.
+   *
+   * A figure rather than the notices themselves: this row draws no alarms any
+   * more and must not start again. All it needs is the one number behind
+   * `3 of 5 holding`, and taking it as a number is what stops the row growing
+   * a second opinion about what counts as trouble.
    */
-  due: DueLine[]
+  troubled: number
   active: StreakId
   onSelect: (id: StreakId) => void
 }) {
@@ -338,12 +188,7 @@ export function StreakBar({
   const entries = entriesFrom(statuses)
   if (!entries.length) return null
 
-  const byId = new Map(entries.map((e) => [e.id, e]))
-  const troubled = risks
-    .filter((r) => r.level !== "safe" && byId.has(r.id))
-    .slice()
-    .sort(byRisk)
-  const holding = entries.length - troubled.length
+  const holding = entries.length - troubled
   const pick = (id: string) => onSelect(active === id ? null : id)
 
   return (
@@ -397,11 +242,11 @@ export function StreakBar({
           <span
             className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{
-              backgroundColor: troubled.length ? c.warn : c.goalMet,
+              backgroundColor: troubled ? c.warn : c.goalMet,
             }}
           />
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45">
-            {troubled.length
+            {troubled
               ? `${holding} of ${entries.length} holding`
               : plural(holding, "streak")}
           </span>
@@ -444,37 +289,6 @@ export function StreakBar({
             ))}
           </div>
 
-          {/* **What today still asks of you — under the chevron, not above
-              it.** Everything owed today is knowable at breakfast, and the
-              alarms deliberately say none of it until the evening, because one
-              that fires every morning is one nobody reads. This is the other
-              half of that: not an alarm, and not nothing. You open the row and
-              it is there; it never comes and finds you, which is the whole
-              reason it can afford to appear on a day where everything holds.
-
-              No surface, no border, no red — a reminder wearing the volume of
-              a caption. The rule's own tint on the dot is the only colour, and
-              it is there to pair the line with its chip above rather than to
-              raise an alarm. */}
-          {due.length > 0 && (
-            <ul className="space-y-0.5">
-              {due.map(({ id, tint, label, text }) => (
-                <li
-                  key={id}
-                  className="flex items-baseline gap-2 text-[10px] font-mono text-ink/45 leading-relaxed"
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0 translate-y-[-1px]"
-                    style={{ backgroundColor: tint }}
-                  />
-                  <span className="text-ink/35 shrink-0">{label}</span>
-                  <span className="min-w-0">
-                    <Sentence text={text} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       </div>
     </div>

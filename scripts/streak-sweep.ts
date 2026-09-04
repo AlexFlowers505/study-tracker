@@ -24,8 +24,8 @@
 import { achievementNarrows, progressOf } from "../src/lib/achievements"
 import { KEPT_VALUE, MISSED_COST } from "../src/lib/balance"
 import { removalGate } from "../src/lib/customStreaks"
-import { dueToday, ruleRisk } from "../src/lib/streakRisk"
-import type { RiskLevel } from "../src/lib/streakRisk"
+import { notices, worstLevel } from "../src/lib/notices"
+import type { Notice, NoticeLevel } from "../src/lib/notices"
 import {
   clauseAsksNothing,
   clauseReadout,
@@ -318,7 +318,7 @@ interface RiskCase {
   clause: object
   today: Day | undefined
   hour: number
-  want: RiskLevel
+  want: NoticeLevel
 }
 
 const risky = (
@@ -326,7 +326,7 @@ const risky = (
   clause: object,
   today: Day | undefined,
   hour: number,
-  want: RiskLevel,
+  want: NoticeLevel,
 ): RiskCase => ({ name, clause, today, hour, want })
 
 const RISKS: RiskCase[] = [
@@ -341,13 +341,13 @@ const RISKS: RiskCase[] = [
     answered({ "u-wake": "skip" }), 9, "danger"),
   risky("check · unanswered · morning is not an emergency",
     { id: "c", ...checks("u-wake"), allow: everyDayYes },
-    undefined, 9, "safe"),
+    undefined, 9, "notice"),
   risky("check · unanswered · evening is",
     { id: "c", ...checks("u-wake"), allow: everyDayYes },
     undefined, 22, "warning"),
   risky("check · answered yes · quiet all day",
     { id: "c", ...checks("u-wake"), allow: everyDayYes },
-    answered({ "u-wake": "yes" }), 22, "safe"),
+    answered({ "u-wake": "yes" }), 22, "good"),
   risky("two checks · one wrong · danger even with the other kept",
     { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
     answered({ "u-wake": "no", "u-bed": "yes" }), 9, "danger"),
@@ -357,7 +357,7 @@ const RISKS: RiskCase[] = [
     counted("u-yt", "s-am", 1), 9, "danger"),
   risky("ceiling · room left · nothing to say",
     { id: "c", ...target("unit", "u-yt"), max: 3 },
-    counted("u-yt", "s-am", 1), 9, "safe"),
+    counted("u-yt", "s-am", 1), 9, "notice"),
   risky("ceiling · at its limit · one more ends it",
     { id: "c", ...target("unit", "u-yt"), max: 3 },
     counted("u-yt", "s-am", 3), 9, "warning"),
@@ -375,11 +375,11 @@ const RISKS: RiskCase[] = [
      nobody has broken — and *never do X* is the commonest rule here. */
   risky("ceiling of nought · never warns, it is not an allowance",
     { id: "c", ...target("unit", "u-yt"), max: 0 },
-    undefined, 9, "safe"),
+    undefined, 9, "good"),
 
   risky("time · nothing logged · morning is not an emergency",
     { id: "c", ...target("activity", "a-les"), min: 180 },
-    undefined, 9, "safe"),
+    undefined, 9, "notice"),
   risky("time · nothing logged · an hour before midnight is",
     { id: "c", ...target("activity", "a-les"), min: 180 },
     undefined, 23, "danger"),
@@ -461,9 +461,15 @@ const DUES: DueCase[] = [
   dues("a check answered wrongly is the alarm's business, not this line",
     { id: "c", ...checks("u-wake"), allow: everyDayYes },
     answered({ "u-wake": "no" }), 9, null),
-  dues("a ceiling asks nothing — there is no doing less of it",
+  /* **This one reversed, and it is the point of `spec 016`.** Under
+     `dueToday` a ceiling said nothing at all: there is no doing less of
+     something already done, so it had no errand to hand you. But how much of
+     an allowance is left is exactly what a person wants to know before
+     spending more of it, and nowhere in the app was saying it. It is a
+     `notice` now — owed nothing, and worth reading. */
+  dues("a ceiling reports its headroom, which nothing used to",
     { id: "c", ...target("unit", "u-yt"), max: 3 },
-    counted("u-yt", "s-am", 1), 9, null),
+    counted("u-yt", "s-am", 1), 9, "“Youtube” “2” of “3” left"),
 ]
 
 /* ---- what a day is reported as -----------------------------------------
@@ -867,6 +873,32 @@ const REFUSED: { name: string; clause: object }[] = [
   { name: "a per-weekday map with nothing in it", clause: { id: "c", ...target("activity", "a-les"), days: {} } },
 ]
 
+/**
+ * One rule's notices, out of a project that holds only that rule.
+ *
+ * `notices()` is the whole board, so every case has to narrow to the rule it
+ * is about — the fixed sources (the composite, the freeze allowance) speak on
+ * every one of these days and are not what any of these cases is asking.
+ */
+const noticesFor = (ruleId: string, proj: Project, at: Date): Notice[] => {
+  const rules = proj.settings.streakRules || []
+  const statuses = rules.map((r) => ruleStatus(r, proj, at))
+  return notices(proj, statuses, at).filter((n) => n.ruleId === ruleId)
+}
+
+const worstOf = (ruleId: string, proj: Project, at: Date) =>
+  worstLevel(noticesFor(ruleId, proj, at))
+
+const linesOf = (
+  ruleId: string,
+  proj: Project,
+  at: Date,
+  level?: NoticeLevel,
+): string[] =>
+  noticesFor(ruleId, proj, at)
+    .filter((n) => !level || n.level === level)
+    .flatMap((n) => n.lines)
+
 /* ---- run --------------------------------------------------------------- */
 
 const GREEN = "[32m"
@@ -930,12 +962,12 @@ for (const test of RISKS) {
     ...(test.today ? { [RISK_DAY]: test.today } : {}),
   })
   const at = new Date(`${RISK_DAY}T${String(test.hour).padStart(2, "0")}:00:00`)
-  const got = ruleRisk(ruleStatus(rule, proj, at), proj, at).level
+  const got = worstOf(rule.id, proj, at) ?? "(nothing)"
   if (got === test.want) {
-    console.log(`${GREEN}  ok${OFF}  risk: ${test.name}`)
+    console.log(`${GREEN}  ok${OFF}  level: ${test.name}`)
   } else {
     failed += 1
-    console.log(`${RED}FAIL${OFF}  risk: ${test.name} — ${got}, want ${test.want}`)
+    console.log(`${RED}FAIL${OFF}  level: ${test.name} — ${got}, want ${test.want}`)
   }
 }
 
@@ -952,14 +984,13 @@ for (const test of MASKS) {
     ...(test.todayDay ? { [RISK_DAY]: test.todayDay } : {}),
   })
   const at = new Date(`${RISK_DAY}T09:00:00`)
-  const risk = ruleRisk(ruleStatus(rule, proj, at), proj, at)
-  const said = (risk.lines ?? []).join(" · ")
+  const said = linesOf(rule.id, proj, at).join(" · ")
   if (said.includes(test.mentions)) {
     console.log(`${GREEN}  ok${OFF}  both: ${test.name}`)
   } else {
     failed += 1
     console.log(`${RED}FAIL${OFF}  both: ${test.name}`)
-    console.log(`      got  ${risk.headline} — ${said || "(nothing)"}`)
+    console.log(`      got  ${said || "(nothing)"}`)
     console.log(`      want a line containing ${test.mentions}`)
   }
 }
@@ -973,12 +1004,16 @@ for (const test of DUES) {
   } as StreakRule
   const proj = project(rule, test.day ? { [RISK_DAY]: test.day } : {})
   const at = new Date(`${RISK_DAY}T${String(test.hour).padStart(2, "0")}:00:00`)
-  const got = dueToday(rule, proj, at)
+  /* `dueToday` is gone: what it said is now the `notice` level, and what it
+     deliberately withheld is now said at a level that is not `notice`. Both
+     halves of that are worth pinning, so the case asserts the whole set of
+     `notice` lines rather than one string. */
+  const got = linesOf(rule.id, proj, at, "notice").join(" · ") || null
   if (got === test.want) {
-    console.log(`${GREEN}  ok${OFF}  due: ${test.name}`)
+    console.log(`${GREEN}  ok${OFF}  owed: ${test.name}`)
   } else {
     failed += 1
-    console.log(`${RED}FAIL${OFF}  due: ${test.name}`)
+    console.log(`${RED}FAIL${OFF}  owed: ${test.name}`)
     console.log(`      got  ${got === null ? "(nothing)" : got}`)
     console.log(`      want ${test.want === null ? "(nothing)" : test.want}`)
   }
@@ -1151,7 +1186,7 @@ const dayStateAt =
     ruleWeekDayState(rule, streakContext(proj), proj.days, key, MIDWEEK_TODAY)
 
 const riskAt = (rule: StreakRule, proj: Project): string =>
-  ruleRisk(ruleStatus(rule, proj, MIDWEEK_AT), proj, MIDWEEK_AT).level
+  worstOf(rule.id, proj, MIDWEEK_AT) ?? "(nothing)"
 
 const PARTIALS: PartialCase[] = [
   {
@@ -1218,11 +1253,11 @@ const PARTIALS: PartialCase[] = [
     want: "danger",
   },
   {
-    name: "a short floor in the same week is not",
+    name: "a short floor in the same week says nothing at all",
     clause: FLOOR,
     days: {},
     got: riskAt,
-    want: "safe",
+    want: "(nothing)",
   },
 ]
 
