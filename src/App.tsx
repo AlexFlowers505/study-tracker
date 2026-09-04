@@ -46,6 +46,7 @@ import { setCheck } from "./lib/checks"
 import {
   lockFrom,
   ruleStatus,
+  violationKey,
   streakContext,
 } from "./lib/customStreaks"
 import { dayReport, keptDays, keptWeeks } from "./lib/dayVerdict"
@@ -590,10 +591,32 @@ export default function StudyTrackerApp() {
    * Append-only, like `day.frozen`: a rule already frozen on that day is left
    * alone rather than added twice, and nothing here ever takes one back.
    */
-  const spendRuleFreeze = (ruleId: string, key: DayKey) => {
-    const existing = project.days[key]?.ruleFreezes || []
-    if (existing.includes(ruleId)) return
-    updateDay(key, { ruleFreezes: [...existing, ruleId] })
+  const spendRuleFreeze = (ask: FreezeAsk) => {
+    const existing = project.days[ask.dayKey]?.ruleFreezes || []
+    const already = existing.some(
+      (f) =>
+        typeof f !== "string" &&
+        f.ruleId === ask.ruleId &&
+        violationKey(f) === ask.violationKey,
+    )
+    if (already) return
+    const [clauseId = "", targetId = "", slotId = ""] = ask.violationKey.split("|")
+    /* **The price is stamped here and never recomputed.** That one field is
+       the whole of `spec 017`: a purchase is a thing that happened, and it
+       does not follow the data around afterwards. */
+    updateDay(ask.dayKey, {
+      ruleFreezes: [
+        ...existing,
+        {
+          ruleId: ask.ruleId,
+          ...(clauseId ? { clauseId } : {}),
+          ...(targetId ? { targetId } : {}),
+          ...(slotId ? { slotId } : {}),
+          cost: ask.cost,
+          boughtAt: new Date().toISOString(),
+        },
+      ],
+    })
   }
 
   // Counting starts the first time the app runs with a rule that votes, so
@@ -843,8 +866,7 @@ export default function StudyTrackerApp() {
 
   const confirmFreeze = () => {
     if (!freezeAsk) return
-    const { ruleId, dayKey } = freezeAsk
-    spendRuleFreeze(ruleId, dayKey)
+    spendRuleFreeze(freezeAsk)
     setFreezeAsk(null)
   }
 
@@ -1312,10 +1334,13 @@ export default function StudyTrackerApp() {
               rangeStart={range.start}
               rangeEnd={range.end}
               today={new Date()}
-              onSpendFreeze={(key, cost) =>
+              onSpendFreeze={(key, vKey, cost, line, othersUnfrozen) =>
                 setFreezeAsk({
                   ruleId: s2.rule.id,
                   dayKey: key,
+                  violationKey: vKey,
+                  line,
+                  othersUnfrozen,
                   title: s2.rule.label,
                   tint: s2.rule.color,
                   cost,

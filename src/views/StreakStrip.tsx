@@ -23,6 +23,7 @@ import { btnBase } from "../lib/theme"
 import { PopoverMenu } from "../ui/PopoverMenu"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
+import { Sentence } from "../ui/Sentence"
 
 /** The six things a day can be to a streak. `unjudged` covers both "the rule
  *  does not apply" and "outside the period"; `watching` is a rule in force on
@@ -42,12 +43,28 @@ export interface StripCell {
   /** Printed in the cell. A count, an "h" figure, or nothing. */
   value?: ReactNode
   tooltip: string
-  /** Present only when a freeze can actually be spent here. */
+  /**
+   * **What can be frozen here, one violation at a time** — `spec 017`.
+   *
+   * A list rather than a price, because a freeze is bought against one named
+   * site that broke and not against the whole rule at once. Already-frozen
+   * ones stay in it, marked: without them there is no way to see what you have
+   * already paid for, and paying twice for one thing is the failure mode of
+   * every ledger drawn as a button.
+   */
   freeze?: {
-    cost: number
-    available: number
     label: string
-    onSpend: () => void
+    items: {
+      key: string
+      /** Already quoted, for `Sentence`. */
+      line: string
+      cost: number
+      available: number
+      /** Affordable **on its own**: they are bought one at a time. */
+      ok: boolean
+      frozen: boolean
+      onSpend: () => void
+    }[]
   }
 }
 
@@ -182,7 +199,7 @@ export function StreakStrip({
               </div>
             )
 
-          const { cost, available, label, onSpend } = cell.freeze
+          const { label, items } = cell.freeze
           return (
             <div key={key} className="flex min-w-0">
               <PopoverMenu
@@ -198,20 +215,35 @@ export function StreakStrip({
                     <p className="px-2.5 pt-1 pb-2 text-[9px] font-mono uppercase tracking-widest text-ink/40">
                       {label}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSpend()
-                        close()
-                      }}
-                      className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono hover:bg-ink/5`}
-                      style={{ color: c.freeze }}
-                    >
-                      Freeze this day
-                      <span className="block text-[10px] text-ink/45">
-                        costs {plural(cost, "freeze")} of {available} available
-                      </span>
-                    </button>
+                    {items.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={item.frozen || !item.ok}
+                        onClick={() => {
+                          item.onSpend()
+                          close()
+                        }}
+                        className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono ${
+                          item.frozen || !item.ok
+                            ? "cursor-default"
+                            : "hover:bg-ink/5"
+                        }`}
+                        style={{
+                          color: item.frozen ? `${c.ink}55` : c.freeze,
+                          opacity: !item.frozen && !item.ok ? 0.45 : 1,
+                        }}
+                      >
+                        <Sentence text={item.line} />
+                        <span className="block text-[10px] text-ink/45">
+                          {item.frozen
+                            ? `already frozen — ${plural(item.cost, "freeze")} spent`
+                            : item.ok
+                              ? `freeze this — ${plural(item.cost, "freeze")} of ${item.available} available`
+                              : `needs ${plural(item.cost, "freeze")} and you have ${item.available}`}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </PopoverMenu>

@@ -237,13 +237,20 @@ export interface Day {
    */
   counters?: Record<string, Record<string, number>>
   /**
-   * The custom-streak rules a freeze has been spent on for this day.
+   * **The freezes bought against this day** — `spec 017`.
    *
    * Permanent once set, like `frozen`. A **weekly** rule's freeze is recorded
    * on the Monday of the week it covers — the week has no row of its own, and
    * its first day is the one place both halves of the app can agree to look.
+   *
+   * A bare **string** is the old shape: the rule's id, meaning *this rule is
+   * frozen on this day, entirely*. It is read exactly that way and never
+   * rewritten. A migration would have to invent the price of a purchase made
+   * in March — the deficit that day happens to show now is not what was paid —
+   * and **a ledger may not be seeded with a number nobody recorded.** The
+   * legacy reading invents nothing.
    */
-  ruleFreezes?: string[]
+  ruleFreezes?: (string | RuleFreeze)[]
   /**
    * `unitId -> "no" | "skip"` for the check counters — the two answers a count
    * cannot carry. See `CheckMark`; `checkState()` is the only place the three
@@ -757,6 +764,28 @@ export type AchievementSource =
       /** Absent means `ever`, which is what every one of these used to be. */
       window?: AchievementWindow
     }
+
+/**
+ * **One freeze, bought against one violation** — `spec 017`.
+ *
+ * The price is stamped here at the moment of purchase and **never
+ * recomputed**. That single field is the fix to all three of the failures the
+ * old shape had: a freeze could get dearer after you paid for it, could be
+ * taken by an edit rather than by a decision, and could come back. A purchase
+ * is a thing that happened; it does not follow the data around.
+ */
+export interface RuleFreeze {
+  ruleId: string
+  /** The condition. Absent means the whole week — a weekly rule's one site. */
+  clauseId?: string
+  /** The check that failed. Never set together with `slotId`. */
+  targetId?: string
+  /** The slot rider. Absent means the condition's own bound. */
+  slotId?: string
+  /** What it cost, at the moment it was bought. */
+  cost: number
+  boughtAt: string
+}
 
 /**
  * A thing you reached once and cannot lose — `spec 010`, part 5.

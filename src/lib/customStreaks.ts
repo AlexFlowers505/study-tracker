@@ -44,6 +44,7 @@
 --------------------------------------------------------------- */
 
 import type {
+  RuleFreeze,
   Activity,
   Category,
   CheckState,
@@ -872,8 +873,79 @@ export function judgesDay(rule: StreakRule, dayKey: DayKey): boolean {
   return ruleClauses(rule).some((clause) => clauseCoversDay(clause, dayKey))
 }
 
-export const isFrozenFor = (day: Day | undefined, ruleId: string): boolean =>
-  (day?.ruleFreezes || []).includes(ruleId)
+/** Every freeze bought against one rule on one day, in either shape. */
+const freezesFor = (day: Day | undefined, ruleId: string) =>
+  (day?.ruleFreezes || []).filter((f) =>
+    typeof f === "string" ? f === ruleId : f.ruleId === ruleId,
+  )
+
+/**
+ * The old shape: a bare id, meaning *this rule, entirely*.
+ *
+ * Read exactly as it was written and never rewritten — see `Day.ruleFreezes`
+ * for why there is no migration.
+ */
+const wholeRuleFrozen = (day: Day | undefined, ruleId: string): boolean =>
+  freezesFor(day, ruleId).some((f) => typeof f === "string")
+
+/** The violations already paid for, by key. */
+export const frozenKeys = (
+  day: Day | undefined,
+  ruleId: string,
+): Set<string> =>
+  new Set(
+    freezesFor(day, ruleId)
+      .filter((f): f is RuleFreeze => typeof f !== "string")
+      .map((f) => violationKey(f)),
+  )
+
+/**
+ * **What a day's freezes actually cost**, out of the ledger rather than the
+ * data — `spec 017`, part 7.
+ *
+ * A week that spent three has spent three forever, whatever later happens to
+ * the days behind it. Only a legacy entry is still recomputed, because there
+ * is no recorded figure for it; the population is small, its days are long
+ * outside the writing window, and new purchases never drift.
+ */
+export const freezeSpendOn = (
+  rule: StreakRule,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+): number =>
+  freezesFor(day, rule.id).reduce(
+    (sum, f) =>
+      sum +
+      (typeof f === "string"
+        ? Math.max(1, totalDeficit(readDay(rule, ctx, day, dayKey)))
+        : f.cost),
+    0,
+  )
+
+/**
+ * Whether every violation on this period is paid for.
+ *
+ * **Only a fully covered period turns colour.** Half a freeze saves nothing,
+ * and a cell reading *partly saved* is the same mistake as *four of five
+ * almost counts* — `spec 010`, Decision 1. The receipt lives in the strip's
+ * own popover instead.
+ */
+export function isFrozenFor(
+  rule: StreakRule,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+): boolean {
+  if (wholeRuleFrozen(day, rule.id)) return true
+  const paid = frozenKeys(day, rule.id)
+  if (!paid.size) return false
+  const owed =
+    rule.scope === "week"
+      ? [weekViolation("")]
+      : violationsOn(rule, ctx, day, dayKey)
+  return owed.length > 0 && owed.every((v) => paid.has(violationKey(v)))
+}
 
 /**
  * What a day is worth to a rule.
@@ -892,9 +964,13 @@ export function ruleDayState(
   todayKey: DayKey,
 ): RuleState {
   if (dayKey > todayKey || !judgesDay(rule, dayKey)) return "unjudged"
-  if (isFrozenFor(day, rule.id)) return "frozen"
   const deficit = totalDeficit(readDay(rule, ctx, day, dayKey))
   if (deficit === 0) return "met"
+  /* Asked **after** the deficit, not before: a day whose data was later logged
+     up to green is kept on its own merits, and the freeze that was bought for
+     it stays bought — spent, recorded, and paying for nothing. That is what
+     "never refunded" means when you look at it from this side. */
+  if (isFrozenFor(rule, ctx, day, dayKey)) return "frozen"
   return dayKey === todayKey ? "pending" : "missed"
 }
 
@@ -1043,7 +1119,8 @@ export function ruleWeekState(
   // that were left when the rule started is a rule nobody agreed to.
   if (toKey(weekStart) < rule.startedOn || toKey(weekStart) > todayKey)
     return "unjudged"
-  if (isFrozenFor(days[toKey(weekStart)], rule.id)) return "frozen"
+  if (isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart)))
+    return "frozen"
   const deficit = totalDeficit(readWeek(rule, ctx, days, weekStart, todayKey))
   if (deficit === 0) return "met"
   return lastKey >= todayKey ? "pending" : "missed"
@@ -1410,7 +1487,9 @@ export function ruleWeekDayState(
 
   const lost = weekLostOn(rule, ctx, days, weekStart, todayKey)
   if (lost !== dayKey) return "met"
-  return isFrozenFor(days[toKey(weekStart)], rule.id) ? "frozen" : "missed"
+  return isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart))
+    ? "frozen"
+    : "missed"
 }
 
 /* ---- The week's verdict -------------------------------------------------- */
@@ -1450,6 +1529,246 @@ export function weekKept(
 }
 
 /* ---- Freezes ------------------------------------------------------------- */
+
+/* ---- What broke, one named site at a time — `spec 017` -------------------
+
+   A freeze used to be a list of **rule ids** with its price recomputed on
+   every read, so it was not a purchase at all: it was a property the current
+   data happened to have. Every one of the three complaints was that single
+   fact seen from a different side — a price that changed after you paid it, a
+   freeze taken by an edit rather than a decision, and a freeze that came back.
+
+   Buying one has to be buying *something*, and this is the something.
+
+   **A violation is one named site that broke.** Not "the rule failed" and not
+   "one unit of deficit" — the first is too coarse to choose between (freeze
+   the wake-up, not the go-to-bed) and the second is too fine to be a choice at
+   all (three Pinterests over a ceiling of nought would be three separate
+   purchases of the same thing).
+
+   | condition | violations | each costs |
+   | --- | --- | --- |
+   | checks with `allow` | one per target | 1 |
+   | a count | one per broken bound — its own, and each slot rider | what that site fell short by |
+   | time | **one for the whole condition**, however many sites broke | 1 |
+   | a lone check with legacy bounds | one | 1 |
+
+   **No rule gets cheaper or dearer.** Add them up and you get exactly what
+   `totalDeficit` says. Time stays one broken promise — *forty minutes short of
+   two hours is one, not forty* — and a count still costs what it actually
+   missed by. The only new thing is that it can be bought in pieces.
+
+   It lives here rather than in a module of its own because `ruleDayState`
+   needs it to decide whether a day is frozen, and everything it reads —
+   `measuredOn`, `boundsOnWeekday`, `clauseTargets` — is in this file. A
+   separate module would import all of that and be imported back, which is a
+   cycle for the sake of a filename.
+--------------------------------------------------------------- */
+
+
+/** One named site of a rule that broke on one period. */
+export interface Violation {
+  /** The condition it belongs to. Absent means the whole week — see below. */
+  clauseId?: string
+  /** The check that failed. Never set together with `slotId`. */
+  targetId?: string
+  /** The slot rider that broke. Absent means the condition's own bound. */
+  slotId?: string
+  /** Units of failure at this site, and what a freeze on it costs. */
+  cost: number
+  /**
+   * **Whether it can be frozen at all** — `spec 017`, part 2.
+   *
+   * A violation may be frozen only when it is already lost: irreversibly
+   * broken, or out of reach before midnight. An *unanswered* check is not
+   * lost, it is an errand, and billing for one is what made a noon with
+   * `wake up = no` and `go to bed` unanswered cost two freezes rather than
+   * one. `spec 016` gave the app the word for the difference; this is where it
+   * pays.
+   */
+  settled: boolean
+  /** What it says on the offer, already quoted for `Sentence`. */
+  line: string
+}
+
+/**
+ * A violation's identity, stable across edits that do not rewrite it.
+ *
+ * Matched by ids rather than by position, exactly as the lock matches
+ * conditions: reordering is not an edit, and a rewritten condition is a
+ * different site rather than a moved one.
+ */
+export const violationKey = (v: {
+  clauseId?: string
+  targetId?: string
+  slotId?: string
+}): string => `${v.clauseId ?? ""}|${v.targetId ?? ""}|${v.slotId ?? ""}`
+
+/** The same shortfall as above, taking the two sides loose. */
+const shortBy = (v: number, min?: number, max?: number) =>
+  shortOf(v, { min, max })
+
+const slotLabel = (ctx: StreakContext, slotId: string) =>
+  ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot"
+
+/**
+ * Every violation on one day, itemised.
+ *
+ * `minutesLeft` is what the clock still allows: **nought for a day that is
+ * over**, which is what makes every violation on it settled. Only the floors
+ * read it — a breached ceiling and a wrong answer are settled at any hour.
+ */
+export function violationsOn(
+  rule: StreakRule,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+  minutesLeft = 0,
+): Violation[] {
+  if (rule.scope === "week") return []
+  const out: Violation[] = []
+  const weekday = fromKey(dayKey).getDay()
+
+  for (const clause of ruleClauses(rule)) {
+    if (!clauseCoversDay(clause, dayKey)) continue
+    const targets = clauseTargets(clause)
+    const info = targetInfo(targets[0], ctx)
+    const named = targetsLabel(targets, ctx)
+    const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
+
+    /* A check is answered or it is not, and the two failures are different
+       things: one is spent the moment it is written, the other is an errand
+       with the rest of the day to run in. */
+    if (info.check && clause.allow) {
+      const allowed = clause.allow[weekday] ?? []
+      for (const target of targets) {
+        const state = checkState(day, target.id || "")
+        if (state && allowed.includes(state)) continue
+        const label = q(targetInfo(target, ctx).label)
+        out.push({
+          clauseId: clause.id,
+          targetId: target.id,
+          cost: 1,
+          /* Answered wrongly is spent the moment it is written. **No answer
+             is an errand until the day runs out, and settled the moment it
+             does** — a check nobody answered on a day that is over is not
+             waiting for anything, and leaving it unsettled meant yesterday
+             could no longer be frozen at all. */
+          settled: !!state || minutesLeft <= 0,
+          line: state
+            ? `${label} is ${q(CHECK_LABELS[state].toLowerCase())}`
+            : `${label} is ${q("not answered")}`,
+        })
+      }
+      continue
+    }
+
+    // Written before accepted answers existed: a floor of one means yes.
+    if (targets.length === 1 && info.check) {
+      const state = checkState(day, targets[0].id || "")
+      const { min, max } = clauseBounds(clause, ctx, dayKey)
+      const wants =
+        min !== undefined && min >= 1 ? 1 : max !== undefined && max <= 0 ? 0 : undefined
+      const value = state === "yes" ? 1 : 0
+      const broken = state === "skip" || (wants !== undefined && value !== wants)
+      if (broken)
+        out.push({
+          clauseId: clause.id,
+          cost: 1,
+          settled: !!state || minutesLeft <= 0,
+          line: `${q(targetInfo(targets[0], ctx).label)} is ${q(
+            state ? CHECK_LABELS[state].toLowerCase() : "not answered",
+          )}`,
+        })
+      continue
+    }
+
+    const value = measuredOn(clause, ctx, day, clause.slotIds)
+    const bounds = boundsOnWeekday(clause, ctx, weekday)
+    const slotRules = slotBoundsOnWeekday(clause, weekday)
+
+    /* **A time condition is one violation however many of its parts broke.**
+       It is one broken promise, which is the rule the whole freeze economy has
+       always priced time by; splitting it here would quietly multiply what a
+       bad Tuesday costs. */
+    if (info.measure === "time") {
+      let short = shortBy(value, bounds.min, bounds.max)
+      Object.entries(slotRules).forEach(([slotId, b]) => {
+        short += shortBy(measuredOn(clause, ctx, day, [slotId]), b.min, b.max)
+      })
+      if (short <= 0) continue
+      const over = bounds.max !== undefined && value > bounds.max
+      const need = bounds.min === undefined ? 0 : bounds.min - value
+      out.push({
+        clauseId: clause.id,
+        cost: 1,
+        // A ceiling is spent at any hour; a floor only once the clock has
+        // ruled it out.
+        settled: over || need > minutesLeft,
+        line: over
+          ? `${named} ${q(fmt(value))} against at most ${q(fmt(bounds.max ?? 0))}`
+          : `${named} ${q(fmt(value))} of ${q(fmt(bounds.min ?? 0))}`,
+      })
+      continue
+    }
+
+    const own = shortBy(value, bounds.min, bounds.max)
+    if (own > 0) {
+      const over = bounds.max !== undefined && value > bounds.max
+      out.push({
+        clauseId: clause.id,
+        cost: own,
+        // A count has no rate, so a floor short of it is only settled once the
+        // day itself is over — which is what `minutesLeft` of nought says.
+        settled: over || minutesLeft <= 0,
+        line: over
+          ? `${named} ${q(value)} against at most ${q(bounds.max ?? 0)}`
+          : `${named} ${q(value)} of ${q(bounds.min ?? 0)}`,
+      })
+    }
+
+    Object.entries(slotRules).forEach(([slotId, b]) => {
+      const inSlot = measuredOn(clause, ctx, day, [slotId])
+      const short = shortBy(inSlot, b.min, b.max)
+      if (short <= 0) return
+      const over = b.max !== undefined && inSlot > b.max
+      const where = ` in ${q(slotLabel(ctx, slotId))}`
+      out.push({
+        clauseId: clause.id,
+        slotId,
+        cost: short,
+        settled: over || minutesLeft <= 0,
+        line: over
+          ? `${named} ${q(inSlot)}${where} against at most ${q(b.max ?? 0)}`
+          : `${named} ${q(inSlot)}${where} of ${q(b.min ?? 0)}`,
+      })
+    })
+  }
+  return out
+}
+
+/**
+ * A whole week as one violation — `spec 017`, part 5.
+ *
+ * **Flat, deliberately.** Itemising a weekly rule per condition would raise a
+ * compound one from a single freeze to several, which is a tightening nobody
+ * asked for and one the lock would make you wait a week for if it were a term
+ * of the rule rather than a detail of its accounting. A week has one verdict;
+ * its freeze has one price.
+ */
+export const weekViolation = (line: string): Violation => ({
+  cost: 1,
+  settled: true,
+  line,
+})
+
+/** What every violation on a period adds up to — today's `freezeCost`. */
+export const violationsCost = (list: Violation[]): number =>
+  list.reduce((sum, v) => sum + v.cost, 0)
+
+/** Only what may actually be bought: what is already lost. */
+export const freezable = (list: Violation[]): Violation[] =>
+  list.filter((v) => v.settled)
 
 /**
  * What a freeze on this day costs — the deficit, and never less than one.
@@ -1559,12 +1878,10 @@ export function ruleStatus(
   let spentThisWeek = 0
   const thisWeekKey = toKey(startOfWeek(today))
   weeks.forEach((w) => {
-    const spent = weekDates(w).reduce((sum, date) => {
-      const key = toKey(date)
-      const day = days[key]
-      if (!isFrozenFor(day, rule.id)) return sum
-      return sum + freezeCost(rule, ctx, day, key)
-    }, 0)
+    const spent = weekDates(w).reduce(
+      (sum, date) => sum + freezeSpendOn(rule, ctx, days[toKey(date)], toKey(date)),
+      0,
+    )
     // The weekly allowance goes first: it is the one that expires, so
     // spending it last would burn a banked reward and let a grant evaporate.
     bankedUsed += Math.max(0, spent - rule.freezesPerWeek)
@@ -1612,42 +1929,84 @@ export function ruleStatus(
 }
 
 /**
- * Whether a freeze can go on this day, what it would cost, and what there is
- * to pay with.
+ * **What can be frozen on this period, one violation at a time** — `spec 017`.
  *
- * The window is today and yesterday, the same one the log itself is written
- * in — widened to "any day of this week is" for a rule that judges weeks.
+ * It used to be one offer for the whole rule at the whole day's price, which
+ * is why noon with `wake up = no` and `go to bed` unanswered presented a bill
+ * for two: an unanswered check is in deficit, so it was charged for. It is not
+ * a broken promise, it is an **errand**, and `spec 016` gave the app the word
+ * for the difference.
+ *
+ * So only what is already lost is offered — `Violation.settled` — and each is
+ * bought on its own. **The automatic second charge stops being expressible**,
+ * because there is no longer a moment at which the app decides for you.
+ *
+ * Yesterday needs no rule of its own: the day is over, so everything on it is
+ * settled and all of it is offered.
  */
-export function freezeOffer(
+export interface FreezeOffer {
+  /** Stable across edits that do not rewrite the site — see `violationKey`. */
+  key: string
+  violation: Violation
+  cost: number
+  available: number
+  /** Whether it can be afforded **on its own**: you buy them one at a time. */
+  ok: boolean
+  /** Already paid for. Still listed, so nobody pays for it twice. */
+  frozen: boolean
+  /** Where the record goes. A weekly rule's freeze lives on the Monday. */
+  dayKey: DayKey
+}
+
+export function freezeOffers(
   rule: StreakRule,
   project: Project,
   dayKey: DayKey,
   todayKey: DayKey,
   status: RuleStatus,
-): { ok: boolean; cost: number; available: number; key: DayKey } {
-  const day = project.days[dayKey]
+  /** Minutes left in the day, when `dayKey` is today. Nought otherwise. */
+  minutesLeft = 0,
+): FreezeOffer[] {
   const ctx = streakContext(project)
   const available = status.freezes.weeklyLeft + status.freezes.banked
   const weekStart = startOfWeek(fromKey(dayKey))
   const week = rule.scope === "week"
+
   const state = week
     ? ruleWeekState(rule, ctx, project.days, weekStart, todayKey)
-    : ruleDayState(rule, ctx, day, dayKey, todayKey)
-  if (state !== "missed" && state !== "pending")
-    return { ok: false, cost: 0, available, key: dayKey }
-  // A day is freezable while it is writable. A *week* is freezable while any
-  // of its days is — otherwise a rule about a week could only ever be frozen
-  // on a Sunday or a Monday, which is not a window, it is an accident of
-  // which day the horizon happens to land on.
+    : ruleDayState(rule, ctx, project.days[dayKey], dayKey, todayKey)
+  if (state !== "missed" && state !== "pending" && state !== "frozen") return []
+
+  /* A day is freezable while it is writable. A *week* is freezable while any
+     of its days is — otherwise a rule about a week could only ever be frozen
+     on a Sunday or a Monday, which is not a window, it is an accident of
+     which day the horizon happens to land on. */
   const open = week
     ? weekDates(weekStart).some((d) => isEditableDay(toKey(d), todayKey))
     : isEditableDay(dayKey, todayKey)
-  if (!open) return { ok: false, cost: 0, available, key: dayKey }
-  const cost = freezeCost(rule, ctx, day, dayKey)
-  // Where the freeze is actually written. A week has no row of its own, so it
-  // goes on the Monday — and the caller must not have to remember that.
+  if (!open) return []
+
   const key = week ? toKey(weekStart) : dayKey
-  return { ok: available >= cost, cost, available, key }
+  const day = project.days[key]
+  const paid = frozenKeys(day, rule.id)
+  // A rule frozen the old way is frozen entirely; there is nothing to itemise.
+  if (freezeSpendOn(rule, ctx, day, key) > 0 && !paid.size) return []
+
+  const owed = week
+    ? [weekViolation(ruleSentence(rule, ctx))]
+    : violationsOn(rule, ctx, project.days[dayKey], dayKey, minutesLeft)
+
+  return owed
+    .filter((v) => v.settled || paid.has(violationKey(v)))
+    .map((v) => ({
+      key: violationKey(v),
+      violation: v,
+      cost: v.cost,
+      available,
+      ok: available >= v.cost,
+      frozen: paid.has(violationKey(v)),
+      dayKey: key,
+    }))
 }
 
 /* ---- Saying it back ------------------------------------------------------ */

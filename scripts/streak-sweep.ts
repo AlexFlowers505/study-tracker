@@ -40,6 +40,11 @@ import {
   ruleWeekDayState,
   ruleWeekState,
   streakContext,
+  totalDeficit,
+  violationsCost,
+  violationsOn,
+  freezeOffers,
+  freezeSpendOn,
 } from "../src/lib/customStreaks"
 import { dayReport } from "../src/lib/dayVerdict"
 import { toKey, weekDates } from "../src/lib/date"
@@ -1390,6 +1395,221 @@ for (const test of FRESH) {
   }
 }
 
+/* ---- freezes bought, not charged — `spec 017` ---------------------------
+
+   A freeze used to be a rule id with its price recomputed on every read, so
+   it was not a purchase: it was a property the current data happened to have.
+   Three things follow from fixing that, and all three are silent when broken.
+
+   **The prices must not move.** Itemising the deficit is only safe if the
+   items add back up to it — otherwise every rule quietly got cheaper or
+   dearer on the day this landed. */
+
+interface SplitCase {
+  name: string
+  clause: object
+  day: Day
+  /** How many named sites it should break into. */
+  sites: number
+}
+
+const SPLITS: SplitCase[] = [
+  {
+    name: "two checks, one answered wrongly and one not answered",
+    clause: { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
+    day: answered({ "u-wake": "no" }),
+    sites: 2,
+  },
+  {
+    name: "a count over its own ceiling is one site at the price it missed by",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 0 },
+    day: counted("u-yt", "s-am", 3),
+    sites: 1,
+  },
+  {
+    name: "a day bound and a slot rider are two sites",
+    clause: {
+      id: "c",
+      ...target("unit", "u-yt"),
+      max: 2,
+      slots: { "s-pm": { max: 0 } },
+    },
+    day: counted("u-yt", "s-pm", 4),
+    sites: 2,
+  },
+  {
+    /* One broken promise, not forty. The whole freeze economy prices time
+       this way and splitting it here would multiply what a bad day costs. */
+    name: "time is one site however many of its parts broke",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 180,
+      slots: { "s-pm": { min: 60 } },
+    },
+    day: studied(20),
+    sites: 1,
+  },
+]
+
+console.log("")
+for (const test of SPLITS) {
+  const rule = ruleOf(test.clause as StreakClause, "day")
+  const proj = project(rule, { [MON]: test.day })
+  const ctx = streakContext(proj)
+  const vs = violationsOn(rule, ctx, test.day, MON)
+  const deficit = totalDeficit(readDay(rule, ctx, test.day, MON))
+  const got = `${vs.length} sites, ${violationsCost(vs)} total`
+  const want = `${test.sites} sites, ${deficit} total`
+  if (got === want) {
+    console.log(`${GREEN}  ok${OFF}  splits: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  splits: ${test.name} — ${got}, want ${want}`)
+  }
+}
+
+/* **Only what is already lost may be bought.** The case the whole spec exists
+   for: at noon a wrong answer is spent and an unanswered check is an errand,
+   and billing for the errand is what made one slip cost two freezes. */
+
+interface OfferCase {
+  name: string
+  day: Day | undefined
+  hour: number
+  /** The lines offered, in order, joined. */
+  want: string
+}
+
+const SLEEP_CLAUSE = {
+  id: "c1",
+  ...checks("u-wake", "u-bed"),
+  allow: everyDayYes,
+} as unknown as StreakClause
+
+const bought = (day: Day | undefined): Day =>
+  ({
+    ...(day || {}),
+    ruleFreezes: [
+      { ruleId: "r", clauseId: "c1", targetId: "u-wake", cost: 1, boughtAt: "x" },
+    ],
+  }) as unknown as Day
+
+const OFFERS: OfferCase[] = [
+  {
+    name: "at noon only the answered-wrongly check is on offer",
+    day: answered({ "u-wake": "no" }),
+    hour: 12,
+    want: "“Wake up” is “no”",
+  },
+  {
+    name: "an unanswered check is an errand and is never billed",
+    day: undefined,
+    hour: 12,
+    want: "",
+  },
+  {
+    name: "once the evening answers it too, it is offered separately",
+    day: answered({ "u-wake": "no", "u-bed": "no" }),
+    hour: 21,
+    want: "“Wake up” is “no” · “Go to bed” is “no”",
+  },
+  {
+    /* The receipt: what you already paid for stays on the list, marked, or
+       there is no way to find out and paying twice becomes possible. */
+    name: "what is already frozen stays listed",
+    day: bought(answered({ "u-wake": "no", "u-bed": "no" })),
+    hour: 21,
+    want: "“Wake up” is “no” · “Go to bed” is “no”",
+  },
+]
+
+console.log("")
+for (const test of OFFERS) {
+  const rule = {
+    ...ruleOf(SLEEP_CLAUSE, "day"),
+    startedOn: RISK_DAY,
+    lockedUntil: RISK_DAY,
+    freezesPerWeek: 3,
+  } as StreakRule
+  const proj = project(rule, test.day ? { [RISK_DAY]: test.day } : {})
+  const at = new Date(`${RISK_DAY}T${String(test.hour).padStart(2, "0")}:00:00`)
+  const left = 24 * 60 - test.hour * 60
+  const got = freezeOffers(rule, proj, RISK_DAY, RISK_DAY, ruleStatus(rule, proj, at), left)
+    .map((o) => o.violation.line)
+    .join(" · ")
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  offers: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  offers: ${test.name}`)
+    console.log(`      got  ${got || "(nothing)"}`)
+    console.log(`      want ${test.want || "(nothing)"}`)
+  }
+}
+
+/* **A price stamped is a price kept, and a freeze spent stays spent.** These
+   are the three failures the old shape had, one case each. */
+
+interface LedgerCase {
+  name: string
+  day: Day
+  /** What the week has spent, and what the day is worth. */
+  want: string
+}
+
+const LEDGERS: LedgerCase[] = [
+  {
+    name: "buying one of two leaves the day missed and one freeze spent",
+    day: bought(answered({ "u-wake": "no", "u-bed": "no" })),
+    want: "1 spent, missed",
+  },
+  {
+    name: "answering the other one does not take a second freeze",
+    day: bought(answered({ "u-wake": "no", "u-bed": "yes" })),
+    want: "1 spent, frozen",
+  },
+  {
+    /* The one that made the economy reversible: putting the answer back used
+       to hand the freeze to the bank. */
+    name: "logging the day up afterwards does not hand the freeze back",
+    day: bought(answered({ "u-wake": "yes", "u-bed": "yes" })),
+    want: "1 spent, met",
+  },
+  {
+    name: "a legacy bare id still means the whole rule, entirely",
+    day: {
+      ...answered({ "u-wake": "no", "u-bed": "no" }),
+      ruleFreezes: ["r"],
+    } as unknown as Day,
+    want: "2 spent, frozen",
+  },
+]
+
+console.log("")
+for (const test of LEDGERS) {
+  const rule = {
+    ...ruleOf(SLEEP_CLAUSE, "day"),
+    startedOn: MON,
+    lockedUntil: MON,
+    freezesPerWeek: 3,
+  } as StreakRule
+  const proj = project(rule, { [MON]: test.day })
+  const ctx = streakContext(proj)
+  /* Measured with `freezeSpendOn` rather than off the weekly pool: the pool
+     reports **this** week, and the fixture's day is a fortnight old. What is
+     under test is that the figure comes out of the record rather than out of
+     the data, and that is what this reads. */
+  const spent = freezeSpendOn(rule, ctx, test.day, MON)
+  const got = `${spent} spent, ${ruleDayState(rule, ctx, test.day, MON, TODAY)}`
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  ledger: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  ledger: ${test.name} — ${got}, want ${test.want}`)
+  }
+}
+
 console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
@@ -1409,5 +1629,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

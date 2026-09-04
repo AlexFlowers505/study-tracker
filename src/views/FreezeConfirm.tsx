@@ -24,6 +24,7 @@ import type { DayKey } from "../types/model"
 import { fmtDateLong } from "../lib/date"
 import { CARD, btnBase } from "../lib/theme"
 import { useModalDismiss } from "../ui/useModalDismiss"
+import { Sentence } from "../ui/Sentence"
 import { usePalette } from "../ui/useTheme"
 
 /** One kind of freeze, and how many of it there are. */
@@ -43,11 +44,23 @@ export interface FreezeAsk {
   /** The rule this freeze belongs to. Freezes are per rule, always. */
   ruleId: string
   dayKey: DayKey
+  /** **The one violation being bought** — `spec 017`. See `violationKey`. */
+  violationKey: string
+  /** What that site says, already quoted for `Sentence`. */
+  line: string
   /** The streak's own name, so a page with five of them says which. */
   title: string
   tint: string
-  /** How many freezes this day costs — the deficit, never less than one. */
+  /** What this one violation costs, stamped into the record on confirm. */
   cost: number
+  /**
+   * How many other violations on the same period are still unfrozen.
+   *
+   * Said out loud in the dialog, because `spec 017` reverses `spec 009`'s
+   * refusal of partial spending and this is where that costs you: a day can
+   * now be partly paid for and still break, with the freeze gone.
+   */
+  othersUnfrozen: number
   /** In spending order: the expiring pool first. */
   pools: FreezePool[]
 }
@@ -102,10 +115,29 @@ export function FreezeConfirm({
         >
           {ask.title}
         </p>
-        <p className="text-[11px] font-mono text-ink/45 mb-3">
-          The day keeps your streak but stays short of what you asked of it.
-          Spent for good — logging the day up afterwards does not hand it back.
+        <p className="text-[11px] font-mono text-ink/75 mb-2">
+          <Sentence text={ask.line} />
         </p>
+        <p className="text-[11px] font-mono text-ink/45 mb-3">
+          Bought against this one thing, at this price, for good. Logging the
+          day up afterwards does not hand it back.
+        </p>
+        {/* **The reversal, said where the money is spent.** `spec 009` refused
+            partial spending precisely so a day that breaks anyway would not
+            also cost you a freeze; `spec 017` allows it, because being able to
+            choose which promise you are protecting at noon is worth more than
+            being protected from a bad choice. It has to say so. */}
+        {ask.othersUnfrozen > 0 && (
+          <p
+            className="text-[11px] font-mono mb-3 rounded-xl px-2.5 py-2"
+            style={{ color: c.warn, backgroundColor: `${c.warn}14` }}
+          >
+            {ask.othersUnfrozen === 1
+              ? "1 more violation is unfrozen"
+              : `${ask.othersUnfrozen} more violations are unfrozen`}{" "}
+            — this alone does not save the day.
+          </p>
+        )}
 
         <div className="space-y-1.5 mb-4">
           {rows.map((pool) => (

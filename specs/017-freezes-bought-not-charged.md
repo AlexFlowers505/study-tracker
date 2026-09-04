@@ -1,8 +1,18 @@
 # 017 — Freezes bought, not charged
 
-**Status: designed, not built.** Depends on `spec 016` for the `spent`/`owed`
-axis and the `danger` level: what may be frozen is defined in terms of them,
-and building this first would mean inventing the same distinction twice.
+**Status: built.** Covered by `npm run sweep` — twelve cases across the three
+things that can go silently wrong: the prices, what is on offer, and the
+ledger.
+
+It depended on `spec 016` for the `spent`/`owed` axis, and that dependency paid
+exactly as expected: `Violation.settled` **is** the axis, and nothing else had
+to be invented.
+
+One thing the design did not carry: **an unanswered check on a day that is
+over is settled.** Written as *answered wrongly is spent, no answer is an
+errand*, which is true of today and false the moment the day runs out — a
+check nobody answered on a finished day is not waiting for anything. The first
+build got it wrong and yesterday could not be frozen at all.
 
 **Partially supersedes `spec 009`, part 2.** The paragraph refusing partial
 spending is reversed here; strike it through there and point at this file.
@@ -117,7 +127,14 @@ The opening case resolves with no special case anywhere:
 longer a moment at which the app decides on your behalf. It offers; you buy.
 
 Yesterday needs no rule of its own: the day is over, so every violation on it is
-spent, and all of them are offered. The writing window is unchanged — today and
+spent, and all of them are offered.
+
+**And "the day is over" has to reach the checks.** The rule above reads *a
+wrong answer is spent, no answer is an errand*, which is a statement about
+today. On a finished day nobody is going to answer anything, so an unanswered
+check is as settled as a wrong one — `settled: !!state || minutesLeft <= 0`.
+Missing that made yesterday unfreezable, which is the one deadline on the whole
+board. The writing window is unchanged — today and
 yesterday, `isEditableDay`, the same window the log itself is written in.
 
 ---

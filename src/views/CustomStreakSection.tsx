@@ -42,7 +42,7 @@ import {
   clauseTarget,
   clauseWeekReadoutParts,
   coveredDays,
-  freezeOffer,
+  freezeOffers,
   judgesDay,
   readDay,
   readWeek,
@@ -65,6 +65,7 @@ import {
   toKey,
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
+import { minutesLeftToday } from "../lib/notices"
 import { btnBase } from "../lib/theme"
 import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
@@ -111,7 +112,14 @@ export function CustomStreakSection({
    * both the confirmation and the persistence — the price is here because
    * this is where the deficit was worked out.
    */
-  onSpendFreeze: (dayKey: string, cost: number) => void
+  onSpendFreeze: (
+    dayKey: string,
+    violationKey: string,
+    cost: number,
+    line: string,
+    /** How many others on the same period are still unfrozen — `spec 017`. */
+    othersUnfrozen: number,
+  ) => void
   /** Whether the page is currently showing this rule alone — `spec 016`. */
   solo?: boolean
   onSolo?: () => void
@@ -181,7 +189,15 @@ export function CustomStreakSection({
   const cells: StripCell[] = dates.map((date) => {
     const key = toKey(date)
     const state = stateOf(date, key)
-    const offer = freezeOffer(rule, project, key, todayKey, status)
+    const offers = freezeOffers(
+      rule,
+      project,
+      key,
+      todayKey,
+      status,
+      key === todayKey ? minutesLeftToday(today) : 0,
+    )
+    const unpaid = offers.filter((o) => !o.frozen)
     /* **A weekly rule's cell is the running total to that day**, not that
        day's own figure — `spec 018`. This called `readDay` whatever the scope,
        so `at most 3 a week` printed `“Pinterest” “0” of “3”` on every one of
@@ -196,10 +212,8 @@ export function CustomStreakSection({
       ? readWeek(rule, ctx, project.days, startOfWeek(date), key)
       : readDay(rule, ctx, project.days[key], key)
     // A cell that offers nothing has two completely different reasons for it,
-    // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
-    // `ok` false is exactly that case: the day is freezable and the freezes
-    // are not there.
-    const short = !offer.ok && offer.cost > 0
+    // and "you cannot afford this" is the one nobody guesses.
+    const short = unpaid.length > 0 && !unpaid.some((o) => o.ok)
     return {
       key,
       state,
@@ -220,18 +234,39 @@ export function CustomStreakSection({
           : []),
         ...(short
           ? [
-              `Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`,
+              `The cheapest of these needs ${plural(
+                Math.min(...unpaid.map((o) => o.cost)),
+                "freeze",
+              )} and you have ${unpaid[0].available}`,
             ]
           : []),
+        ...(offers.length > unpaid.length
+          ? [`${offers.length - unpaid.length} of ${offers.length} frozen`]
+          : []),
       ].join("\n"),
-      freeze: offer.ok
+      /* **Every violation the day has, listed** — `spec 017`, part 6. The
+         already-frozen ones stay in the list, marked: without them there is no
+         way to find out what you have already paid for, and paying twice for
+         one thing is the failure mode of every ledger drawn as a button. */
+      freeze: offers.length
         ? {
-            cost: offer.cost,
-            available: offer.available,
             label: fmtDateLong(key),
-            // `offer.key`, not `key`: a weekly rule's freeze is recorded on
-            // the Monday of the week it covers.
-            onSpend: () => onSpendFreeze(offer.key, offer.cost),
+            items: offers.map((o) => ({
+              key: o.key,
+              line: o.violation.line,
+              cost: o.cost,
+              available: o.available,
+              ok: o.ok,
+              frozen: o.frozen,
+              onSpend: () =>
+                onSpendFreeze(
+                  o.dayKey,
+                  o.key,
+                  o.cost,
+                  o.violation.line,
+                  unpaid.filter((u) => u.key !== o.key).length,
+                ),
+            })),
           }
         : undefined,
     }

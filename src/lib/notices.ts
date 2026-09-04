@@ -52,7 +52,7 @@ import {
   clauseBounds,
   clauseTargets,
   coveredDays,
-  freezeOffer,
+  freezeOffers,
   judgesDay,
   measuredOn,
   q,
@@ -149,7 +149,7 @@ export const countByLevel = (list: Notice[]): Record<NoticeLevel, number> => {
 /* ---- the clock ---------------------------------------------------------- */
 
 /** Minutes between now and midnight — what is left to act in. */
-const minutesLeftToday = (now: Date) =>
+export const minutesLeftToday = (now: Date) =>
   24 * 60 - (now.getHours() * 60 + now.getMinutes())
 
 /**
@@ -556,16 +556,16 @@ function ruleNotices(
    * not say which day it is about is a line about today.
    */
   const yesterdayKey = toKey(addDays(now, -1))
-  const yOffer = week
-    ? null
-    : freezeOffer(rule, project, yesterdayKey, todayKey, status)
+  const yOffers = week
+    ? []
+    : freezeOffers(rule, project, yesterdayKey, todayKey, status)
+  const yUnpaid = yOffers.filter((o) => !o.frozen)
   if (
     !week &&
     judgesDay(rule, yesterdayKey) &&
     ruleDayState(rule, ctx, project.days[yesterdayKey], yesterdayKey, todayKey) ===
       "missed" &&
-    yOffer &&
-    (yOffer.ok || yOffer.cost > 0)
+    yUnpaid.length > 0
   ) {
     dayItems(rule, ctx, project.days[yesterdayKey], yesterdayKey, now, true)
       .filter((i) => i.level === "danger")
@@ -574,18 +574,30 @@ function ruleNotices(
 
   if (!items.length) return []
 
-  // Yesterday's offer leads when there is one: it is the one with a deadline.
-  const offer =
-    yOffer && yOffer.ok ? yOffer : freezeOffer(rule, project, todayKey, todayKey, status)
+  /* Yesterday leads when it has anything unpaid: it is the one with a
+     deadline. Reported as **what is left to buy**, not as one price for the
+     whole rule — you buy them one at a time now. */
+  const unpaid = yUnpaid.length
+    ? yUnpaid
+    : freezeOffers(
+        rule,
+        project,
+        todayKey,
+        todayKey,
+        status,
+        minutesLeftToday(now),
+      ).filter((o) => !o.frozen)
+  const owedCost = unpaid.reduce((sum, o) => sum + o.cost, 0)
+  const affordable = unpaid.filter((o) => o.ok).length
+  const available = unpaid[0]?.available ?? 0
   const detailFor = (level: NoticeLevel): string | undefined => {
     if (level !== "danger" && level !== "warning") return undefined
     if (level === "warning")
       return `${plural(status.current, week ? "week" : "day")} at stake`
-    return offer.ok
-      ? `${plural(offer.cost, "freeze")} covers it · ${offer.available} available`
-      : offer.cost > 0
-        ? `${plural(offer.cost, "freeze")} needed and you have ${offer.available}`
-        : "Out of the writing window — nothing left to do"
+    if (!unpaid.length) return "Out of the writing window — nothing left to do"
+    return affordable
+      ? `${plural(unpaid.length, "violation")} to freeze · ${plural(owedCost, "freeze")} in all · ${available} available`
+      : `${plural(owedCost, "freeze")} needed and you have ${available}`
   }
 
   return group(

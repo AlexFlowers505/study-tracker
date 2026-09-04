@@ -106,10 +106,36 @@ anything that tells you something is wrong.
   achievements, freezes and the change log are all built from `project`, never
   from the projection — and it is never persisted.
 
-**`specs/017` and `019` are designed and neither is
-built.** Nothing in the code answers to them yet, so read them as intent rather
-than as description — and when one lands, fold its own Vocabulary table into
-**The words** below and update this block.
+**`specs/017-freezes-bought-not-charged.md` is built.** Read it before touching
+anything about freezes.
+
+- **A freeze is a purchase against one violation**, at a price stamped when it
+  was bought. `Day.ruleFreezes` is now `(string | RuleFreeze)[]`; a bare string
+  is the old shape and means *this rule, entirely*. **No migration**, on
+  purpose: the price of a purchase made in March is not recoverable, and a
+  ledger may not be seeded with a number nobody recorded.
+- **A violation is one named site that broke** — `violationsOn` in
+  `customStreaks.ts`. Checks split per target, a count splits per broken bound
+  (its own and each slot rider), time stays one whatever broke. **The items add
+  back up to `totalDeficit`**, so no rule got cheaper or dearer; only the
+  buying changed.
+- **Only `settled` violations may be frozen.** A wrong answer and a breached
+  ceiling are spent at any hour; a floor is settled once the clock rules it
+  out, and **an unanswered check is settled once the day is over**. That last
+  clause is what keeps yesterday freezable.
+- **`freezeOffer` became `freezeOffers`** and returns a list. The strip's
+  popover names each site with its own price, keeps the already-frozen ones
+  listed and dimmed, and `FreezeConfirm` buys exactly one — with a warning when
+  others on the same period are still unfrozen, because a day can now be partly
+  paid for and still break.
+- **`isFrozenFor` takes the rule and the context** and means *every violation
+  covered*; only that turns a colour. **`freezeSpendOn` sums stored costs**, so
+  a week that spent three has spent three forever.
+- Weekly rules stay **flat**: one violation, cost one, on the Monday.
+
+**`specs/019` is designed and not built.** Nothing in the code answers to it
+yet, so read it as intent rather than as description — and when it lands, fold
+its own Vocabulary table into **The words** below and update this block.
 
 - **`016-four-levels-and-a-board.md`** — the streak alarms and the "what today
   asks" list under the chevron are replaced by one notice board with four
@@ -971,6 +997,10 @@ enough that a loose word costs a conversation.
 | **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
 | **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
 | **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
+| **a violation** | one named site of a rule that broke on one day — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn` |
+| **a freeze** | a purchase against one violation, at a price stamped when it was made. Never automatic, never refunded, never repriced | `RuleFreeze`, `freezeOffers` |
+| **settled** | a violation nothing can undo before midnight, and therefore the only kind that may be frozen | `Violation.settled` |
+| **fully frozen** | every violation of a rule on a period covered. The only state that turns a colour | `isFrozenFor` |
 
 **`specs/015-the-economy.md` is the whole economy in one place** — the three
 numbers, where points come from, which way each lock points, and what is not
@@ -1137,12 +1167,15 @@ Three ideas carry the whole feature:
   falls out of the arithmetic rather than being a special case. Partial
   spending is refused on purpose: a day that breaks anyway should not also cost
   you the freeze.
-  **That last sentence is reversed by `specs/017-freezes-bought-not-charged.md`,
-  which is designed and not yet built** — so it is still true of the code today
-  and will not be once `017` lands. `017` also records why: a freeze is
-  currently a *property of the current data* rather than a purchase, which is
-  why its price drifts, why one can be taken without you and why one can come
-  back. `spec 009` carries the struck-through original.
+  **That last sentence is reversed, and `spec 017` is built.** A freeze is now
+  bought against **one violation** — one named site that broke — at a price
+  stamped when it was bought, and violations are bought one at a time. So a day
+  can be partly paid for and still break, and the freeze is gone. The old rule
+  protected you from wasting one on a day already lost, and the price of that
+  protection was that you could not act until the day was over: with *wake up*
+  answered `no` at noon and *go to bed* unanswered, the whole rule cost two
+  freezes or nothing, and which promise you were protecting was not yours to
+  choose. `spec 009` carries the struck-through original.
 - **Two pools of freezes, behaving differently.** `freezesPerWeek` is granted
   every week and **lost unused**; a week kept clean banks **+1**, carried over
   until spent, capped at the rule's own `freezeCap`. Spending takes the weekly
@@ -1280,13 +1313,16 @@ the only place that knows both streaks' accounting.
 
 **Freezes are spent from the strip, never from the day card**: a day can break
 three rules at once, and a snowflake per rule on a card that already carries
-badges, sleep, a note and an add button is how a card stops being readable. The
+badges, sleep, a note and an add button is how a card stops being readable.
+Since `spec 017` the strip's popover lists **one row per violation** — the
+named site, its own price, and whether it is already paid for. The
 main streak keeps its snowflake on the card as well, because it is about the
 day's hours and that is what the card is about — the strip's menu and the
 card's dialog both end at the same `spendFreeze`.
 
 Storage: `days.rule_freezes` and the `streak_verdicts` table, both in
-`migrations/012_custom_streaks.sql`.
+`migrations/012_custom_streaks.sql`. The column is `jsonb` and its **contents**
+changed in `spec 017` without a migration — see `Day.ruleFreezes`.
 
 ## Data model
 
