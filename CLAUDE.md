@@ -46,6 +46,38 @@ freezes, the goal or how a day is coloured.
 databases.** `019` was the last outstanding: it rewrites a condition still
 pointing at the daily goal into the seven figures it was pointing at.
 
+**`specs/016`, `017`, `018` and `019` are designed and none of them is
+built.** Nothing in the code answers to them yet, so read them as intent rather
+than as description — and when one lands, fold its own Vocabulary table into
+**The words** below and update this block.
+
+- **`016-four-levels-and-a-board.md`** — the streak alarms and the "what today
+  asks" list under the chevron are replaced by one notice board with four
+  levels (`danger` / `warning` / `notice` / `good`) split along one axis:
+  **is this already spent, or is it still owed?** `streakRisk.ts` becomes
+  `lib/notices.ts`; `ruleRisk` and `dueToday` go. Also the three new panel
+  toggles, the account panel, and solo — viewing the page as though one rule
+  were the only one that votes.
+- **`017-freezes-bought-not-charged.md`** — a freeze becomes a purchase against
+  **one violation**, at a price stamped when it was bought; never automatic,
+  never refunded, never repriced. **Needs `016` first**, because what may be
+  frozen is defined as *what stands at `danger`*.
+- **`018-the-weekly-rule-read-properly.md`** — a weekly rule is silent for its
+  whole first week, its ring arc claims a week you have not lived, its risk
+  line prints a bare figure, its strip reads a weekly allowance as a daily one,
+  and **its chart has drawn no limit line since the rule form was rebuilt**
+  (`rowFor` reads the deprecated `clause.value`). Independent of the other
+  three.
+- **`019-three-additions.md`** — the month grid's week hours measured through
+  the benchmark rule rather than through everything; a `sleep` streak target,
+  which keeps sleep its own axis; `tagIds` on `Activity`. Independent of each
+  other as well.
+
+Two of them rewrite `npm run sweep`, and in the same commit each time: `016`
+because `safe` splits in two and fifteen existing cases change their expected
+answer without any behaviour changing, `018` because weekly cases have to be
+added. **A sweep left red is a sweep nobody reads.**
+
 `boundsOnWeekday` **keeps its `useDailyGoal` branch anyway**, and should keep
 it until someone has checked the column is empty in both projects. The
 migration is what made removal safe, not what makes it done: a condition that
@@ -1045,6 +1077,12 @@ Three ideas carry the whole feature:
   falls out of the arithmetic rather than being a special case. Partial
   spending is refused on purpose: a day that breaks anyway should not also cost
   you the freeze.
+  **That last sentence is reversed by `specs/017-freezes-bought-not-charged.md`,
+  which is designed and not yet built** — so it is still true of the code today
+  and will not be once `017` lands. `017` also records why: a freeze is
+  currently a *property of the current data* rather than a purchase, which is
+  why its price drifts, why one can be taken without you and why one can come
+  back. `spec 009` carries the struck-through original.
 - **Two pools of freezes, behaving differently.** `freezesPerWeek` is granted
   every week and **lost unused**; a week kept clean banks **+1**, carried over
   until spent, capped at the rule's own `freezeCap`. Spending takes the weekly

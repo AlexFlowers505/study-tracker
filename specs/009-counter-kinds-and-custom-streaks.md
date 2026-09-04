@@ -212,14 +212,34 @@ atLeast n  ->  deficit = max(0, n - actual)
 atMost  n  ->  deficit = max(0, actual - n)
 ```
 
-A freeze pays for **one unit of deficit**, and a period is frozen only if the
-whole deficit can be paid. Two youtube slips in one evening is a deficit of 2,
+> **Partially superseded by `specs/017-freezes-bought-not-charged.md`.** The
+> deficit and its arithmetic are unchanged. What is reversed is the refusal of
+> partial spending, and with it the idea that a freeze is a property of the
+> data rather than a purchase that was made.
+
+A freeze pays for **one unit of deficit**. ~~A period is frozen only if the
+whole deficit can be paid: two youtube slips in one evening is a deficit of 2,
 one freeze is not enough, nothing is spent, and the streak breaks — which is
 rule 3 exactly as stated, falling out of the arithmetic rather than being a
-special case.
+special case.~~
 
-Partial spending is refused on purpose: a day that breaks anyway should not
-also cost you the freeze.
+~~Partial spending is refused on purpose: a day that breaks anyway should not
+also cost you the freeze.~~
+
+**Reversed by `spec 017`.** A freeze is now bought against **one violation** —
+one named site of the rule that broke — at a price stamped when it was bought,
+and violations are bought one at a time. So a day can be partly paid for and
+still break, and the freeze is gone.
+
+The argument above was sound and it answered the wrong question. It protected
+you from wasting a freeze on a day you had already lost, and the price of that
+protection was that you could not act until the day was over: with *wake up in
+time* answered `no` at noon and *go to bed in time* still unanswered, the whole
+rule cost two freezes or nothing, and which promise you were protecting was not
+yours to choose. Being able to make that choice at noon is worth more than
+being protected from a bad one. `spec 016`'s `spent`/`owed` split is what makes
+it safe: only what is already lost may be frozen at all, so the unanswered
+check is never billed for.
 
 ## `skip` costs a freeze
 
