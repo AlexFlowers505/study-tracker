@@ -30,14 +30,18 @@
 import { Flame, Snowflake, Trophy } from "lucide-react"
 import type { DayKey, Project } from "../types/model"
 import type {
+  ClauseBounds,
   ClauseReading,
   RuleState,
   RuleStatus,
 } from "../lib/customStreaks"
 import {
+  clauseBounds,
   clauseReadoutParts,
   clauseSentence,
   clauseTarget,
+  clauseWeekReadoutParts,
+  coveredDays,
   freezeOffer,
   judgesDay,
   readDay,
@@ -46,6 +50,7 @@ import {
   ruleDayState,
   ruleWeekState,
   streakContext,
+  weekBounds,
   weekPace,
   targetInfo,
   totalDeficit,
@@ -55,6 +60,7 @@ import {
   datesInRange,
   fmtDateLong,
   fmtShort,
+  fromKey,
   startOfWeek,
   toKey,
 } from "../lib/date"
@@ -79,6 +85,7 @@ const STATE_WORD: Record<RuleState, string> = {
   missed: "missed",
   pending: "still open",
   unjudged: "not judged",
+  watching: "not yet judged",
 }
 
 export function CustomStreakSection({
@@ -146,7 +153,15 @@ export function CustomStreakSection({
     readings
       .filter((r) => r.applies)
       .flatMap((r) =>
-        clauseReadoutParts(r, ctx, project.days[key], key, "all"),
+        byWeek
+          ? clauseWeekReadoutParts(
+              r,
+              ctx,
+              project.days,
+              coveredDays(r.clause, rule, startOfWeek(fromKey(key))),
+              "all",
+            )
+          : clauseReadoutParts(r, ctx, project.days[key], key, "all"),
       )
 
   /* **A check has no figure**, and printing one was how `1` ended up in a
@@ -161,7 +176,19 @@ export function CustomStreakSection({
     const key = toKey(date)
     const state = stateOf(date, key)
     const offer = freezeOffer(rule, project, key, todayKey, status)
-    const readings = readDay(rule, ctx, project.days[key], key)
+    /* **A weekly rule's cell is the running total to that day**, not that
+       day's own figure — `spec 018`. This called `readDay` whatever the scope,
+       so `at most 3 a week` printed `“Pinterest” “0” of “3”` on every one of
+       seven days: the week's allowance read as a daily one, seven days
+       running. Worse than a bare number — that one is merely opaque, this one
+       is confidently wrong.
+
+       `readWeek` truncated at this day *is* the running total, so the row
+       reads across as the burn-down, in the same figures the ring's pace arc
+       draws. Two places that cannot then disagree. */
+    const readings = byWeek
+      ? readWeek(rule, ctx, project.days, startOfWeek(date), key)
+      : readDay(rule, ctx, project.days[key], key)
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses. `cost > 0` with
     // `ok` false is exactly that case: the day is freezable and the freezes
@@ -171,13 +198,20 @@ export function CustomStreakSection({
       key,
       state,
       value:
-        state === "unjudged" ? "·" : soleCheck ? undefined : fmtValue(figure(readings)),
+        state === "unjudged"
+          ? "·"
+          : soleCheck
+            ? undefined
+            : fmtValue(figure(readings)),
       /* The date and the verdict on the first line, then one line per thing
          the condition had to say. `Tip` renders it with `whitespace-pre-line`,
          so a bubble listing two checks reads as two checks. */
       tooltip: [
         `${fmtDateLong(key)} — ${STATE_WORD[state]}`,
         ...(state === "unjudged" ? [] : breakdown(readings, key)),
+        ...(state === "watching"
+          ? ["This week began before the rule did — only its ceilings apply."]
+          : []),
         ...(short
           ? [
               `Freezing it needs ${plural(offer.cost, "freeze")} and you have ${offer.available}`,
@@ -206,17 +240,41 @@ export function CustomStreakSection({
      conditions in two different units have no shared axis to share. That
      chart says the same thing either way: a bar above the line is a day you
      have to pay for. */
+  /* **The limit, read through the bounds** — `spec 018`.
+     This was `clauses[0]?.value`, the *deprecated* flat field. `newClause`
+     writes `min` or `max` and has never written `value`, so it was `undefined`
+     for every rule created since the form was rebuilt, `limit` came out null,
+     and **no modern rule had a dashed line on its chart at all** — the thing
+     the area is drawn against.
+
+     A condition carries two bounds now and may carry both, so *between two and
+     four hours* gets a band. Drawing one half of it would be the same lie as
+     drawing none, more quietly. */
+  const soleBounds = (keys: DayKey[]): ClauseBounds =>
+    compound || !clauses[0]
+      ? {}
+      : byWeek
+        ? weekBounds(clauses[0], ctx, keys)
+        : clauseBounds(clauses[0], ctx, keys[0])
+
   const rowFor = (
     label: string,
     readings: ClauseReading[],
     state: RuleState,
-  ): StreakChartRow => ({
-    label,
-    value: figure(readings),
-    limit: compound ? 0 : (clauses[0]?.value ?? null),
-    broken: state === "missed",
-    frozen: state === "frozen",
-  })
+    keys: DayKey[],
+  ): StreakChartRow => {
+    const b = soleBounds(keys)
+    return {
+      label,
+      value: figure(readings),
+      // A compound rule plots its deficit against nought; a single condition
+      // plots whichever bounds it actually carries.
+      limit: compound ? 0 : (b.min ?? b.max ?? null),
+      limit2: compound ? null : (b.min !== undefined ? (b.max ?? null) : null),
+      broken: state === "missed",
+      frozen: state === "frozen",
+    }
+  }
 
   const chartRows: StreakChartRow[] = byWeek
     ? (() => {
@@ -229,6 +287,7 @@ export function CustomStreakSection({
               fmtShort(toKey(w)),
               readWeek(rule, ctx, project.days, w, todayKey),
               state,
+              clauses[0] ? coveredDays(clauses[0], rule, w) : [],
             ),
           )
         }
@@ -242,6 +301,7 @@ export function CustomStreakSection({
             fmtShort(key),
             readDay(rule, ctx, project.days[key], key),
             stateOf(d, key),
+            [key],
           )
         })
 

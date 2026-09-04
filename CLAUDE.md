@@ -46,7 +46,38 @@ freezes, the goal or how a day is coloured.
 databases.** `019` was the last outstanding: it rewrites a condition still
 pointing at the daily goal into the seven figures it was pointing at.
 
-**`specs/016`, `017`, `018` and `019` are designed and none of them is
+**`specs/018-the-weekly-rule-read-properly.md` is built.** Read it before
+touching anything a weekly rule passes through. Six faults, one gap — a weekly
+rule was added to a day-shaped app and never finished:
+
+- **The partial first week no longer silences it.** The whole-weeks gate was an
+  argument about *floors* — "three trips a week" judged over the four days that
+  were left is a rule nobody wrote — and it was applied to the whole rule. Now
+  a floor stays silent, a broken **ceiling** speaks, and the week keeps no
+  verdict of its own either way (`clauseLostOn`/`weekLostOn` take a
+  `"ceilings"` mode).
+- **`RuleState` gains `watching`** and `RuleReading` gains `counts` and `pace`.
+  A rule present on a period it can neither win nor lose is **drawn and never
+  tallied**: `dayReport.readings` carries it, `kept`, `judged` and the verdict
+  see only what votes (`countsOn`). The ring is divided by `readings.length`,
+  not by `judged` — dividing by `judged` made a watching-only day draw no ring
+  at all.
+- **`clauseWeekReadoutParts`** is the week-scope sibling of
+  `clauseReadoutParts`. A week reading handed to the day function keyed on
+  today compared the week's figure against the day's bounds and measured slots
+  on the one day with nothing in them, so every weekly line fell through to a
+  bare `“Pinterest” “1”`.
+- **A weekly rule's strip cell is the running total** (`readWeek` truncated at
+  that day), not that day's own figure read against the week's bound — which
+  printed `“Pinterest” “0” of “3”` seven days running.
+- **The chart's limit line is back**, read through `clauseBounds` /
+  `weekBounds` rather than the deprecated `clause.value`; a condition carrying
+  both bounds draws a band. It also needs `isAnimationActive={false}`, or
+  Recharts' own animated dasharray wins over the dashes and draws nothing.
+- **`ruleStatus.current` no longer counts today**, matching `keptDays` and
+  `keptBreakdown`. A rule shows `0` on the day you write it.
+
+**`specs/016`, `017` and `019` are designed and none of them is
 built.** Nothing in the code answers to them yet, so read them as intent rather
 than as description — and when one lands, fold its own Vocabulary table into
 **The words** below and update this block.
@@ -62,21 +93,14 @@ than as description — and when one lands, fold its own Vocabulary table into
   **one violation**, at a price stamped when it was bought; never automatic,
   never refunded, never repriced. **Needs `016` first**, because what may be
   frozen is defined as *what stands at `danger`*.
-- **`018-the-weekly-rule-read-properly.md`** — a weekly rule is silent for its
-  whole first week, its ring arc claims a week you have not lived, its risk
-  line prints a bare figure, its strip reads a weekly allowance as a daily one,
-  and **its chart has drawn no limit line since the rule form was rebuilt**
-  (`rowFor` reads the deprecated `clause.value`). Independent of the other
-  three.
 - **`019-three-additions.md`** — the month grid's week hours measured through
   the benchmark rule rather than through everything; a `sleep` streak target,
   which keeps sleep its own axis; `tagIds` on `Activity`. Independent of each
   other as well.
 
-Two of them rewrite `npm run sweep`, and in the same commit each time: `016`
-because `safe` splits in two and fifteen existing cases change their expected
-answer without any behaviour changing, `018` because weekly cases have to be
-added. **A sweep left red is a sweep nobody reads.**
+`016` rewrites `npm run sweep` and must do it in the same commit: `safe` splits
+in two, and fifteen existing cases change their expected answer without any
+behaviour changing. **A sweep left red is a sweep nobody reads.**
 
 `boundsOnWeekday` **keeps its `useDailyGoal` branch anyway**, and should keep
 it until someone has checked the column is empty in both projects. The
@@ -101,8 +125,8 @@ There are no tests, with one deliberate exception. Lint and typecheck are the
 automated checks and **both are clean — expect zero from each and leave them at
 zero.**
 
-`npm run sweep` is the exception: `scripts/streak-sweep.ts`, a hundred and five
-cases over the streak engine — every rule shape against a period that should
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, a hundred and
+forty-four cases over the streak engine — every rule shape against a period that should
 hold and one that should break it, the risk levels at both ends of the day,
 what today still asks, what a day is reported as, the lock, the conditions that
 must be refused rather than judged, and what an achievement reaches and what
@@ -909,6 +933,9 @@ enough that a loose word costs a conversation.
 | **a rule's streak** | that one promise's own run of days or weeks | `ruleStatus`, the chips in `StreakBar` |
 | **the composite** | the run of days on which *every voting rule* held | `keptDays`, `KeptCard` |
 | **points** | the account a day pays into, and the only figure you can spend | `lib/balance.ts`, the shop |
+| **watching** | a rule in force on a period it can neither win nor lose — a weekly rule's partial first week. Drawn, never tallied | `RuleState`, `RuleReading.counts` |
+| **pace** | how much of a weekly **floor** is done as of one day. A drawing; the verdict still waits for Sunday | `weekFloorPace`, the ring's partial arc |
+| **headroom** | what is left of a **ceiling**. Never drawn as pace — not having spent it is not having done it | why `weekFloorPace` returns null for a ceiling |
 
 **`specs/015-the-economy.md` is the whole economy in one place** — the three
 numbers, where points come from, which way each lock points, and what is not

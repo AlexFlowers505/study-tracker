@@ -614,7 +614,23 @@ export function newStreakRule(
 
 /* ---- Reading a rule against the data ------------------------------------ */
 
-export type RuleState = "met" | "frozen" | "missed" | "pending" | "unjudged"
+/**
+ * What a period is worth to a rule.
+ *
+ * **`watching` is a state, not an absence** — `spec 018`. A weekly rule
+ * written on a Wednesday cannot win or lose the week it landed in: the floor
+ * was never agreed to. But it is *there*, and `unjudged` would drop it out of
+ * `dayReport.readings` entirely, so the ring would gain a segment out of
+ * nowhere on the day a ceiling broke — which reads as a rendering fault rather
+ * than as a slip. Drawn, never tallied.
+ */
+export type RuleState =
+  | "met"
+  | "frozen"
+  | "missed"
+  | "pending"
+  | "unjudged"
+  | "watching"
 
 export interface ClauseReading {
   clause: StreakClause
@@ -1063,6 +1079,16 @@ export function clauseLostOn(
   /** Already narrowed to the days this clause judges — see `coveredDays`. */
   covered: DayKey[],
   todayKey: DayKey,
+  /**
+   * **Ceilings only** — for a week the rule never agreed to (`spec 018`).
+   *
+   * A weekly rule written on a Wednesday did not sign up for that week's
+   * floor: *three gym trips a week*, judged over the four days that were left,
+   * is a rule nobody wrote. It did sign up for its ceiling, and a ceiling
+   * knows nothing about how much week there was — *none at night* is broken
+   * the moment one lands there, and no amount of missing Monday takes it back.
+   */
+  mode: "all" | "ceilings" = "all",
 ): DayKey | null {
   if (!covered.length) return null
   const measure = targetMeasure(clauseTarget(clause), ctx)
@@ -1079,7 +1105,7 @@ export function clauseLostOn(
   const inSlot: Record<string, number> = {}
 
   let value = 0
-  let floorSettled = min === undefined
+  let floorSettled = min === undefined || mode === "ceilings"
   for (const key of covered) {
     // Days that have not happened contribute nothing and settle nothing; the
     // walk stops there and the week stays open.
@@ -1119,7 +1145,7 @@ export function clauseLostOn(
 }
 
 /** The days of a week this clause actually judges. */
-const coveredDays = (
+export const coveredDays = (
   clause: StreakClause,
   rule: StreakRule,
   weekStart: Date,
@@ -1134,6 +1160,8 @@ export function weekLostOn(
   days: Record<DayKey, Day>,
   weekStart: Date,
   todayKey: DayKey,
+  /** `"ceilings"` for a partial first week — see `clauseLostOn`. */
+  mode: "all" | "ceilings" = "all",
 ): DayKey | null {
   let earliest: DayKey | null = null
   for (const clause of ruleClauses(rule)) {
@@ -1143,11 +1171,25 @@ export function weekLostOn(
       days,
       coveredDays(clause, rule, weekStart),
       todayKey,
+      mode,
     )
     if (lost && (!earliest || lost < earliest)) earliest = lost
   }
   return earliest
 }
+
+/**
+ * Whether a rule's verdict on this day may be **counted**.
+ *
+ * False for exactly one thing: a weekly rule inside the partial week it was
+ * written in. Such a day can still be *drawn* — a broken ceiling goes red, and
+ * everything else is `watching` — but it may not move the composite, the
+ * streak or the balance, because the week it belongs to was never one you
+ * agreed to. `spec 018`.
+ */
+export const countsOn = (rule: StreakRule, dayKey: DayKey): boolean =>
+  rule.scope !== "week" ||
+  toKey(startOfWeek(fromKey(dayKey))) >= rule.startedOn
 
 /* ---- Pace ---------------------------------------------------------------- */
 
@@ -1283,6 +1325,55 @@ export function weekPace(
 }
 
 /**
+ * **How much of a weekly rule's floor is done as of one day** — `spec 018`.
+ *
+ * A fraction for the ring to fill an arc with, or null when there is nothing
+ * to fill. Null in two cases, and the second is the interesting one:
+ *
+ * - the rule judges days, so its arc is a verdict rather than a burn-down;
+ * - **it carries no floor.** A ceiling has no progress, it has *headroom*, and
+ *   headroom drawn as fill would render *I have not spent it yet* as *I have
+ *   already done it* — which is the exact congratulation this exists to
+ *   remove. A ceiling keeps a solid arc: whole while it holds, red when it
+ *   breaks.
+ *
+ * **The worst condition decides**, never an average: two conditions in two
+ * units share no axis, and the rule's verdict is already *the weakest link*,
+ * so the arc agrees with it rather than inventing a second opinion.
+ *
+ * Its own walk rather than `weekPace`, which builds a row per condition per
+ * bound over the whole week. This is called once per day per rule across a
+ * month of cards.
+ */
+export function weekFloorPace(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  dayKey: DayKey,
+  todayKey: DayKey,
+): number | null {
+  if (rule.scope !== "week" || dayKey > todayKey) return null
+  const weekStart = startOfWeek(fromKey(dayKey))
+  let worst: number | null = null
+  for (const clause of ruleClauses(rule)) {
+    const covered = coveredDays(clause, rule, weekStart)
+    if (!covered.length) continue
+    const { min } = weekBounds(clause, ctx, covered)
+    // A floor of nought is satisfied by every week there has ever been, and is
+    // no more a requirement here than it is anywhere else in this file.
+    if (min === undefined || min <= 0) continue
+    let value = 0
+    for (const key of covered) {
+      if (key > dayKey) break
+      value += readClauseDay(clause, ctx, days[key], key).value
+    }
+    const done = Math.max(0, Math.min(1, value / min))
+    if (worst === null || done < worst) worst = done
+  }
+  return worst
+}
+
+/**
  * What a weekly rule says about one **day** — which is what lets it vote on
  * the day's verdict alongside the daily rules.
  *
@@ -1300,10 +1391,22 @@ export function ruleWeekDayState(
   if (rule.scope !== "week") return "unjudged"
   if (dayKey > todayKey || dayKey < rule.startedOn) return "unjudged"
   const weekStart = startOfWeek(fromKey(dayKey))
-  // Whole weeks only, the same rule `ruleWeekState` follows: "three trips a
-  // week" judged on the two days that were left when the rule started is a
-  // rule nobody agreed to.
-  if (toKey(weekStart) < rule.startedOn) return "unjudged"
+
+  /* **The partial first week speaks about its ceilings and nothing else** —
+     `spec 018`. The whole-weeks gate used to return `unjudged` here, which
+     made a weekly rule written on any day but a Monday completely silent for
+     up to six days: no arc, no alarm, no explanation. Its argument was sound
+     and it was an argument about *floors* — "three trips a week" judged over
+     the four days that were left is a rule nobody wrote. It says nothing
+     about a ceiling, which is broken the moment one lands in the wrong slot.
+
+     So the week keeps no verdict of its own (`ruleWeekState` still returns
+     `unjudged`, and `countsOn` keeps this day out of every tally), and a
+     broken ceiling is still drawn and still warned about. */
+  if (toKey(weekStart) < rule.startedOn) {
+    const broke = weekLostOn(rule, ctx, days, weekStart, todayKey, "ceilings")
+    return broke === dayKey ? "missed" : "watching"
+  }
 
   const lost = weekLostOn(rule, ctx, days, weekStart, todayKey)
   if (lost !== dayKey) return "met"
@@ -1484,13 +1587,22 @@ export function ruleStatus(
       : weeks
           .flatMap(weekDates)
           .map(toKey)
-          .filter((k) => k >= rule.startedOn && k <= todayKey)
+          /* **Today is not a day you kept** — `spec 018`. `ruleDayState`
+             returns `met` for today the moment the deficit is nought, so a
+             rule written this morning with nothing logged against it read
+             `1`: credited with a day that is not over. `keptDays` has always
+             declined to count today and `keptBreakdown` was fixed to agree;
+             this was the last of the three still disagreeing. A rule shows
+             `0` on the day you write it, which is correct and is also the
+             honest starting point for a number whose job is to be frightening
+             to lose. */
+          .filter((k) => k >= rule.startedOn && k < todayKey)
           .map((k) => ruleDayState(rule, ctx, days[k], k, todayKey))
 
   let best = 0
   let run = 0
   states.forEach((s) => {
-    if (s === "unjudged" || s === "pending") return
+    if (s === "unjudged" || s === "pending" || s === "watching") return
     if (s === "missed") run = 0
     else run += 1
     if (run > best) best = run
@@ -1856,6 +1968,122 @@ export function clauseReadoutParts(
   // A deficit with nothing named is a shape this has not met; say the figure
   // rather than nothing at all.
   return parts.length ? parts : [`${named} ${q(fmt(reading.value))}`]
+}
+
+/**
+ * **The same, for a rule that judges weeks** — `spec 018`.
+ *
+ * `clauseReadoutParts` above is a *day* function: it compares against
+ * `clauseBounds` and measures slots on one day. It was being handed week
+ * readings anyway, keyed on today — so the week's figure was tested against
+ * the day's bounds and the slots were measured on the one day with nothing in
+ * it. Nothing ever matched, and every weekly line fell through to the
+ * last-resort branch and printed a bare number:
+ *
+ *     “Pinterest” “1”
+ *
+ * The sentence it should have printed was already reachable — the same
+ * function keyed on the day the slip actually happened says
+ * `“Pinterest” “1” in “Night” against at most “0”`. But keying it on
+ * `weekLostOn`'s day is only right for a ceiling: a week short of a **floor**
+ * has no day of loss until it ends, so the sentence would be about one day
+ * where the fact is about seven. Hence a sibling that is week-shaped
+ * throughout, and a day function that can no longer be called with a week.
+ */
+export function clauseWeekReadoutParts(
+  reading: ClauseReading,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  /** The days of the week this clause judges — see `coveredDays`. */
+  covered: DayKey[],
+  mode: "failing" | "all" = "all",
+): string[] {
+  const clause = reading.clause
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+
+  /* A week of checks counted per answer: `{ yes: { min: 6 }, no: { max: 0 } }`
+     is three requirements about three different answers, and no single total
+     holds them. Each is named in its own words. */
+  if (clause.states) {
+    const tally: Record<string, number> = { yes: 0, no: 0, skip: 0 }
+    covered.forEach((k) =>
+      targets.forEach((t) => {
+        const state = checkState(days[k], t.id || "")
+        if (state) tally[state] += 1
+      }),
+    )
+    const named = targetsLabel(targets, ctx)
+    return CHECK_CHOICES.flatMap((answer) => {
+      const bound = clause.states?.[answer]
+      if (!bound) return []
+      const had = tally[answer]
+      const word = CHECK_LABELS[answer].toLowerCase()
+      if (bound.max !== undefined && had > bound.max)
+        return [`${named} ${q(word)} ${q(had)} against at most ${q(bound.max)}`]
+      if (bound.min !== undefined && had < bound.min)
+        return [`${named} ${q(word)} ${q(had)} against at least ${q(bound.min)}`]
+      return mode === "failing"
+        ? []
+        : [`${named} ${q(word)} ${q(had)} of ${q(bound.min ?? bound.max ?? 0)}`]
+    })
+  }
+
+  /* A weekly rule still carrying day-shaped accepted answers means what it
+     says: every day of the week must be one of them. Reported as the number of
+     days that were not, per check — the week has no single figure for it. */
+  if (clause.allow) {
+    return targets.flatMap((t) => {
+      const bad = covered.filter((k) => {
+        const allowed = clause.allow?.[fromKey(k).getDay()] ?? []
+        const state = checkState(days[k], t.id || "")
+        return !state || !allowed.includes(state)
+      }).length
+      const label = q(targetInfo(t, ctx).label)
+      if (bad > 0)
+        return [`${label} unanswered or refused on ${q(bad)} of ${q(covered.length)} days`]
+      return mode === "failing" ? [] : [`${label} kept on all ${q(covered.length)} days`]
+    })
+  }
+
+  const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
+  const named = targetsLabel(targets, ctx)
+  const bounds = weekBounds(clause, ctx, covered)
+
+  if (mode === "all")
+    return [
+      bounds.max !== undefined
+        ? `${named} ${q(fmt(reading.value))} of ${q(fmt(bounds.max))} this week`
+        : bounds.min !== undefined
+          ? `${named} ${q(fmt(reading.value))} of ${q(fmt(bounds.min))} this week`
+          : `${named} ${q(fmt(reading.value))} this week`,
+    ]
+
+  const said = (v: number, b: ClauseBounds, where: string): string | null => {
+    if (b.max !== undefined && v > b.max)
+      return `${named} ${q(fmt(v))}${where} against at most ${q(fmt(b.max))}`
+    if (b.min !== undefined && v < b.min)
+      return `${named} ${q(fmt(v))}${where} against at least ${q(fmt(b.min))}`
+    return null
+  }
+
+  const parts: string[] = []
+  const own = said(reading.value, bounds, " this week")
+  if (own) parts.push(own)
+
+  // Measured across the whole week, which is the half that was wrong: the day
+  // function looked at one day's slots and found them empty.
+  Object.entries(weekSlotBounds(clause, covered)).forEach(([slotId, b]) => {
+    const label = ctx.slots.find((sl) => sl.id === slotId)?.label
+    const inSlot = covered.reduce(
+      (sum, k) => sum + measuredOn(clause, ctx, days[k], [slotId]),
+      0,
+    )
+    const line = said(inSlot, b, ` in ${q(label || "a removed slot")} this week`)
+    if (line) parts.push(line)
+  })
+
+  return parts.length ? parts : [`${named} ${q(fmt(reading.value))} this week`]
 }
 
 /**

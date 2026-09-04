@@ -43,6 +43,8 @@ import type { ClauseReading, RuleStatus, StreakContext } from "./customStreaks"
 import {
   clauseBounds,
   clauseReadoutParts,
+  clauseWeekReadoutParts,
+  coveredDays,
   clauseTarget,
   clauseTargets,
   freezeOffer,
@@ -143,6 +145,34 @@ function shortfall(
   return readings
     .filter((r) => r.applies && r.deficit > 0)
     .flatMap((r) => clauseReadoutParts(r, ctx, days[dayKey], dayKey, "failing"))
+}
+
+/**
+ * The same for a week, and it has to be its own function — `spec 018`.
+ *
+ * This used to call `shortfall` above, handing a *week* reading to a *day*
+ * readout keyed on today: the week's figure was tested against the day's
+ * bounds and the slots were measured on the one day with nothing in them, so
+ * nothing matched and every line fell through to a bare `“Pinterest” “1”`.
+ */
+function weekShortfall(
+  rule: StreakRule,
+  readings: ClauseReading[],
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+): string[] {
+  return readings
+    .filter((r) => r.applies && r.deficit > 0)
+    .flatMap((r) =>
+      clauseWeekReadoutParts(
+        r,
+        ctx,
+        days,
+        coveredDays(r.clause, rule, weekStart),
+        "failing",
+      ),
+    )
 }
 
 /**
@@ -394,6 +424,17 @@ function weeklyRisk(
   const weekStart = startOfWeek(today)
   const state = ruleWeekState(rule, ctx, days, weekStart, todayKey)
   if (state === "missed") return "danger"
+
+  /* **A week the rule never agreed to still has ceilings** — `spec 018`. The
+     week's own verdict stays `unjudged` and the streak is untouched, but a
+     Pinterest logged at night under *none at night* is not made harmless by
+     the rule having been written on the Wednesday. Floors are the half the
+     whole-weeks gate actually defends, and they stay silent. */
+  if (state === "unjudged" && toKey(weekStart) < rule.startedOn)
+    return weekLostOn(rule, ctx, days, weekStart, todayKey, "ceilings")
+      ? "danger"
+      : "safe"
+
   if (state === "met" || state === "frozen" || state === "unjudged") return "safe"
 
   // "Lost" has exactly one definition and it lives in `weekLostOn`, because
@@ -481,7 +522,7 @@ export function ruleRisk(
       id,
       level,
       headline: "This week",
-      lines: shortfall(readings, ctx, days, todayKey),
+      lines: weekShortfall(rule, readings, ctx, days, weekStart),
       detail:
         level === "danger"
           ? offer.ok

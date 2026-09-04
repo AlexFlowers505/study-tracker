@@ -1,6 +1,14 @@
 # 018 — The weekly rule, read properly
 
-**Status: designed, not built.** Every fix here belongs in `npm run sweep`.
+**Status: built.** Covered by `npm run sweep` — fifteen new cases, and the
+existing hundred and twenty-nine still pass unchanged.
+
+One thing turned up in the building that the design did not predict, and it
+is recorded in Part 2.3: fixing `limit` made the line *exist* and still not
+*appear*. Recharts draws a line in by animating a dasharray of its own, which
+wins over the one the chart asks for — the limit mounted as `0px, 750px`, a
+dash of nothing and a gap the width of the chart. The analytics goal line
+escapes it by being on screen at load; this one mounts when a panel opens.
 
 Independent of `spec 016` and `spec 017` — it touches the ring, the panel and
 the week walkers, none of which those two open. It can be built before or after
@@ -176,6 +184,13 @@ with nothing to be a shape against.
 **Fix: read through `clauseBounds`**, which is the one place that knows about
 the deprecated fields. A condition now carries two bounds and may carry both,
 so:
+
+**And it has to opt out of the entry animation**, which is the half of this
+the design missed. With `limit` fixed, the `Line` mounted with Recharts'
+own animated `strokeDasharray` — `0px, 750px` — and rendered as an empty
+row: the data was right and nothing was drawn. `isAnimationActive={false}`
+on both limit lines. A dashed reference line has nothing to gain from being
+drawn in anyway.
 
 - one bound → one dashed line, as before;
 - **both** → a band between two dashed lines. *Between two and four hours* is a

@@ -78,7 +78,12 @@ export function VerdictRing({
   provisional?: boolean
 }) {
   const c = usePalette()
-  const n = report.judged
+  /* **Drawn, not tallied** — `spec 018`. This was `report.judged`, so a day
+     whose only rule is watching a week it never agreed to drew no ring at all,
+     which is the disappearing arc the `watching` state exists to prevent. The
+     circle is divided by what there is to draw; the centre still prints what
+     was actually judged. */
+  const n = report.readings.length
   if (!n) return null
 
   const stroke = Math.max(3, Math.round(size * 0.12))
@@ -137,7 +142,7 @@ export function VerdictRing({
   const sofar = provisional ? " so far — the day is not over" : ""
   const tip =
     report.state === "kept"
-      ? `All ${n} kept${sofar}`
+      ? `All ${report.judged} kept${sofar}`
       : [
           missed.length
             ? `Missed: ${missed.map((x) => x.rule.label).join(", ")}`
@@ -145,7 +150,7 @@ export function VerdictRing({
           frozen.length
             ? `Frozen: ${frozen.map((x) => x.rule.label).join(", ")}`
             : "",
-          `${report.kept} of ${n} kept${sofar}`,
+          `${report.kept} of ${report.judged} kept${sofar}`,
         ]
           .filter(Boolean)
           .join(String.fromCharCode(10))
@@ -178,22 +183,53 @@ export function VerdictRing({
             const start =
               shares.slice(0, i).reduce((a, b) => a + b, 0) * circumference
             const arc = Math.max(shares[i] * circumference - gap, 0.5)
+            const offset = -(start + gap / 2)
+            /* Turned down while the day can still turn. Only what is *held* is
+               provisional: a miss cannot be un-missed by the afternoon, and a
+               freeze is already spent. */
+            const dim = provisional && reading.state === "met" ? 0.45 : 1
+
+            /* **A weekly floor fills with its pace** — `spec 018`. It used to
+               draw a solid green arc every day but the one the week was lost
+               on, which is defensible as a verdict and a bad sentence on a
+               Monday morning: a closed arc for *three gym trips a week* when
+               you have made none. So the slot becomes a track and the done
+               part is drawn over it.
+
+               Two circles rather than one, because an arc is a single stroke
+               and cannot be two colours. `pace` is absent for a ceiling, which
+               has headroom rather than progress. */
+            const paced = reading.pace != null
+            const done = Math.max((reading.pace ?? 1) * arc, 0.5)
             return (
-              <circle
-                key={reading.rule.id}
-                cx={size / 2}
-                cy={size / 2}
-                r={r}
-                stroke={colourFor(reading.state)}
-                /* Turned down while the day can still turn. Only what is
-                   *held* is provisional: a miss cannot be un-missed by the
-                   afternoon, and a freeze is already spent. */
-                strokeOpacity={
-                  provisional && reading.state === "met" ? 0.45 : 1
-                }
-                strokeDasharray={`${arc} ${circumference - arc}`}
-                strokeDashoffset={-(start + gap / 2)}
-              />
+              <g key={reading.rule.id}>
+                {paced && (
+                  <circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={r}
+                    stroke={`${c.ink}1F`}
+                    strokeDasharray={`${arc} ${circumference - arc}`}
+                    strokeDashoffset={offset}
+                  />
+                )}
+                {/* Nothing done yet leaves the track alone: a hairline of the
+                    kept colour at the top of an empty slot reads as progress
+                    that has not happened. */}
+                {(!paced || (reading.pace ?? 0) > 0) && (
+                  <circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={r}
+                    stroke={colourFor(reading.state)}
+                    strokeOpacity={dim}
+                    strokeDasharray={`${paced ? done : arc} ${
+                      circumference - (paced ? done : arc)
+                    }`}
+                    strokeDashoffset={offset}
+                  />
+                )}
+              </g>
             )
           })}
         </g>
@@ -207,7 +243,10 @@ export function VerdictRing({
           fontWeight={700}
           fill={centre}
         >
-          {report.kept}
+          {/* Nothing voted, so there is nothing to count. A neutral "0" in
+              the middle of a dim ring reads as a day you lost rather than as
+              one nothing had a verdict on. */}
+          {report.judged ? report.kept : ""}
         </text>
       </svg>
     </>
@@ -247,12 +286,16 @@ function VerdictDetail({ report }: { report: DayReport }) {
         ? "frozen"
         : state === "missed"
           ? "missed"
-          : "not yet"
+          : state === "watching"
+            ? "not yet judged"
+            : "not yet"
 
   return (
     <div className="p-1">
       <p className="px-2 pt-1 pb-2 text-[9px] font-mono uppercase tracking-widest text-ink/40">
-        {report.kept} of {report.judged} kept
+        {report.judged
+          ? `${report.kept} of ${report.judged} kept`
+          : "nothing judged yet"}
       </p>
       {report.readings.map(({ rule, state }) => (
         <div
@@ -290,7 +333,10 @@ function VerdictDetail({ report }: { report: DayReport }) {
 
 export function VerdictBar({ report }: { report: DayReport }) {
   const c = usePalette()
-  if (!report.judged) return null
+  // Everything there is to draw, the same as the ring — a segment that
+  // vanished on the day a rule started watching would read as a gap in the
+  // month rather than as a rule not yet voting.
+  if (!report.readings.length) return null
 
   const colourFor = (state: RuleState) =>
     state === "met"

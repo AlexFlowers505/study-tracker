@@ -24,9 +24,17 @@ import { PopoverMenu } from "../ui/PopoverMenu"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
-/** The five things a day can be to a streak. `unjudged` covers both "the rule
- *  does not apply" and "outside the period". */
-export type StripState = "met" | "frozen" | "missed" | "pending" | "unjudged"
+/** The six things a day can be to a streak. `unjudged` covers both "the rule
+ *  does not apply" and "outside the period"; `watching` is a rule in force on
+ *  a period it can neither win nor lose — a weekly rule's partial first week,
+ *  `spec 018` — and wears no tint for the same reason `pending` does not. */
+export type StripState =
+  | "met"
+  | "frozen"
+  | "missed"
+  | "pending"
+  | "unjudged"
+  | "watching"
 
 export interface StripCell {
   key: DayKey

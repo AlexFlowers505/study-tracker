@@ -25,7 +25,13 @@
 
 import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
-import { ruleDayState, ruleWeekDayState, streakContext } from "./customStreaks"
+import {
+  countsOn,
+  ruleDayState,
+  ruleWeekDayState,
+  streakContext,
+  weekFloorPace,
+} from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey } from "./date"
 
 /** The day's own standing, drawn wherever a day is drawn. */
@@ -34,6 +40,34 @@ export type DayVerdict = "kept" | "missed" | "frozen" | "pending" | "unjudged"
 export interface RuleReading {
   rule: StreakRule
   state: RuleState
+  /**
+   * **Whether this reading votes** — `spec 018`.
+   *
+   * False for exactly one thing: a weekly rule inside the partial week it was
+   * written in. Such a day is drawn — `watching`, or red where a ceiling
+   * broke — and may not move the composite, the streak or the balance, because
+   * the week it belongs to was never one you agreed to.
+   *
+   * That looks like a contradiction and is not. The ring is already allowed to
+   * draw what the ledger does not conclude (`spec 010`, Decision 1): here it
+   * says *you did the thing you said you would not*, which is true and worth
+   * seeing, while the ledger says *this week was not in force*, which is also
+   * true. What it must never be is a cost.
+   */
+  counts: boolean
+  /**
+   * **How much of a weekly floor is done, as of this day** — `spec 018`.
+   *
+   * A drawing and nothing else: the arc fills with it, and the verdict, the
+   * streak and the balance never see it. A weekly rule short of pace on
+   * Thursday is still `met`, because the week is still winnable — the
+   * alternative would make Monday a failed day for anyone holding a single
+   * weekly rule, for ever.
+   *
+   * Absent for a daily rule and for a ceiling, which has headroom rather than
+   * progress. See `weekFloorPace`.
+   */
+  pace?: number
 }
 
 /** How much of the ring a rule takes. 1 to 5; absent is 1. */
@@ -101,14 +135,28 @@ export function dayReport(
   if (!rules.length) return NOTHING
 
   const day = project.days[dayKey]
-  const readings = rules
-    .map((rule) => ({
-      rule,
-      state:
+  const readings: RuleReading[] = rules
+    .map((rule) => {
+      const state =
         rule.scope === "week"
           ? ruleWeekDayState(rule, ctx, project.days, dayKey, todayKey)
-          : ruleDayState(rule, ctx, day, dayKey, todayKey),
-    }))
+          : ruleDayState(rule, ctx, day, dayKey, todayKey)
+      /* Paced only where the arc would otherwise be a claim: a weekly floor
+         that is still winnable. A miss keeps its full length — drawn as
+         partial fill it would merge *broken* with *in progress*, which are
+         the two states the pace arc exists to separate. */
+      const pace =
+        state === "met"
+          ? (weekFloorPace(rule, ctx, project.days, dayKey, todayKey) ??
+            undefined)
+          : undefined
+      return {
+        rule,
+        state,
+        counts: state !== "watching" && countsOn(rule, dayKey),
+        pace,
+      }
+    })
     .filter((r) => r.state !== "unjudged")
 
   if (!readings.length) return NOTHING
@@ -119,17 +167,25 @@ export function dayReport(
      has to be said to keep it. */
   readings.sort((a, b) => ruleWeight(b.rule) - ruleWeight(a.rule))
 
-  const kept = readings.filter(
+  /* **Only what votes is tallied.** `readings` carries everything there is to
+     draw, including a weekly rule watching a week it never agreed to; `kept`,
+     `judged` and the verdict below see only the ones that count. */
+  const voting = readings.filter((r) => r.counts)
+  const kept = voting.filter(
     (r) => r.state === "met" || r.state === "frozen",
   ).length
-  const base = { readings, kept, judged: readings.length }
+  const base = { readings, kept, judged: voting.length }
+
+  // Nothing votes, but something is drawn — a rule in its partial first week
+  // and nothing else. The day has no verdict, and the ring still has an arc.
+  if (!voting.length) return { ...base, state: "unjudged" }
 
   // Missed beats pending: one rule already broken decides the day whatever the
   // others are still doing. Frozen is a kept day wearing the freeze colour, so
   // it is worked out after the verdict rather than as one of its outcomes.
-  if (readings.some((r) => r.state === "missed")) return { ...base, state: "missed" }
-  if (readings.some((r) => r.state === "pending")) return { ...base, state: "pending" }
-  if (readings.some((r) => r.state === "frozen")) return { ...base, state: "frozen" }
+  if (voting.some((r) => r.state === "missed")) return { ...base, state: "missed" }
+  if (voting.some((r) => r.state === "pending")) return { ...base, state: "pending" }
+  if (voting.some((r) => r.state === "frozen")) return { ...base, state: "frozen" }
   return { ...base, state: "kept" }
 }
 
@@ -321,8 +377,10 @@ export function keptBreakdown(
     const key = toKey(d)
     if (key > todayKey) break
     const { readings } = dayReport(project, key, todayKey, ctx)
-    const missing = readings.filter((r) => r.state === "missed")
-    for (const reading of readings) {
+    const missing = readings.filter((r) => r.counts && r.state === "missed")
+    // A reading that does not vote is drawn and never blamed — see
+    // `RuleReading.counts`.
+    for (const reading of readings.filter((r) => r.counts)) {
       const row = rows.get(reading.rule.id) ?? {
         rule: reading.rule,
         judged: 0,

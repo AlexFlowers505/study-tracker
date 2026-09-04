@@ -45,6 +45,13 @@ export interface StreakChartRow {
   value: number
   /** The line this row has to clear, or stay under. Null where none applies. */
   limit: number | null
+  /**
+   * The **second** bound, when the condition carries a floor *and* a ceiling —
+   * `spec 018`. *Between two and four hours* is a shape a condition can take,
+   * and drawing one half of it is the same lie as drawing none, more quietly.
+   * The two dashed lines read as a band the area is meant to stay inside.
+   */
+  limit2?: number | null
   /** Did this row break the rule? The panel decides; the chart only paints. */
   broken: boolean
   /** Frozen rows are neither kept nor broken — they were paid for. */
@@ -72,12 +79,15 @@ export function StreakChart({
   tint,
   valueName,
   limitName,
+  limit2Name,
   formatter,
 }: {
   rows: StreakChartRow[]
   tint: string
   valueName: string
   limitName: string
+  /** Names the second bound in the tooltip. Only a band ever has one. */
+  limit2Name?: string
   /**
    * Hours want "2h 30m"; counts want the plain number. Used for the tooltip
    * *and* the axis, so a chart cannot label its ticks in one unit and its
@@ -92,6 +102,7 @@ export function StreakChart({
   if (!rows.length) return null
 
   const anyLimit = rows.some((r) => r.limit != null)
+  const anyLimit2 = rows.some((r) => r.limit2 != null)
   // A year of days is 365 dots on a 150px chart, which is a smear rather than
   // a reading. Past that the area's own shape is the signal and the tooltip
   // carries the verdict.
@@ -191,6 +202,39 @@ export function StreakChart({
                 stroke={c.ink}
                 strokeWidth={1.5}
                 strokeDasharray="5 3"
+                /* **Not animated, and it has to say so.** Recharts draws a
+                   line in by animating a dasharray of its own, which wins over
+                   the one asked for here — the limit mounted as
+                   `0px, 750px`, a dash of nothing and a gap the width of the
+                   chart, and rendered as an empty row. The analytics goal line
+                   escapes it by being on screen at load; this one mounts when
+                   a panel opens. A dashed reference line has nothing to gain
+                   from being drawn in anyway. */
+                isAnimationActive={false}
+                dot={lone ? { r: 3, fill: c.ink, stroke: "none" } : false}
+                connectNulls
+              />
+            )}
+            {anyLimit2 && (
+              /* The other half of a band. Same weight and dash as its partner:
+                 they are one statement — *stay between these* — and drawing
+                 one of them differently would rank them. */
+              <Line
+                type="stepAfter"
+                dataKey="limit2"
+                name={limit2Name || "Other bound"}
+                stroke={c.ink}
+                strokeWidth={1.5}
+                strokeDasharray="5 3"
+                /* **Not animated, and it has to say so.** Recharts draws a
+                   line in by animating a dasharray of its own, which wins over
+                   the one asked for here — the limit mounted as
+                   `0px, 750px`, a dash of nothing and a gap the width of the
+                   chart, and rendered as an empty row. The analytics goal line
+                   escapes it by being on screen at load; this one mounts when
+                   a panel opens. A dashed reference line has nothing to gain
+                   from being drawn in anyway. */
+                isAnimationActive={false}
                 dot={lone ? { r: 3, fill: c.ink, stroke: "none" } : false}
                 connectNulls
               />

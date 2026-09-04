@@ -30,14 +30,18 @@ import {
   clauseAsksNothing,
   clauseReadout,
   clauseSentence,
+  clauseWeekReadoutParts,
+  coveredDays,
   isNarrowing,
   readDay,
   readWeek,
   ruleDayState,
   ruleStatus,
+  ruleWeekDayState,
   ruleWeekState,
   streakContext,
 } from "../src/lib/customStreaks"
+import { dayReport } from "../src/lib/dayVerdict"
 import { toKey, weekDates } from "../src/lib/date"
 import type {
   Achievement,
@@ -1095,6 +1099,262 @@ for (const test of BALANCES) {
   }
 }
 
+/* ---- the partial first week — `spec 018` -------------------------------
+
+   A weekly rule written on any day but a Monday used to do nothing at all
+   until the following Monday: no arc, no alarm, no effect, no explanation.
+   The gate that did it was written as a statement about weekly rules and is
+   a statement about **floors** — "three trips a week" judged over the four
+   days that were left is a rule nobody wrote. A ceiling knows nothing about
+   how much week there was.
+
+   So the week keeps no verdict of its own and never moves the streak, and a
+   broken ceiling is still drawn and still warned about. These pin both
+   halves, because getting either one wrong is silent. */
+
+/** Wednesday of `WEEK` — the rule is written mid-week. */
+const MIDWEEK: DayKey = KEYS[2]
+/** Friday: inside the same partial week, with the ceiling already broken. */
+const MIDWEEK_TODAY: DayKey = KEYS[4]
+const MIDWEEK_AT = new Date(`${MIDWEEK_TODAY}T12:00:00`)
+
+const midweekRule = (clause: object): StreakRule =>
+  ({
+    ...ruleOf(clause as StreakClause, "week"),
+    startedOn: MIDWEEK,
+    lockedUntil: MIDWEEK,
+  }) as StreakRule
+
+/** One Youtube in the evening, on the Thursday — after the rule was written. */
+const SLIP: Record<DayKey, Day> = { [KEYS[3]]: counted("u-yt", "s-pm", 1) }
+
+interface PartialCase {
+  name: string
+  clause: object
+  days: Record<DayKey, Day>
+  /** What the engine should say, as one printable line. */
+  got: (rule: StreakRule, proj: Project) => string
+  want: string
+}
+
+const CEILING = {
+  id: "c",
+  ...target("unit", "u-yt"),
+  max: 9,
+  slots: { "s-pm": { max: 0 } },
+}
+const FLOOR = { id: "c", ...target("unit", "u-gym"), min: 3 }
+
+const dayStateAt =
+  (key: DayKey) =>
+  (rule: StreakRule, proj: Project): string =>
+    ruleWeekDayState(rule, streakContext(proj), proj.days, key, MIDWEEK_TODAY)
+
+const riskAt = (rule: StreakRule, proj: Project): string =>
+  ruleRisk(ruleStatus(rule, proj, MIDWEEK_AT), proj, MIDWEEK_AT).level
+
+const PARTIALS: PartialCase[] = [
+  {
+    name: "a ceiling broken after the rule was written still misses its day",
+    clause: CEILING,
+    days: SLIP,
+    got: dayStateAt(KEYS[3]),
+    want: "missed",
+  },
+  {
+    name: "the other days of that week are watching, not unjudged",
+    clause: CEILING,
+    days: SLIP,
+    got: dayStateAt(KEYS[4]),
+    want: "watching",
+  },
+  {
+    name: "a day before the rule was written is unjudged",
+    clause: CEILING,
+    days: SLIP,
+    got: dayStateAt(KEYS[0]),
+    want: "unjudged",
+  },
+  {
+    name: "a floor nobody agreed to says nothing",
+    clause: FLOOR,
+    days: {},
+    got: dayStateAt(KEYS[4]),
+    want: "watching",
+  },
+  {
+    name: "the week's own verdict stays unjudged, so the streak cannot break",
+    clause: CEILING,
+    days: SLIP,
+    got: (rule, proj) =>
+      ruleWeekState(rule, streakContext(proj), proj.days, WEEK, MIDWEEK_TODAY),
+    want: "unjudged",
+  },
+  {
+    name: "and the streak itself is untouched",
+    clause: CEILING,
+    days: SLIP,
+    got: (rule, proj) => String(ruleStatus(rule, proj, MIDWEEK_AT).current),
+    want: "0",
+  },
+  /* The sharp one. The ring draws it and the ledger does not conclude it:
+     `spec 010` Decision 1 already allows that split, and here it says *you did
+     the thing you said you would not* while the week was never in force. */
+  {
+    name: "the broken day is drawn and not tallied",
+    clause: CEILING,
+    days: SLIP,
+    got: (_rule, proj) => {
+      const r = dayReport(proj, KEYS[3], MIDWEEK_TODAY)
+      return `${r.readings.length} drawn, ${r.judged} judged, ${r.state}`
+    },
+    want: "1 drawn, 0 judged, unjudged",
+  },
+  {
+    name: "a broken ceiling is danger even in a week nobody agreed to",
+    clause: CEILING,
+    days: SLIP,
+    got: riskAt,
+    want: "danger",
+  },
+  {
+    name: "a short floor in the same week is not",
+    clause: FLOOR,
+    days: {},
+    got: riskAt,
+    want: "safe",
+  },
+]
+
+console.log("")
+for (const test of PARTIALS) {
+  const rule = midweekRule(test.clause)
+  const proj = project(rule, test.days)
+  const got = test.got(rule, proj)
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  partial: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  partial: ${test.name} — ${got}, want ${test.want}`,
+    )
+  }
+}
+
+/* ---- reading a week back — `spec 018` -----------------------------------
+
+   `shortfall` handed a **week** reading to a **day** readout keyed on today,
+   so the week's figure was tested against the day's bounds and its slots were
+   measured on the one day with nothing in them. Nothing matched, and every
+   weekly line fell through to a bare `“Youtube” “1”`. These pin the sentence
+   that should have been built. */
+
+interface WeekReadCase {
+  name: string
+  clause: object
+  days: Record<DayKey, Day>
+  mode: "failing" | "all"
+  want: string
+}
+
+const WEEK_READS: WeekReadCase[] = [
+  {
+    name: "a slot ceiling names the slot, the figure and the bound",
+    clause: {
+      id: "c",
+      ...target("unit", "u-yt"),
+      max: 9,
+      slots: { "s-pm": { max: 0 } },
+    },
+    days: { [TUE]: counted("u-yt", "s-pm", 1) },
+    mode: "failing",
+    want: "“Youtube” “1” in “Evening” this week against at most “0”",
+  },
+  {
+    name: "the week's own ceiling reads as the week's",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 2 },
+    days: { [MON]: counted("u-yt", "s-am", 3) },
+    mode: "failing",
+    want: "“Youtube” “3” this week against at most “2”",
+  },
+  {
+    name: "a floor short reads as the week's",
+    clause: { id: "c", ...target("unit", "u-gym"), min: 3 },
+    days: { [MON]: counted("u-gym", "s-am", 1) },
+    mode: "failing",
+    want: "“Gym” “1” this week against at least “3”",
+  },
+  {
+    name: "nothing wrong, read in full, still says which week it is about",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 3 },
+    days: { [MON]: counted("u-yt", "s-am", 1) },
+    mode: "all",
+    want: "“Youtube” “1” of “3” this week",
+  },
+]
+
+console.log("")
+for (const test of WEEK_READS) {
+  const rule = ruleOf(test.clause as StreakClause, "week")
+  const proj = project(rule, test.days)
+  const ctx = streakContext(proj)
+  const [reading] = readWeek(rule, ctx, proj.days, WEEK, TODAY)
+  const got = clauseWeekReadoutParts(
+    reading,
+    ctx,
+    proj.days,
+    coveredDays(test.clause as StreakClause, rule, WEEK),
+    test.mode,
+  ).join(" · ")
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  week reads: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  week reads: ${test.name}`)
+    console.log(`      got  ${got}`)
+    console.log(`      want ${test.want}`)
+  }
+}
+
+/* ---- today is not a day you kept — `spec 018` ---------------------------
+
+   `ruleDayState` returns `met` for today the moment the deficit is nought, so
+   a rule written this morning with nothing logged against it read `1`:
+   credited with a day that is not over. `keptDays` has always declined to
+   count today and `keptBreakdown` was fixed to agree; this was the last of
+   the three still disagreeing. */
+
+interface FreshCase {
+  name: string
+  startedOn: DayKey
+  want: number
+}
+
+const FRESH: FreshCase[] = [
+  { name: "a rule written this morning has kept nothing yet", startedOn: RISK_DAY, want: 0 },
+  { name: "yesterday still counts", startedOn: RISK_YESTERDAY, want: 1 },
+]
+
+console.log("")
+for (const test of FRESH) {
+  const rule = {
+    ...ruleOf(
+      { id: "c", ...target("unit", "u-yt"), max: 0 } as StreakClause,
+      "day",
+    ),
+    startedOn: test.startedOn,
+    lockedUntil: test.startedOn,
+  } as StreakRule
+  const at = new Date(`${RISK_DAY}T09:00:00`)
+  const got = ruleStatus(rule, project(rule, {}), at).current
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  today: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  today: ${test.name} — ${got}, want ${test.want}`)
+  }
+}
+
 console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
@@ -1114,5 +1374,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )
