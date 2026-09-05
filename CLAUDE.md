@@ -1146,6 +1146,13 @@ when it was seven notices with one danger among them. So:
   have taken, since a reward can be taken twice, and achievements count only
   the ones whose definition still exists, since the ledger deliberately keeps
   rows for deleted ones.
+- **hide all** (`ChevronsDownUp`) shuts every panel in one press. Six open
+  panels take six presses to clear one at a time, and this row is the only
+  place that knows how many there are — so it counts, and its tooltip says
+  what it is about to undo. **Absent when nothing is open**, the same rule the
+  sleep toggle follows. The notice board is included: it is the one panel
+  whose state persists, so closing it here is a preference and it stays
+  closed — otherwise the one panel you cannot clear is the one always there.
 - the jump-to-now button is `Calendar1` — a calendar with a date on its face.
   `CalendarCheck` read as *a day marked done*, which is what the day cells
   say and is not what that button does.

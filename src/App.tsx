@@ -642,6 +642,44 @@ export default function StudyTrackerApp() {
   const counted = useMemo(() => countByLevel(noticeList), [noticeList])
 
   /**
+   * **Everything the toggle row can open, and how to shut it.**
+   *
+   * One list rather than eight flags read in eight places: the figure in the
+   * tooltip and the act of clearing them have to agree, and two walks over
+   * the same set is how they come to disagree.
+   *
+   * The notice board is in it. That panel is the one whose state persists, so
+   * closing it here is a preference and it stays closed — which is what *hide
+   * all* has to mean, or the one panel you cannot clear is the one that is
+   * always there.
+   */
+  const openPanels = [
+    noticePrefs.open && noticeList.length > 0,
+    showFilter,
+    showSleep,
+    showAccount,
+    showShop,
+    showHistory,
+    showLog,
+    openStreak !== null,
+  ]
+  const openCount = openPanels.filter(Boolean).length
+
+  const hideAll = () => {
+    setNoticesOpen(false)
+    setShowFilter(false)
+    setShowSleep(false)
+    setShowAccount(false)
+    setShowShop(false)
+    setShowHistory(false)
+    setShowLog(false)
+    setOpenStreak(null)
+    // Nothing left to jump to.
+    setJustOpened(null)
+  }
+
+
+  /**
    * The page's own table of contents.
    *
    * In the order the sections are drawn, so the list is the page read top to
@@ -1377,6 +1415,8 @@ export default function StudyTrackerApp() {
             setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
           }}
           keptOpen={openStreak === KEPT_PANEL}
+          openCount={openCount}
+          onHideAll={hideAll}
           points={project.settings.balanceStart ? balance.total : null}
           showAccount={showAccount}
           onToggleAccount={(e) => {

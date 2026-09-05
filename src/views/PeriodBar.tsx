@@ -16,6 +16,7 @@ import {
   Calendar1,
   ChevronLeft,
   ChevronRight,
+  ChevronsDownUp,
   Coins,
   Filter,
   Flame,
@@ -272,6 +273,8 @@ export function PeriodBar({
   points,
   showAccount,
   onToggleAccount,
+  openCount,
+  onHideAll,
   badges,
   shop,
 }: {
@@ -314,6 +317,9 @@ export function PeriodBar({
   points: number | null
   showAccount: boolean
   onToggleAccount: Toggle
+  /** How many panels are open. The row is the only place that knows. */
+  openCount: number
+  onHideAll: () => void
   /** Rosettes reached against rosettes written. Null when none are written. */
   badges: { earned: number; total: number } | null
   /** Rewards you can afford against rewards on the shelf. */
@@ -520,6 +526,27 @@ export function PeriodBar({
             onClick={onToggleLog}
             tip={showLog ? "Hide the change log" : "Show the change log"}
           />
+          {/* **Closing them one at a time is the cost of leaving them open.**
+              A page with six panels on it takes six presses to clear, and this
+              row is the only place that knows how many there are. It counts,
+              so the tooltip can say what it is about to do — a control that
+              undoes six things at once should say six.
+
+              **Absent, not disabled, when nothing is open**: there is nothing
+              behind it, the same rule the sleep toggle follows. */}
+          {openCount > 0 && (
+            <PanelToggle
+              icon={ChevronsDownUp}
+              active={false}
+              onClick={onHideAll}
+              tip={
+                openCount === 1
+                  ? "Hide the open section"
+                  : `Hide all ${openCount} open sections`
+              }
+            />
+          )}
+
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip
