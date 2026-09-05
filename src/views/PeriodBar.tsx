@@ -147,6 +147,11 @@ function PanelToggle({
    * a call to act — a thing already lost sits apart from the counts of things
    * to do rather than joining the queue of them, and being last drawn is what
    * guarantees nothing covers it.
+   *
+   * **Same `bottom` as `sub`, not a hair lower.** It sat at `-bottom-1.5` for
+   * the sake of clearing its neighbour and read as a badge that had slipped;
+   * two marks on one edge want one baseline, and the offset in `x` is what
+   * separates them.
    */
   deep?: number | null
   deepColor?: string
@@ -206,7 +211,7 @@ function PanelToggle({
         )}
         {deep != null && (
           <span
-            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-40 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-40 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
             style={{ backgroundColor: deepColor, color: c.onFill }}
           >
             {deep}
