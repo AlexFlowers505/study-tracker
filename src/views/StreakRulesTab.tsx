@@ -1208,8 +1208,33 @@ function SlotsFields({
            screens later. An existing one is still drawn, outlined in the
            missed colour and clearable, because a rule that cannot be saved and
            cannot be fixed is the worse failure of the two. */
-        <div className="grid grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
-          <span />
+        /* **Three columns for a count, two for a duration**, and the variable
+           is `timed` rather than the width. A slot name and two bounds is a
+           chip up to `Morning (before transit)` wide plus the figures, and a
+           duration's figure is four number boxes and their `h`/`m` where a
+           count's is one box — about 490px against about 340. The panel has
+           roughly 440, so one of the two overflows and the other does not, and
+           no single layout is right for both: the timed row ran off the side
+           and took the whole modal's horizontal scrollbar with it.
+
+           A container query was the first answer and it was answering the
+           wrong question. This form is never wider than a 512px modal, so the
+           breakpoint that would have helped a duration could never fire, while
+           a count — which fits perfectly well — got the stacked layout anyway.
+           What actually decides the width is what is being measured, and that
+           is known here. Both class strings are literal, because Tailwind
+           cannot see a name assembled at runtime.
+
+           `overflow-x-auto` is the backstop underneath both: wide content
+           scrolls inside its own box rather than pushing the page, which is the
+           rule the period bar and `ChartCard` already follow. */
+        <div className="overflow-x-auto -mx-1 px-1">
+        <div
+          className={`grid items-center gap-x-2 gap-y-1 w-max max-w-full ${
+            timed ? "grid-cols-[auto_auto]" : "grid-cols-[auto_auto_auto]"
+          }`}
+        >
+          {!timed && <span />}
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
             Minimum
           </span>
@@ -1225,7 +1250,9 @@ function SlotsFields({
             return (
               <Fragment key={slot.id}>
                 <span
-                  className="text-[10px] font-mono rounded-full px-2 py-1 whitespace-nowrap"
+                  className={`justify-self-start text-[10px] font-mono rounded-full px-2 py-1 whitespace-nowrap ${
+                    timed ? "col-span-2 mt-1" : ""
+                  }`}
                   style={{
                     backgroundColor: `${slot.color}1A`,
                     color: slot.color,
@@ -1263,6 +1290,7 @@ function SlotsFields({
               </Fragment>
             )
           })}
+        </div>
         </div>
       )}
     </div>
@@ -1508,6 +1536,7 @@ function WeekdayRow({
            columns are `auto` rather than `1fr` because a timed field is four
            boxes and a count is one, and a fixed width has to be wrong for one
            of them. */
+        <div className="overflow-x-auto -mx-1 px-1">
         <div className="grid grid-cols-[2rem_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
           <span />
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
@@ -1538,6 +1567,7 @@ function WeekdayRow({
               </Fragment>
             )
           })}
+        </div>
         </div>
       )}
     </div>
