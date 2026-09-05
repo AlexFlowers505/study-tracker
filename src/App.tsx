@@ -54,7 +54,7 @@ import { benchmarkMinutes, withBenchmarkGoals } from "./lib/benchmark"
 import { makeIsIgnored } from "./lib/stats"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
-import { purchaseOf } from "./lib/shop"
+import { canBuy, purchaseOf } from "./lib/shop"
 import {
   applyProposal,
   hasSupervisor,
@@ -62,7 +62,7 @@ import {
   ruleText,
 } from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
-import { notices, worstLevel } from "./lib/notices"
+import { notices } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
 import { AccountSection } from "./views/AccountSection"
 import { SoloBanner } from "./views/SoloBanner"
@@ -1229,7 +1229,8 @@ export default function StudyTrackerApp() {
           showNotices={noticePrefs.open}
           onToggleNotices={() => setNoticesOpen(!noticePrefs.open)}
           noticeCount={noticeList.length}
-          noticeLevel={worstLevel(noticeList)}
+          dangerCount={noticeList.filter((n) => n.level === "danger").length}
+          warningCount={noticeList.filter((n) => n.level === "warning").length}
           keptDays={kept?.current ?? null}
           onToggleKept={() =>
             setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
@@ -1238,6 +1239,34 @@ export default function StudyTrackerApp() {
           points={project.settings.balanceStart ? balance.total : null}
           showAccount={showAccount}
           onToggleAccount={() => setShowAccount((v) => !v)}
+          badges={
+            (project.settings.achievements || []).length
+              ? {
+                  /* **Only what still exists.** The ledger keeps a row for an
+                     achievement whose definition was later deleted — the hand
+                     that edits the definitions is deliberately not the hand
+                     that edits what was earned — so a raw count of it read
+                     `2/1`, a fraction past its own denominator. */
+                  earned: (project.settings.achievements || []).filter(
+                    (a) => (project.earned || {})[a.id],
+                  ).length,
+                  total: (project.settings.achievements || []).length,
+                }
+              : null
+          }
+          shop={
+            (project.settings.shop || []).length
+              ? {
+                  /* What you can **afford**, not what you have taken: a
+                     reward can be taken more than once, so taken-of-total
+                     would climb past its own denominator. */
+                  affordable: (project.settings.shop || []).filter((item) =>
+                    canBuy(item, balance.total),
+                  ).length,
+                  total: (project.settings.shop || []).length,
+                }
+              : null
+          }
         />
 
         {soloRule && (

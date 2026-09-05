@@ -80,16 +80,16 @@ import { CHECK_LABELS, checkState } from "./checks"
 import { dayReport, keptDays } from "./dayVerdict"
 import { achievementTargets, measureOf, progressOf } from "./achievements"
 
-export type NoticeLevel = "danger" | "warning" | "notice" | "good"
+export type NoticeLevel = "danger" | "warning" | "notice" | "allClear"
 
 /** Most urgent first. The board's order, and the filter row's. */
-export const LEVELS: NoticeLevel[] = ["danger", "warning", "notice", "good"]
+export const LEVELS: NoticeLevel[] = ["danger", "warning", "notice", "allClear"]
 
 const RANK: Record<NoticeLevel, number> = {
   danger: 0,
   warning: 1,
   notice: 2,
-  good: 3,
+  allClear: 3,
 }
 
 /** One thing worth saying about today. */
@@ -124,7 +124,7 @@ export const levelColour = (level: NoticeLevel, c: Palette): string =>
     ? c.exam
     : level === "warning"
       ? c.warn
-      : level === "good"
+      : level === "allClear"
         ? c.goalMet
         : c.accent
 
@@ -140,7 +140,7 @@ export const countByLevel = (list: Notice[]): Record<NoticeLevel, number> => {
     danger: 0,
     warning: 0,
     notice: 0,
-    good: 0,
+    allClear: 0,
   }
   list.forEach((n) => (out[n.level] += 1))
   return out
@@ -210,7 +210,7 @@ function ceilingItem(
       line: `${named} ${q(fmt(value))}${at} against at most ${q(fmt(max))}`,
     }
   if (max <= 0)
-    return { level: "good", line: `${named} ${q(fmt(0))}${at} — clean` }
+    return { level: "allClear", line: `${named} ${q(fmt(0))}${at} — clean` }
   if (value === max)
     return {
       level: "warning",
@@ -222,7 +222,7 @@ function ceilingItem(
       line: `${named} ${q(fmt(max - value))} of ${q(fmt(max))}${where} left${when}`,
     }
   return {
-    level: "good",
+    level: "allClear",
     line: `${named} ${q(fmt(0))} of ${q(fmt(max))}${at} — clean`,
   }
 }
@@ -249,7 +249,7 @@ function dayFloorItem(
   const need = Math.max(0, min - value)
   if (need <= 0)
     return {
-      level: "good",
+      level: "allClear",
       line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} — done`,
     }
   if (settled)
@@ -331,7 +331,7 @@ function dayItems(
         } else {
           const said = `${label} is ${q(CHECK_LABELS[state].toLowerCase())}`
           out.push({
-            level: allowed.includes(state) ? "good" : "danger",
+            level: allowed.includes(state) ? "allClear" : "danger",
             line: said,
           })
         }
@@ -432,7 +432,7 @@ function weekItems(
           })
         else
           out.push({
-            level: "good",
+            level: "allClear",
             line: `${label} kept every day so far`,
           })
       }
@@ -469,7 +469,7 @@ function weekItems(
       const need = Math.max(0, min - value)
       if (need <= 0) {
         out.push({
-          level: "good",
+          level: "allClear",
           line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} this week — done`,
         })
         return
@@ -700,7 +700,7 @@ function openWeekNotices(statuses: RuleStatus[]): Notice[] {
     {
       key: "open-weeks::good",
       id: "open-weeks",
-      level: "good",
+      level: "allClear",
       tint: FIXED_TINT,
       icon: null,
       title: "Still in play",

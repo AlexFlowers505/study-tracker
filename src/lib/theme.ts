@@ -129,6 +129,12 @@ export const PALETTES: Record<ThemeMode, Palette> = {
    - `accent`   — the active state, and today.
    - `exam`     — a missed goal. Red.
    - `goalMet`  — a met goal. Green.
+   - `project`  — the project's own marigold. **The streak and the account
+                  share it**, which is the one place two things wear one
+                  accent on purpose: it is this palette's *worth something*
+                  colour, and a separate gold for money was tried and read
+                  cheap beside it. They are told apart by glyph and position.
+                  Not `warn`'s amber, which means *behind but not lost*.
    - `warn`     — behind, but not yet lost. The one state the app had no
                   colour for: green says nothing is wrong and red says it
                   cannot be fixed, and a weekly rule spends most of its life

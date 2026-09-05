@@ -42,19 +42,19 @@ import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 
-/** What each level is called on its own filter button. */
+/** What each level is called — on its filter button and over its group. */
 const LEVEL_WORD: Record<NoticeLevel, string> = {
   danger: "danger",
   warning: "warning",
   notice: "notice",
-  good: "good",
+  allClear: "all clear",
 }
 
 const LEVEL_TIP: Record<NoticeLevel, string> = {
   danger: "Already broken, or out of reach today. Only a freeze is left.",
   warning: "Still reachable, and the margin is gone.",
   notice: "Still owed, and there is room.",
-  good: "Nothing owed and nothing spent.",
+  allClear: "Nothing owed and nothing spent — for now.",
 }
 
 /** Every notice, in its level's colour. */
@@ -222,19 +222,53 @@ export function NoticeBoard({
             : "Nothing to say about today."}
         </p>
       ) : (
-        <div className="space-y-1.5">
-          {shown.map((notice) => (
-            <NoticeBlock
-              key={notice.key}
-              notice={notice}
-              active={!!notice.ruleId && activeRule === notice.ruleId}
-              onClick={
-                notice.ruleId
-                  ? () => onOpenRule(notice.ruleId as string)
-                  : undefined
-              }
-            />
-          ))}
+        /* **Grouped under its level's name, with air between the groups.**
+           One container per notice made every level read as one kind of thing,
+           which was the point — and then four kinds of thing in one flat run
+           merged into a single striped wall. A heading says where one level
+           stops; the gap says it again for anyone reading the shape rather
+           than the words.
+
+           A list, because it is one — `<ul>` rather than a stack of divs, so
+           a screen reader gets "list, 3 items" per level instead of a
+           continuous run of buttons. */
+        <div className="space-y-4">
+          {LEVELS.map((level) => {
+            const group = shown.filter((n) => n.level === level)
+            if (!group.length) return null
+            return (
+              <section key={level}>
+                <h4
+                  className="text-[9px] font-mono uppercase tracking-widest mb-1.5 flex items-center gap-2"
+                  style={{ color: levelColour(level, c) }}
+                >
+                  {LEVEL_WORD[level]}
+                  <span className="text-ink/25">{group.length}</span>
+                  {/* Runs out to the right edge, so the heading reads as a
+                      lid on what follows rather than as a floating word. */}
+                  <span
+                    className="flex-1 h-px"
+                    style={{ backgroundColor: `${levelColour(level, c)}33` }}
+                  />
+                </h4>
+                <ul className="space-y-1.5">
+                  {group.map((notice) => (
+                    <li key={notice.key}>
+                      <NoticeBlock
+                        notice={notice}
+                        active={!!notice.ruleId && activeRule === notice.ruleId}
+                        onClick={
+                          notice.ruleId
+                            ? () => onOpenRule(notice.ruleId as string)
+                            : undefined
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )
+          })}
         </div>
       )}
     </PanelSection>

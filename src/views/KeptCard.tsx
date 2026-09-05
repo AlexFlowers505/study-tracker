@@ -26,7 +26,7 @@
    a dozen squares — moved inside the fold, where detail belongs.
 --------------------------------------------------------------- */
 
-import { Flame } from "lucide-react"
+import { ChevronDown, Flame } from "lucide-react"
 import type { KeptWeeks, WeekMark } from "../lib/dayVerdict"
 import { fromKey, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
@@ -113,11 +113,19 @@ export function KeptFigure({
   const c = usePalette()
   return (
     <Tip text="What the streak is made of — which rules broke which days">
+      {/* **It has to look like it opens.** A bare figure with a hover tint is
+          no affordance at all: you have to already know some numbers on this
+          row do something in order to try one. A resting surface plus the
+          same rotating chevron the row itself carries is the cheapest mark
+          that says *this is a lid*, and it is the mark already used two
+          blocks down, so nobody has to learn it twice. */}
       <button
         type="button"
         onClick={onOpen}
         aria-expanded={open}
-        className={`${btnBase} flex items-baseline gap-1.5 rounded-full px-1 -mx-1 hover:bg-ink/5`}
+        className={`${btnBase} flex items-baseline gap-1.5 rounded-full pl-2 pr-1.5 py-1 -ml-1 ${
+          open ? "bg-ink/[0.07]" : "bg-ink/[0.04] hover:bg-ink/[0.08]"
+        }`}
       >
         <Flame
           size={12}
@@ -134,6 +142,13 @@ export function KeptFigure({
         <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45">
           days
         </span>
+        <ChevronDown
+          size={12}
+          aria-hidden
+          className={`self-center shrink-0 text-ink/35 transition-transform duration-150 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
       </button>
     </Tip>
   )

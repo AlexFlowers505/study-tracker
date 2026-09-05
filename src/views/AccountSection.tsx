@@ -76,7 +76,7 @@ export function AccountSection({
 
   return (
     <PanelSection
-      tint={c.accent}
+      tint={c.project}
       icon={Coins}
       title="The account"
       subtitle={<Tip multiline text={HOW_IT_WORKS}><span className="cursor-help">How points work</span></Tip>}
@@ -87,7 +87,7 @@ export function AccountSection({
           type="button"
           onClick={onOpenShop}
           className={`${btnBase} flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide hover:bg-ink/5`}
-          style={{ color: c.accent }}
+          style={{ color: c.project }}
         >
           To the shop
           <ArrowRight size={12} />

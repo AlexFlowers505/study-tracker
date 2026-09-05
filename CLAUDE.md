@@ -31,7 +31,7 @@ kept. `npm run sweep` covers all of it.
 rather than a fourth `RiskLevel` — **and `spec 016` has since made it the
 fourth level after all.** The reasoning here was that a new level would make
 `StreakBar` draw a block every morning; the answer was that volume is a
-property of the notice rather than of where it is drawn, so `notice` and `good`
+property of the notice rather than of where it is drawn, so `notice` and `allClear`
 are lines and only `danger` and `warning` are blocks. Both the function and the
 chevron's list are gone.
 
@@ -84,7 +84,7 @@ anything that tells you something is wrong.
   gone; `notices(project, statuses, now)` returns the whole board. Four levels
   on one axis — **is this already spent, or is it still owed?** `danger`
   irreversible or out of reach today, `warning` reachable with the margin gone,
-  `notice` owed with room, `good` nothing owed and nothing spent. That is the
+  `notice` owed with room, `allClear` nothing owed and nothing spent. That is the
   old `RiskLevel` with `safe` split in two. The thresholds are unchanged.
 - **One notice per rule per level**, lines inside it. Five rules make five to
   nine notices, which is the bound that stops the board being a dashboard.
@@ -102,9 +102,8 @@ anything that tells you something is wrong.
   failure the board exists to fix arriving by the other door. What holds the
   dashboard off is the one-per-rule-per-level bound, not making half of them
   quieter.
-- **Three toggles**: `Bell` (every notice, coloured by the worst level),
-  `Flame` (the composite's days, never coloured), `Coins` (points, `4.1k` past
-  a thousand) which opens the **account panel** — the total, signed earning
+- **Three toggles**: `Bell`, `Flame` (the composite's days) and `Coins`
+  (points, `4.1k` past a thousand) which opens the **account panel** — the total, signed earning
   bars off `dayLedger`, and rewards and purchases as a list. The shop keeps the
   shelf and one line of balance.
 - **Solo** (`SoloBanner`, `soloProject` in `App`) draws the page as though one
@@ -172,7 +171,7 @@ Everything else through `019` is built.
 
 - **`016-four-levels-and-a-board.md`** — the streak alarms and the "what today
   asks" list under the chevron are replaced by one notice board with four
-  levels (`danger` / `warning` / `notice` / `good`) split along one axis:
+  levels (`danger` / `warning` / `notice` / `allClear`) split along one axis:
   **is this already spent, or is it still owed?** `streakRisk.ts` becomes
   `lib/notices.ts`; `ruleRisk` and `dueToday` go. Also the three new panel
   toggles, the account panel, and solo — viewing the page as though one rule
@@ -1077,6 +1076,32 @@ invested in and the likeliest to drop, which is precisely backwards. A
 week-sized unit fixes it from the other end: a bad Tuesday costs the week
 rather than everything, and on Monday there is always something to start
 accumulating again.
+
+**Every badge in the toggle row is a fraction or a stack, and none of them
+lies about its colour.** A filled badge borrows the meaning of its fill, so
+the notice total drawn in the worst level's colour read as *seven dangers*
+when it was seven notices with one danger among them. So:
+
+- the **bell** carries three, down one right edge in fixed slots — the total
+  outlined and neutral at the top, `warning` amber in the middle, `danger`
+  red at the bottom. Each level owns its slot, so a badge does not move when
+  the one above it drops away; a level with nothing in it draws nothing
+  rather than a nought; and they stack `danger` over `warning` over the
+  total, because the one you must not miss is the one that must not be
+  covered.
+- the **streak** and the **account** both wear `project`'s marigold. It is
+  the one place two things share an accent on purpose — this palette's
+  *worth something* colour, where a separate gold for money was tried and
+  read cheap beside it — and the two are told apart by glyph and position.
+- the **shop** and **achievements** carry `x of y` on the same dark disc the
+  notice total wears. Both fractions are chosen so they cannot pass their own
+  denominator: the shop counts what you can **afford** rather than what you
+  have taken, since a reward can be taken twice, and achievements count only
+  the ones whose definition still exists, since the ledger deliberately keeps
+  rows for deleted ones.
+- the jump-to-now button is `Calendar1` — a calendar with a date on its face.
+  `CalendarCheck` read as *a day marked done*, which is what the day cells
+  say and is not what that button does.
 
 **The order of the three is the whole argument**: `NoticeBoard`, then
 `KeptCard`, then `StreakBar`. What is on fire comes first — a warning placed

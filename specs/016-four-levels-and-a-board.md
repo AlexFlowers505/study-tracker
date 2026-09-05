@@ -77,12 +77,19 @@ flag, used once to pick a word in a sentence
 
 **One axis: has this already happened, or is it still owed?**
 
+The fourth level was called `good` while this was written and is `allClear`
+now: the other three are nouns, `good` was an adjective, and `success` — the
+obvious replacement — promises a thing achieved where this is a state that can
+break at four in the afternoon. *The all-clear* is a noun, is idiomatically
+temporary, and collides with nothing: `holding` is the streak row's word for
+the wider set of *not in trouble*, and `kept` is a day that is over.
+
 | level | the rule | example |
 | --- | --- | --- |
 | **danger** | irreversibly broken, or no longer reachable today. Only a freeze is left | `“Wake up in time” is “no”` · a Pinterest at night under *none at night* |
 | **warning** | still reachable, and the margin is gone | `“Pinterest” “3” of “3” used — one more ends it` · less of the day left than the hours still owed |
 | **notice** | still owed, and there is room | `“Go to bed in time” to answer` · `“3h” more of “Lessons”` |
-| **good** | nothing owed and nothing spent | `“Pinterest” “0” of “3” — clean` · `“Lessons” “3h” of “3h” — done` |
+| **allClear** | nothing owed and nothing spent | `“Pinterest” “0” of “3” — clean` · `“Lessons” “3h” of “3h” — done` |
 
 This is the existing `RiskLevel` with `safe` split in two. `safe` was always
 two different states wearing one word — *nothing to do* and *plenty of time to
@@ -117,7 +124,7 @@ That is right about its subject and wrong as a prohibition. It is true of a
 **floor** — how much is left against how many days are left is exactly pace.
 It is false of a **ceiling**, which knows nothing about pace and everything
 about headroom, and headroom reads the same at either scale. `at most 3 a week`
-with none used is `good`, with two used is `notice` (`“1” of “3” left this
+with none used is `allClear`, with two used is `notice` (`“1” of “3” left this
 week`), with three used is `warning`, with four is `danger`.
 
 ### Bug: a weekly ceiling never warns at all
@@ -152,9 +159,9 @@ Four sources beyond the rules, each already computed:
 
 | source | level |
 | --- | --- |
-| **the composite** | mirrors the day — `notice` while open, `danger` once the day is missed. Never `good`: it would restate every green rule line |
+| **the composite** | mirrors the day — `notice` while open, `danger` once the day is missed. Never `allClear`: it would restate every green rule line |
 | **freezes** | `notice` on weekdays (*1 of 1, lost on Sunday*), `warning` on Saturday and Sunday if the allowance is intact and there is something freezable |
-| **unsealed weeks** | `good` — *this week is clean so far, it pays out on Tuesday.* `ruleStatus.open` already holds it |
+| **unsealed weeks** | `allClear` — *this week is clean so far, it pays out on Tuesday.* `ruleStatus.open` already holds it |
 | **achievements in reach** | `notice` — *4 days to “100 kept days”* |
 
 Freezes are the only source whose level moves with the calendar, and that earns
@@ -169,7 +176,7 @@ actual work — `todayUrgency`, `spentAllowance`, `weeklyRisk`, `owed`,
 `minutesLeftToday` — moves across unchanged.
 
 ```ts
-export type NoticeLevel = "danger" | "warning" | "notice" | "good"
+export type NoticeLevel = "danger" | "warning" | "notice" | "allClear"
 
 export interface Notice {
   /** A rule id, or one of the four fixed sources. Never two per level. */
@@ -209,7 +216,7 @@ Two things are new:
    target fell into, not merely that it fell into one. That is the fix to the
    line quoted at the top of this spec, and every other change here depends on
    it.
-2. **`good` says a word as well as its figures.** `“Lessons” “3h” of “3h” —
+2. **`allClear` says a word as well as its figures.** `“Lessons” “3h” of “3h” —
    done` and `“Pinterest” “0” of “3” — clean`. A floor met is finished work; a
    ceiling untouched is an intact reserve, and they are different things to be
    pleased about. Without the word both read as a pair of numbers, and the
@@ -220,7 +227,7 @@ Two things are new:
 
 Fifteen risk cases assert one of three levels. Several change their expected
 answer without any behaviour changing, purely because `safe` split:
-`ceiling · room left · nothing to say` is now `good`,
+`ceiling · room left · nothing to say` is now `allClear`,
 `check · unanswered · morning is not an emergency` is now `notice`.
 
 Expectations in that file are written out and never derived, on purpose — so
@@ -280,7 +287,7 @@ The panel subtitle says `Today`, so that reads as a fact rather than as a bug.
 ### ~~Two weights, not four~~ — reversed in use
 
 > ~~`danger` and `warning` are a filled block with an inset ring; `notice` and
-> `good` are a line — a dot, the rule's name, the text, no surface. Not a third
+> `allClear` are a line — a dot, the rule's name, the text, no surface. Not a third
 > volume: **two**, with the level choosing. One weight for all four would
 > rebuild the dashboard, which is exactly the row `spec 010` part 3 deleted.~~
 
@@ -302,7 +309,8 @@ quieter.
 
 ### Order
 
-Flat, sorted by level — `danger`, `warning`, `notice`, `good` — and within a
+Flat, sorted by level — `danger`, `warning`, `notice`, `allClear` — and
+within a
 level, **the order the rules were written in**. Never by severity within a
 level and never alphabetically: a list that reorders itself has to be re-read
 from the top every time.
@@ -320,12 +328,19 @@ A row of four count buttons above the list, inside the panel — not in the
 toggle row, which already scrolls sideways on a phone.
 
 ```
-[ 1 danger ] [ 1 warning ] [ 5 notice ] [ 2 good ]
+[ 1 danger ] [ 1 warning ] [ 5 notice ] [ 2 all clear ]
 ```
 
 Each carries its level's colour as its background, which is the legend. Click
 filters to that level, click again releases it, **several can be held at
-once**. A level with nothing in it keeps its button, dimmed and inert: buttons
+once**.
+
+The list below them is **grouped under those same names**, with air between the
+groups. That followed from every notice getting the same container: four kinds
+of thing in one flat run merged into a striped wall, so a heading says where
+one level stops and the gap says it again for anyone reading the shape rather
+than the words. Each group is a `<ul>`, so a screen reader gets *list, 3 items*
+per level rather than a continuous run of buttons. A level with nothing in it keeps its button, dimmed and inert: buttons
 that vanish mean the control changes shape under your hand.
 
 ### Clicking a notice
@@ -366,13 +381,21 @@ nothing new has to be drawn.
 
 | button | icon | carries |
 | --- | --- | --- |
-| the board | `Bell` | **every** notice, counted. Coloured by the worst level present |
+| the board | `Bell` | **two figures side by side**: every notice, outlined and neutral, then the `danger` count in red |
 | the account | `Coins` | points, abbreviated past a thousand — `4.1k` |
 | the streak | `Flame` | the composite's days. No freezes: there is no shared pool any more |
 
-**The badge's colour is what survives of "it comes and finds you."** A closed
-board with a red figure on its bell is not a red block across the page, and it
-is not nothing, and it costs one prop that already exists.
+**The badge is what survives of "it comes and finds you."** A closed board with
+a red figure on its bell is not a red block across the page, and it is not
+nothing.
+
+**Two figures, though, and only one of them is an alarm.** The total was drawn
+filled in the worst level's colour, so `7` on red read as *seven dangers* when
+it was seven notices with one danger among them — a filled badge borrows the
+meaning of its colour. The total is outlined and neutral; the danger count
+keeps the red. They sit **side by side in one corner**, not in opposite ones:
+two readings of one list drifting apart vertically read as unrelated marks
+stuck on the same button.
 
 **The streak button does not colour.** We have just built exactly one place to
 look when something is wrong; a second red mark two centimetres away means

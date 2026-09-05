@@ -10,7 +10,7 @@
 import type { ReactNode } from "react"
 import {
   Bell,
-  CalendarCheck,
+  Calendar1,
   ChevronLeft,
   ChevronRight,
   Coins,
@@ -36,8 +36,6 @@ import { Tip } from "../ui/Tip"
 import { useRevealOnScrollUp } from "../ui/useRevealOnScrollUp"
 
 import { usePalette } from "../ui/useTheme"
-import type { NoticeLevel } from "../lib/notices"
-import { levelColour } from "../lib/notices"
 
 /**
  * A balance, short enough for a badge.
@@ -97,7 +95,10 @@ function PanelToggle({
   count,
   countLabel,
   countColor,
+  countOutline,
   countIcon: CountIcon,
+  mid,
+  midColor,
   sub,
   subColor,
   subIcon: SubIcon,
@@ -113,10 +114,27 @@ function PanelToggle({
   /** What to print instead of the raw figure — `4.1k` for a big balance. */
   countLabel?: string
   countColor?: string
+  /**
+   * **Outlined rather than filled** — for a badge that counts everything.
+   *
+   * A filled badge borrows the meaning of its colour, so `7` on red read as
+   * *seven dangers* when it was seven notices of which one was a danger. A
+   * total has no level and must not wear one; the danger count sits in the
+   * other corner and says the thing you have to know.
+   */
+  countOutline?: boolean
   countIcon?: LucideIcon
-  /** A second count, opposite corner. Streaks carry two numbers that mean
-   *  different things — days running, freezes banked — and one of them being
-   *  low is the reason to care about the other. */
+  /**
+   * **Two more counts, down the same right edge.**
+   *
+   * Each level owns a fixed slot — `mid` and `sub` — rather than being packed
+   * in as they appear, so a badge does not move when the one above it drops to
+   * nothing. They overlap on a button this size, and that is what the stacking
+   * order is for: the sharpest reading sits on top, because the one you must
+   * not miss is the one that must not be covered.
+   */
+  mid?: number | null
+  midColor?: string
   sub?: number | null
   subColor?: string
   subIcon?: LucideIcon
@@ -139,18 +157,41 @@ function PanelToggle({
             style={{ backgroundColor: c.filter }}
           />
         )}
+        {/* **Two corners, one right edge.** They were `-right-0.5` and
+            `-right-1`, so a top badge and a bottom badge sat half a pixel out
+            of line with each other and the pair read as two marks dropped on
+            the button rather than as one thing said twice. Same offset, same
+            minimum width: whatever is in them, they stack squarely. */}
         {count != null && (
           <span
-            className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
-            style={{ backgroundColor: countColor, color: c.onFill }}
+            className={`absolute -top-1 -right-1 z-10 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ${
+              countOutline ? "" : "ring-2 ring-page"
+            }`}
+            style={
+              countOutline
+                ? {
+                    backgroundColor: c.card,
+                    color: `${c.ink}A0`,
+                    boxShadow: `0 0 0 1px ${c.ink}30, 0 0 0 3px ${c.page}`,
+                  }
+                : { backgroundColor: countColor, color: c.onFill }
+            }
           >
             {CountIcon && <CountIcon size={7} strokeWidth={3} />}
             {countLabel ?? count}
           </span>
         )}
+        {mid != null && (
+          <span
+            className="absolute top-1/2 -translate-y-1/2 -right-1 z-20 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            style={{ backgroundColor: midColor, color: c.onFill }}
+          >
+            {mid}
+          </span>
+        )}
         {sub != null && (
           <span
-            className="absolute -bottom-1 -right-1 min-w-[14px] h-[14px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            className="absolute -bottom-1 -right-1 z-30 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
             style={{ backgroundColor: subColor, color: c.onFill }}
           >
             {SubIcon && <SubIcon size={7} strokeWidth={3} />}
@@ -187,13 +228,16 @@ export function PeriodBar({
   showNotices,
   onToggleNotices,
   noticeCount,
-  noticeLevel,
+  dangerCount,
+  warningCount,
   keptDays,
   keptOpen,
   onToggleKept,
   points,
   showAccount,
   onToggleAccount,
+  badges,
+  shop,
 }: {
   period: PeriodId
   setPeriod: (id: PeriodId) => void
@@ -220,7 +264,9 @@ export function PeriodBar({
   showNotices: boolean
   onToggleNotices: () => void
   noticeCount: number
-  noticeLevel: NoticeLevel | null
+  /** How many are `danger` and how many `warning`. The two that colour. */
+  dangerCount: number
+  warningCount: number
   /** The composite's run. No freezes: there is no shared pool any more. */
   keptDays: number | null
   keptOpen: boolean
@@ -229,6 +275,10 @@ export function PeriodBar({
   points: number | null
   showAccount: boolean
   onToggleAccount: () => void
+  /** Rosettes reached against rosettes written. Null when none are written. */
+  badges: { earned: number; total: number } | null
+  /** Rewards you can afford against rewards on the shelf. */
+  shop: { affordable: number; total: number } | null
 }) {
   const c = usePalette()
   const navigable = NAVIGABLE_PERIODS.has(period)
@@ -314,9 +364,33 @@ export function PeriodBar({
               icon={Bell}
               active={showNotices}
               onClick={onToggleNotices}
+              /* **Two figures, and only one of them is an alarm.** The total
+                 used to be drawn filled in the worst level's colour, so `7`
+                 on red read as seven dangers when it was seven notices with
+                 one danger among them. The total is outlined and neutral now;
+                 the danger count keeps the red and the opposite corner,
+                 because it is the thing worth knowing while the board is
+                 shut. */
               count={noticeCount}
-              countColor={noticeLevel ? levelColour(noticeLevel, c) : undefined}
-              tip={showNotices ? "Hide the notices" : `${noticeCount} notices about today`}
+              countOutline
+              mid={warningCount || null}
+              midColor={c.warn}
+              sub={dangerCount || null}
+              subColor={c.exam}
+              /* A nought is not a reading, it is the absence of one: a level
+                 with nothing in it drops its badge rather than drawing a
+                 zero, which would be one more figure to check past. */
+              tip={
+                showNotices
+                  ? "Hide the notices"
+                  : [
+                      `${noticeCount} notices about today`,
+                      dangerCount ? `${dangerCount} already lost` : "",
+                      warningCount ? `${warningCount} running out` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+              }
             />
           )}
           {/* `Flame` is already the language of streaks everywhere in the app,
@@ -329,7 +403,12 @@ export function PeriodBar({
               active={keptOpen}
               onClick={onToggleKept}
               count={keptDays}
-              countColor={c.goalMet}
+              /* The streak's own marigold — the colour `KeptFigure` gives the
+                 same figure two blocks below, so the badge and the number it
+                 stands for are one thing. Deliberately not `coin`: money and
+                 the run you are guarding are the two things this row must not
+                 let you confuse. */
+              countColor={c.project}
               tip={keptOpen ? "Hide the composite" : "Days kept in a row"}
             />
           )}
@@ -341,24 +420,52 @@ export function PeriodBar({
               onClick={onToggleAccount}
               count={points}
               countLabel={shortPoints(points)}
-              /* Never red, however negative. The board is the one place that
-                 shouts, and a second alarming badge beside it means neither
-                 of them means anything. */
-              countColor={c.accent}
+              /* **The same marigold the streak wears**, and deliberately.
+                 A separate gold was tried and read cheap next to it — the
+                 marigold is the app's one *this is worth something* colour,
+                 and the two badges are told apart by their glyph and their
+                 place rather than by hue. Never red, however negative: the
+                 board is the one thing here that shouts, and a second
+                 alarming badge beside it means neither means anything. */
+              countColor={c.project}
               tip={showAccount ? "Hide the account" : `${points} points, and where they came from`}
             />
           )}
+          {/* **`x of y`, on the same dark disc the notice total wears.** A
+              shelf and a wall of rosettes are both *how much of this is
+              done*, and a bare figure would not say which half it was. The
+              shop's own fraction is what you can **afford** rather than what
+              you have taken, because a reward can be taken more than once —
+              taken-of-total would climb past its own denominator. */}
           <PanelToggle
             icon={Gift}
             active={showShop}
             onClick={onToggleShop}
-            tip={showShop ? "Hide the rewards" : "What your points will buy"}
+            count={shop ? shop.total : null}
+            countLabel={shop ? `${shop.affordable}/${shop.total}` : undefined}
+            countOutline
+            tip={
+              showShop
+                ? "Hide the rewards"
+                : shop
+                  ? `${shop.affordable} of ${shop.total} within reach`
+                  : "What your points will buy"
+            }
           />
           <PanelToggle
             icon={Trophy}
             active={showHistory}
             onClick={onToggleHistory}
-            tip={showHistory ? "Hide what you have reached" : "What you have reached"}
+            count={badges ? badges.total : null}
+            countLabel={badges ? `${badges.earned}/${badges.total}` : undefined}
+            countOutline
+            tip={
+              showHistory
+                ? "Hide what you have reached"
+                : badges
+                  ? `${badges.earned} of ${badges.total} reached`
+                  : "What you have reached"
+            }
           />
           <PanelToggle
             icon={History}
@@ -380,7 +487,7 @@ export function PeriodBar({
               }}
               className={`${btnBase} p-2 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5`}
             >
-              <CalendarCheck size={16} />
+              <Calendar1 size={16} />
             </button>
           </Tip>
           </div>

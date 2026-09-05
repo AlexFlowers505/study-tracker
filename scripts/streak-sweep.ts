@@ -357,7 +357,7 @@ const RISKS: RiskCase[] = [
     undefined, 22, "warning"),
   risky("check · answered yes · quiet all day",
     { id: "c", ...checks("u-wake"), allow: everyDayYes },
-    answered({ "u-wake": "yes" }), 22, "good"),
+    answered({ "u-wake": "yes" }), 22, "allClear"),
   risky("two checks · one wrong · danger even with the other kept",
     { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
     answered({ "u-wake": "no", "u-bed": "yes" }), 9, "danger"),
@@ -385,7 +385,7 @@ const RISKS: RiskCase[] = [
      nobody has broken — and *never do X* is the commonest rule here. */
   risky("ceiling of nought · never warns, it is not an allowance",
     { id: "c", ...target("unit", "u-yt"), max: 0 },
-    undefined, 9, "good"),
+    undefined, 9, "allClear"),
 
   risky("time · nothing logged · morning is not an emergency",
     { id: "c", ...target("activity", "a-les"), min: 180 },

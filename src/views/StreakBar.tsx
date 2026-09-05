@@ -264,7 +264,7 @@ export function StreakBar({
           to measure the chips. Where that is unsupported it snaps open, which
           is what it did before. */}
       <div className="grow-open" data-open={open}>
-        <div className="px-3.5 pb-3 space-y-2">
+        <div className="px-3.5 pb-3.5 space-y-3">
           <div className="h-px bg-ink/[0.07]" />
 
           {keptWeeks && (
@@ -275,10 +275,17 @@ export function StreakBar({
             />
           )}
 
-          {/* Scrolls rather than wraps: the row keeps one line at any width,
+          {/* **Recessed, so the raised chips have something to stand off.**
+              They were `bg-card` chips on a `bg-card` row — the same surface
+              twice, which is no surface at all, and a row of them read as one
+              grey smear. `bg-ink/[0.04]` is the same recess `CounterTotals`
+              uses directly under a raised block, and for the same reason.
+
+              Scrolls rather than wraps: the row keeps one line at any width,
               and the padding is inside the scroll box because the buttons' own
               ring would otherwise be shaved off by `overflow-x-auto`. */}
-          <div className="flex items-center gap-1.5 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
+          <div className="rounded-xl bg-ink/[0.04] px-2 py-2">
+          <div className="flex items-center gap-2 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
             {entries.map((entry) => (
               <StreakButton
                 key={entry.id}
@@ -287,6 +294,7 @@ export function StreakBar({
                 onClick={() => pick(entry.id)}
               />
             ))}
+          </div>
           </div>
 
         </div>
