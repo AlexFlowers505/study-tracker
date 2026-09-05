@@ -567,6 +567,18 @@ which are Node config and get their own lint block.
     history and follows the period bar, and pace is not history.
   - `PeriodTotals.tsx` — the two donuts, `MonthGrid.tsx` — the week blocks and
     compact day cells, and `Heatmap.tsx` — how the long periods are drawn.
+    **All three colour a day through `verdictOf` and `asOutcome`, and nothing
+    else may decide it.** The heatmap was the last drawing still on the
+    pre-`spec 010` model — its own `dayGoalOutcome`, `total >= goalForDate`,
+    two outcomes — so it knew nothing about freezes and painted a day you had
+    paid for **red**, which is the worst thing a colour can say here; and on
+    any project whose rules are not the daily goal it disagreed with the month
+    grid about the same Tuesday. Its legend follows the colours it draws
+    (`Kept` / `Frozen` / `Missed` / `Not judged yet`) and is present only when
+    something votes: a key listing three states a project can never reach
+    misleads exactly as much as no key at all. That gate used to be
+    `goalsEnabled`, which stopped being what decides these cells the moment the
+    verdict did.
     **A week in the month grid is a block, not a strip**: its summary line,
     then its counters grouped exactly as the period's own are, then its seven
     days. The counters used to be a flat run of chips on the end of the summary

@@ -1,6 +1,18 @@
 /* ---------------------------------------------------------------
    Heatmap — how the long periods (3 months, year, all time, custom) are
    drawn, where day cards or a month grid would be unreadable.
+
+   **A cell is the day's verdict, like every other drawing of a day.** This
+   file was the last one still colouring itself the way the app worked before
+   `spec 010`: its own `dayGoalOutcome`, `total >= goalForDate`, two outcomes.
+   It therefore knew nothing about freezes, so a day you had paid for came out
+   red — and red on a day that was saved is the worst thing a colour can say
+   here. It also disagreed with the month grid about the very same Tuesday, on
+   any project whose rules are not the daily goal.
+
+   So it takes `verdictOf` and reads it through `asOutcome`, exactly as
+   `MonthGrid` and the day cards do. One function decides what a day is, and
+   the three views cannot drift.
 --------------------------------------------------------------- */
 
 import { useMemo } from "react"
@@ -13,14 +25,11 @@ import type {
   Slot,
   CounterUnit,
 } from "../types/model"
+import type { DayReport } from "../lib/dayVerdict"
+import { asOutcome } from "../lib/dayVerdict"
 import { addDays, fromKey, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
-import {
-  NEVER_IGNORED,
-  buildTooltip,
-  dayBreakdown,
-  goalForDate,
-} from "../lib/stats"
+import { NEVER_IGNORED, buildTooltip, dayBreakdown } from "../lib/stats"
 import type { Palette } from "../lib/theme"
 import { btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
@@ -94,6 +103,7 @@ export function Heatmap({
   isIgnored = NEVER_IGNORED,
   showMonths,
   counterUnits,
+  verdictOf,
 }: {
   start: Date
   end: Date
@@ -106,22 +116,20 @@ export function Heatmap({
   onSelectDay: (key: DayKey) => void
   isIgnored?: IsIgnored
   showMonths?: boolean
+  /** The day's composite verdict, the same callback `MonthGrid` takes. */
+  verdictOf: (key: DayKey) => DayReport
 }) {
   const c = usePalette()
   const weeks = useMemo(() => buildHeatmapWeeks(start, end), [start, end])
   const startDate = settings?.startDate ? fromKey(settings.startDate) : null
-  const goalsEnabled = settings?.goalsEnabled !== false
-
-  // Cell colour reflects whether the daily goal was met, not how much was
-  // studied relative to other days — and only for days that have actually
-  // concluded and that have a goal set.
-  const dayGoalOutcome = (date: Date, entry: Day | undefined, total: number) => {
-    if (entry?.ignore) return null
-    if (date > new Date() || toKey(date) === todayKey) return null
-    const goal = goalForDate(settings, date)
-    if (goal <= 0) return null
-    return total >= goal ? "met" : "missed"
-  }
+  /* Whether anything votes at all. The legend is a key to a colour scheme, and
+     one that lists three states a project can never reach is as misleading as
+     none — the same "absent, not disabled" the rest of the page follows. It
+     used to hang off `goalsEnabled`, which stopped being what decides these
+     colours the moment the verdict did. */
+  const judging = (settings?.streakRules || []).some(
+    (r) => r.inDayVerdict === true,
+  )
 
   const weekTags = useMemo(
     () => buildMonthTags(weeks, showMonths),
@@ -164,14 +172,16 @@ export function Heatmap({
                 const ignored = isIgnored(key, entry)
                 const goalOutcome = ignored
                   ? null
-                  : dayGoalOutcome(date, entry, total)
+                  : asOutcome(verdictOf(key).state)
                 const cellColor = ignored
                   ? ignoredCell(c)
                   : goalOutcome === "met"
                     ? `${c.goalMet}30`
-                    : goalOutcome === "missed"
-                      ? `${c.exam}30`
-                      : neutralCell(c)
+                    : goalOutcome === "frozen"
+                      ? `${c.freeze}30`
+                      : goalOutcome === "missed"
+                        ? `${c.exam}30`
+                        : neutralCell(c)
                 const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, activities, counterUnits)}`
                 return (
                   <Tip
@@ -218,28 +228,39 @@ export function Heatmap({
         })}
       </div>
       <div className="flex items-center gap-3 mt-3 text-[9px] font-mono uppercase tracking-widest text-ink/40">
-        {goalsEnabled && (
+        {/* The words follow the colours: a cell says the day was kept, not
+            that a goal was met. `Frozen` earns its swatch on being the one
+            state you paid for — an unexplained blue among reds is exactly the
+            confusion the old drawing caused by having no blue at all. */}
+        {judging && (
           <>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
                 style={{ backgroundColor: `${c.goalMet}30` }}
               />
-              Goal met
+              Kept
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 rounded-[3px]"
+                style={{ backgroundColor: `${c.freeze}30` }}
+              />
+              Frozen
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
                 style={{ backgroundColor: `${c.exam}30` }}
               />
-              Goal missed
+              Missed
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"
                 style={{ backgroundColor: neutralCell(c) }}
               />
-              No goal / not yet due
+              Not judged yet
             </span>
           </>
         )}

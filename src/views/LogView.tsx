@@ -452,6 +452,7 @@ export function LogView({
           onSelectDay={onEditDay}
           isIgnored={isIgnored}
           showMonths
+          verdictOf={verdictOf}
         />
       )}
 
