@@ -46,13 +46,14 @@
    harmless and the clock has not run out, and the line beside it says which.
 --------------------------------------------------------------- */
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
 import {
   ChevronRight,
   Gauge,
   Hourglass,
   Lock,
+  CircleQuestionMark,
   Pencil,
   Plus,
   ShieldCheck,
@@ -108,6 +109,7 @@ import {
 } from "../lib/date"
 import { CHECK_CHOICES, CHECK_LABELS } from "../lib/checks"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
+import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
 import { Pills } from "../ui/Pills"
@@ -202,6 +204,68 @@ const Fold = ({
     <div className="px-3 pb-3 pt-1 space-y-2">{children}</div>
   </details>
 )
+
+/**
+ * **Two named modes, each saying what it is for.**
+ *
+ * Three of the refinements in this form are the same shape: one figure for
+ * everything, or one apiece. They were single latching buttons — `shared time
+ * slots`, `a figure per day` — and a lone pressed-or-not button is the worst
+ * control for that question, because it names only one of the two states. You
+ * are told what it is called when it is on and left to infer the other from
+ * its absence, and "shared time slots, unpressed" is not a phrase with a
+ * meaning. Both modes now have a name, and the choice looks like every other
+ * pick-one in the app.
+ *
+ * **A `?` per side rather than one for the control.** The thing that needs
+ * explaining is the difference between two options, and a single tooltip has
+ * to describe both to describe either — which is a paragraph where two
+ * sentences do. It sits inside the segment so the answer is beside the option
+ * it answers for; the segment is a `<span>` rather than the button, since a
+ * button inside a button is not a thing.
+ */
+function TwoWay<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: { id: T; label: string; tip: string }[]
+  onChange: (next: T) => void
+}) {
+  const c = usePalette()
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full bg-ink/[0.07] p-1">
+      {options.map((o) => {
+        const on = value === o.id
+        return (
+          <span
+            key={o.id}
+            className="flex items-center rounded-full pr-1"
+            style={segBtnStyle(on, c)}
+          >
+            <button
+              type="button"
+              onClick={() => onChange(o.id)}
+              aria-pressed={on}
+              className={`${segBtn(on)} pr-1.5`}
+              style={on ? { color: c.onFill } : undefined}
+            >
+              {o.label}
+            </button>
+            <Tip multiline text={o.tip}>
+              <span
+                className={`flex cursor-help ${on ? "opacity-70" : "text-ink/30"}`}
+              >
+                <CircleQuestionMark size={11} />
+              </span>
+            </Tip>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
 
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="space-y-1">
@@ -312,6 +376,27 @@ function DurationField({
   )
 }
 
+/**
+ * Turn one id on or off in a list where **everything lit means no
+ * restriction**.
+ *
+ * All-lit is stored as nothing at all, so the two ways of saying the same
+ * thing collapse into one; and turning the last one off is refused, because
+ * "count nothing" and "judge no day" are not rules.
+ *
+ * At module scope since the slot chips moved into `SlotsFields`.
+ */
+const toggleIn = (
+  current: string[] | undefined,
+  all: string[],
+  id: string,
+): string[] | undefined => {
+  const on = current?.length ? current : all
+  const next = on.includes(id) ? on.filter((x) => x !== id) : [...on, id]
+  if (!next.length) return current
+  return next.length === all.length ? undefined : next
+}
+
 /** What the slot restriction currently says, for a closed fold. */
 const slotsSummary = (clause: StreakClause, ctx: StreakContext): string => {
   const named = clause.slotIds?.length
@@ -343,8 +428,8 @@ function ClauseForm({
   clause: StreakClause
   ctx: StreakContext
   byWeek: boolean
-  /** Which of several this is, or null when it is the only one. */
-  ordinal: number | null
+  /** Which of several this is. Shown even when it is the only one. */
+  ordinal: number
   onChange: (patch: Partial<StreakClause>) => void
   /** Absent on the only condition — a rule with none is not a rule. */
   onRemove?: () => void
@@ -356,21 +441,6 @@ function ClauseForm({
   // Resolved, never the stored fields: a condition written before the pair
   // existed still carries an operator and one number, and only this knows it.
   const bounds = clauseBounds(clause, ctx, toKey(new Date()))
-
-  /* Both chip rows work the same way: everything lit means no restriction, and
-     turning the last one off is refused because "count nothing" and "judge no
-     day" are not rules. All lit is stored as nothing at all, so the two ways
-     of saying the same thing collapse into one. */
-  const toggleIn = (
-    current: string[] | undefined,
-    all: string[],
-    id: string,
-  ): string[] | undefined => {
-    const on = current?.length ? current : all
-    const next = on.includes(id) ? on.filter((x) => x !== id) : [...on, id]
-    if (!next.length) return current
-    return next.length === all.length ? undefined : next
-  }
 
   return (
     /* **A condition is one answer and a few refinements**, and the refinements
@@ -392,41 +462,59 @@ function ClauseForm({
        refuses to shrink below its content otherwise, which is the same bug it
        fixes everywhere else in this layout.
 
-       The number appears only when there is more than one: `Condition 1` over
-       a lone condition is a heading that tells you nothing you could not see,
-       and this form has just had two of those taken out of it. */
+       **The number is always there.** `Condition 1` over a lone condition
+      does say something you could already see — and what it says is *there
+      can be more than one of these*, which is the single most useful thing a
+      form can tell you about a shape you have not met. Appearing only on the
+      second one taught it at the moment it had stopped being news, and it
+      made the one-condition form and the two-condition form two different
+      layouts for no reason. */
     <fieldset className="@container space-y-2 min-w-0 border-0 p-0 m-0">
       {/* **The name of the block and the way out of it, on one line.**
 
-          Both appear under exactly the same condition — there is more than one
-          condition — so there is no case where one needs the other's space and
-          nothing to position around. The cross used to be pinned to the
-          corner, which left it floating a line below the heading it belonged
-          to; a `<legend>` at full width holds them both.
+          The cross used to be pinned to the corner, which left it floating a
+          line below the heading it belonged to; a `<legend>` at full width
+          holds them both.
 
           **A bin, not a cross.** A cross two lines down empties a bound, and
           one glyph doing both "clear this field" and "delete this whole block"
           is a difference nobody should have to learn from the size of the
           icon. The bin is what `EditableList` already deletes with. */}
-      {ordinal !== null && (
-        <legend className="w-full flex items-center gap-2 p-0 mb-1">
-          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
-            Condition {ordinal}
-          </span>
-          {onRemove && (
-            <Tip className="ml-auto" text="Drop this condition">
-              <button
-                type="button"
-                onClick={onRemove}
-                aria-label={`Drop condition ${ordinal}`}
-                className={`${btnBase} block p-1 rounded-full text-ink/30 hover:text-exam hover:bg-ink/5`}
-              >
-                <Trash2 size={12} />
-              </button>
-            </Tip>
-          )}
-        </legend>
-      )}
+      <legend className="w-full flex items-center gap-2 p-0 mb-1">
+        <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+          Condition {ordinal}
+        </span>
+        {onRemove && (
+          <Tip className="ml-auto" text="Drop this condition">
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Drop condition ${ordinal}`}
+              className={`${btnBase} block p-1 rounded-full text-ink/30 hover:text-exam hover:bg-ink/5`}
+            >
+              <Trash2 size={12} />
+            </button>
+          </Tip>
+        )}
+      </legend>
+
+      {/* **Why this condition is here, directly under its name.** It is the
+          one thing on the block that is about the condition rather than about
+          what it measures, and at the foot it read as the last refinement of
+          the terms — a footnote to the slots. Its own rather than the rule's,
+          since a compound rule is one promise made for several reasons. Not a
+          term, so the lock never sees it. */}
+      <Fold title="Note" summary={clause.note || "none"}>
+        <AutoTextarea
+          value={clause.note ?? ""}
+          onChange={(e) => onChange({ note: e.target.value || undefined })}
+          placeholder="Why this condition is here"
+          rows={1}
+          maxHeight={100}
+          className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
+        />
+      </Fold>
+
       {/* What it watches. Always open: it is the subject of every sentence
           below it, and a fold here would hide the one thing that makes the
           rest mean anything. */}
@@ -464,10 +552,11 @@ function ClauseForm({
         />
       </Row>
 
-      {/* What it asks of them. Also always open — together with the line above
-          it, this *is* the condition. */}
-      {!info.check && (
-        <Row label={byWeek ? "Per week" : "Per day"}>
+      {/* **A week has no weekdays to hang its figure on**, so the pair stays
+          out here. By day it lives inside `Days`, where the days it applies to
+          are chosen — see below. */}
+      {!info.check && byWeek && (
+        <Row label="Per week">
           <BoundField
             label="Minimum"
             value={bounds.min}
@@ -495,9 +584,24 @@ function ClauseForm({
         </Row>
       )}
 
-      {/* Where it counts, and whether any one slot carries a figure of its
-          own. One fold, because they are one question asked twice — and the
-          lid says which slots, so the common answer needs no opening. */}
+      {/* **Days, then slots** — the order the questions actually depend on
+          each other in. Which days the condition judges, and how much it asks
+          on them, is the rule; which slots that figure may be collected in is
+          a refinement *of those days*, and a slot rider can be set per
+          weekday, which is unreadable before you know which weekdays there
+          are. Slots came first for as long as this form existed, so the
+          narrowing was offered before the thing it narrows.
+
+          A weekly rule counts the whole week; which weekdays it fell on is not
+          a question it can ask. Nor can a day-scoped check, which asks it
+          already: a weekday with no accepted answer is a weekday it does not
+          judge, and that is what its grid says in the row it leaves empty. */}
+      {!byWeek && !info.check && (
+        <Fold title="Days" summary={daysSummary(clause)}>
+          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
+        </Fold>
+      )}
+
       {/* **Sleep has no slots, so the fold is absent rather than empty** —
           `spec 019`. A sleep entry carries no slot at all, so there is nothing
           for a rider to measure; that is a fact about the data rather than a
@@ -505,80 +609,33 @@ function ClauseForm({
           worse than one that is not there. */}
       {!info.check && !sleepTarget && ctx.slots.length > 0 && (
         <Fold title="Slots" summary={slotsSummary(clause, ctx)}>
-          <Row label="Counts in">
-            <div className="flex flex-wrap gap-1">
-              {ctx.slots.map((slot) => {
-                const on =
-                  !clause.slotIds?.length || clause.slotIds.includes(slot.id)
-                return (
-                  <button
-                    key={slot.id}
-                    type="button"
-                    onClick={() =>
-                      onChange({
-                        slotIds: toggleIn(
-                          clause.slotIds,
-                          ctx.slots.map((x) => x.id),
-                          slot.id,
-                        ),
-                      })
-                    }
-                    aria-pressed={on}
-                    style={
-                      on
-                        ? { backgroundColor: `${slot.color}24`, color: slot.color }
-                        : undefined
-                    }
-                    className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
-                      on ? "" : "text-ink/35 hover:text-ink/70"
-                    }`}
-                  >
-                    {slot.label}
-                  </button>
-                )
-              })}
-            </div>
-          </Row>
-
-          <Row label="Of which">
-            <SlotBounds
-              clause={clause}
-              ctx={ctx}
-              timed={timed}
-              byWeek={byWeek}
-              onChange={onChange}
-            />
-          </Row>
+          <SlotsFields
+            clause={clause}
+            ctx={ctx}
+            timed={timed}
+            byWeek={byWeek}
+            onChange={onChange}
+          />
         </Fold>
       )}
 
-      {/* A weekly rule counts the whole week; which weekdays it fell on is not
-          a question it can ask.
+      {/* **The sentence it will be read back as, while you are writing it.**
 
-          Nor can a day-scoped check, which asks it already: a weekday with no
-          accepted answer is a weekday it does not judge, and that is what its
-          grid says in the row it leaves empty. Two controls for one question
-          is one too many, and the one that goes is the one that was not
-          telling the truth. */}
-      {!byWeek && !info.check && (
-        <Fold title="Days" summary={daysSummary(clause)}>
-          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
-        </Fold>
-      )}
+          The summary, the streak panel and the supervisor's plain-text digest
+          all print `clauseSentence`, and until now the form did not — so the
+          only way to find out what twenty controls had added up to was to
+          save and look. That is the wrong moment for a rule with a week-long
+          lock on undoing it.
 
-      {/* Why this condition is here — its own rather than the rule's, since a
-          compound rule is one promise made for several reasons. Not a term, so
-          the lock never sees it. */}
-      <Fold title="Note" summary={clause.note || "none"}>
-        <AutoTextarea
-          value={clause.note ?? ""}
-          onChange={(e) => onChange({ note: e.target.value || undefined })}
-          placeholder="Why this condition is here"
-          rows={1}
-          maxHeight={100}
-          className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
-        />
-      </Fold>
+          The same function, never a second rendering of the same idea: a
+          preview that can disagree with what it previews is worse than none,
+          and this one cannot, because it *is* the thing it is previewing. */}
+      <p className="text-[11px] font-mono text-ink/60 leading-relaxed pt-0.5">
+        <span className="text-[9px] uppercase tracking-widest text-ink/30">
+          Reads as{" "}
+        </span>
+        <Sentence text={clauseSentence(clause, ctx, byWeek ? "week" : "day")} />
+      </p>
     </fieldset>
   )
 }
@@ -703,6 +760,16 @@ function CheckDayFields({
     clause.allow ??
     Object.fromEntries(clauseWeekdays(clause).map((wd) => [wd, seed]))
 
+  const write = (days: Record<number, CheckState[]>) =>
+    onChange({
+      allow: days,
+      weekdays: undefined,
+      min: undefined,
+      max: undefined,
+      op: undefined,
+      value: undefined,
+    })
+
   const toggle = (weekday: number, answer: CheckState) => {
     const on = allow[weekday] ?? []
     const next = on.includes(answer)
@@ -712,18 +779,76 @@ function CheckDayFields({
     // Nothing ticked is the day dropping out, which is what it means.
     if (next.length) days[weekday] = next
     else delete days[weekday]
-    onChange({
-      allow: days,
-      weekdays: undefined,
-      min: undefined,
-      max: undefined,
-      op: undefined,
-      value: undefined,
+    write(days)
+  }
+
+  /* **A column at a time.** Twenty-one switches is a grid, and every real
+     answer to it is a column: *yes on every day*, then take Sunday out. Doing
+     that one cell at a time is seven clicks to say one thing, and the seventh
+     is the one you forget — which is a weekday quietly not judged, the exact
+     failure the grid was drawn to make visible.
+
+     One button per answer, and it clears when the column is full: the two
+     jobs the user asked for — tick this everywhere, untick it everywhere —
+     are the same button in its two states, and giving them separate controls
+     would double the row to say the same thing. */
+  const everyDay = (answer: CheckState) =>
+    WEEKDAY_ORDER.every((wd) => (allow[wd] ?? []).includes(answer))
+
+  const toggleAll = (answer: CheckState) => {
+    const clearing = everyDay(answer)
+    const days: Record<number, CheckState[]> = {}
+    WEEKDAY_ORDER.forEach((wd) => {
+      const on = allow[wd] ?? []
+      const next = clearing
+        ? on.filter((a) => a !== answer)
+        : on.includes(answer)
+          ? on
+          : [...on, answer]
+      if (next.length) days[wd] = next
     })
+    write(days)
   }
 
   return (
     <div className="space-y-1 w-full">
+      {/* The header is the bulk row, not a set of labels: the answers are
+          named on every line below it, so a row that only repeated them would
+          be seven words spent on nothing. */}
+      <div className="flex items-center gap-1.5 pb-1 mb-0.5 border-b border-ink/10">
+        <span className="w-8 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/25">
+          All
+        </span>
+        {CHECK_CHOICES.map((answer) => {
+          const full = everyDay(answer)
+          return (
+            <Tip
+              key={answer}
+              text={
+                full
+                  ? `Take ${CHECK_LABELS[answer]} off every day`
+                  : `Accept ${CHECK_LABELS[answer]} on every day`
+              }
+            >
+              <button
+                type="button"
+                onClick={() => toggleAll(answer)}
+                aria-pressed={full}
+                style={
+                  full
+                    ? { backgroundColor: `${c.accent}24`, color: c.accent }
+                    : undefined
+                }
+                className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+                  full ? "font-bold" : "text-ink/30 hover:text-ink/70"
+                }`}
+              >
+                {CHECK_LABELS[answer]}
+              </button>
+            </Tip>
+          )
+        })}
+      </div>
       {WEEKDAY_ORDER.map((weekday) => (
         <div key={weekday} className="flex items-center gap-1.5">
           <span className="w-8 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
@@ -845,17 +970,20 @@ function CheckWeekFields({
 }
 
 /**
- * A figure on a particular slot, on top of the day's own.
+ * **Everything about slots**, which is two questions and not one.
  *
- * `slotIds` above already says *where the day's figure is counted*. This is a
- * different question and both answers apply: the day may want two hours in
- * total while insisting one of them lands in the morning.
+ * *Counts in* is where the day's own figure may be collected at all. *Of
+ * which* is a floor or a ceiling on one named slot, on top of that: the day
+ * may want two hours in total while insisting one of them lands in the
+ * morning. Both answers apply, and the second is meaningless without the
+ * first — which is why the chips and the riders are one component now rather
+ * than a chip row in `ClauseForm` and a `SlotBounds` under it.
  *
- * Only offered per slot on demand. A row of seven empty fields under every
- * condition would be the form asking a question almost nobody has, and the
- * ones who do have it usually have it about one slot.
+ * A rider is offered per slot on demand. A row of seven empty fields under
+ * every condition would be the form asking a question almost nobody has, and
+ * the ones who do have it usually have it about one slot.
  */
-function SlotBounds({
+function SlotsFields({
   clause,
   ctx,
   timed,
@@ -870,6 +998,14 @@ function SlotBounds({
 }) {
   const c = usePalette()
   const judged = clauseWeekdays(clause)
+  const counted = clause.slotIds?.length ? new Set(clause.slotIds) : null
+  /* **Which mode is a view state, and it has to be.** In the data, "every
+     slot" and "all of them ticked" are the same thing — `toggleIn` stores
+     `undefined` the moment the last one goes back on — so a stored flag would
+     be a second spelling of one rule and the two would disagree. Asking to
+     choose therefore changes nothing about the condition; it opens the chips. */
+  const [choosing, setChoosing] = useState(!!counted)
+
   /* **Shared unless you say otherwise.** One slot requirement for every day is
      what almost every rule means, and it stays one row. Turning it off gives
      each weekday its own, seeded from the shared one so nothing changes about
@@ -916,135 +1052,224 @@ function SlotBounds({
   }
 
   return (
-    <div className="space-y-1.5 w-full">
-      {!byWeek && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setPerDay(!perDay)}
-            aria-pressed={!perDay}
-            style={
-              !perDay
-                ? { backgroundColor: `${c.accent}24`, color: c.accent }
-                : undefined
-            }
-            className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
-              perDay ? "text-ink/35 hover:text-ink/70" : ""
-            }`}
-          >
-            shared time slots
-          </button>
-          {perDay &&
-            judged.map((wd) => (
-              <button
-                key={wd}
-                type="button"
-                onClick={() => setEditing(wd)}
-                aria-pressed={showing === wd}
-                style={
-                  showing === wd
-                    ? { backgroundColor: c.accent, color: c.onFill }
-                    : undefined
-                }
-                className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
-                  showing === wd ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
-                }`}
-              >
-                {WEEKDAY_LABELS[wd]}
-              </button>
-            ))}
-        </div>
+    <div className="space-y-2 w-full">
+      {/* **Where the day's own figure is counted.** Two named modes rather
+          than a bare row of chips that happens to mean "all of them" when
+          every one is lit: all-lit and none-lit look alike at a glance and
+          mean opposite things, and the chips are noise until you have actually
+          decided to narrow. */}
+      <Row label="Counts in">
+        <TwoWay<"all" | "some">
+          value={choosing ? "some" : "all"}
+          onChange={(v) => {
+            setChoosing(v === "some")
+            if (v === "all") onChange({ slotIds: undefined })
+          }}
+          options={[
+            {
+              id: "all",
+              label: "All slots",
+              tip: "Everything logged that day counts towards the figure, wherever it fell",
+            },
+            {
+              id: "some",
+              label: "Chosen slots",
+              tip: "Only what falls in the slots you pick counts towards the figure",
+            },
+          ]}
+        />
+      </Row>
+
+      {choosing && (
+        <Row label="">
+          <div className="flex flex-wrap gap-1">
+            {ctx.slots.map((slot) => {
+              const on = !counted || counted.has(slot.id)
+              return (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      slotIds: toggleIn(
+                        clause.slotIds,
+                        ctx.slots.map((x) => x.id),
+                        slot.id,
+                      ),
+                    })
+                  }
+                  aria-pressed={on}
+                  style={
+                    on
+                      ? { backgroundColor: `${slot.color}24`, color: slot.color }
+                      : undefined
+                  }
+                  className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono ${
+                    on ? "" : "text-ink/35 hover:text-ink/70"
+                  }`}
+                >
+                  {slot.label}
+                </button>
+              )
+            })}
+          </div>
+        </Row>
       )}
-      <div className="flex flex-wrap items-center gap-1.5 w-full">
-      {ctx.slots.map((slot) => {
-        const b = current[slot.id]
-        if (!b)
-          return (
+
+      {/* And then, on top of that, a figure on one named slot. `Counts in`
+          says where the day's own figure comes from; this says a slot has a
+          floor or a ceiling of its own, and both apply. */}
+      <Row label="Of which">
+        {!byWeek && (
+          <TwoWay<"same" | "each">
+            value={perDay ? "each" : "same"}
+            onChange={(v) => setPerDay(v === "each")}
+            options={[
+              {
+                id: "same",
+                label: "Shared time slots",
+                tip: "Same slot rules for each countable day",
+              },
+              {
+                id: "each",
+                label: "Individual time slots",
+                tip: "Can set individual slot rules for chosen countable days",
+              },
+            ]}
+          />
+        )}
+        {perDay &&
+          judged.map((wd) => (
             <button
-              key={slot.id}
+              key={wd}
               type="button"
-              onClick={() => write({ ...current, [slot.id]: { min: 0 } })}
-              className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70 bg-ink/[0.05]`}
-            >
-              + {slot.label}
-            </button>
-          )
-        const side: "min" | "max" = b.min !== undefined ? "min" : "max"
-        const shown = b.min ?? b.max ?? 0
-        return (
-          <span
-            key={slot.id}
-            className="flex items-center gap-1 rounded-full px-2 py-1"
-            style={{ backgroundColor: `${slot.color}1A` }}
-          >
-            <span
-              className="text-[10px] font-mono"
-              style={{ color: slot.color }}
-            >
-              {slot.label}
-            </span>
-            <Pills<"min" | "max">
-              value={side}
-              onChange={(next) =>
-                write({ ...current, [slot.id]: { [next]: shown } })
+              onClick={() => setEditing(wd)}
+              aria-pressed={showing === wd}
+              style={
+                showing === wd
+                  ? { backgroundColor: c.accent, color: c.onFill }
+                  : undefined
               }
-              options={[
-                { id: "min", label: "min" },
-                { id: "max", label: "max" },
-              ]}
-            />
-            {timed ? (
-              <DurationField
-                minutes={shown}
-                onChange={(v) =>
-                  write({ ...current, [slot.id]: { [side]: v } })
-                }
-              />
-            ) : (
-              <input
-                type="number"
-                min={0}
-                value={shown}
-                onChange={(e) =>
-                  write({
-                    ...current,
-                    [slot.id]: {
-                      [side]: Math.max(0, Number(e.target.value) || 0),
-                    },
-                  })
-                }
-                className={NUM}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                const next = { ...current }
-                delete next[slot.id]
-                write(next)
-              }}
-              className={`${btnBase} rounded-full text-ink/30 hover:text-ink`}
-              style={{ color: c.ink }}
+              className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
+                showing === wd ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
+              }`}
             >
-              <X size={11} />
+              {WEEKDAY_LABELS[wd]}
             </button>
-          </span>
-        )
-      })}
+          ))}
+      </Row>
+
+      <div className="flex flex-wrap items-center gap-1.5 w-full">
+        {ctx.slots.map((slot) => {
+          const b = current[slot.id]
+          /* **A figure only on a slot that counts.** A floor on a slot the
+             condition has excluded is a requirement measured against something
+             it is not measuring — never satisfiable, and `clauseImpossible`
+             refuses it. So the offer is withheld here rather than the mistake
+             being caught two screens later.
+
+             An existing one is still drawn, outlined in the missed colour and
+             with its cross. Hiding it would leave a rule that cannot be saved
+             and cannot be fixed, which is the worse failure of the two. */
+          const countable = !counted || counted.has(slot.id)
+          if (!b)
+            return countable ? (
+              <button
+                key={slot.id}
+                type="button"
+                onClick={() => write({ ...current, [slot.id]: { min: 0 } })}
+                className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70 bg-ink/[0.05]`}
+              >
+                + {slot.label}
+              </button>
+            ) : null
+          const side: "min" | "max" = b.min !== undefined ? "min" : "max"
+          const shown = b.min ?? b.max ?? 0
+          return (
+            <span
+              key={slot.id}
+              className="flex items-center gap-1 rounded-full px-2 py-1"
+              style={{
+                backgroundColor: `${slot.color}1A`,
+                ...(countable ? {} : { boxShadow: `inset 0 0 0 1px ${c.exam}` }),
+              }}
+            >
+              <span
+                className="text-[10px] font-mono"
+                style={{ color: slot.color }}
+              >
+                {slot.label}
+              </span>
+              <Pills<"min" | "max">
+                value={side}
+                onChange={(next) =>
+                  write({ ...current, [slot.id]: { [next]: shown } })
+                }
+                options={[
+                  { id: "min", label: "min" },
+                  { id: "max", label: "max" },
+                ]}
+              />
+              {timed ? (
+                <DurationField
+                  minutes={shown}
+                  onChange={(v) => write({ ...current, [slot.id]: { [side]: v } })}
+                />
+              ) : (
+                <input
+                  type="number"
+                  min={0}
+                  value={shown}
+                  onChange={(e) =>
+                    write({
+                      ...current,
+                      [slot.id]: {
+                        [side]: Math.max(0, Number(e.target.value) || 0),
+                      },
+                    })
+                  }
+                  className={NUM}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = { ...current }
+                  delete next[slot.id]
+                  write(next)
+                }}
+                className={`${btnBase} rounded-full text-ink/30 hover:text-ink`}
+                style={{ color: c.ink }}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 /**
- * Which weekdays a condition judges, and — once you ask for it — a different
- * figure on each.
+ * Which weekdays a condition judges, **and what it asks on them**.
+ *
+ * The figure used to sit outside this block, in a `Per day` row above the
+ * folds, while the per-day grid sat inside — two controls for one number, one
+ * of which was dead whenever the other was in use. They are the same question
+ * asked at two grains, so they are one block: the days first, then how much,
+ * then the figures for whichever answer you gave.
  *
  * **Two modes, because two questions.** Most conditions ask the same thing
- * every day they cover, and that stays one number and a row of day switches.
- * Real goals often do not: three hours most days, ninety minutes on Thursday.
- * Saying that took seven conditions before, which then drifted apart the first
- * time any one of them was edited.
+ * every day they cover, and that stays one pair of numbers and a row of day
+ * switches. Real goals often do not: three hours most days, ninety minutes on
+ * Thursday. Saying that took seven conditions before, which then drifted
+ * apart the first time any one of them was edited.
+ *
+ * **Both bounds, per day.** The grid only ever edited whichever side happened
+ * to be set, so "at least 2h, and never more than 4h — except Thursday" was
+ * writable as a shared pair and not as a per-day one, for no reason but the
+ * control.
  *
  * **A day with no figure is a day the rule does not judge**, so the two
  * questions are the same question once per-day numbers are on: switching a day
@@ -1066,9 +1291,25 @@ function WeekdayRow({
   const c = usePalette()
   const perDay = !!clause.days
   const judged = clauseWeekdays(clause)
+  const shared = boundsOnWeekday(clause, ctx, judged[0] ?? 0)
 
   const setPerDay = (on: boolean) => {
-    if (!on) return onChange({ days: undefined })
+    if (!on) {
+      /* Back to one figure for every day, and it has to come from somewhere:
+         the first judged day's, since that is the one the shared pair was
+         seeded from on the way in. Dropping `days` alone would leave the old
+         flat pair — which may be nothing at all — and silently unmake the rule
+         you had just written seven figures for. */
+      const keep = clause.days?.[judged[0] ?? 0] ?? {}
+      return onChange({
+        days: undefined,
+        weekdays: judged.length === WEEKDAY_ORDER.length ? undefined : judged,
+        min: keep.min,
+        max: keep.max,
+        op: undefined,
+        value: undefined,
+      })
+    }
     // Seeded from what the condition already asks, so switching the mode on
     // changes nothing about the rule — it only makes the numbers editable.
     const days: Record<number, ClauseBounds> = {}
@@ -1096,81 +1337,130 @@ function WeekdayRow({
   }
 
   const setDay = (wd: number, bounds: ClauseBounds) =>
-    onChange({ days: { ...clause.days, [wd]: bounds } })
+    onChange({
+      days: { ...clause.days, [wd]: { ...clause.days?.[wd], ...bounds } },
+    })
 
   return (
-    <div className="space-y-1.5 w-full">
-      <div className="flex flex-wrap items-center gap-1">
-        {WEEKDAY_ORDER.map((wd) => {
-          const on = judged.includes(wd)
-          return (
-            <button
-              key={wd}
-              type="button"
-              onClick={() => toggleDay(wd)}
-              aria-pressed={on}
-              style={
-                on ? { backgroundColor: c.accent, color: c.onFill } : undefined
-              }
-              className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
-                on ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
-              }`}
-            >
-              {WEEKDAY_LABELS[wd]}
-            </button>
-          )
-        })}
-        {!perDay && judged.length === WEEKDAY_ORDER.length && (
-          <span className="text-[9px] font-mono text-ink/35">every day</span>
-        )}
-        <button
-          type="button"
-          onClick={() => setPerDay(!perDay)}
-          aria-pressed={perDay}
-          style={
-            perDay
-              ? { backgroundColor: `${c.accent}24`, color: c.accent }
-              : undefined
-          }
-          className={`${btnBase} ml-1 px-2 py-1 rounded-full text-[10px] font-mono ${
-            perDay ? "" : "text-ink/35 hover:text-ink/70"
-          }`}
-        >
-          a figure per day
-        </button>
-      </div>
+    <div className="space-y-2 w-full">
+      {/* **Which days first.** Everything under this is a figure *on* those
+          days, so choosing them is the question the rest depends on — and it
+          used to sit two folds below the numbers it governs. */}
+      <Row label="Judged on">
+        <div className="flex flex-wrap items-center gap-1">
+          {WEEKDAY_ORDER.map((wd) => {
+            const on = judged.includes(wd)
+            return (
+              <button
+                key={wd}
+                type="button"
+                onClick={() => toggleDay(wd)}
+                aria-pressed={on}
+                style={
+                  on ? { backgroundColor: c.accent, color: c.onFill } : undefined
+                }
+                className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
+                  on ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
+                }`}
+              >
+                {WEEKDAY_LABELS[wd]}
+              </button>
+            )
+          })}
+          {judged.length === WEEKDAY_ORDER.length && (
+            <span className="text-[9px] font-mono text-ink/35">every day</span>
+          )}
+        </div>
+      </Row>
+
+      {/* **One figure or seven, and never both on screen.** The shared pair
+          used to sit outside this fold, permanently, while the per-day grid
+          sat inside it — so a condition with seven figures still drew the flat
+          pair above them, dead and editable, and the form showed you two
+          answers to a question that has one. `days` overrides the flat pair
+          completely (`boundsOnWeekday`), so which one is live is not a matter
+          of taste; the control now says which, and only that one is drawn. */}
+      <Row label="How much">
+        <TwoWay<"same" | "each">
+          value={perDay ? "each" : "same"}
+          onChange={(v) => setPerDay(v === "each")}
+          options={[
+            {
+              id: "same",
+              label: "One figure",
+              tip: "The same floor and ceiling on every day this condition judges",
+            },
+            {
+              id: "each",
+              label: "A figure per day",
+              tip: "Set the floor and the ceiling separately for each chosen day",
+            },
+          ]}
+        />
+      </Row>
+
+      {!perDay && (
+        <Row label="Per day">
+          <BoundField
+            label="Minimum"
+            value={shared.min}
+            timed={timed}
+            onChange={(v) =>
+              onChange({ min: v, op: undefined, value: undefined })
+            }
+          />
+          <BoundField
+            label="Maximum"
+            value={shared.max}
+            timed={timed}
+            onChange={(v) =>
+              onChange({ max: v, op: undefined, value: undefined })
+            }
+          />
+        </Row>
+      )}
 
       {perDay && (
-        <div className="flex flex-wrap gap-2">
+        /* A row per day rather than a column each. Two bounds apiece is four
+           boxes on a timed condition, and side by side that is a grid eight
+           columns wide inside a 512px modal; down the page it is the same
+           table `CheckWeekFields` already draws, with the days where the
+           answers are. */
+        /* **A grid, so the two columns line up under their headings.** With
+           `flex` the fields sat wherever the one before them ended — a day
+           with no ceiling is two boxes shorter than one with — and the words
+           `Minimum` and `Maximum` were then over nothing in particular. The
+           columns are `auto` rather than `1fr` because a timed field is four
+           boxes and a count is one, and a fixed width has to be wrong for one
+           of them. */
+        <div className="grid grid-cols-[2rem_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
+          <span />
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Minimum
+          </span>
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Maximum
+          </span>
           {judged.map((wd) => {
             const b = clause.days?.[wd] ?? {}
-            const shown = b.min ?? b.max ?? 0
-            const side: "min" | "max" = b.min !== undefined ? "min" : "max"
             return (
-              <label key={wd} className="flex flex-col items-center gap-0.5">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+              <Fragment key={wd}>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
                   {WEEKDAY_LABELS[wd]}
                 </span>
-                {timed ? (
-                  <DurationField
-                    minutes={shown}
-                    onChange={(v) => setDay(wd, { ...b, [side]: v })}
-                  />
-                ) : (
-                  <input
-                    type="number"
-                    min={0}
-                    value={shown}
-                    onChange={(e) =>
-                      setDay(wd, {
-                        ...b,
-                        [side]: Math.max(0, Number(e.target.value) || 0),
-                      })
-                    }
-                    className={NUM}
-                  />
-                )}
-              </label>
+                <BoundField
+                  label=""
+                  value={b.min}
+                  timed={timed}
+                  onChange={(v) => setDay(wd, { min: v })}
+                />
+                <BoundField
+                  label=""
+                  value={b.max}
+                  timed={timed}
+                  onChange={(v) => setDay(wd, { max: v })}
+                />
+              </Fragment>
             )
           })}
         </div>
@@ -1412,6 +1702,65 @@ function RuleForm({
         </span>
       </Row>
 
+      {/* **Who this rule answers to**, beside the period it is judged over.
+
+          It lived inside `Freezes` for as long as the fold existed, and it has
+          nothing to do with freezes: a freeze is what a slip costs *you*, and
+          this is whether the day's verdict hears about the slip at all. The
+          lid said so out loud — `1 a week · bank 3 · counts in the day` was
+          one fold summarising two unrelated facts — and the ring weight under
+          it made three. Both belong with `Judged`, which is the other question
+          about the rule as a whole rather than about any one condition.
+
+          Not a term the lock protects, either way: joining or leaving the
+          day's verdict changes what the *day* is worth, never what this rule
+          asks of you. */}
+      {/* Not a term the lock protects: joining or leaving the day's verdict
+          changes what the *day* is worth, never what this rule asks of you. */}
+      <Row label="The day">
+        <Pills<"in" | "out">
+          value={draft.inDayVerdict ? "in" : "out"}
+          onChange={(v) => patch({ inDayVerdict: v === "in" })}
+          options={[
+            { id: "in", label: "Counts" },
+            { id: "out", label: "On its own" },
+          ]}
+        />
+        <Tip
+          multiline
+          text={
+            "A day is kept when every rule that counts held. That run of days is the streak on the row above the log — the one number worth being afraid of." +
+            String.fromCharCode(10, 10) +
+            "A rule left out still keeps its own streak. It simply gets no vote on the day." +
+            String.fromCharCode(10, 10) +
+            "Switching this on counts from today, never backwards: a rule two months old could otherwise rewrite a streak out of history you can no longer edit."
+          }
+        >
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
+            what this means
+          </span>
+        </Tip>
+      </Row>
+
+      {/* Drawing only, so it is not a term and the lock never sees it. It sets
+          how much of the day's ring this rule takes and where its arc starts;
+          the verdict is unchanged, because a day is missed the moment anything
+          is missed. A rule that should genuinely count for less is a rule that
+          should not be voting — the switch above says that honestly. */}
+      {draft.inDayVerdict && (
+        <Row label="Weight in the ring">
+          <Pills<string>
+            value={String(Math.min(5, Math.max(1, Math.round(draft.weight ?? 1))))}
+            onChange={(w) => patch({ weight: Number(w) })}
+            options={["1", "2", "3", "4", "5"].map((n) => ({ id: n, label: n }))}
+          />
+          <span className="text-[10px] font-mono text-ink/40">
+            how much of the day this is about
+          </span>
+        </Row>
+      )}
+
+
       {/* The conditions are the body of the form, not a section of it. They
           carried a heading while `The rule` carried one above them, and two
           headings over four rows is a table of contents for a page you can
@@ -1428,7 +1777,7 @@ function RuleForm({
             clause={clause}
             ctx={ctx}
             byWeek={byWeek}
-            ordinal={clauses.length > 1 ? i + 1 : null}
+            ordinal={i + 1}
             onChange={(next) => patchClause(clause.id, next)}
             onRemove={
               clauses.length > 1
@@ -1502,62 +1851,14 @@ function RuleForm({
         </Fold>
       )}
 
-      {/* **What a slip costs, and who it costs it to** — the allowance, the
-          bank, and whether the day's verdict hears about it at all. Four
-          settings that are almost always left alone, so they fold, and the lid
-          states every one of them: a fold reading `1 a week, bank 3 · counts`
-          is a sentence you check without opening anything. */}
+      {/* **What a slip costs** — the allowance and the bank, and nothing
+          else now. Two settings that are almost always left alone, so they
+          fold, and the lid states both: a fold reading `1 a week · bank 3` is
+          a sentence you check without opening anything. */}
       <Fold
         title="Freezes"
-        summary={`${draft.freezesPerWeek} a week · bank ${draft.freezeCap} · ${
-          draft.inDayVerdict ? "counts in the day" : "own streak"
-        }`}
+        summary={`${draft.freezesPerWeek} a week · bank ${draft.freezeCap}`}
       >
-      {/* Not a term the lock protects: joining or leaving the day's verdict
-          changes what the *day* is worth, never what this rule asks of you. */}
-      <Row label="The day">
-        <Pills<"in" | "out">
-          value={draft.inDayVerdict ? "in" : "out"}
-          onChange={(v) => patch({ inDayVerdict: v === "in" })}
-          options={[
-            { id: "in", label: "Counts" },
-            { id: "out", label: "On its own" },
-          ]}
-        />
-        <Tip
-          multiline
-          text={
-            "A day is kept when every rule that counts held. That run of days is the streak on the row above the log — the one number worth being afraid of." +
-            String.fromCharCode(10, 10) +
-            "A rule left out still keeps its own streak. It simply gets no vote on the day." +
-            String.fromCharCode(10, 10) +
-            "Switching this on counts from today, never backwards: a rule two months old could otherwise rewrite a streak out of history you can no longer edit."
-          }
-        >
-          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
-            what this means
-          </span>
-        </Tip>
-      </Row>
-
-      {/* Drawing only, so it is not a term and the lock never sees it. It sets
-          how much of the day's ring this rule takes and where its arc starts;
-          the verdict is unchanged, because a day is missed the moment anything
-          is missed. A rule that should genuinely count for less is a rule that
-          should not be voting — the switch above says that honestly. */}
-      {draft.inDayVerdict && (
-        <Row label="Weight in the ring">
-          <Pills<string>
-            value={String(Math.min(5, Math.max(1, Math.round(draft.weight ?? 1))))}
-            onChange={(w) => patch({ weight: Number(w) })}
-            options={["1", "2", "3", "4", "5"].map((n) => ({ id: n, label: n }))}
-          />
-          <span className="text-[10px] font-mono text-ink/40">
-            how much of the day this is about
-          </span>
-        </Row>
-      )}
-
       <Row label="">
         <label className="flex flex-col gap-1">
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
@@ -1666,7 +1967,7 @@ function RuleForm({
           {edit.needsApproval ? "Send for approval" : "Done"}
         </button>
 
-        {!edit.changed && !edit.asksNothing && (
+        {!edit.changed && !edit.asksNothing && !edit.impossible && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/40">
             No change to the terms.
           </span>
@@ -1685,13 +1986,34 @@ function RuleForm({
             ceiling or an answer, or drop the condition.
           </span>
         )}
-        {edit.changed && edit.settingUp && !edit.asksNothing && (
+        {/* **The other end of `asksNothing`, and it outranks the clock for
+            the same reason.** One is a condition every day clears; this is one
+            no day can, and both are rules that have stopped judging. It says
+            which figures contradict each other, because "impossible" without
+            the arithmetic is a form refusing to save and not saying why. */}
+        {edit.impossible && (
+          <span
+            className="flex items-center gap-1 text-[10px] font-mono"
+            style={{ color: c.exam }}
+          >
+            <TriangleAlert size={11} />
+            <span>
+              <Sentence text={edit.impossible} /> — nothing could ever satisfy
+              that.
+            </span>
+          </span>
+        )}
+        {edit.changed && edit.settingUp && !edit.asksNothing && !edit.impossible && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
             <ShieldCheck size={11} />
             Today is yours to get this right on.
           </span>
         )}
-        {edit.changed && !edit.settingUp && edit.narrowing && !edit.asksNothing && (
+        {edit.changed &&
+          !edit.settingUp &&
+          edit.narrowing &&
+          !edit.asksNothing &&
+          !edit.impossible && (
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
             <ShieldCheck size={11} />
             This only narrows the rule.
@@ -1722,7 +2044,11 @@ function RuleForm({
             Say why first. It goes on the record, not into a log that can fail.
           </span>
         )}
-        {!edit.allowed && !edit.needsReason && edit.changed && !edit.asksNothing && (
+        {!edit.allowed &&
+          !edit.needsReason &&
+          edit.changed &&
+          !edit.asksNothing &&
+          !edit.impossible && (
           <span
             className="flex items-center gap-1 text-[10px] font-mono"
             style={{ color: c.exam }}

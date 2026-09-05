@@ -28,6 +28,7 @@ import { notices, worstLevel } from "../src/lib/notices"
 import type { Notice, NoticeLevel } from "../src/lib/notices"
 import {
   clauseAsksNothing,
+  clauseImpossible,
   clauseReadout,
   clauseSentence,
   clauseWeekReadoutParts,
@@ -906,6 +907,120 @@ const REFUSED: { name: string; clause: object }[] = [
 ]
 
 /**
+ * The other end of the same axis — a condition **nothing** could satisfy.
+ *
+ * `clauseAsksNothing` catches the rule every day clears; this catches the rule
+ * no day can. Both have stopped judging, and a rule that always breaks teaches
+ * you to ignore it exactly as fast as one that never does. `byWeek` matters to
+ * two of these: what fits in a day and what fits in a week are different
+ * amounts of room.
+ */
+const IMPOSSIBLE: { name: string; clause: object; byWeek?: boolean }[] = [
+  {
+    name: "a floor above its own ceiling",
+    clause: { id: "c", ...target("activity", "a-les"), min: 180, max: 60 },
+  },
+  {
+    name: "slot floors adding up past the day's ceiling",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      max: 120,
+      slots: { "s-am": { min: 90 }, "s-pm": { min: 90 } },
+    },
+  },
+  {
+    name: "slot floors adding up past the day itself",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      slots: { "s-am": { min: 20 * 60 }, "s-pm": { min: 20 * 60 } },
+    },
+  },
+  {
+    name: "a figure on a slot the condition does not count",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      slotIds: ["s-am"],
+      slots: { "s-pm": { min: 30 } },
+    },
+  },
+  {
+    name: "a slot floor above its own slot ceiling",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      slots: { "s-am": { min: 90, max: 30 } },
+    },
+  },
+  {
+    name: "one weekday of seven that contradicts itself",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      days: { 1: { min: 60 }, 4: { min: 180, max: 60 } },
+    },
+  },
+]
+
+/**
+ * And the ones that look like the above and are perfectly fine. A refusal that
+ * over-reaches is worse than none: it stops you writing a rule you meant.
+ */
+const POSSIBLE: { name: string; clause: object; byWeek?: boolean }[] = [
+  {
+    name: "slot floors that fit inside the day's ceiling",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      max: 240,
+      slots: { "s-am": { min: 60 }, "s-pm": { min: 60 } },
+    },
+  },
+  {
+    name: "a slot floor with no day ceiling to breach",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      slots: { "s-am": { min: 600 } },
+    },
+  },
+  {
+    name: "twenty hours a slot, over a week rather than a day",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      slots: { "s-am": { min: 20 * 60 }, "s-pm": { min: 20 * 60 } },
+    },
+    byWeek: true,
+  },
+  {
+    name: "counts, which have no ceiling of their own to exceed",
+    clause: {
+      id: "c",
+      ...target("unit", "u-yt"),
+      min: 1,
+      slots: { "s-am": { min: 9999 } },
+    },
+  },
+  {
+    name: "a rider on a slot, with every slot counted",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 120,
+      slots: { "s-am": { min: 60 } },
+    },
+  },
+]
+
+/**
  * One rule's notices, out of a project that holds only that rule.
  *
  * `notices()` is the whole board, so every case has to narrow to the rule it
@@ -1710,6 +1825,32 @@ for (const test of ADDITIONS) {
 }
 
 console.log("")
+for (const { name, clause, byWeek } of IMPOSSIBLE) {
+  const rule = ruleOf(clause as StreakClause, byWeek ? "week" : "day")
+  const ctx = streakContext(project(rule, {}))
+  const said = clauseImpossible(clause as StreakClause, ctx, !!byWeek)
+  if (said) {
+    console.log(`${GREEN}  ok${OFF}  impossible: ${name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  impossible: ${name} — accepted, and no day can hold it`)
+  }
+}
+
+console.log("")
+for (const { name, clause, byWeek } of POSSIBLE) {
+  const rule = ruleOf(clause as StreakClause, byWeek ? "week" : "day")
+  const ctx = streakContext(project(rule, {}))
+  const said = clauseImpossible(clause as StreakClause, ctx, !!byWeek)
+  if (!said) {
+    console.log(`${GREEN}  ok${OFF}  allowed: ${name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  allowed: ${name} — refused as “${said}”`)
+  }
+}
+
+console.log("")
 for (const { name, clause } of REFUSED) {
   const rule = ruleOf(clause as StreakClause, "day")
   const ctx = streakContext(project(rule, {}))
@@ -1728,5 +1869,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

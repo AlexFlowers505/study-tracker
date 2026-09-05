@@ -2787,6 +2787,93 @@ export const clauseAsksNothing = (
 }
 
 /**
+ * A condition **no period could ever satisfy**, said in words — or null.
+ *
+ * The sibling of `clauseAsksNothing` at the other end of the same axis. That
+ * one refuses a condition every day clears; this refuses one no day can. Both
+ * are rules that have stopped judging, and both fail silently: a condition
+ * asking for twenty hours in the morning and twenty in the evening is not an
+ * arithmetic error, it is a deficit of forty hours every single day, and what
+ * you get is a streak that resets every morning with nothing to show why.
+ *
+ * Three ways in, all of them reachable by ordinary editing:
+ *
+ * - **A floor above its own ceiling.** Now that a condition carries both, `at
+ *   least 3h and at most 1h` is two fields a scroll wheel apart.
+ * - **Slot floors that add up past the day's ceiling** — or past the day
+ *   itself. The riders are a separate control from the day's own pair and
+ *   nothing was comparing them.
+ * - **A rider on a slot the condition does not count.** `slotIds` says where
+ *   the figure is counted at all, so a floor on a slot outside that set is a
+ *   requirement measured against something the condition has excluded.
+ *
+ * Checks are exempt: three accepted answers have no arithmetic to contradict,
+ * and a check that accepts nothing is already `clauseAsksNothing`.
+ */
+export const clauseImpossible = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  byWeek = false,
+): string | null => {
+  const info = targetInfo(clauseTarget(clause), ctx)
+  if (info.check) return null
+
+  const named = targetsLabel(clauseTargets(clause), ctx)
+  const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
+  const counted = clause.slotIds?.length ? new Set(clause.slotIds) : null
+  /* What there physically is. A count has no such ceiling — there is no upper
+     limit on how many times a thing can be tallied — so the sanity check is
+     only ever about time. */
+  const room = info.measure === "time" ? (byWeek ? 7 : 1) * 24 * 60 : Infinity
+
+  const fault = (
+    bounds: ClauseBounds,
+    slots: Record<string, ClauseBounds>,
+    when: string,
+  ): string | null => {
+    if (
+      bounds.min !== undefined &&
+      bounds.max !== undefined &&
+      bounds.min > bounds.max
+    )
+      return `${named} asks for at least ${q(fmt(bounds.min))}${when} and at most ${q(fmt(bounds.max))}`
+
+    let floor = 0
+    for (const [slotId, b] of Object.entries(slots)) {
+      const label = ctx.slots.find((x) => x.id === slotId)?.label
+      const slot = q(label ?? "a slot that no longer exists")
+      if (counted && !counted.has(slotId))
+        return `${named} carries a figure on ${slot}, which it does not count`
+      if (b.min !== undefined && b.max !== undefined && b.min > b.max)
+        return `${named} asks for at least ${q(fmt(b.min))} and at most ${q(fmt(b.max))} in ${slot}`
+      if (b.min !== undefined) floor += b.min
+    }
+    if (bounds.max !== undefined && floor > bounds.max)
+      return `${named} asks for ${q(fmt(floor))} across its slots${when} but allows at most ${q(fmt(bounds.max))} altogether`
+    if (floor > room)
+      return `${named} asks for ${q(fmt(floor))} across its slots${when}, which is longer than ${byWeek ? "a week" : "a day"}`
+    return null
+  }
+
+  if (byWeek)
+    return fault(
+      boundsOnWeekday(clause, ctx, 0),
+      clause.slots ?? {},
+      " a week",
+    )
+
+  for (const weekday of clauseWeekdays(clause)) {
+    const bad = fault(
+      boundsOnWeekday(clause, ctx, weekday),
+      slotBoundsOnWeekday(clause, weekday),
+      ` on ${q(WEEKDAY_LABELS[weekday])}`,
+    )
+    if (bad) return bad
+  }
+  return null
+}
+
+/**
  * **Deleting is the largest loosening there is, and now costs the same.**
  *
  * It used to be free, and `CLAUDE.md` said so in as many words: *that leaves
@@ -2870,6 +2957,13 @@ export interface RuleEdit {
    * is a rule that would stop judging.
    */
   asksNothing: string | null
+  /**
+   * A condition nothing could satisfy, said in words. Refused on the same
+   * terms and for the same reason as `asksNothing`: at either end of the axis
+   * the rule has stopped judging, and a rule that always breaks teaches you to
+   * ignore it exactly as fast as one that never does.
+   */
+  impossible: string | null
   allowed: boolean
   /** The rule as it should be stored, with the clock moved if it had to be. */
   next: StreakRule
@@ -2916,6 +3010,7 @@ export function ruleEdit(
     needsReason: false,
     needsApproval: false,
     asksNothing: null,
+    impossible: null,
   }
 
   /* **Before every other gate, including the day it was written.** The lock
@@ -2932,6 +3027,15 @@ export function ruleEdit(
       allowed: false,
       next: prev,
     }
+
+  /* And the other end of it. Ahead of the clock for the same reason: a
+     condition asking twenty hours in the morning and twenty in the evening is
+     a rule that breaks every day, and no waiting period makes that a promise
+     worth keeping. */
+  for (const clause of ruleClauses(draft)) {
+    const bad = clauseImpossible(clause, ctx, draft.scope === "week")
+    if (bad) return { ...base, impossible: bad, allowed: false, next: prev }
+  }
 
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
   if (narrowing) return { ...base, allowed: true, next: draft }

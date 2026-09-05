@@ -1069,6 +1069,19 @@ be rationed). No floor, no ceiling, no accepted answer means every day there
 has ever been satisfies it, and a rule containing one has quietly stopped
 being a rule.
 
+**And a condition nothing could satisfy is refused on the same terms**
+(`clauseImpossible`, beside it and for the same reason). The two are the ends
+of one axis: a rule that never breaks and a rule that always breaks have both
+stopped judging, and the second teaches you to ignore it just as fast. Three
+ways in, all reachable by ordinary editing now that a condition carries both
+bounds and slot riders on top of them — a floor above its own ceiling, slot
+floors adding up past the day's ceiling or past the day itself, and a rider on
+a slot the condition does not count. The message names the figures that
+contradict each other, because *impossible* without the arithmetic is a form
+refusing to save and not saying why. Checks are exempt: three accepted answers
+have no arithmetic to contradict, and a check that accepts nothing is already
+`clauseAsksNothing`.
+
 That split is what makes the feature cheap rather than clever: every existing
 reader of counts — the day badges, the period chips, the count filter, both
 counter chart modes — goes on working on checks without knowing they exist, and
@@ -1305,6 +1318,56 @@ from the first dropdown, like a tab with nothing behind it; study time is
 always there. `PickKind` in the tab is deliberately not `StreakTargetKind`: a
 tally and a check are one `unit` in the data and two different questions to a
 person, and the first dropdown is the person's list.
+
+**The form is ordered by what depends on what.** The rule as a whole first
+— the period it is judged over, whether it votes in the day, and its weight in
+the ring. Then each condition: its name and note, what it counts, **then days,
+then slots**. Days before slots because a slot rider is a refinement *of those
+days* and can be set per weekday, which is unreadable before you know which
+weekdays there are; slots came first for as long as this form existed, so the
+narrowing was offered ahead of the thing it narrows. `The day` and the ring
+weight were inside the `Freezes` fold, which is a third subject again — a
+freeze is what a slip costs *you* — and the lid said so out loud, summarising
+two unrelated facts in one line.
+
+**The condition's figure lives inside `Days`, and there is only ever one of
+it.** `clause.days` overrides the flat pair completely (`boundsOnWeekday`), so
+drawing a `Per day` row above the folds *and* a per-day grid inside one showed
+two answers to a question that has one, with whichever was overridden sitting
+there dead and editable. One `TwoWay` — *One figure* / *A figure per day* —
+now says which, and only that one is drawn. The grid takes **both** bounds per
+day; it only ever edited whichever side happened to be set, so "at least 2h,
+never more than 4h — except Thursday" was writable as a shared pair and not as
+a per-day one, for no reason but the control. A week has no weekdays to hang a
+figure on, so a weekly condition keeps its `Per week` pair out at the top.
+
+**Every mode switch names both of its modes** (`TwoWay`, with a `?` per side).
+They were latching single buttons — `shared time slots`, `a figure per day` —
+and a lone pressed-or-not button is the worst possible control for a choice
+between two things: it names one state and leaves you to infer the other from
+its absence, and "shared time slots, unpressed" is not a phrase with a
+meaning. The `?` is per side rather than per control, because what needs
+explaining is the *difference*, and one tooltip has to describe both modes to
+describe either.
+
+**A check's grid has a bulk row.** Twenty-one switches, and every real answer
+to it is a column — *yes on every day*, then take Sunday out. One button per
+answer, which clears when the column is already full: tick-everywhere and
+untick-everywhere are the same button in its two states, and separate controls
+for them would double the row to say the same thing.
+
+**The sentence is read back inside the form, live** — the same
+`clauseSentence` the summary, the streak panel and the supervisor's digest all
+print. Until then the only way to find out what twenty controls had added up
+to was to save and look, which is the wrong moment for a rule with a week-long
+lock on undoing it. Never a second rendering of the same idea: a preview that
+can disagree with what it previews is worse than none.
+
+**`Condition 1` is shown even when it is the only one.** It does say something
+you could already see, and what it says is *there can be more than one of
+these* — which is the most useful thing the form can tell you about a shape you
+have not met. Appearing only on the second one taught it at the moment it had
+stopped being news.
 
 **Nothing is written until Done.** Every control used to save on the spot,
 through `ruleEdit` one field at a time, and that is the wrong shape for a thing
