@@ -143,14 +143,34 @@ export interface ClauseBounds {
  * weekday, and working in weekdays rather than dates is what lets the lock and
  * the benchmark ask without inventing a date first.
  */
+export const figuresPerDay = (clause: StreakClause): boolean =>
+  !!clause.days &&
+  WEEKDAY_ORDER.some((wd) => {
+    const entry = clause.days?.[wd]
+    return !!entry && (entry.min !== undefined || entry.max !== undefined)
+  })
+
 export const boundsOnWeekday = (
   clause: StreakClause,
   ctx: StreakContext,
   weekday: number,
 ): ClauseBounds => {
-  // Per-day numbers are the explicit version and win over everything: writing
-  // them out is exactly the act of saying the flat pair was not enough.
-  if (clause.days) return clause.days[weekday] ?? {}
+  /* Per-day numbers are the explicit version and win over everything: writing
+     them out is exactly the act of saying the flat pair was not enough.
+
+     **But only when there are any.** `days` carries three different per-day
+     answers now — the figure, which slots count, and what a named slot owes —
+     and a map holding nothing but the last two used to blank the figure
+     entirely: asking for individual slots silently deleted the two hours a
+     day the rule was about. So the map governs the figure only when some day
+     in it actually states one, and otherwise the shared pair stands. A day
+     deliberately left blank while its siblings carry figures still asks
+     nothing, which is the meaning that had to survive. */
+  if (clause.days && figuresPerDay(clause)) {
+    const own = clause.days[weekday]
+    return own ? { min: own.min, max: own.max } : {}
+  }
+  if (clause.days && !clause.days[weekday]) return {}
   /* **A condition still pointing at the daily goal.** Nothing can create one
      any more — the switch is gone from the form and the goal is gone from
      Setup — and `migrations/019` rewrites the ones that exist into explicit
@@ -173,6 +193,23 @@ export const boundsOnWeekday = (
      into the fallback itself. It made a bound-less condition look constrained
      to anything checking, so `clauseAsksNothing` could not see it. */
   return {}
+}
+
+/**
+ * Which slots a weekday counts in: the condition's shared list, unless that
+ * weekday overrode it.
+ *
+ * `undefined` means every slot, exactly as an empty `slotIds` does — the two
+ * spellings of "no restriction" collapse here so nothing downstream has to
+ * know there were two.
+ */
+export const slotIdsOnWeekday = (
+  clause: StreakClause,
+  weekday: number,
+): string[] | undefined => {
+  const own = clause.days?.[weekday]?.slotIds
+  if (own?.length) return own
+  return clause.slotIds?.length ? clause.slotIds : undefined
 }
 
 /**
@@ -854,7 +891,13 @@ export function readClauseDay(
   const measured = (slotIds: string[] | undefined) =>
     measuredOn(clause, ctx, day, slotIds)
 
-  const value = measured(clause.slotIds)
+  /* **The weekday's own slots, not the condition's.** A condition can say
+     *lessons in the morning on a working day, whenever you like at the
+     weekend*, and reading the shared list here would have measured Saturday
+     against Monday's restriction — silently, and in the direction that breaks
+     a day you kept. */
+  const dayWeekday = fromKey(dayKey).getDay()
+  const value = measured(slotIdsOnWeekday(clause, dayWeekday))
 
   /* The day's own bound, plus any bound on a named slot. Both apply, which is
      the whole point of the pair: *two hours on Monday, of which at least one
@@ -866,7 +909,7 @@ export function readClauseDay(
      many of its parts broke — it is one broken promise — while a count
      condition costs what it actually fell short by, which is the arithmetic
      the freeze economy already runs on. */
-  const weekday = fromKey(dayKey).getDay()
+  const weekday = dayWeekday
   const slotRules = slotBoundsOnWeekday(clause, weekday)
 
   let short = shortOf(value, boundsOnWeekday(clause, ctx, weekday))
@@ -1728,7 +1771,7 @@ export function violationsOn(
       continue
     }
 
-    const value = measuredOn(clause, ctx, day, clause.slotIds)
+    const value = measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, weekday))
     const bounds = boundsOnWeekday(clause, ctx, weekday)
     const slotRules = slotBoundsOnWeekday(clause, weekday)
 
@@ -2173,13 +2216,10 @@ export function clauseSentence(
     )}${when}`
   }
 
-  const where = clause.slotIds?.length
-    ? ` in ${clause.slotIds
-        .map((id) =>
-          q(ctx.slots.find((s) => s.id === id)?.label || "a removed slot"),
-        )
-        .join(", ")}`
-    : ""
+  const slotName = (id: string) =>
+    q(ctx.slots.find((s) => s.id === id)?.label || "a removed slot")
+  const whereOf = (ids: string[] | undefined) =>
+    ids?.length ? ` in ${ids.map(slotName).join(", ")}` : ""
   // Minutes are printed as hours and minutes, like every other duration in
   // the app: "at least 2h 30m", never "at least 150".
   const amount = (n: number) =>
@@ -2203,34 +2243,60 @@ export function clauseSentence(
      than as seven. Grouping is what makes the readback checkable: the point of
      a sentence is that you can hold it against what you meant, and seven
      clauses of arithmetic cannot be held against anything. */
-  const judged = clauseWeekdays(clause)
-  const groups: { bounds: ClauseBounds; days: number[] }[] = []
-  judged.forEach((weekday) => {
-    const b = boundsOnWeekday(clause, ctx, weekday)
-    const found = groups.find(
-      (g) => g.bounds.min === b.min && g.bounds.max === b.max,
-    )
-    if (found) found.days.push(weekday)
-    else groups.push({ bounds: b, days: [weekday] })
-  })
-
   /* A bound on a named slot rides on the end, because it is a rider: the
      day's own figure is the promise, and "of which at least an hour in the
      morning" qualifies it. Read the other way round it sounds like two
      separate rules, which is exactly what it is not. */
-  const slotRules = Object.entries(
-    slotBoundsOnWeekday(clause, judged[0] ?? 0),
-  ).filter(([, b]) => b.min !== undefined || b.max !== undefined)
-  const rider = slotRules.length
-    ? `, of which ${slotRules
-        .map(
-          ([slotId, b]) =>
-            `${said(b)} in ${q(
-              ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot",
-            )}`,
-        )
-        .join(" and ")}`
-    : ""
+  const riderOf = (weekday: number) => {
+    const rules = Object.entries(slotBoundsOnWeekday(clause, weekday)).filter(
+      ([, b]) => b.min !== undefined || b.max !== undefined,
+    )
+    return {
+      any: rules.length > 0,
+      text: rules.length
+        ? `, of which ${rules
+            .map(([slotId, b]) => `${said(b)} in ${slotName(slotId)}`)
+            .join(" and ")}`
+        : "",
+    }
+  }
+
+  /* **Grouped by everything a weekday asks, not only by its figure.** Where
+     the figure is collected and what any named slot owes are per-weekday too
+     now, so a group keyed on the bounds alone would print Monday's slots over
+     Saturday's numbers — the readback quietly describing a rule nobody
+     wrote. */
+  const judged = clauseWeekdays(clause)
+  const groups: {
+    bounds: ClauseBounds
+    where: string
+    rider: string
+    days: number[]
+  }[] = []
+  judged.forEach((weekday) => {
+    const bounds = boundsOnWeekday(clause, ctx, weekday)
+    const where = whereOf(slotIdsOnWeekday(clause, weekday))
+    const rider = riderOf(weekday).text
+    const found = groups.find(
+      (g) =>
+        g.bounds.min === bounds.min &&
+        g.bounds.max === bounds.max &&
+        g.where === where &&
+        g.rider === rider,
+    )
+    if (found) found.days.push(weekday)
+    else groups.push({ bounds, where, rider, days: [weekday] })
+  })
+
+  /* When every day says the same thing about slots — which is every rule that
+     has not asked for per-day ones — the slots are said once, before and after
+     the figure, exactly as they always were. The sentence for an ordinary rule
+     is unchanged to the character. */
+  const oneWhere = groups.every((g) => g.where === groups[0]?.where)
+  const oneRider = groups.every((g) => g.rider === groups[0]?.rider)
+  const where = oneWhere ? (groups[0]?.where ?? whereOf(clause.slotIds)) : ""
+  const rider = oneRider ? (groups[0]?.rider ?? "") : ""
+  const slotRules = judged.length ? riderOf(judged[0]).any : false
 
   // One group is the ordinary case and keeps the ordinary sentence, with the
   // weekday suffix `when` already carries. Several always name their own days,
@@ -2245,7 +2311,7 @@ export function clauseSentence(
     (g) => g.bounds.min !== undefined || g.bounds.max !== undefined,
   )
   if (!anyDayBound)
-    return slotRules.length
+    return slotRules
       ? `${named}${where}${rider.replace(/^, of which /, " ")}${when}`
       : `${named}${where} — nothing asked, so this condition judges nothing`
 
@@ -2255,8 +2321,16 @@ export function clauseSentence(
   if (groups.length === 1)
     return `${named}${where} ${said(groups[0].bounds)}${rider}${when}`
 
+  /* Several groups. Whatever they agree on has already been lifted out into
+     `where` and `rider`; whatever they do not, each group says for itself,
+     because that is the only thing separating them. */
   return `${named}${where} ${groups
-    .map((g) => `${said(g.bounds)} on ${listDays(g.days)}`)
+    .map(
+      (g) =>
+        `${said(g.bounds)}${oneWhere ? "" : g.where}${
+          oneRider ? "" : g.rider
+        } on ${listDays(g.days)}`,
+    )
     .join(", ")}${rider}`
 }
 
@@ -2520,10 +2594,22 @@ export function ruleSentence(rule: StreakRule, ctx: StreakContext): string {
 
 /* ---- The lock ------------------------------------------------------------ */
 
-/** The weekdays a clause covers. No list means all seven. */
-/** The slots a clause counts. No list means the whole day, which is every slot. */
-const slotsOf = (clause: StreakClause, slots: Slot[]): Set<string> =>
-  new Set(clause.slotIds?.length ? clause.slotIds : slots.map((s) => s.id))
+/**
+ * The slots a clause counts **on one weekday**. No list means the whole day,
+ * which is every slot.
+ *
+ * Per weekday since `DayRequirement.slotIds` exists: a condition that counts
+ * only the morning on Monday and the whole of Saturday has two answers, and
+ * one set could only ever be right about one of them.
+ */
+const slotsOf = (
+  clause: StreakClause,
+  slots: Slot[],
+  weekday: number,
+): Set<string> => {
+  const ids = slotIdsOnWeekday(clause, weekday)
+  return new Set(ids?.length ? ids : slots.map((s) => s.id))
+}
 
 const covers = <T,>(bigger: Set<T>, smaller: Set<T>): boolean =>
   [...smaller].every((x) => bigger.has(x))
@@ -2627,6 +2713,22 @@ function clauseNarrows(
     const b = boundsOnWeekday(next, ctx, weekday)
     if ((b.min ?? 0) < (a.min ?? 0)) return false
     if ((b.max ?? Infinity) > (a.max ?? Infinity)) return false
+
+    /* **The riders, which the lock could not see at all.** A floor on a named
+       slot is a term like any other — *of which at least an hour in the
+       morning* is half of what some rules ask — and lowering it, raising its
+       ceiling or deleting it outright landed at once, because nothing below
+       this point compared anything but the shared slot list. Dropping one is
+       unambiguously easier, so it waits; adding one is one more thing to keep
+       and never does. */
+    const wasRiders = slotBoundsOnWeekday(prev, weekday)
+    const nowRiders = slotBoundsOnWeekday(next, weekday)
+    for (const [slotId, was] of Object.entries(wasRiders)) {
+      const now = nowRiders[slotId]
+      if (!now) return false
+      if ((now.min ?? 0) < (was.min ?? 0)) return false
+      if ((now.max ?? Infinity) > (was.max ?? Infinity)) return false
+    }
   }
 
   /* A week counted per answer: each constrained state compared in its own
@@ -2689,11 +2791,21 @@ function clauseNarrows(
      A condition carrying **both** is pulled both ways at once, so any change
      to its slots is incomparable and waits. That is the one-sided test doing
      exactly what it is for. */
-  const ps = slotsOf(prev, slots)
-  const ns = slotsOf(next, slots)
-  if (hasFloor && hasCeiling)
-    return covers(ns, ps) && covers(ps, ns)
-  return hasCeiling ? covers(ns, ps) : covers(ps, ns)
+  /* Weekday by weekday, like the bounds above: every day the old rule judged
+     has to survive the same test, and one day going the wrong way is enough
+     to make the whole edit wait. */
+  for (const weekday of wasJudged) {
+    const ps = slotsOf(prev, slots, weekday)
+    const ns = slotsOf(next, slots, weekday)
+    const ok =
+      hasFloor && hasCeiling
+        ? covers(ns, ps) && covers(ps, ns)
+        : hasCeiling
+          ? covers(ns, ps)
+          : covers(ps, ns)
+    if (!ok) return false
+  }
+  return true
 }
 
 
@@ -2820,7 +2932,6 @@ export const clauseImpossible = (
 
   const named = targetsLabel(clauseTargets(clause), ctx)
   const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
-  const counted = clause.slotIds?.length ? new Set(clause.slotIds) : null
   /* What there physically is. A count has no such ceiling — there is no upper
      limit on how many times a thing can be tallied — so the sanity check is
      only ever about time. */
@@ -2829,6 +2940,7 @@ export const clauseImpossible = (
   const fault = (
     bounds: ClauseBounds,
     slots: Record<string, ClauseBounds>,
+    counted: Set<string> | null,
     when: string,
   ): string | null => {
     if (
@@ -2855,10 +2967,16 @@ export const clauseImpossible = (
     return null
   }
 
+  const countedOn = (weekday: number) => {
+    const ids = slotIdsOnWeekday(clause, weekday)
+    return ids?.length ? new Set(ids) : null
+  }
+
   if (byWeek)
     return fault(
       boundsOnWeekday(clause, ctx, 0),
       clause.slots ?? {},
+      countedOn(0),
       " a week",
     )
 
@@ -2866,6 +2984,7 @@ export const clauseImpossible = (
     const bad = fault(
       boundsOnWeekday(clause, ctx, weekday),
       slotBoundsOnWeekday(clause, weekday),
+      countedOn(weekday),
       ` on ${q(WEEKDAY_LABELS[weekday])}`,
     )
     if (bad) return bad

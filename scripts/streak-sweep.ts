@@ -169,6 +169,47 @@ const everyDayYes = Object.fromEntries(
 )
 
 const CASES: Case[] = [
+  /* ---- slots chosen per weekday ---- */
+  c("per-day slots · Monday counts only the morning · logged in the morning", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      days: { 1: { slotIds: ["s-am"] }, 2: { slotIds: ["s-pm"] } },
+    },
+    { [MON]: studied(90, "s-am") }, "met"),
+  c("per-day slots · Monday counts only the morning · logged in the evening", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      days: { 1: { slotIds: ["s-am"] }, 2: { slotIds: ["s-pm"] } },
+    },
+    { [MON]: studied(90, "s-pm") }, "missed"),
+  /* The bug this shape exists to catch is one weekday being read against
+     another's slots, so the map is deliberately keyed the other way round
+     here: Monday takes the evening, Tuesday the morning. Reading the first
+     entry, or the clause's own list, gets this one wrong. */
+  c("per-day slots · Monday takes the evening while Tuesday takes the morning", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      days: { 1: { slotIds: ["s-pm"] }, 2: { slotIds: ["s-am"] } },
+    },
+    { [MON]: studied(90, "s-pm") }, "met"),
+  /* And the shared figure survives a `days` map that only talks about slots.
+     Seeding it into every entry was the alternative, and it would have made
+     asking for individual slots silently switch the figure to per-day. */
+  c("per-day slots · the shared floor still applies", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 120,
+      days: { 1: { slotIds: ["s-am"] } },
+    },
+    { [MON]: studied(60, "s-am") }, "missed"),
+
   /* ---- a day, measured in time ---- */
   c("time · at least 3h · 3h logged", "day",
     { id: "c", ...target("activity", "a-les"), min: 180 },

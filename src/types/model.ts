@@ -400,6 +400,20 @@ export interface DayRequirement {
   min?: number
   max?: number
   slots?: Record<string, { min?: number; max?: number }>
+  /**
+   * Which slots this weekday counts in, overriding the clause's own list.
+   *
+   * The sibling of `slots` one question earlier: that one gives a named slot
+   * its own figure on this day, this one says which slots the *day's* figure
+   * is collected from at all. Needed for the same reason `days` itself is —
+   * *lessons in the morning on a working day, whenever you like at the
+   * weekend* is one promise, and writing it as two conditions gives you two
+   * things to keep and two allowances to spend.
+   *
+   * Absent means the clause's shared `slotIds` applies, which is the common
+   * case and stays a single list rather than seven copies of one.
+   */
+  slotIds?: string[]
 }
 
 /**

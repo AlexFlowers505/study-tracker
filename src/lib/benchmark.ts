@@ -46,6 +46,7 @@ import {
   clauseWeekdays,
   measuredOn,
   ruleClauses,
+  slotIdsOnWeekday,
   streakContext,
   targetMeasure,
 } from "./customStreaks"
@@ -189,7 +190,9 @@ export function benchmarkMinutes(
     if (!day || isIgnored(key, day)) continue
     const clause = clauses.find((x) => covers(x, date.getDay()))
     if (!clause) continue
-    total += measuredOn(clause, ctx, day, clause.slotIds)
+    // The weekday's own slots, like every other reader — a condition can
+            // restrict where the figure comes from differently on each day.
+            total += measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, date.getDay()))
   }
   return total
 }

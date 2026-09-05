@@ -1330,6 +1330,50 @@ weight were inside the `Freezes` fold, which is a third subject again — a
 freeze is what a slip costs *you* — and the lid said so out loud, summarising
 two unrelated facts in one line.
 
+**Which slots a day counts in can differ by weekday** —
+`DayRequirement.slotIds`, read through `slotIdsOnWeekday`, the sibling of
+`slotBoundsOnWeekday` one question earlier. *Lessons in the morning on a
+working day, whenever you like at the weekend* is one promise, and writing it
+as two conditions gives you two things to keep and two allowances to spend.
+Every reader goes through the helper — `readClauseDay`, `violationsOn`,
+`benchmarkMinutes`, `clauseImpossible` and the lock — because reading the
+shared list on a day that overrode it measures Saturday against Monday's
+restriction, silently and in the direction that breaks a day you kept.
+
+**`clause.days` therefore stopped meaning "figures per day"**, and
+`boundsOnWeekday` had to learn the difference: the map now carries three
+different per-day answers — the figure, which slots count, what a named slot
+owes — and one holding nothing but the last two used to blank the figure
+entirely, so asking for individual slots silently deleted the two hours a day
+the rule was about. The map governs the figure only when some day in it states
+one (`figuresPerDay`); otherwise the shared pair stands. A day deliberately
+left blank while its siblings carry figures still asks nothing, which is the
+meaning that had to survive.
+
+**The lock reads slots weekday by weekday, and reads the riders at all.** A
+floor on a named slot is a term like any other — *of which at least an hour in
+the morning* is half of what some rules ask — and lowering it, raising its
+ceiling or deleting it outright used to land at once, because nothing in
+`clauseNarrows` compared anything but the shared slot list. Dropping a rider
+waits; adding one never does, the same direction every other addition takes.
+
+**`clauseSentence` groups by everything a weekday asks**, not by its figure
+alone. Where the figure is collected and what a named slot owes are per-weekday
+now, so a group keyed on the bounds would print Monday's slots over Saturday's
+numbers — the readback quietly describing a rule nobody wrote. What every day
+agrees on is still said once, so an ordinary rule's sentence is unchanged to
+the character.
+
+**`Count by day` and `Count by slot` are two switches, not one choice.**
+*Two hours on Monday, of which one in the morning* wants both; *an hour in the
+morning and nothing said about the day* wants only the second; *two hours
+anywhere* only the first. Under the old form the only way to say the middle one
+was to clear two boxes and hope that read as deliberate. With `Count by slot`
+on, every counted slot gets a row with an optional floor **and** an optional
+ceiling, and a slot with neither says **`any`** — a slot that counts and owes
+nothing is the commonest answer here, and two empty boxes look like a question
+you forgot rather than one you answered.
+
 **The condition's figure lives inside `Days`, and there is only ever one of
 it.** `clause.days` overrides the flat pair completely (`boundsOnWeekday`), so
 drawing a `Per day` row above the folds *and* a per-day grid inside one showed
@@ -1368,6 +1412,14 @@ you could already see, and what it says is *there can be more than one of
 these* — which is the most useful thing the form can tell you about a shape you
 have not met. Appearing only on the second one taught it at the moment it had
 stopped being news.
+
+**The tab's own preamble folds.** Two paragraphs of prose stood
+permanently above the list; they are both worth reading once, and after that
+they are eleven lines between you and the thing you opened the tab to edit. A
+preamble you have already read is indistinguishable from chrome, and you learn
+to start scrolling before the page has settled — a bad habit in a tab that
+holds a lock. The lid carries the sentence people actually get wrong: *kept by
+the day, paid for by the week.*
 
 **Nothing is written until Done.** Every control used to save on the spot,
 through `ruleEdit` one field at a time, and that is the wrong shape for a thing

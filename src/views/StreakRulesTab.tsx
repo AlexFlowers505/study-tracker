@@ -89,6 +89,8 @@ import {
   clauseSentence,
   clauseWeekdays,
   clauseTarget,
+  figuresPerDay,
+  slotIdsOnWeekday,
   clauseTargets,
   lockFrom,
   removalGate,
@@ -116,7 +118,6 @@ import { Pills } from "../ui/Pills"
 import { ruleText } from "../lib/supervisor"
 import { Sentence } from "../ui/Sentence"
 import { CountersPicker } from "./CountersPicker"
-import { WORD } from "./countersPick"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
@@ -336,55 +337,12 @@ function seedFor(ctx: StreakContext): {
 }
 
 /**
- * Hours and minutes, never decimal hours.
- *
- * The same rule the rest of the app follows: "1.5h" has to be multiplied by 60
- * before it means anything you can act on, and doing that arithmetic is the
- * job. Two boxes also make "two and a half hours" a thing you type rather than
- * a thing you convert.
- */
-function DurationField({
-  minutes,
-  onChange,
-}: {
-  minutes: number
-  onChange: (next: number) => void
-}) {
-  const h = Math.floor(Math.max(0, minutes) / 60)
-  const m = Math.max(0, minutes) % 60
-  const num = (raw: string) => Math.max(0, Number(raw) || 0)
-  return (
-    <>
-      <input
-        type="number"
-        min={0}
-        value={h}
-        onChange={(e) => onChange(num(e.target.value) * 60 + m)}
-        className={NUM}
-      />
-      <span className={WORD}>h</span>
-      <input
-        type="number"
-        min={0}
-        max={59}
-        value={m}
-        onChange={(e) => onChange(h * 60 + Math.min(59, num(e.target.value)))}
-        className={NUM}
-      />
-      <span className={WORD}>m</span>
-    </>
-  )
-}
-
-/**
  * Turn one id on or off in a list where **everything lit means no
  * restriction**.
  *
  * All-lit is stored as nothing at all, so the two ways of saying the same
  * thing collapse into one; and turning the last one off is refused, because
  * "count nothing" and "judge no day" are not rules.
- *
- * At module scope since the slot chips moved into `SlotsFields`.
  */
 const toggleIn = (
   current: string[] | undefined,
@@ -399,21 +357,34 @@ const toggleIn = (
 
 /** What the slot restriction currently says, for a closed fold. */
 const slotsSummary = (clause: StreakClause, ctx: StreakContext): string => {
+  const judged = clauseWeekdays(clause)
+  /* **Per day, or one answer.** With individual slots the lid cannot name a
+     set — there are up to seven of them — so it says which it is and leaves
+     the naming to the open fold. Summarising the first weekday's would be a
+     lid that is right about Monday and quietly wrong about Saturday. */
+  const perDay = judged.some(
+    (wd) => clause.days?.[wd]?.slots || clause.days?.[wd]?.slotIds?.length,
+  )
+  if (perDay) return "a set per weekday"
   const named = clause.slotIds?.length
     ? clause.slotIds
         .map((id) => ctx.slots.find((x) => x.id === id)?.label || "removed")
         .join(", ")
     : "the whole day"
-  const extra = Object.keys(slotBoundsOnWeekday(clause, 0)).length
+  const extra = Object.keys(slotBoundsOnWeekday(clause, judged[0] ?? 0)).length
   return extra ? `${named} · ${extra} with a figure` : named
 }
 
 /** And the weekdays. */
 const daysSummary = (clause: StreakClause): string => {
   const judged = clauseWeekdays(clause)
-  if (judged.length === WEEKDAY_ORDER.length)
-    return clause.days ? "every day, figures per day" : "every day"
-  return judged.map((wd) => WEEKDAY_LABELS[wd]).join(", ")
+  // `figuresPerDay`, not `clause.days` — the map holds per-day slots too now,
+  // and a lid claiming figures the condition does not carry is a lid lying.
+  const said =
+    judged.length === WEEKDAY_ORDER.length
+      ? "every day"
+      : judged.map((wd) => WEEKDAY_LABELS[wd]).join(", ")
+  return figuresPerDay(clause) ? `${said}, a figure per day` : said
 }
 
 /** One condition: what is measured, where, and on which days. */
@@ -998,61 +969,145 @@ function SlotsFields({
 }) {
   const c = usePalette()
   const judged = clauseWeekdays(clause)
-  const counted = clause.slotIds?.length ? new Set(clause.slotIds) : null
+
+  /* **Per day or shared, and it governs both questions at once.** Which slots
+     count and what a named slot owes are the same subject at two grains, and
+     splitting the switch would let you answer one per weekday and the other
+     once — a state nobody wants and everybody would eventually be in.
+
+     A week-scoped condition has no per-day anything to offer: it counts the
+     week, and which day the hour fell on is not a question it asks. */
+  const perDay =
+    !byWeek &&
+    !!clause.days &&
+    judged.some(
+      (wd) => clause.days?.[wd]?.slots || clause.days?.[wd]?.slotIds?.length,
+    )
+  const [editing, setEditing] = useState(judged[0] ?? 0)
+  const showing = perDay ? editing : judged[0] ?? 0
+
+  const countedIds = slotIdsOnWeekday(clause, showing)
+  const counted = countedIds?.length ? new Set(countedIds) : null
+  const current = slotBoundsOnWeekday(clause, showing)
+
   /* **Which mode is a view state, and it has to be.** In the data, "every
      slot" and "all of them ticked" are the same thing — `toggleIn` stores
      `undefined` the moment the last one goes back on — so a stored flag would
      be a second spelling of one rule and the two would disagree. Asking to
-     choose therefore changes nothing about the condition; it opens the chips. */
+     choose therefore changes nothing about the condition; it opens the chips.
+
+     Likewise for the figures: a slot with neither bound is a slot that counts
+     and owes nothing, which is exactly what an unticked `Count by slot` means,
+     so the switch remembers the intent and the data records the result. */
   const [choosing, setChoosing] = useState(!!counted)
+  const [figuring, setFiguring] = useState(Object.keys(current).length > 0)
 
-  /* **Shared unless you say otherwise.** One slot requirement for every day is
-     what almost every rule means, and it stays one row. Turning it off gives
-     each weekday its own, seeded from the shared one so nothing changes about
-     the rule until a figure does.
+  /** Write one weekday's slot answer, or the shared one. */
+  const writeDay = (patch: Partial<DayRequirement>) => {
+    if (!perDay) {
+      if ("slots" in patch) return onChange({ slots: patch.slots })
+      return onChange({ slotIds: patch.slotIds })
+    }
+    onChange({
+      days: {
+        ...clause.days,
+        [showing]: { ...(clause.days?.[showing] ?? {}), ...patch },
+      },
+    })
+  }
 
-     A week-scoped condition has no per-day anything to offer: it counts the
-     week, and which day the hour fell on is not a question it asks. */
-  const perDay = !!clause.days && judged.some((wd) => clause.days?.[wd]?.slots)
-  const [editing, setEditing] = useState(judged[0] ?? 0)
-  const showing = perDay ? editing : judged[0] ?? 0
-  const current = slotBoundsOnWeekday(clause, showing)
-
-  const write = (next: Record<string, ClauseBounds>) => {
+  const writeBounds = (next: Record<string, ClauseBounds>) => {
     const cleaned = Object.fromEntries(
       Object.entries(next).filter(
         ([, b]) => b.min !== undefined || b.max !== undefined,
       ),
     )
-    const value = Object.keys(cleaned).length ? cleaned : undefined
-    if (!perDay) return onChange({ slots: value })
-    onChange({
-      days: {
-        ...clause.days,
-        [showing]: { ...(clause.days?.[showing] ?? {}), slots: value },
-      },
-    })
+    writeDay({ slots: Object.keys(cleaned).length ? cleaned : undefined })
   }
 
   const setPerDay = (on: boolean) => {
     if (!on) {
-      // Back to one set for every day: the one you were last looking at is
-      // the one that survives, since it is the one you were editing.
-      const days = { ...clause.days }
-      judged.forEach((wd) => {
-        if (days[wd]) days[wd] = { ...days[wd], slots: undefined }
+      /* Back to one answer for every day: the one you were last looking at is
+         the one that survives, since it is the one you were editing. The
+         entries themselves are left alone otherwise — they may still be
+         carrying the day's own figure, which is a different switch. */
+      const days: Record<number, DayRequirement> = {}
+      let anything = false
+      WEEKDAY_ORDER.forEach((wd) => {
+        const entry = clause.days?.[wd]
+        if (!entry) return
+        const kept: DayRequirement = { min: entry.min, max: entry.max }
+        if (kept.min !== undefined || kept.max !== undefined) anything = true
+        days[wd] = kept
       })
-      return onChange({ days, slots: current })
+      return onChange({
+        days: anything ? days : undefined,
+        weekdays:
+          anything || judged.length === WEEKDAY_ORDER.length
+            ? undefined
+            : judged,
+        slots: current,
+        slotIds: countedIds,
+      })
     }
+    // Seeded from the shared answer, so switching the mode on changes nothing
+    // about the rule — it only makes each day editable on its own.
     const days: Record<number, DayRequirement> = { ...clause.days }
     judged.forEach((wd) => {
-      days[wd] = { ...(days[wd] ?? boundsOnWeekday(clause, ctx, wd)), slots: current }
+      days[wd] = {
+        ...(days[wd] ?? {}),
+        slots: current,
+        slotIds: countedIds,
+      }
     })
-    onChange({ days, slots: undefined, weekdays: undefined })
+    onChange({ days, slots: undefined, slotIds: undefined, weekdays: undefined })
   }
 
   return (
     <div className="space-y-2 w-full">
+      {/* **Shared or per day, first**, because it decides what everything
+          below it is about: one answer, or the answer for the weekday you have
+          selected. */}
+      {!byWeek && (
+        <Row label="Across the days">
+          <TwoWay<"same" | "each">
+            value={perDay ? "each" : "same"}
+            onChange={(v) => setPerDay(v === "each")}
+            options={[
+              {
+                id: "same",
+                label: "Shared time slots",
+                tip: "Same slot rules for each countable day",
+              },
+              {
+                id: "each",
+                label: "Individual time slots",
+                tip: "Can set individual slot rules for chosen countable days",
+              },
+            ]}
+          />
+          {perDay &&
+            judged.map((wd) => (
+              <button
+                key={wd}
+                type="button"
+                onClick={() => setEditing(wd)}
+                aria-pressed={showing === wd}
+                style={
+                  showing === wd
+                    ? { backgroundColor: c.accent, color: c.onFill }
+                    : undefined
+                }
+                className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
+                  showing === wd ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
+                }`}
+              >
+                {WEEKDAY_LABELS[wd]}
+              </button>
+            ))}
+        </Row>
+      )}
+
       {/* **Where the day's own figure is counted.** Two named modes rather
           than a bare row of chips that happens to mean "all of them" when
           every one is lit: all-lit and none-lit look alike at a glance and
@@ -1063,7 +1118,7 @@ function SlotsFields({
           value={choosing ? "some" : "all"}
           onChange={(v) => {
             setChoosing(v === "some")
-            if (v === "all") onChange({ slotIds: undefined })
+            if (v === "all") writeDay({ slotIds: undefined })
           }}
           options={[
             {
@@ -1090,9 +1145,9 @@ function SlotsFields({
                   key={slot.id}
                   type="button"
                   onClick={() =>
-                    onChange({
+                    writeDay({
                       slotIds: toggleIn(
-                        clause.slotIds,
+                        countedIds,
                         ctx.slots.map((x) => x.id),
                         slot.id,
                       ),
@@ -1116,137 +1171,100 @@ function SlotsFields({
         </Row>
       )}
 
-      {/* And then, on top of that, a figure on one named slot. `Counts in`
-          says where the day's own figure comes from; this says a slot has a
-          floor or a ceiling of its own, and both apply. */}
-      <Row label="Of which">
-        {!byWeek && (
-          <TwoWay<"same" | "each">
-            value={perDay ? "each" : "same"}
-            onChange={(v) => setPerDay(v === "each")}
-            options={[
-              {
-                id: "same",
-                label: "Shared time slots",
-                tip: "Same slot rules for each countable day",
-              },
-              {
-                id: "each",
-                label: "Individual time slots",
-                tip: "Can set individual slot rules for chosen countable days",
-              },
-            ]}
-          />
-        )}
-        {perDay &&
-          judged.map((wd) => (
-            <button
-              key={wd}
-              type="button"
-              onClick={() => setEditing(wd)}
-              aria-pressed={showing === wd}
-              style={
-                showing === wd
-                  ? { backgroundColor: c.accent, color: c.onFill }
-                  : undefined
-              }
-              className={`${btnBase} w-8 py-1 rounded-full text-[10px] font-mono ${
-                showing === wd ? "" : "text-ink/40 hover:text-ink hover:bg-ink/5"
-              }`}
-            >
-              {WEEKDAY_LABELS[wd]}
-            </button>
-          ))}
+      {/* **A figure on a named slot, on top of the day's own.** Its own switch
+          rather than a consequence of the day's, because the two are genuinely
+          independent: *two hours on Monday, of which one in the morning* wants
+          both, *an hour in the morning and nothing said about the day* wants
+          only this, and *two hours anywhere* wants only the other. Off, every
+          counted slot owes nothing, which is what the rows say when you turn
+          it on and leave them alone. */}
+      <Row label="Count by slot">
+        <TwoWay<"off" | "on">
+          value={figuring ? "on" : "off"}
+          onChange={(v) => {
+            setFiguring(v === "on")
+            if (v === "off") writeBounds({})
+          }}
+          options={[
+            {
+              id: "off",
+              label: "No slot figures",
+              tip: "The day's own figure is the whole requirement, wherever the time falls inside it",
+            },
+            {
+              id: "on",
+              label: "A figure per slot",
+              tip: "A named slot carries its own floor or ceiling as well as the day's",
+            },
+          ]}
+        />
       </Row>
 
-      <div className="flex flex-wrap items-center gap-1.5 w-full">
-        {ctx.slots.map((slot) => {
-          const b = current[slot.id]
-          /* **A figure only on a slot that counts.** A floor on a slot the
-             condition has excluded is a requirement measured against something
-             it is not measuring — never satisfiable, and `clauseImpossible`
-             refuses it. So the offer is withheld here rather than the mistake
-             being caught two screens later.
-
-             An existing one is still drawn, outlined in the missed colour and
-             with its cross. Hiding it would leave a rule that cannot be saved
-             and cannot be fixed, which is the worse failure of the two. */
-          const countable = !counted || counted.has(slot.id)
-          if (!b)
-            return countable ? (
-              <button
-                key={slot.id}
-                type="button"
-                onClick={() => write({ ...current, [slot.id]: { min: 0 } })}
-                className={`${btnBase} px-2 py-1 rounded-full text-[10px] font-mono text-ink/35 hover:text-ink/70 bg-ink/[0.05]`}
-              >
-                + {slot.label}
-              </button>
-            ) : null
-          const side: "min" | "max" = b.min !== undefined ? "min" : "max"
-          const shown = b.min ?? b.max ?? 0
-          return (
-            <span
-              key={slot.id}
-              className="flex items-center gap-1 rounded-full px-2 py-1"
-              style={{
-                backgroundColor: `${slot.color}1A`,
-                ...(countable ? {} : { boxShadow: `inset 0 0 0 1px ${c.exam}` }),
-              }}
-            >
-              <span
-                className="text-[10px] font-mono"
-                style={{ color: slot.color }}
-              >
-                {slot.label}
-              </span>
-              <Pills<"min" | "max">
-                value={side}
-                onChange={(next) =>
-                  write({ ...current, [slot.id]: { [next]: shown } })
-                }
-                options={[
-                  { id: "min", label: "min" },
-                  { id: "max", label: "max" },
-                ]}
-              />
-              {timed ? (
-                <DurationField
-                  minutes={shown}
-                  onChange={(v) => write({ ...current, [slot.id]: { [side]: v } })}
+      {figuring && (
+        /* One row per **counted** slot. A figure on a slot the condition has
+           excluded is a requirement measured against something it is not
+           measuring — never satisfiable, and `clauseImpossible` refuses it —
+           so the row is not offered rather than the mistake being caught two
+           screens later. An existing one is still drawn, outlined in the
+           missed colour and clearable, because a rule that cannot be saved and
+           cannot be fixed is the worse failure of the two. */
+        <div className="grid grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
+          <span />
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Minimum
+          </span>
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            Maximum
+          </span>
+          {ctx.slots.map((slot) => {
+            const b = current[slot.id]
+            const countable = !counted || counted.has(slot.id)
+            if (!countable && !b) return null
+            const set = (side: "min" | "max", v: number | undefined) =>
+              writeBounds({ ...current, [slot.id]: { ...b, [side]: v } })
+            return (
+              <Fragment key={slot.id}>
+                <span
+                  className="text-[10px] font-mono rounded-full px-2 py-1 whitespace-nowrap"
+                  style={{
+                    backgroundColor: `${slot.color}1A`,
+                    color: slot.color,
+                    ...(countable
+                      ? {}
+                      : { boxShadow: `inset 0 0 0 1px ${c.exam}` }),
+                  }}
+                >
+                  {slot.label}
+                </span>
+                <BoundField
+                  label=""
+                  value={b?.min}
+                  timed={timed}
+                  onChange={(v) => set("min", v)}
                 />
-              ) : (
-                <input
-                  type="number"
-                  min={0}
-                  value={shown}
-                  onChange={(e) =>
-                    write({
-                      ...current,
-                      [slot.id]: {
-                        [side]: Math.max(0, Number(e.target.value) || 0),
-                      },
-                    })
-                  }
-                  className={NUM}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  const next = { ...current }
-                  delete next[slot.id]
-                  write(next)
-                }}
-                className={`${btnBase} rounded-full text-ink/30 hover:text-ink`}
-                style={{ color: c.ink }}
-              >
-                <X size={11} />
-              </button>
-            </span>
-          )
-        })}
-      </div>
+                <span className="flex items-center gap-1">
+                  <BoundField
+                    label=""
+                    value={b?.max}
+                    timed={timed}
+                    onChange={(v) => set("max", v)}
+                  />
+                  {/* **`any` is a state, not a blank.** A slot that counts and
+                      owes nothing is the commonest answer here — it is what
+                      "the rest, wherever" means — and two empty boxes look
+                      like a question you forgot to answer rather than one you
+                      answered. */}
+                  {b?.min === undefined && b?.max === undefined && (
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-ink/30">
+                      any
+                    </span>
+                  )}
+                </span>
+              </Fragment>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -1289,34 +1307,61 @@ function WeekdayRow({
   onChange: (patch: Partial<StreakClause>) => void
 }) {
   const c = usePalette()
-  const perDay = !!clause.days
+  /* **Does the map actually carry figures?** `clause.days` holds three
+     different per-day answers now — the figure, which slots count, and what a
+     named slot owes — so its mere presence stopped meaning "figures per day"
+     the moment slots could be per day too. */
+  const perDay = figuresPerDay(clause)
   const judged = clauseWeekdays(clause)
   const shared = boundsOnWeekday(clause, ctx, judged[0] ?? 0)
+  const asking = shared.min !== undefined || shared.max !== undefined || perDay
+  const [counting, setCounting] = useState(asking)
+
+  /** Strip every per-day figure, leaving whatever the map says about slots. */
+  const flatten = (keep: ClauseBounds) => {
+    const days: Record<number, DayRequirement> = {}
+    let slotted = false
+    WEEKDAY_ORDER.forEach((wd) => {
+      const entry = clause.days?.[wd]
+      if (!entry) return
+      const rest: DayRequirement = { slots: entry.slots, slotIds: entry.slotIds }
+      if (rest.slots || rest.slotIds?.length) slotted = true
+      days[wd] = rest
+    })
+    return {
+      days: slotted ? days : undefined,
+      weekdays:
+        slotted || judged.length === WEEKDAY_ORDER.length ? undefined : judged,
+      min: keep.min,
+      max: keep.max,
+      op: undefined,
+      value: undefined,
+    }
+  }
+
+  /** Whether the day carries a figure of its own at all. */
+  const setCounted = (on: boolean) => {
+    setCounting(on)
+    if (!on) onChange(flatten({}))
+  }
 
   const setPerDay = (on: boolean) => {
     if (!on) {
       /* Back to one figure for every day, and it has to come from somewhere:
          the first judged day's, since that is the one the shared pair was
-         seeded from on the way in. Dropping `days` alone would leave the old
-         flat pair — which may be nothing at all — and silently unmake the rule
-         you had just written seven figures for. */
+         seeded from on the way in. Dropping the figures alone would leave the
+         old flat pair — which may be nothing at all — and silently unmake the
+         rule you had just written seven figures for. */
       const keep = clause.days?.[judged[0] ?? 0] ?? {}
-      return onChange({
-        days: undefined,
-        weekdays: judged.length === WEEKDAY_ORDER.length ? undefined : judged,
-        min: keep.min,
-        max: keep.max,
-        op: undefined,
-        value: undefined,
-      })
+      return onChange(flatten({ min: keep.min, max: keep.max }))
     }
     // Seeded from what the condition already asks, so switching the mode on
     // changes nothing about the rule — it only makes the numbers editable.
-    const days: Record<number, ClauseBounds> = {}
+    const days: Record<number, DayRequirement> = {}
     judged.forEach((wd) => {
-      days[wd] = boundsOnWeekday(clause, ctx, wd)
+      days[wd] = { ...clause.days?.[wd], ...boundsOnWeekday(clause, ctx, wd) }
     })
-    onChange({ days, weekdays: undefined })
+    onChange({ days, weekdays: undefined, min: undefined, max: undefined })
   }
 
   const toggleDay = (wd: number) => {
@@ -1340,6 +1385,8 @@ function WeekdayRow({
     onChange({
       days: { ...clause.days, [wd]: { ...clause.days?.[wd], ...bounds } },
     })
+
+  const perDayGrid = counting && perDay
 
   return (
     <div className="space-y-2 w-full">
@@ -1380,26 +1427,54 @@ function WeekdayRow({
           answers to a question that has one. `days` overrides the flat pair
           completely (`boundsOnWeekday`), so which one is live is not a matter
           of taste; the control now says which, and only that one is drawn. */}
-      <Row label="How much">
-        <TwoWay<"same" | "each">
-          value={perDay ? "each" : "same"}
-          onChange={(v) => setPerDay(v === "each")}
+      {/* **Whether the day carries a figure at all**, and it is a real
+          question rather than a formality: *an hour in the morning, and
+          nothing said about the rest of the day* is a rule people write, and
+          under the old form the only way to say it was to clear two boxes and
+          hope that read as deliberate. Independent of `Count by slot` in the
+          block below — either, both, or the condition asks nothing and is
+          refused. */}
+      <Row label="Count by day">
+        <TwoWay<"off" | "on">
+          value={counting ? "on" : "off"}
+          onChange={(v) => setCounted(v === "on")}
           options={[
             {
-              id: "same",
-              label: "One figure",
-              tip: "The same floor and ceiling on every day this condition judges",
+              id: "off",
+              label: "No day figure",
+              tip: "The day as a whole is unbounded — only a named slot can ask for anything",
             },
             {
-              id: "each",
+              id: "on",
               label: "A figure per day",
-              tip: "Set the floor and the ceiling separately for each chosen day",
+              tip: "The day as a whole carries a floor, a ceiling, or both",
             },
           ]}
         />
       </Row>
 
-      {!perDay && (
+      {counting && (
+        <Row label="How much">
+          <TwoWay<"same" | "each">
+            value={perDay ? "each" : "same"}
+            onChange={(v) => setPerDay(v === "each")}
+            options={[
+              {
+                id: "same",
+                label: "The same every day",
+                tip: "One floor and one ceiling, on every day this condition judges",
+              },
+              {
+                id: "each",
+                label: "One per weekday",
+                tip: "Set the floor and the ceiling separately for each chosen day",
+              },
+            ]}
+          />
+        </Row>
+      )}
+
+      {counting && !perDay && (
         <Row label="Per day">
           <BoundField
             label="Minimum"
@@ -1420,7 +1495,7 @@ function WeekdayRow({
         </Row>
       )}
 
-      {perDay && (
+      {perDayGrid && (
         /* A row per day rather than a column each. Two bounds apiece is four
            boxes on a timed condition, and side by side that is a grid eight
            columns wide inside a 512px modal; down the page it is the same
@@ -2122,25 +2197,42 @@ export function StreakRulesTab({
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        Your own streaks, each one a promise about what you record — never
-        oversleep, two hours of lessons a day, no youtube after the evening
-        starts, the gym three times a week. A promise can hold several
-        conditions at once, and all of them have to keep.
-      </p>
+      {/* **One line, and the rest behind it.**
 
-      {/* The part everyone gets wrong. You watch days; the accounting runs on
-          weeks, and none of that is visible in a tab that talks about days. */}
-      <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        <strong className="text-ink/70">
-          You keep a streak by the day and pay for it by the week.
-        </strong>{" "}
-        Each streak grants an allowance of freezes every Monday, which is gone
-        if unused, and banks one more for every week it comes through clean. A
-        week seals on the Tuesday after it ends — the day its last day passes
-        out of the writing window — and what it earned is written once and
-        never recalculated.
-      </p>
+          Two paragraphs of prose stood permanently above the list. They are
+          both true and both worth reading — once. After that they are eleven
+          lines of text between you and the thing you opened the tab to edit,
+          on every visit, and a preamble you have read is indistinguishable
+          from chrome: you learn to start scrolling before the page has
+          settled, which is a bad habit for a tab that also holds a lock.
+
+          A `<details>` rather than a tooltip: it is too long to hover over
+          comfortably, it wants to be re-read rather than glanced at, and the
+          browser's find-in-page can still reach it closed. Same `Fold` the
+          conditions use, so nothing new has to be learned about how it opens.
+          The lid carries the sentence people actually get wrong, because that
+          is the one worth saying whether or not anybody opens it. */}
+      <Fold
+        title="How streaks work"
+        summary="kept by the day, paid for by the week"
+      >
+        <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
+          Your own streaks, each one a promise about what you record — never
+          oversleep, two hours of lessons a day, no youtube after the evening
+          starts, the gym three times a week. A promise can hold several
+          conditions at once, and all of them have to keep.
+        </p>
+        <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
+          <strong className="text-ink/70">
+            You keep a streak by the day and pay for it by the week.
+          </strong>{" "}
+          Each streak grants an allowance of freezes every Monday, which is
+          gone if unused, and banks one more for every week it comes through
+          clean. A week seals on the Tuesday after it ends — the day its last
+          day passes out of the writing window — and what it earned is written
+          once and never recalculated.
+        </p>
+      </Fold>
 
       <EditableList<StreakRule>
         items={rules}
