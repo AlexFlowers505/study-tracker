@@ -57,6 +57,40 @@ const GAP_SHARE = 0.1
 const CROWDED = 8
 
 /**
+ * One arc as a path, from one fraction of the circle to another.
+ *
+ * **Paths rather than a dashed circle**, and that is what makes the provisional
+ * state drawable at all. An arc used to be a full `<circle>` with
+ * `strokeDasharray` set to *[arc length, the rest]* — one dash, the size of the
+ * segment — which works exactly until you want the segment itself dashed,
+ * because `strokeDasharray` is one attribute and cannot say both things. A real
+ * arc path leaves the dash pattern free to mean what it usually means.
+ *
+ * Twelve o'clock is nought, and it goes clockwise: a ring read from anywhere
+ * else has no beginning.
+ */
+function arcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  from: number,
+  to: number,
+): string {
+  const sweep = to - from
+  // A whole circle cannot be one `A` command — its two ends are the same point,
+  // so the renderer has nothing to sweep between. Two halves, always.
+  if (sweep >= 1)
+    return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx} ${cy + r} A ${r} ${r} 0 1 1 ${cx} ${cy - r}`
+  const at = (t: number) => {
+    const a = t * 2 * Math.PI - Math.PI / 2
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)]
+  }
+  const [x0, y0] = at(from)
+  const [x1, y1] = at(to)
+  return `M ${x0} ${y0} A ${r} ${r} 0 ${sweep > 0.5 ? 1 : 0} 1 ${x1} ${y1}`
+}
+
+/**
  * The least of the circle a single arc may take, as a fraction.
  *
  * Only a missed one is held to it. A light rule that held can shrink away
@@ -88,7 +122,6 @@ export function VerdictRing({
 
   const stroke = Math.max(3, Math.round(size * 0.12))
   const r = size / 2 - stroke / 2 - 1
-  const circumference = 2 * Math.PI * r
 
   /* Each rule's share of the circle, by weight — then a floor applied to the
      ones that missed, and the rest rescaled to make room for it. Rescaling
@@ -108,10 +141,14 @@ export function VerdictRing({
      with a bite out of the top, which reads as "something is missing" when the
      whole message is that nothing is. A divider needs two things to stand
      between. */
-  const gap =
-    n === 1
-      ? 0
-      : (circumference / n) * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
+  /* A fraction of the circle rather than a length, since the arcs are paths
+     now and paths are placed by angle. **One rule is a closed circle with no
+     gap at all**: the gaps divide one arc from the next, and with a single arc
+     there is nothing to divide — a kept day under one rule was drawing a ring
+     with a bite out of the top, which reads as *something is missing* when the
+     whole message is that nothing is. */
+  const gapShare =
+    n === 1 ? 0 : (1 / n) * (n > CROWDED ? GAP_SHARE / 2 : GAP_SHARE)
 
   const colourFor = (state: RuleState) =>
     state === "met"
@@ -172,61 +209,55 @@ export function VerdictRing({
           stroke={`${c.ink}0F`}
           strokeWidth={stroke}
         />
-        {/* Rotated so the first arc starts at twelve o'clock — a ring read from
-            anywhere else has no beginning, and the order is the rule order. */}
-        <g
-          fill="none"
-          strokeWidth={stroke}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        >
+        <g fill="none" strokeWidth={stroke} strokeLinecap="butt">
           {report.readings.map((reading, i) => {
-            const start =
-              shares.slice(0, i).reduce((a, b) => a + b, 0) * circumference
-            const arc = Math.max(shares[i] * circumference - gap, 0.5)
-            const offset = -(start + gap / 2)
-            /* Turned down while the day can still turn. Only what is *held* is
-               provisional: a miss cannot be un-missed by the afternoon, and a
-               freeze is already spent. */
-            const dim = provisional && reading.state === "met" ? 0.45 : 1
+            const from = shares.slice(0, i).reduce((a, b) => a + b, 0)
+            const span = Math.max(shares[i] - gapShare, 0.004)
+            const to = from + span
+            const mid = from + gapShare / 2
 
             /* **A weekly floor fills with its pace** — `spec 018`. It used to
                draw a solid green arc every day but the one the week was lost
                on, which is defensible as a verdict and a bad sentence on a
                Monday morning: a closed arc for *three gym trips a week* when
                you have made none. So the slot becomes a track and the done
-               part is drawn over it.
-
-               Two circles rather than one, because an arc is a single stroke
-               and cannot be two colours. `pace` is absent for a ceiling, which
-               has headroom rather than progress. */
+               part is drawn over it. `pace` is absent for a ceiling, which has
+               headroom rather than progress. */
             const paced = reading.pace != null
-            const done = Math.max((reading.pace ?? 1) * arc, 0.5)
+            const done = mid + span * (reading.pace ?? 1)
+
+            /* **Provisional is drawn as dashes, not as a lower opacity** — a
+               held arc while the day can still turn. Turning it down to 45%
+               was the first attempt and it reads as *the same arc, fainter*,
+               which is a difference in emphasis where the difference is in
+               kind: nothing about this is settled yet. A broken line is the
+               ordinary way of saying *not final*, and it survives being forty
+               pixels wide where a shade does not.
+
+               Only what is *held* is provisional: a miss cannot be un-missed
+               by the afternoon, and a freeze is already spent. */
+            const notYet = provisional && reading.state === "met"
+            const dash = notYet
+              ? `${Math.max(stroke * 0.55, 1.5)} ${Math.max(stroke * 0.75, 2)}`
+              : undefined
+
             return (
               <g key={reading.rule.id}>
                 {paced && (
-                  <circle
-                    cx={size / 2}
-                    cy={size / 2}
-                    r={r}
+                  <path
+                    d={arcPath(size / 2, size / 2, r, mid, to)}
                     stroke={`${c.ink}1F`}
-                    strokeDasharray={`${arc} ${circumference - arc}`}
-                    strokeDashoffset={offset}
                   />
                 )}
                 {/* Nothing done yet leaves the track alone: a hairline of the
                     kept colour at the top of an empty slot reads as progress
                     that has not happened. */}
                 {(!paced || (reading.pace ?? 0) > 0) && (
-                  <circle
-                    cx={size / 2}
-                    cy={size / 2}
-                    r={r}
+                  <path
+                    d={arcPath(size / 2, size / 2, r, mid, paced ? done : to)}
                     stroke={colourFor(reading.state)}
-                    strokeOpacity={dim}
-                    strokeDasharray={`${paced ? done : arc} ${
-                      circumference - (paced ? done : arc)
-                    }`}
-                    strokeDashoffset={offset}
+                    strokeDasharray={dash}
+                    strokeLinecap={notYet ? "round" : "butt"}
                   />
                 )}
               </g>

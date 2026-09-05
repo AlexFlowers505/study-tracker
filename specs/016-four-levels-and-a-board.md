@@ -277,20 +277,28 @@ sentence. Step the period to March and the board still reads today.
 
 The panel subtitle says `Today`, so that reads as a fact rather than as a bug.
 
-### Two weights, not four
+### ~~Two weights, not four~~ — reversed in use
 
-| level | drawn as |
-| --- | --- |
-| `danger`, `warning` | a filled block with an inset ring in the level's colour — what `RiskBlock` draws now |
-| `notice`, `good` | a line: a dot in the rule's colour, the rule's name, the text. No surface, no border |
+> ~~`danger` and `warning` are a filled block with an inset ring; `notice` and
+> `good` are a line — a dot, the rule's name, the text, no surface. Not a third
+> volume: **two**, with the level choosing. One weight for all four would
+> rebuild the dashboard, which is exactly the row `spec 010` part 3 deleted.~~
 
-This is the answer to the complaint that opened the spec. Not a third volume —
-**two**, with the level choosing. Open the board and everything is visible at
-once, and red still reads as red because green is not shouting beside it.
+**Every notice is the same container, and the colour carries the level.**
 
-One weight for all four would rebuild the dashboard: five green blocks with
-equal presence is exactly the row `spec 010` part 3 deleted, for exactly the
-reason it deleted it.
+The argument above is not wrong about dashboards and it was answering the wrong
+risk. A line and a block do not read as two volumes of one thing; they read as
+**two different kinds of thing**, and the quiet half stopped looking like part
+of the board at all. That is the failure this whole spec exists to fix,
+arriving by the other door — the user had asked for a middle volume precisely
+because the hidden version was too easy to ignore, and half the board went
+straight back to being ignorable.
+
+Colour is enough separation, and it is separation the reader already has: red
+is a miss, amber is behind, green is kept — the same three every day cell in
+the app uses. The dashboard risk is held off by the bound that was always doing
+that work, **one notice per rule per level**, not by making half of them
+quieter.
 
 ### Order
 
@@ -481,10 +489,14 @@ place. What replaces the alarm's reach is the bell's coloured badge, and the
 fact that the board is open by default.
 
 **2 — Volume is a property of the notice, not of where it is put.** The whole
-spec turns on this. Two weights inside one board, chosen by level — rather than
-two locations, chosen by the designer — is what makes a friendly reminder
-possible at all: it can be present without being an alarm, and visible without
-being hidden.
+spec turns on this: one board, and the level decides how it reads — rather than
+two locations, chosen by the designer. That is what makes a friendly reminder
+possible at all: present without being an alarm, visible without being hidden.
+
+The *first* expression of it — two shapes, block and line — was reversed in
+use, and the reversal is the same principle applied better. Two shapes are two
+kinds of thing. One shape in four colours is one kind of thing at four
+volumes.
 
 **3 — The levels split `safe`; they do not re-cut the thresholds.** Every
 figure `spec 010` part 3 reasoned about survives. The only thing that changed

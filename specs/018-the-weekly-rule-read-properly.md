@@ -256,7 +256,7 @@ After this there are three, and only one of them is new:
 
 | appearance | means |
 | --- | --- |
-| the kept colour at `0.45` | today is holding, and today is not over. **Exists** |
+| the kept colour, **dashed** | today is holding, and today is not over. Was `0.45` opacity, which read as *the same arc, fainter* — a difference in emphasis where the difference is in kind |
 | a partly filled arc | a weekly floor's pace. **New** |
 | the track colour, `${c.ink}1F` | `watching` — present, not yet voting. **Exists** as the ring's own empty colour |
 

@@ -95,7 +95,13 @@ anything that tells you something is wrong.
   draws no alarms. The board sits where the alarms did — first under the period
   bar, above the composite — is **always about today** whatever the period bar
   shows, and is **the one panel whose state persists** (`timelens-notices`).
-  Two weights: `danger`/`warning` are blocks, `notice`/`good` are lines.
+  **One container for all four**, coloured by level. Two weights — a block for
+  the loud half, a bare line for the quiet one — was the first build and was
+  reversed in use: a line and a block read as two different *kinds* of thing,
+  and the quiet half stopped looking like part of the board, which is the
+  failure the board exists to fix arriving by the other door. What holds the
+  dashboard off is the one-per-rule-per-level bound, not making half of them
+  quieter.
 - **Three toggles**: `Bell` (every notice, coloured by the worst level),
   `Flame` (the composite's days, never coloured), `Coins` (points, `4.1k` past
   a thousand) which opens the **account panel** — the total, signed earning
@@ -497,6 +503,11 @@ which are Node config and get their own lint block.
     **It draws partial and does not mean partial**: four of five is one
     segment short of closed, and the centre figure goes red, because the
     verdict underneath is still a miss (`spec 010`, Decision 1).
+    **Today's held arcs are dashed**, not merely faint. The arcs are `<path>`s
+    rather than a dashed `<circle>` for exactly that reason: with the segment
+    itself drawn by `strokeDasharray` there was one attribute doing two jobs,
+    so the provisional state could only be an opacity — and an opacity reads as
+    *the same arc, fainter*, where the difference is in kind.
     It sits **beside the date, not in the card's corner** — Today, Frozen, the
     freeze, the "+" and the close X already live in that corner, and a ring
     among them reads as a sixth button.

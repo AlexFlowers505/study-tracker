@@ -14,12 +14,18 @@
    already on screen. What covers the abnormal one is the bell's badge, which
    takes the colour of the worst level inside.
 
-   **Two weights, not four.** `danger` and `warning` are blocks with a wash and
-   an inset ring; `notice` and `good` are lines with a coloured dot and nothing
-   else. Open it and everything is visible at once, and red still reads as red
-   because green is not shouting beside it. One weight for all four would
-   rebuild the dashboard `spec 010` part 3 deleted, for the reason it deleted
-   it.
+   **One shape, four colours** — and this reversed. The first build gave
+   `danger` and `warning` a block and left `notice` and `good` as bare lines,
+   on the argument that four equal blocks rebuild the dashboard `spec 010` part
+   3 deleted. In use the cost landed the other way: a line and a block do not
+   read as two volumes of one thing, they read as two different kinds of thing,
+   and the quiet half stopped looking like part of the board at all — which is
+   the failure this whole spec exists to fix, arriving by the other door.
+
+   So every notice is the same container and the **colour** carries the level.
+   That is enough separation, because it is the separation the reader already
+   knows from every day cell in the app: red is a miss, amber is behind, green
+   is kept.
 
    **It is always about today**, whatever the period bar shows. A notice is a
    thing you can act on, the levels are built on the difference between already
@@ -51,7 +57,7 @@ const LEVEL_TIP: Record<NoticeLevel, string> = {
   good: "Nothing owed and nothing spent.",
 }
 
-/** The loud half: a block with a wash, an inset ring and its lines. */
+/** Every notice, in its level's colour. */
 function NoticeBlock({
   notice,
   active,
@@ -115,55 +121,6 @@ function NoticeBlock({
       className={`${btnBase} w-full text-left rounded-2xl px-3.5 py-2.5 hover:brightness-105`}
     >
       {inner}
-    </button>
-  )
-}
-
-/**
- * The quiet half: a dot, a name, the text.
- *
- * No surface, no border, no wash — a reminder wearing the volume of a caption.
- * The colour on the dot is the level's, and it is there to place the line in
- * the list rather than to raise an alarm.
- */
-function NoticeLine({
-  notice,
-  onClick,
-}: {
-  notice: Notice
-  onClick?: () => void
-}) {
-  const c = usePalette()
-  const tint = levelColour(notice.level, c)
-  const body = (
-    <div className="flex items-baseline gap-2 min-w-0 py-0.5">
-      <span
-        className="w-1.5 h-1.5 rounded-full shrink-0 translate-y-[-1px]"
-        style={{ backgroundColor: tint }}
-      />
-      {/* Wide enough for a source's own name — `This week's allowance` was
-          being cut to `This week's allowa…`, which reads as a rule you do not
-          recognise rather than as a heading. */}
-      <span className="text-[10px] font-mono uppercase tracking-wide text-ink/35 shrink-0 max-w-44 truncate">
-        {notice.title}
-      </span>
-      <span className="min-w-0 text-[10px] font-mono text-ink/55 leading-relaxed">
-        {notice.lines.map((line, i) => (
-          <span key={i} className="block">
-            <Sentence text={line} />
-          </span>
-        ))}
-      </span>
-    </div>
-  )
-  if (!onClick) return body
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${btnBase} w-full text-left rounded-lg px-1 -mx-1 hover:bg-ink/5`}
-    >
-      {body}
     </button>
   )
 }
@@ -266,21 +223,18 @@ export function NoticeBoard({
         </p>
       ) : (
         <div className="space-y-1.5">
-          {shown.map((notice) => {
-            const open = notice.ruleId
-              ? () => onOpenRule(notice.ruleId as string)
-              : undefined
-            return notice.level === "danger" || notice.level === "warning" ? (
-              <NoticeBlock
-                key={notice.key}
-                notice={notice}
-                active={!!notice.ruleId && activeRule === notice.ruleId}
-                onClick={open}
-              />
-            ) : (
-              <NoticeLine key={notice.key} notice={notice} onClick={open} />
-            )
-          })}
+          {shown.map((notice) => (
+            <NoticeBlock
+              key={notice.key}
+              notice={notice}
+              active={!!notice.ruleId && activeRule === notice.ruleId}
+              onClick={
+                notice.ruleId
+                  ? () => onOpenRule(notice.ruleId as string)
+                  : undefined
+              }
+            />
+          ))}
         </div>
       )}
     </PanelSection>
