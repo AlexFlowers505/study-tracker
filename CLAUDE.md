@@ -692,6 +692,19 @@ which are Node config and get their own lint block.
     that points at a section which is not there is worse than no entry. Each
     panel sits in a `<section id="sec-…" className="scroll-mt-28">`, and the
     margin is what clears the sticky period bar.
+    Its button is a plain burger — three bars. `List` drew bullets beside
+    them, which says *a list of things* where this says *the way around*, and
+    at seventeen pixels the bullets were three specks of noise.
+    - `JumpPrompt.tsx` — **the offer to go and look, beside the button you
+    just pressed.** The index still costs four actions: find its button, open
+    it, find the entry, click it. But the moment you open a section is the
+    moment the app knows exactly which one you want and what you will do
+    next, so it says so immediately. It **lives until the next click** and
+    never longer: an offer that stays is clutter, and one that has to be
+    dismissed is a second thing to do. The point comes from the click's own
+    `currentTarget` (`lib/jump.ts`) rather than from a ref — a ref plus an
+    effect is a read during render and a `setState` in an effect, two
+    cascading-render warnings for a rectangle that was already in the event.
     It portals like everything else that floats, but it is **not** a
     `PopoverMenu`: that one tethers a bubble to a trigger and measures from it,
     which is right for a menu on a chip and wrong for a panel that wants a

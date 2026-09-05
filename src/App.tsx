@@ -75,6 +75,10 @@ import { claimInvite, createInvite, inviteLink } from "./data/invites"
 import { countByLevel, notices } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
 import { PageNav } from "./views/PageNav"
+import { JumpPrompt } from "./views/JumpPrompt"
+import { jumpAt } from "./lib/jump"
+import type { JumpAt } from "./lib/jump"
+import type { MouseEvent } from "react"
 import type { NavEntry } from "./views/PageNav"
 import { AccountSection } from "./views/AccountSection"
 import { SoloBanner } from "./views/SoloBanner"
@@ -186,6 +190,50 @@ export default function StudyTrackerApp() {
      the only one that votes. Deliberately not persisted: it is a look, and
      the whole promise is that it changes nothing. */
   const [soloRule, setSoloRule] = useState<string | null>(null)
+
+  /**
+   * **The section a toggle has *just* opened**, and the offer to go and look
+   * at it.
+   *
+   * Opening a panel and then hunting for it down a page of other open panels
+   * is what the index exists to fix, and the index still costs four actions.
+   * The moment you open one is the moment the app knows exactly which section
+   * you want and what you are about to do with it, so it offers the jump right
+   * there, beside the button you pressed.
+   *
+   * Cleared by the next click, whatever it is: an offer that stays is clutter,
+   * and one that has to be dismissed is a second thing to do.
+   */
+  const [justOpened, setJustOpened] = useState<JumpAt | null>(null)
+
+  useEffect(() => {
+    if (!justOpened) return
+    const clear = () => setJustOpened(null)
+    /* Armed a task late, or it swallows the very click that made the offer —
+       the same lesson `PageNav`'s dismisser learned. */
+    const armed = setTimeout(() => window.addEventListener("click", clear), 0)
+    return () => {
+      clearTimeout(armed)
+      window.removeEventListener("click", clear)
+    }
+  }, [justOpened])
+
+  /** Flip a panel, and offer the jump only on the way open. */
+  const opening = (
+    was: boolean,
+    id: string,
+    e: MouseEvent<HTMLButtonElement>,
+  ) => {
+    setJustOpened(was ? null : jumpAt(id, e.currentTarget))
+  }
+
+  const goToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    })
+    setJustOpened(null)
+  }
   /**
    * Which streak's panel is open: `"main"`, a rule id, or nothing.
    *
@@ -1283,7 +1331,10 @@ export default function StudyTrackerApp() {
           customEnd={customEnd}
           setCustomEnd={setCustomEnd}
           showFilter={showFilter}
-          onToggleFilter={() => setShowFilter((v) => !v)}
+          onToggleFilter={(e) => {
+            opening(showFilter, "sec-filter", e)
+            setShowFilter((v) => !v)
+          }}
           filteredOutCount={
             hiddenSlots.size +
             hiddenActivities.size +
@@ -1295,13 +1346,25 @@ export default function StudyTrackerApp() {
           showSleep={showSleep}
           onToggleSleep={() => setShowSleep((v) => !v)}
           showLog={showLog}
-          onToggleLog={() => setShowLog((v) => !v)}
+          onToggleLog={(e) => {
+            opening(showLog, "sec-changelog", e)
+            setShowLog((v) => !v)
+          }}
           showHistory={showHistory}
-          onToggleHistory={() => setShowHistory((v) => !v)}
+          onToggleHistory={(e) => {
+            opening(showHistory, "sec-achievements", e)
+            setShowHistory((v) => !v)
+          }}
           showShop={showShop}
-          onToggleShop={() => setShowShop((v) => !v)}
+          onToggleShop={(e) => {
+            opening(showShop, "sec-shop", e)
+            setShowShop((v) => !v)
+          }}
           showNotices={noticePrefs.open}
-          onToggleNotices={() => setNoticesOpen(!noticePrefs.open)}
+          onToggleNotices={(e) => {
+            opening(noticePrefs.open, "sec-notices", e)
+            setNoticesOpen(!noticePrefs.open)
+          }}
           noticeCount={noticeList.length}
           goneCount={counted.gone}
           dangerCount={counted.danger}
@@ -1309,13 +1372,17 @@ export default function StudyTrackerApp() {
           noticeOwed={counted.notice}
           allClearCount={counted.allClear}
           keptDays={kept?.current ?? null}
-          onToggleKept={() =>
+          onToggleKept={(e) => {
+            opening(openStreak === KEPT_PANEL, "sec-kept", e)
             setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
-          }
+          }}
           keptOpen={openStreak === KEPT_PANEL}
           points={project.settings.balanceStart ? balance.total : null}
           showAccount={showAccount}
-          onToggleAccount={() => setShowAccount((v) => !v)}
+          onToggleAccount={(e) => {
+            opening(showAccount, "sec-account", e)
+            setShowAccount((v) => !v)
+          }}
           badges={
             (project.settings.achievements || []).length
               ? {
@@ -1617,6 +1684,9 @@ export default function StudyTrackerApp() {
           an entry that points at a section which is not there is worse than
           no entry. */}
       <PageNav entries={navEntries} />
+
+      {/* Beside the button you just pressed, and gone on the next click. */}
+      <JumpPrompt at={justOpened} onGo={goToSection} />
 
       {/* Unmissable on purpose. The whole point of this app is that what you
           typed is still there tomorrow, so a write that isn't landing has to

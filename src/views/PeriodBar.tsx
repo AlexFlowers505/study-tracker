@@ -7,7 +7,10 @@
    where you are.
 --------------------------------------------------------------- */
 
-import type { ReactNode } from "react"
+import type { MouseEvent, ReactNode } from "react"
+
+/** A panel toggle. The event travels so the shell can measure the button. */
+type Toggle = (e: MouseEvent<HTMLButtonElement>) => void
 import {
   Bell,
   Calendar1,
@@ -111,7 +114,9 @@ function PanelToggle({
   /** The tip is a column of lines rather than a phrase. */
   multilineTip?: boolean
   active: boolean
-  onClick: () => void
+  /** Takes the event, because the shell measures the button it was pressed
+   *  on — see `JumpPrompt`. */
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void
   badge?: boolean
   /** A number in the corner instead of a dot. Zero is worth showing too — a
    *  broken streak is exactly the thing you want to notice. */
@@ -280,20 +285,20 @@ export function PeriodBar({
   customEnd?: DayKey
   setCustomEnd: (k: DayKey) => void
   showFilter: boolean
-  onToggleFilter: () => void
+  onToggleFilter: Toggle
   filteredOutCount: number
   sleepEnabled: boolean
   showSleep: boolean
-  onToggleSleep: () => void
+  onToggleSleep: Toggle
   showLog: boolean
-  onToggleLog: () => void
+  onToggleLog: Toggle
   showHistory: boolean
-  onToggleHistory: () => void
+  onToggleHistory: Toggle
   showShop: boolean
-  onToggleShop: () => void
+  onToggleShop: Toggle
   /** The board — `spec 016`. Its badge is every notice, coloured by the worst. */
   showNotices: boolean
-  onToggleNotices: () => void
+  onToggleNotices: Toggle
   noticeCount: number
   /** One per level, for the badges and the column of counts in the tooltip. */
   goneCount: number
@@ -304,11 +309,11 @@ export function PeriodBar({
   /** The composite's run. No freezes: there is no shared pool any more. */
   keptDays: number | null
   keptOpen: boolean
-  onToggleKept: () => void
+  onToggleKept: Toggle
   /** Points, abbreviated past a thousand. Null while the balance is off. */
   points: number | null
   showAccount: boolean
-  onToggleAccount: () => void
+  onToggleAccount: Toggle
   /** Rosettes reached against rosettes written. Null when none are written. */
   badges: { earned: number; total: number } | null
   /** Rewards you can afford against rewards on the shelf. */

@@ -27,7 +27,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { List, X } from "lucide-react"
+import { Menu, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
@@ -146,7 +146,12 @@ export function PageNav({ entries }: { entries: NavEntry[] }) {
         aria-label={open ? "Hide the section list" : "Jump to a section"}
         className={`${btnBase} flex items-center justify-center w-10 h-10 rounded-full bg-card shadow-lg ring-1 ring-ink/10 text-ink/60 hover:text-ink hover:brightness-105`}
       >
-        {open ? <X size={17} /> : <List size={17} />}
+        {/* Three bars. `List` drew bullets beside them, which says *a list of
+            things* where this says *the way around* — and at seventeen pixels
+            the bullets were three specks of noise. The icons are hidden from
+            assistive technology: the button's name is its `aria-label`, and a
+            second name from the glyph would only compete with it. */}
+        {open ? <X size={17} aria-hidden /> : <Menu size={17} aria-hidden />}
       </button>
     </div>,
     document.body,
