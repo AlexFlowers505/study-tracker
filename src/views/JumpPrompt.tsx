@@ -21,6 +21,12 @@
    Portalled, like everything else here that floats: the toggle row is an
    `overflow-x-auto` strip, so anything hanging below a button inside it is
    shaved off at the edge.
+
+   **Absolute against the document, not fixed to the viewport.** The toggle
+   sits in the sticky period bar, so a fixed pill rode down the page with it
+   and hung over the section it was offering to show you. `jumpAt` hands page
+   coordinates and this stays where it was made — and scrolls away like
+   anything else you have walked past.
 --------------------------------------------------------------- */
 
 import { createPortal } from "react-dom"
@@ -48,7 +54,7 @@ export function JumpPrompt({
         backgroundColor: c.accent,
         color: c.onFill,
       }}
-      className={`${btnBase} fixed z-[55] -translate-x-1/2 flex items-center gap-1 rounded-full pl-2.5 pr-2 py-1 text-[10px] font-mono uppercase tracking-wide shadow-lg whitespace-nowrap`}
+      className={`${btnBase} absolute z-[55] -translate-x-1/2 flex items-center gap-1 rounded-full pl-2.5 pr-2 py-1 text-[10px] font-mono uppercase tracking-wide shadow-lg whitespace-nowrap`}
     >
       Jump to it
       <ArrowDown size={11} aria-hidden />

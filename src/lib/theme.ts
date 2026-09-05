@@ -99,7 +99,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     onFill: "#FFFFFF",
     accent: "#2F5FBF",
     exam: "#C1595B",
-    gone: "#7E2F3E",
+    gone: "#241A1E",
     goalMet: "#2F9E8F",
     warn: "#B8912F",
     freeze: "#4C8FBD",
@@ -116,7 +116,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     onFill: "#10151A",
     accent: "#6D9BEA",
     exam: "#E58184",
-    gone: "#96475A",
+    gone: "#A2939A",
     goalMet: "#3FB5A4",
     warn: "#D6B24A",
     freeze: "#66A9D7",
@@ -133,11 +133,24 @@ export const PALETTES: Record<ThemeMode, Palette> = {
    - `accent`   — the active state, and today.
    - `exam`     — a missed goal, and a **call**: something can still be done
                   about it, which is why it is the bright red.
-   - `gone`     — past saving. A deep oxblood rather than a brighter red: the
-                  difference between the two is not how bad it is, it is
-                  whether there is anything to do, and an urgent colour on a
-                  thing you cannot act on teaches people to ignore urgent
-                  colours.
+   - `gone`     — past saving. **Not a red at all**, which is the second half
+                  of the same argument that split the red in two: the
+                  difference between this and `exam` is not how bad it is, it
+                  is whether there is anything to do, and an urgent colour on
+                  a thing you cannot act on teaches people to ignore urgent
+                  colours. A deep oxblood was the first answer and was still
+                  a red — beside `exam` at badge size it read as the same
+                  state drawn slightly darker, so the one distinction it
+                  exists to make was the one it failed to make.
+                  It is now as near black as the palette gets, with only
+                  enough warmth left in it to not be the ink. **Black is a
+                  colour here and the others are not**, so it never has to be
+                  told apart by shade.
+                  In dark mode it lightens like every other accent, and there
+                  it lands on a drained grey rather than a near-white: black
+                  is the page, so the deadest thing available is the one with
+                  the colour taken out of it. Same idea, opposite end of the
+                  scale — which is the rule for this whole palette.
    - `goalMet`  — a met goal. Green.
    - `project`  — the project's own marigold. **The streak and the account
                   share it**, which is the one place two things wear one
@@ -167,6 +180,27 @@ export const PALETTES: Record<ThemeMode, Palette> = {
 */
 
 export const CARD = "bg-card rounded-2xl p-4"
+
+/**
+ * A surface **inside a panel**, where `CARD` cannot be used.
+ *
+ * `PanelSection` used to be a tinted wash and everything laid on it stood out
+ * by being the plain card colour. The panel is `bg-card` itself now, so every
+ * one of those nested cards became invisible — an achievement tile, a shop
+ * row, the balance block and a change-log entry were all drawing a shadow
+ * around a rectangle exactly the colour of what was behind it.
+ *
+ * The answer is the one the rest of the app already uses when two surfaces
+ * meet: the inner one is **recessed rather than raised**. `CounterTotals`
+ * sits under a raised `StreakBar` this way and the subordinate half of a
+ * paired segmented control does the same. It also composes correctly in both
+ * themes without a second value, because `ink` is the foreground — 4% of it
+ * darkens a white card and lightens a near-black one.
+ *
+ * No padding: the sites that use it disagree about that and agree about
+ * everything else.
+ */
+export const PANEL_INSET = "rounded-2xl bg-ink/[0.04]"
 
 /**
  * An opaque base with a translucent wash painted on top, so a tinted surface

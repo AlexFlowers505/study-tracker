@@ -73,7 +73,7 @@ export function SupervisorBlock({
           <button
             type="button"
             onClick={() => navigator.clipboard?.writeText(url)}
-            className={`${btnBase} flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-mono bg-card shadow-sm hover:brightness-105`}
+            className={`${btnBase} flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-mono bg-ink/[0.06] hover:bg-ink/[0.1]`}
           >
             <Copy size={10} /> Copy
           </button>

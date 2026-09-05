@@ -1,7 +1,7 @@
 import { History } from "lucide-react"
 import type { ChangeLogEntry } from "../types/model"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
-import { CARD } from "../lib/theme"
+import { PANEL_INSET } from "../lib/theme"
 import { PanelSection } from "./PanelSection"
 import { usePalette } from "../ui/useTheme"
 
@@ -28,9 +28,15 @@ export function ChangeLogSection({
           Nothing recorded yet.
         </p>
       ) : (
-        <div className="max-h-80 overflow-y-auto pr-1 space-y-2">
+        /* **Small blocks, kept apart.** One edit is a line of history, not a
+           card: at `p-4` a two-line entry was mostly margin, and twenty of
+           them filled the panel with about six. The padding comes down and
+           the gap between them stays — take that away as well and the run
+           becomes one grey column with timestamps in it, which is the only
+           thing the surface is there to stop. */
+        <div className="max-h-80 overflow-y-auto pr-1 space-y-1.5">
           {entries.map((e) => (
-            <div key={e.id} className={`${CARD} p-3`}>
+            <div key={e.id} className={`${PANEL_INSET} px-2.5 py-1.5`}>
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-[11px] font-bold shrink-0">
                   {new Date(e.at).toLocaleString(undefined, {

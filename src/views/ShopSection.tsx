@@ -30,7 +30,7 @@ import type { Project, ShopItem } from "../types/model"
 import type { Balance } from "../lib/balance"
 import { boughtOn, canBuy, purchaseHistory } from "../lib/shop"
 import { fmtDateLong } from "../lib/date"
-import { CARD, btnBase } from "../lib/theme"
+import { CARD, PANEL_INSET, btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { useModalDismiss } from "../ui/useModalDismiss"
@@ -137,7 +137,7 @@ export function ShopSection({
             return (
               <div
                 key={item.id}
-                className="flex items-center gap-3 rounded-2xl bg-card shadow-sm px-3.5 py-3"
+                className={`${PANEL_INSET} flex items-center gap-3 px-3.5 py-3`}
               >
                 <span
                   className="flex items-center shrink-0"

@@ -208,7 +208,14 @@ export default function StudyTrackerApp() {
 
   useEffect(() => {
     if (!justOpened) return
-    const clear = () => setJustOpened(null)
+    /* **Clears this offer, not whatever offer is standing.** A plain
+       `setJustOpened(null)` also swallowed the *next* one: opening a second
+       panel is one click, and React's handler and this listener land in the
+       same batch, so the new offer was written and then immediately wiped by
+       the old listener. Compare and the click that made a new one leaves it
+       alone. */
+    const clear = () =>
+      setJustOpened((cur) => (cur === justOpened ? null : cur))
     /* Armed a task late, or it swallows the very click that made the offer —
        the same lesson `PageNav`'s dismisser learned. */
     const armed = setTimeout(() => window.addEventListener("click", clear), 0)

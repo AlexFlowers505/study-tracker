@@ -42,7 +42,7 @@ import {
   stepFor,
 } from "../lib/earnings"
 import { daysBetween, fmtDateLong } from "../lib/date"
-import { btnBase, chartTooltip } from "../lib/theme"
+import { PANEL_INSET, btnBase, chartTooltip } from "../lib/theme"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
@@ -96,7 +96,7 @@ export function AccountSection({
     >
       {/* The one figure a decision is made against, and the arithmetic under
           rather than beside it. */}
-      <div className="rounded-2xl bg-card shadow-sm px-4 py-3 mb-3">
+      <div className={`${PANEL_INSET} px-4 py-3 mb-3`}>
         <div className="flex items-baseline gap-3">
           <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
             On the account

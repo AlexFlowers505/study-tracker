@@ -89,7 +89,12 @@ anything that tells you something is wrong.
   is owed with room, `allClear` is nothing owed and nothing spent. That is the
   old `RiskLevel` with `safe` split in two and its red split in two again: the
   same colour on *act now* and on *it is over* teaches people to ignore the
-  colour. `gone` needs an unaffordable freeze, not merely an absent one — a
+  colour. **`gone` is not a red**, and the first version's deep oxblood was:
+  beside `exam` at badge size it read as the same state drawn slightly
+  darker, so the one distinction the level exists to draw was the one it
+  failed to draw. It is near black now — the only colour in the palette that
+  never has to be told apart by shade — and lightens for dark mode onto a
+  drained grey, since black there is the page. `gone` needs an unaffordable freeze, not merely an absent one — a
   weekly rule's partial first week offers nothing because nothing is at stake,
   and nothing at stake is not something lost. The thresholds are unchanged.
 - **One notice per rule per level**, lines inside it. Five rules make five to
@@ -454,6 +459,17 @@ which are Node config and get their own lint block.
     saturated line on the panel was thinnest exactly where it began and ended.
     **The close X rests on a surface** rather than appearing on hover, because
     with the panel neutral nothing else says the whole block can be closed.
+    **Anything laid on a panel takes `PANEL_INSET`, never `CARD`.** That is the
+    bill for the rail: everything nested — an achievement tile, a shop row, the
+    balance block, a change-log entry — used to be `bg-card` on a tinted wash
+    and stood out for being plain, and the moment the panel became `bg-card`
+    itself they were all drawing a shadow around a rectangle exactly the colour
+    of what was behind them. So the inner surface is **recessed rather than
+    raised** (`bg-ink/[0.04]`), which is what `CounterTotals` already does under
+    a raised `StreakBar` and what the subordinate half of a paired segmented
+    control already does. One constant rather than four copies, and it needs no
+    second value for dark: `ink` is the foreground, so 4% of it darkens a white
+    card and lightens a near-black one.
   - `CounterTotals.tsx` — **everything a period counted**, the first block
     *inside* `Days` and above each week's days in the month grid: activities
     in hours, tallies and checks in counts. It was a section of its own with a
@@ -701,7 +717,16 @@ which are Node config and get their own lint block.
     moment the app knows exactly which one you want and what you will do
     next, so it says so immediately. It **lives until the next click** and
     never longer: an offer that stays is clutter, and one that has to be
-    dismissed is a second thing to do. The point comes from the click's own
+    dismissed is a second thing to do — though **the click that makes a new
+    offer is not the next click**, so the standing listener compares before it
+    clears; without that, opening a second panel wrote an offer and wiped it in
+    the same batch, and the feature simply stopped working after the first use.
+    **It is `absolute` against the document, not fixed to the viewport.** The
+    toggle it points at lives in the sticky period bar, so a fixed pill rode
+    that bar down the page and ended up hovering over the very section it was
+    offering to show you; anchored to the document it stays where it was made,
+    which is where the eye left it, and scrolls away like anything else you
+    have walked past. `jumpAt` therefore returns page coordinates. The point comes from the click's own
     `currentTarget` (`lib/jump.ts`) rather than from a ref — a ref plus an
     effect is a read during render and a `setState` in an effect, two
     cascading-render warnings for a rectangle that was already in the event.

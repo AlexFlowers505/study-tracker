@@ -38,6 +38,7 @@ import {
   progressOf,
 } from "../lib/achievements"
 import { fmtDateLong } from "../lib/date"
+import { PANEL_INSET } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
@@ -172,8 +173,8 @@ function TrophyTile({
     <div
       className={`w-full h-full rounded-2xl px-3.5 py-3 ${
         locked
-          ? "bg-ink/[0.03] border border-dashed border-ink/15"
-          : "bg-card shadow-sm"
+          ? "border border-dashed border-ink/15"
+          : PANEL_INSET
       }`}
     >
       <span
