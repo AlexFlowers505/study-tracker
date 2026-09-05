@@ -79,6 +79,8 @@ export interface Palette {
   onFill: string
   accent: string
   exam: string
+  /** Lost past saving. Deeper and deader than `exam`, which is still a call. */
+  gone: string
   goalMet: string
   warn: string
   freeze: string
@@ -97,6 +99,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     onFill: "#FFFFFF",
     accent: "#2F5FBF",
     exam: "#C1595B",
+    gone: "#7E2F3E",
     goalMet: "#2F9E8F",
     warn: "#B8912F",
     freeze: "#4C8FBD",
@@ -113,6 +116,7 @@ export const PALETTES: Record<ThemeMode, Palette> = {
     onFill: "#10151A",
     accent: "#6D9BEA",
     exam: "#E58184",
+    gone: "#96475A",
     goalMet: "#3FB5A4",
     warn: "#D6B24A",
     freeze: "#66A9D7",
@@ -127,7 +131,13 @@ export const PALETTES: Record<ThemeMode, Palette> = {
    What each accent means, kept from when they were loose constants:
 
    - `accent`   — the active state, and today.
-   - `exam`     — a missed goal. Red.
+   - `exam`     — a missed goal, and a **call**: something can still be done
+                  about it, which is why it is the bright red.
+   - `gone`     — past saving. A deep oxblood rather than a brighter red: the
+                  difference between the two is not how bad it is, it is
+                  whether there is anything to do, and an urgent colour on a
+                  thing you cannot act on teaches people to ignore urgent
+                  colours.
    - `goalMet`  — a met goal. Green.
    - `project`  — the project's own marigold. **The streak and the account
                   share it**, which is the one place two things wear one

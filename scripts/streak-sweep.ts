@@ -329,6 +329,8 @@ interface RiskCase {
   today: Day | undefined
   hour: number
   want: NoticeLevel
+  /** The weekly allowance. Three unless a case is about not being able to pay. */
+  freezes?: number
 }
 
 const risky = (
@@ -393,6 +395,26 @@ const RISKS: RiskCase[] = [
   risky("time · nothing logged · an hour before midnight is",
     { id: "c", ...target("activity", "a-les"), min: 180 },
     undefined, 23, "danger"),
+
+  /* **A call against a report.** A settled violation a freeze can reach is
+     something to do; the same violation with nothing to spend is a fact. They
+     were one colour, which taught the reader that the bright red sometimes
+     means *act* and sometimes means *it is over*. */
+  {
+    name: "ceiling · breached · a freeze can reach it, so it is a call",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 0 },
+    today: counted("u-yt", "s-am", 1),
+    hour: 9,
+    want: "danger",
+  },
+  {
+    name: "ceiling · breached · nothing to spend, so it is a report",
+    clause: { id: "c", ...target("unit", "u-yt"), max: 0 },
+    today: counted("u-yt", "s-am", 1),
+    hour: 9,
+    freezes: 0,
+    want: "gone",
+  },
 ]
 
 /* ---- yesterday must not swallow today ----------------------------------
@@ -957,7 +979,7 @@ for (const test of RISKS) {
     ...ruleOf(test.clause as StreakClause, "day"),
     startedOn: RISK_YESTERDAY,
     lockedUntil: RISK_YESTERDAY,
-    freezesPerWeek: 3,
+    freezesPerWeek: test.freezes ?? 3,
   } as StreakRule
   /* Yesterday satisfies every shape these cases use — both checks answered
      and three hours logged — so the risk builder reaches its `today` branch
@@ -1163,11 +1185,12 @@ const MIDWEEK: DayKey = KEYS[2]
 const MIDWEEK_TODAY: DayKey = KEYS[4]
 const MIDWEEK_AT = new Date(`${MIDWEEK_TODAY}T12:00:00`)
 
-const midweekRule = (clause: object): StreakRule =>
+const midweekRule = (clause: object, freezes = 0): StreakRule =>
   ({
     ...ruleOf(clause as StreakClause, "week"),
     startedOn: MIDWEEK,
     lockedUntil: MIDWEEK,
+    freezesPerWeek: freezes,
   }) as StreakRule
 
 /** One Youtube in the evening, on the Thursday — after the rule was written. */
@@ -1177,6 +1200,8 @@ interface PartialCase {
   name: string
   clause: object
   days: Record<DayKey, Day>
+  /** The weekly allowance. Nought unless a case is about being able to pay. */
+  freezes?: number
   /** What the engine should say, as one printable line. */
   got: (rule: StreakRule, proj: Project) => string
   want: string
@@ -1255,6 +1280,15 @@ const PARTIALS: PartialCase[] = [
     },
     want: "1 drawn, 0 judged, unjudged",
   },
+  /* **The split `spec 016` gained after the fact.** A settled violation with
+     a freeze that can reach it is a *call* — `danger`. The same violation with
+     no freeze to spend on it is a *report* — `gone`. Both halves are pinned,
+     because getting either one wrong teaches the reader that the bright red
+     sometimes means act and sometimes means it is over. */
+  /* Still `danger`, not `gone`: there are no offers in a week nobody agreed
+     to, because nothing is at stake there — and nothing at stake is not the
+     same as nothing left to do. The `gone` split is pinned on a daily rule,
+     where the freeze economy actually applies. */
   {
     name: "a broken ceiling is danger even in a week nobody agreed to",
     clause: CEILING,
@@ -1273,7 +1307,7 @@ const PARTIALS: PartialCase[] = [
 
 console.log("")
 for (const test of PARTIALS) {
-  const rule = midweekRule(test.clause)
+  const rule = midweekRule(test.clause, test.freezes ?? 0)
   const proj = project(rule, test.days)
   const got = test.got(rule, proj)
   if (got === test.want) {

@@ -81,11 +81,17 @@ rule was added to a day-shaped app and never finished:
 anything that tells you something is wrong.
 
 - **`lib/notices.ts` replaces `streakRisk.ts`.** `ruleRisk` and `dueToday` are
-  gone; `notices(project, statuses, now)` returns the whole board. Four levels
-  on one axis — **is this already spent, or is it still owed?** `danger`
-  irreversible or out of reach today, `warning` reachable with the margin gone,
-  `notice` owed with room, `allClear` nothing owed and nothing spent. That is the
-  old `RiskLevel` with `safe` split in two. The thresholds are unchanged.
+  gone; `notices(project, statuses, now)` returns the whole board. **Five
+  levels on one axis** — *is this already spent, or is it still owed?* —
+  and one of the five is about what you can do rather than what happened:
+  `gone` is broken with no freeze that reaches it, `danger` is broken with a
+  freeze that still can, `warning` is reachable with the margin gone, `notice`
+  is owed with room, `allClear` is nothing owed and nothing spent. That is the
+  old `RiskLevel` with `safe` split in two and its red split in two again: the
+  same colour on *act now* and on *it is over* teaches people to ignore the
+  colour. `gone` needs an unaffordable freeze, not merely an absent one — a
+  weekly rule's partial first week offers nothing because nothing is at stake,
+  and nothing at stake is not something lost. The thresholds are unchanged.
 - **One notice per rule per level**, lines inside it. Five rules make five to
   nine notices, which is the bound that stops the board being a dashboard.
   Four sources beyond the rules: the composite, the freeze allowance, unsealed

@@ -89,6 +89,7 @@ function PeriodPills({
 function PanelToggle({
   icon: Icon,
   tip,
+  multilineTip,
   active,
   onClick,
   badge,
@@ -99,12 +100,16 @@ function PanelToggle({
   countIcon: CountIcon,
   mid,
   midColor,
+  deep,
+  deepColor,
   sub,
   subColor,
   subIcon: SubIcon,
 }: {
   icon: LucideIcon
   tip: ReactNode
+  /** The tip is a column of lines rather than a phrase. */
+  multilineTip?: boolean
   active: boolean
   onClick: () => void
   badge?: boolean
@@ -135,13 +140,23 @@ function PanelToggle({
    */
   mid?: number | null
   midColor?: string
+  /**
+   * The bottom-centre slot, and the top of the stack.
+   *
+   * Off the right edge entirely, because it is the one reading that is **not**
+   * a call to act — a thing already lost sits apart from the counts of things
+   * to do rather than joining the queue of them, and being last drawn is what
+   * guarantees nothing covers it.
+   */
+  deep?: number | null
+  deepColor?: string
   sub?: number | null
   subColor?: string
   subIcon?: LucideIcon
 }) {
   const c = usePalette()
   return (
-    <Tip text={tip}>
+    <Tip text={tip} multiline={multilineTip}>
       <button
         onClick={onClick}
         className={`${btnBase} relative p-2 rounded-full ${
@@ -189,6 +204,14 @@ function PanelToggle({
             {mid}
           </span>
         )}
+        {deep != null && (
+          <span
+            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-40 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
+            style={{ backgroundColor: deepColor, color: c.onFill }}
+          >
+            {deep}
+          </span>
+        )}
         {sub != null && (
           <span
             className="absolute -bottom-1 -right-1 z-30 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
@@ -230,6 +253,9 @@ export function PeriodBar({
   noticeCount,
   dangerCount,
   warningCount,
+  goneCount,
+  noticeOwed,
+  allClearCount,
   keptDays,
   keptOpen,
   onToggleKept,
@@ -264,9 +290,12 @@ export function PeriodBar({
   showNotices: boolean
   onToggleNotices: () => void
   noticeCount: number
-  /** How many are `danger` and how many `warning`. The two that colour. */
+  /** One per level, for the badges and the column of counts in the tooltip. */
+  goneCount: number
   dangerCount: number
   warningCount: number
+  noticeOwed: number
+  allClearCount: number
   /** The composite's run. No freezes: there is no shared pool any more. */
   keptDays: number | null
   keptOpen: boolean
@@ -323,12 +352,15 @@ export function PeriodBar({
               in the bar and the only group that reads fine half-visible, so on
               a narrow screen this strip scrolls and the navigation beside it
               keeps its place. */}
-          {/* `p-1 -m-1` is not decoration: `overflow-x-auto` makes the other
-              axis compute to `auto` too, and the filter's dot sits a couple of
-              pixels outside its button, so without padding inside the scroll
-              box the badge was shaved off. The negative margin keeps the row
+          {/* `p-2 -m-2` is not decoration: `overflow-x-auto` makes the other
+              axis compute to `auto` too, so anything sitting outside a button
+              is shaved off. It was `p-1`, which was enough for the filter's
+              two-pixel dot and stopped being enough the moment the counters
+              grew to fifteen pixels and moved to `-top-1` — the notice total
+              came out with a flat top. The padding has to clear the largest
+              overhang, not the first one. The negative margin keeps the row
               the height it was. */}
-          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto p-1 -m-1 [&>*]:shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto p-2 -m-2 [&>*]:shrink-0">
           {/* The dot stays on whether the panel is open or shut: a filter you
               can't see is the one you most need telling about, otherwise every
               figure on the page is quietly short and nothing says why. */}
@@ -377,20 +409,25 @@ export function PeriodBar({
               midColor={c.warn}
               sub={dangerCount || null}
               subColor={c.exam}
-              /* A nought is not a reading, it is the absence of one: a level
-                 with nothing in it drops its badge rather than drawing a
-                 zero, which would be one more figure to check past. */
-              tip={
-                showNotices
-                  ? "Hide the notices"
-                  : [
-                      `${noticeCount} notices about today`,
-                      dangerCount ? `${dangerCount} already lost` : "",
-                      warningCount ? `${warningCount} running out` : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-              }
+              deep={goneCount || null}
+              deepColor={c.gone}
+              /* **A column, and every level in it.** Run together with dots
+                 it was a sentence you had to parse before you could count;
+                 one line each is a table you read down. Every level appears
+                 even at nought — this is the place you come to *ask*, and a
+                 line that is missing is indistinguishable from a line you
+                 misread. The badges are the opposite and drop theirs: a
+                 badge is a call, and there is no call to make about none. */
+              multilineTip
+              tip={[
+                showNotices ? "Hide the notices" : "Show the notices",
+                "",
+                `${goneCount} gone — no freeze reaches them`,
+                `${dangerCount} lost unless a freeze is spent`,
+                `${warningCount} running out of room`,
+                `${noticeOwed} still owed, with time`,
+                `${allClearCount} all clear`,
+              ].join(String.fromCharCode(10))}
             />
           )}
           {/* `Flame` is already the language of streaks everywhere in the app,

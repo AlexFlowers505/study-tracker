@@ -19,8 +19,10 @@
 
    **One axis: has this already happened, or is it still owed?**
 
-   - `danger`  — irreversibly broken, or no longer reachable today. Only a
-                 freeze is left.
+   - `gone`    — broken, and nothing can cover it. Out of the writing window,
+                 or the freezes are not there. Information, never a task.
+   - `danger`  — broken, and **a freeze can still cover it**. The one level
+                 that is a call to act rather than a report.
    - `warning` — still reachable, and the margin is gone.
    - `notice`  — still owed, and there is room.
    - `good`    — nothing owed and nothing spent.
@@ -80,16 +82,28 @@ import { CHECK_LABELS, checkState } from "./checks"
 import { dayReport, keptDays } from "./dayVerdict"
 import { achievementTargets, measureOf, progressOf } from "./achievements"
 
-export type NoticeLevel = "danger" | "warning" | "notice" | "allClear"
+export type NoticeLevel =
+  | "gone"
+  | "danger"
+  | "warning"
+  | "notice"
+  | "allClear"
 
 /** Most urgent first. The board's order, and the filter row's. */
-export const LEVELS: NoticeLevel[] = ["danger", "warning", "notice", "allClear"]
+export const LEVELS: NoticeLevel[] = [
+  "gone",
+  "danger",
+  "warning",
+  "notice",
+  "allClear",
+]
 
 const RANK: Record<NoticeLevel, number> = {
-  danger: 0,
-  warning: 1,
-  notice: 2,
-  allClear: 3,
+  gone: 0,
+  danger: 1,
+  warning: 2,
+  notice: 3,
+  allClear: 4,
 }
 
 /** One thing worth saying about today. */
@@ -120,13 +134,15 @@ export interface Notice {
  * worth colouring; the icon and the name are still there to say which rule.
  */
 export const levelColour = (level: NoticeLevel, c: Palette): string =>
-  level === "danger"
-    ? c.exam
-    : level === "warning"
-      ? c.warn
-      : level === "allClear"
-        ? c.goalMet
-        : c.accent
+  level === "gone"
+    ? c.gone
+    : level === "danger"
+      ? c.exam
+      : level === "warning"
+        ? c.warn
+        : level === "allClear"
+          ? c.goalMet
+          : c.accent
 
 /** The loudest thing on the board, for the toggle's badge. */
 export const worstLevel = (list: Notice[]): NoticeLevel | null =>
@@ -137,6 +153,7 @@ export const worstLevel = (list: Notice[]): NoticeLevel | null =>
 
 export const countByLevel = (list: Notice[]): Record<NoticeLevel, number> => {
   const out: Record<NoticeLevel, number> = {
+    gone: 0,
     danger: 0,
     warning: 0,
     notice: 0,
@@ -590,10 +607,31 @@ function ruleNotices(
   const owedCost = unpaid.reduce((sum, o) => sum + o.cost, 0)
   const affordable = unpaid.filter((o) => o.ok).length
   const available = unpaid[0]?.available ?? 0
+
+  /* **`danger` is a call; `gone` is a report** — and the difference is whether
+     a freeze can still reach it. A settled violation inside the writing window
+     that you can afford to cover is something to *do* something about; the
+     same violation with no affordable freeze, or on a day the horizon has
+     passed, is a fact. Drawing them the same colour taught the reader that the
+     bright red sometimes means *act* and sometimes means *it is over*, which
+     is how a bright red stops meaning anything.
+
+     Promoted for the whole rule rather than per line, because the offers are
+     per violation and the lines are not: what is true here is *nothing on this
+     rule can be saved*, and that is a statement about the set. */
+  /* **Nothing *to* freeze is not the same as nothing *left*.** The first
+     draft promoted on `!unpaid.length` too, which swept in a weekly rule's
+     partial first week: there are no offers there because the week keeps no
+     verdict, so nothing is at stake and nothing was lost — calling that `gone`
+     would be the same overclaim in the opposite direction. `gone` means a
+     freeze was the last thing that could have covered it and you cannot buy
+     one. */
+  const nothingCovers = unpaid.length > 0 && !affordable
+  const settledLevel: NoticeLevel = nothingCovers ? "gone" : "danger"
   const detailFor = (level: NoticeLevel): string | undefined => {
-    if (level !== "danger" && level !== "warning") return undefined
     if (level === "warning")
       return `${plural(status.current, week ? "week" : "day")} at stake`
+    if (level !== "danger" && level !== "gone") return undefined
     if (!unpaid.length) return "Out of the writing window — nothing left to do"
     return affordable
       ? `${plural(unpaid.length, "violation")} to freeze · ${plural(owedCost, "freeze")} in all · ${available} available`
@@ -601,7 +639,9 @@ function ruleNotices(
   }
 
   return group(
-    items,
+    nothingCovers
+      ? items.map((i) => (i.level === "danger" ? { ...i, level: settledLevel } : i))
+      : items,
     {
       id: rule.id,
       tint: rule.color,

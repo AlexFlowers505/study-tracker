@@ -44,6 +44,7 @@ import { PanelSection } from "./PanelSection"
 
 /** What each level is called — on its filter button and over its group. */
 const LEVEL_WORD: Record<NoticeLevel, string> = {
+  gone: "gone",
   danger: "danger",
   warning: "warning",
   notice: "notice",
@@ -51,7 +52,8 @@ const LEVEL_WORD: Record<NoticeLevel, string> = {
 }
 
 const LEVEL_TIP: Record<NoticeLevel, string> = {
-  danger: "Already broken, or out of reach today. Only a freeze is left.",
+  gone: "Lost, and nothing covers it — no freeze can reach it. Nothing to do.",
+  danger: "Lost unless a freeze is spent on it. A freeze can still reach it.",
   warning: "Still reachable, and the margin is gone.",
   notice: "Still owed, and there is room.",
   allClear: "Nothing owed and nothing spent — for now.",

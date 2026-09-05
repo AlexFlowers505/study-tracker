@@ -62,7 +62,7 @@ import {
   ruleText,
 } from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
-import { notices } from "./lib/notices"
+import { countByLevel, notices } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
 import { AccountSection } from "./views/AccountSection"
 import { SoloBanner } from "./views/SoloBanner"
@@ -579,11 +579,22 @@ export default function StudyTrackerApp() {
   /* The one figure the streak row still needs from the board: how many rules
      have something wrong. Counted by rule, not by notice — a rule with a
      danger and a warning is one rule in trouble. */
+  const counted = useMemo(() => countByLevel(noticeList), [noticeList])
+
   const troubledCount = useMemo(
     () =>
       new Set(
         noticeList
-          .filter((n) => n.ruleId && (n.level === "danger" || n.level === "warning"))
+          .filter(
+            (n) =>
+              n.ruleId &&
+              // `gone` counts too: a rule nothing can save is the most in
+              // trouble a rule gets, and leaving it out made the row read
+              // `2 of 3 holding` about a rule that was past saving.
+              (n.level === "gone" ||
+                n.level === "danger" ||
+                n.level === "warning"),
+          )
           .map((n) => n.ruleId),
       ).size,
     [noticeList],
@@ -1229,8 +1240,11 @@ export default function StudyTrackerApp() {
           showNotices={noticePrefs.open}
           onToggleNotices={() => setNoticesOpen(!noticePrefs.open)}
           noticeCount={noticeList.length}
-          dangerCount={noticeList.filter((n) => n.level === "danger").length}
-          warningCount={noticeList.filter((n) => n.level === "warning").length}
+          goneCount={counted.gone}
+          dangerCount={counted.danger}
+          warningCount={counted.warning}
+          noticeOwed={counted.notice}
+          allClearCount={counted.allClear}
           keptDays={kept?.current ?? null}
           onToggleKept={() =>
             setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)

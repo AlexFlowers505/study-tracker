@@ -77,6 +77,21 @@ flag, used once to pick a word in a sentence
 
 **One axis: has this already happened, or is it still owed?**
 
+**There is a fifth level, added in use: `gone`.** `danger` was defined as
+*irreversibly broken, or out of reach* — which is one word for two situations
+that want opposite things from you. A settled violation a freeze can still
+cover is something to **do**; the same violation with nothing to spend on it is
+a **fact**. Drawn the same red, they taught the reader that the bright colour
+sometimes means *act* and sometimes means *it is over*, which is how a bright
+colour stops meaning anything. `gone` takes a deep oxblood — deader rather than
+louder, because the difference is not how bad it is.
+
+**Nothing *to* freeze is not the same as nothing *left*.** The first cut
+promoted whenever there were no offers at all, which swept in a weekly rule's
+partial first week: there are no offers there because the week keeps no verdict,
+so nothing is at stake and nothing was lost. `gone` means a freeze was the last
+thing that could have covered it and you cannot buy one.
+
 The fourth level was called `good` while this was written and is `allClear`
 now: the other three are nouns, `good` was an adjective, and `success` — the
 obvious replacement — promises a thing achieved where this is a state that can
@@ -86,7 +101,8 @@ the wider set of *not in trouble*, and `kept` is a day that is over.
 
 | level | the rule | example |
 | --- | --- | --- |
-| **danger** | irreversibly broken, or no longer reachable today. Only a freeze is left | `“Wake up in time” is “no”` · a Pinterest at night under *none at night* |
+| **gone** | broken, and no freeze reaches it — you cannot afford one. A report, never a task |
+| **danger** | broken, and **a freeze can still cover it**. The one level that is a call to act | `“Wake up in time” is “no”` · a Pinterest at night under *none at night* |
 | **warning** | still reachable, and the margin is gone | `“Pinterest” “3” of “3” used — one more ends it` · less of the day left than the hours still owed |
 | **notice** | still owed, and there is room | `“Go to bed in time” to answer` · `“3h” more of “Lessons”` |
 | **allClear** | nothing owed and nothing spent | `“Pinterest” “0” of “3” — clean` · `“Lessons” “3h” of “3h” — done` |
