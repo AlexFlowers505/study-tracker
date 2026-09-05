@@ -434,13 +434,26 @@ which are Node config and get their own lint block.
   inner one closing must not free the page under the outer one. It pads the
   body by the scrollbar width so nothing shifts sideways as it engages.
 - `src/views/` — the page's own sections.
-  - `PanelSection.tsx` — the shell every panel the period bar opens is built
-    from: a wash of one tint, a round icon badge, a title, an optional
-    subtitle, an `action` slot and a close X. **Use it rather than hand-rolling
-    a sixth copy** — the panels read as siblings because they are one
-    component wearing different tints.
-    All four panels are built from it: `CountFilter.tsx`, `SleepSection.tsx`,
-    `StreaksSection.tsx`, `ChangeLogSection.tsx`.
+  - `PanelSection.tsx` — the shell every panel a toggle opens is built from:
+    a round icon badge, a title, an optional subtitle, an `action` slot and a
+    close X. **Use it rather than hand-rolling another copy** — the panels read
+    as siblings because they are one component.
+    **The tint is a rail, not a wash.** It used to be the whole surface — the
+    colour at 8% behind everything, with a 2px border of it round the outside —
+    and that was right while two panels could be open at once. It stopped being
+    right at eight: every one washed a different colour, several of them hold
+    charts and chips that are already coloured, and the page became a stack of
+    tinted boxes with tinted things inside them. The tint was doing two jobs,
+    *this is a section* and *this is which section*, and it only ever needed
+    the second. So the surface is `bg-card` like every other card, and the
+    colour survives as a three-pixel rail down the left edge plus the icon
+    badge — one saturated stripe rather than a field, and still visible when
+    you have scrolled halfway down a long panel.
+    **The left corners are square** (`rounded-r-2xl`): a rail that follows a
+    rounded corner tapers away into the curve at both ends, so the one
+    saturated line on the panel was thinnest exactly where it began and ended.
+    **The close X rests on a surface** rather than appearing on hover, because
+    with the panel neutral nothing else says the whole block can be closed.
   - `CounterTotals.tsx` — **everything a period counted**, the first block
     *inside* `Days` and above each week's days in the month grid: activities
     in hours, tallies and checks in counts. It was a section of its own with a
@@ -671,6 +684,21 @@ which are Node config and get their own lint block.
     The wording follows: such a day reads `goal 3h (planned)`, not `(3h left)`
     — nothing is owed on a day that has not started — and the empty-day line
     drops its "tap to add", which would point at a door that isn't there.
+  - `PageNav.tsx` — an index of what is open, because there can now be a
+    great deal of it. Eight panels can be on the page at once and every one
+    stays until you close it, which is several screens with no way between
+    them but the wheel. A fixed button, bottom right, always visible; the list
+    is **built from what is actually rendered**, never a fixed menu — an entry
+    that points at a section which is not there is worse than no entry. Each
+    panel sits in a `<section id="sec-…" className="scroll-mt-28">`, and the
+    margin is what clears the sticky period bar.
+    It portals like everything else that floats, but it is **not** a
+    `PopoverMenu`: that one tethers a bubble to a trigger and measures from it,
+    which is right for a menu on a chip and wrong for a panel that wants a
+    fixed corner of the viewport. Its outside-click closer listens for `click`
+    and is **armed a task late** — on `mousedown` the panel unmounted between
+    the press and the release so no item ever fired, and armed synchronously it
+    ate the very click that opened it.
   - `LogView.tsx`, `AnalyticsView.tsx` — the two halves of the page, both
     driven by the one range `periodRange()` hands them.
   - `DayCards.tsx` (the week row and the day view's wide card),

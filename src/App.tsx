@@ -21,7 +21,17 @@ import type { WriteOp } from "./data/ops"
 import "./App.css"
 import {
   AlertCircle,
+  Bell,
+  CalendarDays,
+  ChartLine,
+  Coins,
+  Filter,
+  Flame,
+  Gift,
+  History,
+  Trophy,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import {
   pad,
   toKey,
@@ -64,6 +74,8 @@ import {
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
 import { countByLevel, notices } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
+import { PageNav } from "./views/PageNav"
+import type { NavEntry } from "./views/PageNav"
 import { AccountSection } from "./views/AccountSection"
 import { SoloBanner } from "./views/SoloBanner"
 import { useNoticePrefs } from "./ui/useNoticePrefs"
@@ -580,6 +592,57 @@ export default function StudyTrackerApp() {
      have something wrong. Counted by rule, not by notice — a rule with a
      danger and a warning is one rule in trouble. */
   const counted = useMemo(() => countByLevel(noticeList), [noticeList])
+
+  /**
+   * The page's own table of contents.
+   *
+   * In the order the sections are drawn, so the list is the page read top to
+   * bottom rather than a menu somebody arranged. Every entry is conditional on
+   * exactly the same thing its panel is.
+   */
+  const navEntries: NavEntry[] = useMemo(() => {
+    const out: NavEntry[] = []
+    const add = (
+      when: boolean,
+      id: string,
+      label: string,
+      tint?: string,
+      icon?: LucideIcon,
+    ) => {
+      if (when) out.push({ id, label, tint, icon })
+    }
+    add(noticePrefs.open && noticeList.length > 0, "sec-notices", "Notices", c.accent, Bell)
+    add(showFilter, "sec-filter", "What counts", c.filter, Filter)
+    add(openStreak === KEPT_PANEL, "sec-kept", "The composite", c.project, Flame)
+    ruleStatuses.forEach((s2) => {
+      if (openStreak === s2.rule.id)
+        out.push({
+          id: `sec-rule-${s2.rule.id}`,
+          label: s2.rule.label,
+          tint: s2.rule.color,
+          iconName: s2.rule.iconName,
+        })
+    })
+    add(showAccount && !!project.settings.balanceStart, "sec-account", "The account", c.project, Coins)
+    add(showShop, "sec-shop", "Rewards", c.accent, Gift)
+    add(showHistory, "sec-achievements", "Achievements", c.accent, Trophy)
+    add(showLog, "sec-changelog", "Change log", c.changelog, History)
+    out.push({ id: "sec-log", label: "Days", icon: CalendarDays })
+    out.push({ id: "sec-trends", label: "Summary & trends", icon: ChartLine })
+    return out
+  }, [
+    noticePrefs.open,
+    noticeList.length,
+    showFilter,
+    openStreak,
+    ruleStatuses,
+    showAccount,
+    project.settings.balanceStart,
+    showShop,
+    showHistory,
+    showLog,
+    c,
+  ])
 
   const troubledCount = useMemo(
     () =>
@@ -1300,6 +1363,7 @@ export default function StudyTrackerApp() {
             below the streak row, because it is where danger is read and it is
             open by default. */}
         {noticePrefs.open && noticeList.length > 0 && (
+          <section id="sec-notices" className="scroll-mt-28">
           <NoticeBoard
             notices={noticeList}
             held={noticePrefs.held}
@@ -1308,6 +1372,7 @@ export default function StudyTrackerApp() {
             onOpenRule={(id) => setOpenStreak(openStreak === id ? null : id)}
             onClose={() => setNoticesOpen(false)}
           />
+          </section>
         )}
 
         {/* **The composite above the rules that compose it.** It used to be a
@@ -1342,6 +1407,7 @@ export default function StudyTrackerApp() {
         {/* Above the overall stats deliberately: the filter feeds them too, so
             it has to read as the thing governing what's below it. */}
         {showFilter && (
+          <section id="sec-filter" className="scroll-mt-28">
           <CountFilter
             slots={project.slots}
             activities={project.activities}
@@ -1367,6 +1433,7 @@ export default function StudyTrackerApp() {
             }}
             onClose={() => setShowFilter(false)}
           />
+          </section>
         )}
 
         {/* Sits between the period bar and the period's own figures, full
@@ -1374,6 +1441,7 @@ export default function StudyTrackerApp() {
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
         {openStreak === KEPT_PANEL && kept && keptWeekly && (
+          <section id="sec-kept" className="scroll-mt-28">
           <KeptSection
             project={project}
             days={kept}
@@ -1385,13 +1453,18 @@ export default function StudyTrackerApp() {
             onSolo={(id) => setSoloRule(soloRule === id ? null : id)}
             onClose={() => setOpenStreak(null)}
           />
+          </section>
         )}
 
         {ruleStatuses
           .filter((s2) => s2.rule.id === openStreak)
           .map((s2) => (
-            <CustomStreakSection
+            <section
               key={s2.rule.id}
+              id={`sec-rule-${s2.rule.id}`}
+              className="scroll-mt-28"
+            >
+            <CustomStreakSection
               status={s2}
               project={project}
               rangeStart={range.start}
@@ -1431,9 +1504,11 @@ export default function StudyTrackerApp() {
               }
               onClose={() => setOpenStreak(null)}
             />
+            </section>
           ))}
 
         {showAccount && project.settings.balanceStart && (
+          <section id="sec-account" className="scroll-mt-28">
           <AccountSection
             project={project}
             balance={balance}
@@ -1445,9 +1520,11 @@ export default function StudyTrackerApp() {
             }}
             onClose={() => setShowAccount(false)}
           />
+          </section>
         )}
 
         {showShop && (
+          <section id="sec-shop" className="scroll-mt-28">
           <ShopSection
             project={project}
             balance={project.settings.balanceStart ? balance : null}
@@ -1462,23 +1539,29 @@ export default function StudyTrackerApp() {
             }
             onClose={() => setShowShop(false)}
           />
+          </section>
         )}
 
         {showHistory && (
+          <section id="sec-achievements" className="scroll-mt-28">
           <AchievementsSection
             project={project}
             today={new Date()}
             onClose={() => setShowHistory(false)}
           />
+          </section>
         )}
 
         {showLog && (
+          <section id="sec-changelog" className="scroll-mt-28">
           <ChangeLogSection
             entries={project.changeLog || []}
             onClose={() => setShowLog(false)}
           />
+          </section>
         )}
 
+        <section id="sec-log" className="scroll-mt-28">
         <LogView
           data={shownProject}
           verdictOf={verdictOf}
@@ -1518,15 +1601,22 @@ export default function StudyTrackerApp() {
             ) : null
           }
         />
+        </section>
 
-        <div className="mt-10">
+        <section id="sec-trends" className="mt-10 scroll-mt-28">
           <AnalyticsView
             data={shownProject}
             rangeStart={range.start}
             rangeEnd={range.end}
           />
-        </div>
+        </section>
       </main>
+
+      {/* **An index of what is open, because there can now be a lot of it.**
+          Built from what is actually rendered rather than from a fixed menu:
+          an entry that points at a section which is not there is worse than
+          no entry. */}
+      <PageNav entries={navEntries} />
 
       {/* Unmissable on purpose. The whole point of this app is that what you
           typed is still there tomorrow, so a write that isn't landing has to
