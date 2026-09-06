@@ -66,6 +66,7 @@ export function KeptSection({
   today,
   solo,
   onSolo,
+  onOpenRule,
   onClose,
 }: {
   project: Project
@@ -77,6 +78,11 @@ export function KeptSection({
   /** The rule the page is showing alone, if any — `spec 016`, part 5. */
   solo?: string | null
   onSolo?: (ruleId: string) => void
+  /**
+   * Open one rule's own panel. This block names the rule that keeps costing
+   * you the day; without this it named it and stopped there.
+   */
+  onOpenRule?: (ruleId: string) => void
   onClose: () => void
 }) {
   const c = usePalette()
@@ -165,15 +171,49 @@ export function KeptSection({
                 key={row.rule.id}
                 className="flex items-center gap-2 rounded-lg bg-ink/[0.04] px-2.5 py-1.5"
               >
-                <span
-                  className="shrink-0"
-                  style={{ color: row.rule.color }}
-                >
-                  <RenderIcon name={row.rule.iconName} size={12} />
-                </span>
-                <span className="min-w-0 truncate text-[11px] font-mono text-ink/70">
-                  {row.rule.label}
-                </span>
+                {/* **The name is the way in.** This block answers *which
+                    promise keeps doing this to me* and then, until now, left
+                    you with the answer and nowhere to take it: the whole panel
+                    had one button in it, and that one only toggled solo. So
+                    the rule you have just been told about is where you go
+                    next, and going there is a click on its name rather than a
+                    trip back up to the row of chips to find it again.
+
+                    The name and its icon rather than the whole row: the
+                    figures beside them carry tooltips of their own and the
+                    solo button is a second action, and a row that is itself a
+                    button cannot hold either. */}
+                {onOpenRule ? (
+                  <Tip text={`Open “${row.rule.label}”`}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenRule(row.rule.id)}
+                      className={`${btnBase} flex items-center gap-2 min-w-0 rounded-md -mx-1 px-1 hover:bg-ink/10`}
+                    >
+                      <span
+                        className="shrink-0"
+                        style={{ color: row.rule.color }}
+                      >
+                        <RenderIcon name={row.rule.iconName} size={12} />
+                      </span>
+                      <span className="min-w-0 truncate text-[11px] font-mono text-ink/70">
+                        {row.rule.label}
+                      </span>
+                    </button>
+                  </Tip>
+                ) : (
+                  <>
+                    <span
+                      className="shrink-0"
+                      style={{ color: row.rule.color }}
+                    >
+                      <RenderIcon name={row.rule.iconName} size={12} />
+                    </span>
+                    <span className="min-w-0 truncate text-[11px] font-mono text-ink/70">
+                      {row.rule.label}
+                    </span>
+                  </>
+                )}
 
                 <span className="ml-auto flex items-center gap-2 shrink-0 tabular-nums">
                   {/* A rule written this morning has judged no finished day,

@@ -72,7 +72,7 @@ import {
   ruleText,
 } from "./lib/supervisor"
 import { claimInvite, createInvite, inviteLink } from "./data/invites"
-import { countByLevel, notices } from "./lib/notices"
+import { countByLevel, notices, worstLevel } from "./lib/notices"
 import { NoticeBoard } from "./views/NoticeBoard"
 import { PageNav } from "./views/PageNav"
 import { JumpPrompt } from "./views/JumpPrompt"
@@ -1557,6 +1557,10 @@ export default function StudyTrackerApp() {
         {openStreak === KEPT_PANEL && kept && keptWeekly && (
           <section id="sec-kept" className="scroll-mt-28">
           <KeptSection
+            /* One panel at a time, so opening a rule from the breakdown
+               swaps this one out for it — which is what "go and look at that
+               one" means, and what clicking its chip in the row does. */
+            onOpenRule={setOpenStreak}
             project={project}
             days={kept}
             weeks={keptWeekly}
@@ -1580,6 +1584,12 @@ export default function StudyTrackerApp() {
             >
             <CustomStreakSection
               status={s2}
+              /* The worst the board has on this rule, so the panel opens on
+                 the state before it opens on the drawings. The board keeps the
+                 sentences; this is only which of the five it is. */
+              level={worstLevel(
+                noticeList.filter((n) => n.ruleId === s2.rule.id),
+              )}
               project={project}
               rangeStart={range.start}
               rangeEnd={range.end}

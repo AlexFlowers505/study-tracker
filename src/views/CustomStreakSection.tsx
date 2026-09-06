@@ -65,7 +65,8 @@ import {
   toKey,
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
-import { minutesLeftToday } from "../lib/notices"
+import { levelColour, minutesLeftToday } from "../lib/notices"
+import type { NoticeLevel } from "../lib/notices"
 import { btnBase } from "../lib/theme"
 import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
@@ -81,6 +82,30 @@ import type { StripCell } from "./StreakStrip"
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
+/**
+ * **How this rule stands, in one line, before anything else.**
+ *
+ * The panel opens on the terms, then a freeze note, then a pace bar, a week
+ * strip, a chart and three figures — six drawings, none of which answers the
+ * question you opened it with, which is *is this one already gone or can I
+ * still do something*. That answer existed and was only on the notice board,
+ * which is a different block in a different place and is about today across
+ * every rule rather than about this rule.
+ *
+ * **The level, never the board's sentences.** `NoticeBoard` is the one place
+ * a notice is read, and reprinting its lines here would be the same text in
+ * two places, drifting the first time either is edited. What this says is the
+ * state — which the board does not say in a word anywhere — in the level's own
+ * colour, so the two read as one vocabulary rather than two.
+ */
+const LEVEL_WORD: Record<NoticeLevel, string> = {
+  gone: "Lost",
+  danger: "Broken — a freeze still reaches it",
+  warning: "At risk",
+  notice: "Owed today",
+  allClear: "Holding",
+}
+
 const STATE_WORD: Record<RuleState, string> = {
   met: "kept",
   frozen: "frozen",
@@ -92,6 +117,7 @@ const STATE_WORD: Record<RuleState, string> = {
 
 export function CustomStreakSection({
   status,
+  level,
   project,
   rangeStart,
   rangeEnd,
@@ -102,6 +128,12 @@ export function CustomStreakSection({
   onClose,
 }: {
   status: RuleStatus
+  /**
+   * The worst thing the notice board has to say about this rule today, or
+   * `null` when it has nothing to say — a rule that can neither win nor lose
+   * on the period it is watching has no state worth announcing.
+   */
+  level: NoticeLevel | null
   project: Project
   /** The period bar's range — the panel shows exactly what the page shows. */
   rangeStart: Date
@@ -444,6 +476,22 @@ export function CustomStreakSection({
         </div>
       }
     >
+      {level && (
+        <div
+          className="mb-3 flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest"
+          style={{
+            backgroundColor: `${levelColour(level, c)}1A`,
+            color: levelColour(level, c),
+          }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ backgroundColor: levelColour(level, c) }}
+          />
+          {LEVEL_WORD[level]}
+        </div>
+      )}
+
       {/* Where the next reward is. A clean week that has not paid out yet looks
           like a bug and is a rule, so the rule says itself here. */}
       {status.open.length > 0 && (
@@ -502,18 +550,21 @@ export function CustomStreakSection({
           value={status.current}
           sub={unitWord(status.current)}
           icon={Flame}
+          inset
         />
         <StatTile
           label="Best streak"
           value={status.best}
           sub={unitWord(status.best)}
           icon={Trophy}
+          inset
         />
         <StatTile
           label="Freezes banked"
           value={freezes.banked}
           sub={`of ${freezes.cap}`}
           icon={Snowflake}
+          inset
         />
       </div>
     </PanelSection>

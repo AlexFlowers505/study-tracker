@@ -1656,6 +1656,30 @@ and two panels that merely looked alike would drift.
   and at exactly one row both points are drawn larger, since a step line
   through a single point renders nothing at all.
 
+**A rule's panel opens on its state.** One line under the terms, before the
+pace bar and the strip and the chart and the figures: which of the five notice
+levels this rule stands at, in that level's colour. Six drawings and none of
+them answered the question you opened the panel with — *is this already gone
+or can I still do something* — and the answer existed only on the board, which
+is a different block about today across every rule. **The level, never the
+board's sentences**: `NoticeBoard` is the one place a notice is read, and the
+same text in two places drifts the first time either is edited. The state in a
+word is the thing the board does not say anywhere.
+
+**The composite's breakdown rows are the way into the rules they name.** The
+block exists to answer *which promise keeps doing this to me*, and until
+`onOpenRule` it named the rule and stopped — the whole panel had one button in
+it and that one toggled solo. The name and its icon are the target, not the
+whole row: the figures beside them carry tooltips and solo is a second action,
+and a row that is itself a button can hold neither.
+
+**Stat tiles on a panel take `inset`.** `StatTile` defaults to `CARD`, which is
+right on the page and invisible on a panel — `bg-card` on `bg-card` is a
+shadow round a rectangle the colour of what is behind it. The rule was already
+written down for achievement tiles, shop rows and the balance block; the three
+figures under a rule's chart and the three under the sleep panel's were the
+ones still raised on a surface they could not rise off.
+
 **Both follow the period bar**, not "this week". The panel opens directly under
 that bar and above a log showing the same range; one stuck on the current week
 while the page shows March would be answering a question nobody asked.

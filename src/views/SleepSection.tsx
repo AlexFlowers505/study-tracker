@@ -152,11 +152,13 @@ export function SleepSection({
               label="Average bedtime"
               value={stats.bedtime}
               icon={Moon}
+              inset
             />
             <StatTile
               label="Average wake-up"
               value={stats.wake}
               icon={Sunrise}
+              inset
             />
             <StatTile
               label="Average night"
@@ -165,6 +167,7 @@ export function SleepSection({
               // again in a unit nobody asked for.
               value={fmtHours(stats.duration)}
               icon={Clock}
+              inset
             />
           </div>
 
