@@ -816,10 +816,21 @@ Arriving is `.rise-in` / `.wash-in` / `.tab-fade` in `App.css`: keyframes
 rather than transitions, which is the opposite of the rule for anything you
 can touch, and right here because nothing in a dialog is dragged — what is
 wanted is one prescribed arrival per mount. No overshoot: bounce belongs to
-motion that inherited momentum from a flick, and a click did not. **The exit
-is still a hard cut**, deliberately, because doing it properly means holding
-the modal mounted after it has been asked to close — and that is nearly free
-the moment this becomes a real `<dialog>`, so it waits for that.
+motion that inherited momentum from a flick, and a click did not. **Leaving is `ui/Leaving.tsx`**, and it is
+what every panel and the modal go out through: React unmounts on the frame the
+condition turns false, so nothing in this app had an exit until something held
+the outgoing tree for the length of its transition. Closing the composite's
+panel took 1124px out of the document between two frames. A grid track from
+`1fr` to `0fr` collapses the space while the content fades inside it — the
+one sizing technique that does interpolate here — and `min-height: 0` on the
+child is what lets the row shrink at all. **The caller's guard moves onto
+`open` and must not be repeated inside**, or the children vanish on the first
+frame and an empty box animates; that is the bug this shipped with for one
+commit. **The exits use `--ease-in-out`, not `--ease-out`**: the strong
+ease-out is front-loaded for arrivals, and on the way out it spent the whole
+budget in the first third — measured at 60ms of 160, the opacity was already
+0.03, which is no exit at all. A collapse is movement, and movement is what
+ease-in-out is for.
 
 Which is the other unfinished half. The panel carries `role="dialog"`,
 `aria-modal` and a name, takes focus on the way in and gives it back to the

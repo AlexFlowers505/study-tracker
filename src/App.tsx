@@ -110,6 +110,7 @@ import { StreakBar } from "./views/StreakBar"
 import type { StreakId } from "./views/StreakBar"
 import { CustomStreakSection } from "./views/CustomStreakSection"
 import { KeptSection } from "./views/KeptSection"
+import { Leaving } from "./ui/Leaving"
 import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
 import { ShopSection } from "./views/ShopSection"
@@ -1485,7 +1486,8 @@ export default function StudyTrackerApp() {
             It is the page's own block rather than one of the panels that open
             below the streak row, because it is where danger is read and it is
             open by default. */}
-        {noticePrefs.open && noticeList.length > 0 && (
+        <Leaving open={noticePrefs.open && noticeList.length > 0}>
+        {noticeList.length > 0 && (
           <section id="sec-notices" className="scroll-mt-28">
           <NoticeBoard
             notices={noticeList}
@@ -1497,6 +1499,7 @@ export default function StudyTrackerApp() {
           />
           </section>
         )}
+        </Leaving>
 
         {/* **The composite above the rules that compose it.** It used to be a
             figure on the collapsed streaks line, which meant it disappeared
@@ -1529,7 +1532,7 @@ export default function StudyTrackerApp() {
 
         {/* Above the overall stats deliberately: the filter feeds them too, so
             it has to read as the thing governing what's below it. */}
-        {showFilter && (
+        <Leaving open={showFilter}>
           <section id="sec-filter" className="scroll-mt-28">
           <CountFilter
             slots={project.slots}
@@ -1557,7 +1560,7 @@ export default function StudyTrackerApp() {
             onClose={() => setShowFilter(false)}
           />
           </section>
-        )}
+        </Leaving>
 
         {/* Sits between the period bar and the period's own figures, full
             width and scrolling with the page — on every screen size. It used
@@ -1575,7 +1578,8 @@ export default function StudyTrackerApp() {
             nothing, the composite alone, or the composite with one rule
             expanded inside it. The chips in the row above and the breakdown
             rows inside both land on the third. */}
-        {openStreak !== null && kept && keptWeekly && (
+        <Leaving open={openStreak !== null && !!kept && !!keptWeekly}>
+        {kept && keptWeekly && (
           <section id="sec-kept" className="scroll-mt-28">
           <KeptSection
             onOpenRule={(id) =>
@@ -1649,8 +1653,10 @@ export default function StudyTrackerApp() {
           />
           </section>
         )}
+        </Leaving>
 
-        {showAccount && project.settings.balanceStart && (
+        <Leaving open={showAccount && !!project.settings.balanceStart}>
+        {project.settings.balanceStart && (
           <section id="sec-account" className="scroll-mt-28">
           <AccountSection
             project={project}
@@ -1665,8 +1671,9 @@ export default function StudyTrackerApp() {
           />
           </section>
         )}
+        </Leaving>
 
-        {showShop && (
+        <Leaving open={showShop}>
           <section id="sec-shop" className="scroll-mt-28">
           <ShopSection
             project={project}
@@ -1683,9 +1690,9 @@ export default function StudyTrackerApp() {
             onClose={() => setShowShop(false)}
           />
           </section>
-        )}
+        </Leaving>
 
-        {showHistory && (
+        <Leaving open={showHistory}>
           <section id="sec-achievements" className="scroll-mt-28">
           <AchievementsSection
             project={project}
@@ -1693,16 +1700,16 @@ export default function StudyTrackerApp() {
             onClose={() => setShowHistory(false)}
           />
           </section>
-        )}
+        </Leaving>
 
-        {showLog && (
+        <Leaving open={showLog}>
           <section id="sec-changelog" className="scroll-mt-28">
           <ChangeLogSection
             entries={project.changeLog || []}
             onClose={() => setShowLog(false)}
           />
           </section>
-        )}
+        </Leaving>
 
         <section id="sec-log" className="scroll-mt-28">
         <LogView
@@ -1873,7 +1880,11 @@ export default function StudyTrackerApp() {
         />
       )}
 
-      {showSetup && (
+      {/* The modal leaves the same way: the wrapper's fade reaches a fixed
+          child fine, and `rise-in`'s scale reverses through a transition. Its
+          grid collapse is a no-op here, which is the right kind of harmless —
+          one wrapper for everything that goes away. */}
+      <Leaving open={showSetup}>
         <SetupModal
           settings={project.settings}
           slots={project.slots}
@@ -1903,7 +1914,7 @@ export default function StudyTrackerApp() {
           onImport={importData}
           isAdmin={isAdmin}
         />
-      )}
+      </Leaving>
 
       <EnvBadge />
     </div>

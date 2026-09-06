@@ -308,13 +308,13 @@ html {
    cross-fade, by swapping the animation's name rather than switching it off:
    reduced motion asks for a gentler equivalent, not for nothing at all.
 
-   The exit is still a hard cut, and deliberately unfinished rather than
-   forgotten. Enter and exit ought to run the same path, and doing that here
-   means holding the modal mounted after it has been asked to close — a
-   timer, a closing state, and every one of the four ways out routed through
-   it. It is nearly free the moment this becomes a real `<dialog>`, where
-   `::backdrop` and `allow-discrete` do it in CSS, so it belongs with that
-   change and not before it.
+The exit was a hard cut for as long as this note said so, and is not one
+   now: `Leaving` holds anything on its way out for the length of its
+   transition, so a modal reverses the scale it came up on and a panel
+   collapses instead of vanishing. It waited for a `<dialog>` that has not
+   happened, on the reasoning that `::backdrop` and `allow-discrete` would
+   make it free — and the wait was the mistake, because the same gap was in
+   every panel too, and one holder fixes all of them.
 --------------------------------------------------------------- */
 
 @keyframes wash-in {
@@ -344,7 +344,23 @@ html {
    The curve is the theme's own `--ease-out` now rather than a weaker one
    written out in place. */
 .rise-in {
-  animation: rise-in 220ms var(--ease-out) both;
+  /* `backwards`, not `both`: `both` holds the animation's end value forever,
+     which is the element's own transform and therefore outranks any later
+     transition on it — so the way out could never move. `backwards` applies
+     the `from` state before the animation and lets go once it is over, which
+     is exactly when the exit needs the property back. */
+  animation: rise-in 220ms var(--ease-out) backwards;
+  /* Only the exit uses this — the entrance is the animation above. Same
+     curve as the panels leave on, for the same reason. */
+  transition:
+    transform 160ms var(--ease-in-out),
+    opacity 160ms var(--ease-in-out);
+}
+
+/* Out the way it came in — the same scale, reversed. The wrapper's own fade
+   carries the opacity and the backdrop with it. */
+.leaving[data-open="false"] .rise-in {
+  transform: scale(0.97);
 }
 
 /* Shorter than the panel's own arrival: this one happens on every tab switch,
@@ -473,4 +489,67 @@ details[open] > .fold-body {
    and sliding one of those is motion sickness, not polish. */
 .panel-in {
   animation: wash-in 140ms var(--ease-out) both;
+}
+
+/* ---------------------------------------------------------------
+   The way out.
+
+   A block removed between two frames leaves a hole the page snaps up to fill
+   — measured at 1124px when the composite's panel closed. So the wrapper
+   holds its height while the thing inside it fades, and the row collapses to
+   nothing before the node goes.
+
+   A grid track from `1fr` to `0fr` rather than a height: `block-size: auto`
+   does not interpolate here (see the fold note above, and
+   `document.getAnimations()` agreeing), and a grid track does. `min-height: 0`
+   on the child is what lets the row shrink at all — the same `min-width: auto`
+   refusal the layout notes are full of, turned ninety degrees.
+
+   `overflow: hidden` **only while leaving**: a panel casts a shadow, and
+   clipping it the whole time it is open would shave that off for the sake of
+   the frame and a half it is closing in.
+
+   Sizing animations are the ones that make people ill, so reduced motion
+   keeps the fade and drops the collapse — which is the snap it had before,
+   and the right trade.
+--------------------------------------------------------------- */
+
+/* **`ease-in-out`, where everything arriving uses `ease-out`.** The strong
+   ease-out is front-loaded on purpose — an entrance should be most of the way
+   there before you have finished looking at it — and on the way out that same
+   curve spends its whole budget in the first third: measured at 60ms of 160,
+   the opacity was already 0.03. A thing that is gone in a twentieth of a
+   second has no exit; the remaining hundred milliseconds animate nothing.
+
+   This is a collapse, which is movement rather than an arrival, and movement
+   is what `ease-in-out` is for. The 160ms are actually spent. */
+.leaving {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 160ms var(--ease-in-out),
+    opacity 160ms var(--ease-in-out);
+}
+
+.leaving > * {
+  min-height: 0;
+}
+
+.leaving[data-open="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.leaving[data-open="false"] > * {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaving {
+    transition: opacity 120ms var(--ease-in-out);
+  }
+
+  .leaving[data-open="false"] {
+    grid-template-rows: 1fr;
+  }
 }
