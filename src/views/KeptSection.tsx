@@ -184,7 +184,15 @@ export function KeptSection({
                     solo button is a second action, and a row that is itself a
                     button cannot hold either. */}
                 {onOpenRule ? (
-                  <Tip text={`Open “${row.rule.label}”`}>
+                  /* `className` on the `Tip`, not only on the button: `Tip`
+                     puts a span between the two, so the span is what the row's
+                     flex layout lands on — and a flex item defaults to
+                     `min-width: auto`, which refuses to shrink below its
+                     content. Without this a long rule name never truncates and
+                     pushes the row 158px past the panel, taking the panel's
+                     own width with it. Measured, and it is the trap the layout
+                     notes name in so many words. */
+                  <Tip className="min-w-0" text={`Open “${row.rule.label}”`}>
                     <button
                       type="button"
                       onClick={() => onOpenRule(row.rule.id)}

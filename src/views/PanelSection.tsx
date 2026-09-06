@@ -57,7 +57,14 @@ export function PanelSection({
          saturated line on the panel is thinnest exactly where it starts and
          stops. Flat corners give it two clean ends and turn it into what it
          is meant to be — an edge, not a border that gave up. */
-      className="rounded-r-2xl p-4 sm:p-5 mb-4 bg-card shadow-sm border-l-[3px]"
+      /* **It arrives.** A panel appears when a toggle is pressed and, since
+         the composite's breakdown can now send you from one to another,
+         *swaps* for a different one on an ordinary click — and the two are
+         rarely the same height, so 155px of page moved under the cursor
+         between frames with nothing to say it had. Occasional, purposeful, and
+         short: the shared 140ms fade the setup tabs already use, which under
+         reduced motion is what it is anyway. */
+      className="panel-in rounded-r-2xl p-4 sm:p-5 mb-4 bg-card shadow-sm border-l-[3px]"
       style={{ borderLeftColor: tint }}
     >
       <div className="flex items-center gap-2 mb-1">

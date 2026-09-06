@@ -466,3 +466,11 @@ details[open] > .fold-body {
     animation-name: wash-in;
   }
 }
+
+/* A panel arriving. The same wash the setup tabs use and for the same reason:
+   a block that is simply *there* on the next frame reads as a redraw rather
+   than as something opening. Kept to a fade — a panel is a page-width block
+   and sliding one of those is motion sickness, not polish. */
+.panel-in {
+  animation: wash-in 140ms var(--ease-out) both;
+}
