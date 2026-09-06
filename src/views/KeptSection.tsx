@@ -19,7 +19,10 @@
    - **How close each day came** — `StreakChart`, rules held against rules
      voting. The area sits flush against its limit while you are keeping it
      and dips exactly as far as the day fell short, which is the ring on the
-     day cards drawn along a time axis.
+     day cards drawn along a time axis. **Only while no rule is expanded**:
+     with one open this panel already carries that rule's own chart, and two
+     charts about different subjects, the unasked-for one first, is not a
+     panel anybody reads to the bottom of.
 
    **It follows the period bar**, like every other panel here. A composite
    stuck on this week while the log below it shows March would be answering a
@@ -353,14 +356,25 @@ export function KeptSection({
           axis: the area lies against its limit while the day is being kept and
           dips exactly as far as it fell short. The limit moves, because how
           many rules vote on a day is itself a fact about that day — a rule
-          written on Wednesday judges nothing before it. */}
-      <StreakChart
-        rows={rows}
-        tint={c.project}
-        valueName="Rules held"
-        limitName="Rules voting"
-        formatter={(n) => String(n)}
-      />
+          written on Wednesday judges nothing before it.
+
+          **Absent while a rule is expanded.** This is the composite's deep
+          detail, and a rule opened inside the panel is you looking at a
+          rule's deep detail instead — two charts about different subjects,
+          one of which you did not ask for, with the one you did four hundred
+          pixels above it. What stays is the part that is *context*: the run,
+          the week strip and the list of what it is made of, which is the
+          index you are reading the rule from. It comes back when the row
+          collapses, which is when it is the answer again. */}
+      {!expandedRule && (
+        <StreakChart
+          rows={rows}
+          tint={c.project}
+          valueName="Rules held"
+          limitName="Rules voting"
+          formatter={(n) => String(n)}
+        />
+      )}
     </PanelSection>
   )
 }
