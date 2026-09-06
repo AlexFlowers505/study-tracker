@@ -186,6 +186,32 @@ export function KeptSection({
           <div className="space-y-1">
             {breakdown.map((row) => {
               const open = expandedRule === row.rule.id
+              /* **It is a disclosure, so it has to say so.** The row's name
+                 opens a region and nothing told an assistive technology that:
+                 three buttons named after three rules, no word on which of
+                 them is expanded and no link from the button to what it
+                 opened. `aria-expanded` always, `aria-controls` only while the
+                 region exists — it is rendered conditionally, and a reference
+                 to an id that is not on the page is worse than no reference.
+
+                 Conditionally, rather than as a `<details>` or with
+                 `hidden="until-found"`, which is what the accordion guidance
+                 reaches for first and is right about in general. Two reasons
+                 it is not right here. The row already carries a second button
+                 (solo), and interactive content inside a `<summary>` is not a
+                 thing to build on. And what would have to stay mounted is
+                 three Recharts trees: `TabbedSection` renders only its active
+                 tab for exactly this reason — a `ResponsiveContainer` measures
+                 the box it is in, and one in a box that is not being laid out
+                 measures zero. `hidden="until-found"` is `content-visibility:
+                 hidden`, which is precisely that box.
+
+                 What is given up is find-in-page reaching a collapsed rule.
+                 That is a real loss and a small one here: the rule's name is
+                 in the row either way, and what is hidden is a chart, a strip
+                 and three figures. Where the hidden thing was text you edit —
+                 the rule form's folds — the trade went the other way, and for
+                 the same reason. */
               return (
               <div key={row.rule.id}>
               <div
@@ -216,6 +242,11 @@ export function KeptSection({
                     <button
                       type="button"
                       onClick={() => onOpenRule(row.rule.id)}
+                      id={`kept-rule-${row.rule.id}-btn`}
+                      aria-expanded={open}
+                      aria-controls={
+                        open ? `kept-rule-${row.rule.id}` : undefined
+                      }
                       className={`${btnBase} flex items-center gap-2 min-w-0 rounded-md -mx-1 px-1 hover:bg-ink/10`}
                     >
                       <span
@@ -344,7 +375,15 @@ export function KeptSection({
                   it in a panel that replaced this one. Growing downward from
                   the row also means nothing you were reading moves — your eye
                   is already at the line you clicked. */}
-              {open && renderExpanded?.(row.rule.id)}
+              {open && (
+                <div
+                  id={`kept-rule-${row.rule.id}`}
+                  role="region"
+                  aria-labelledby={`kept-rule-${row.rule.id}-btn`}
+                >
+                  {renderExpanded?.(row.rule.id)}
+                </div>
+              )}
               </div>
               )
             })}
