@@ -423,7 +423,6 @@ export function LogView({
           settings={settings}
           counterUnits={counterUnits}
           todayKey={todayKey}
-          onEditDay={onEditDay}
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}
           big={granularity === "day"}

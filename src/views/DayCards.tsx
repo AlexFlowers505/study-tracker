@@ -60,12 +60,13 @@ function FullDayCard({
   goal,
   isToday,
   isFuture,
+  stillOpen,
+  sealed,
   isBeforeStart,
   ignored,
   verdict,
   canFreeze,
   onFreeze,
-  onEdit,
   onQuickAdd,
   onQuickAddSlot,
   onExpand,
@@ -98,13 +99,23 @@ function FullDayCard({
   isToday: boolean
   /** Not happened yet: no way in, and the goal is a plan rather than a debt. */
   isFuture: boolean
+  /**
+   * **Yesterday, and only yesterday.** The one day besides today that can
+   * still be written, and the one the card said nothing about.
+   */
+  stillOpen: boolean
+  /**
+   * Past the editing window: readable, unchangeable. Not drawn as a mark —
+   * see the badge above for why nine days in ten carrying a glyph is worse
+   * than none — but it changes what two sentences say.
+   */
+  sealed: boolean
   isBeforeStart: boolean
   ignored: boolean
   /** How the day came out, across every rule with a vote on it. */
   verdict: DayReport
   canFreeze?: boolean
   onFreeze?: () => void
-  onEdit?: () => void
   onQuickAdd?: () => void
   /** The "+" on each slot heading in the readout. */
   onQuickAddSlot?: (slotId: string) => void
@@ -235,20 +246,38 @@ function FullDayCard({
       // an entry opens a window you did not ask for. The expand button beside
       // the date does that job, and says so.
 
-      // No outline: white (or goal-tinted) against the page tint is what
-      // separates the card. Today is called out by colour and a badge instead
-      // of a border, so a card never has two competing emphasis signals.
+      // No outline by default: white (or goal-tinted) against the page tint is
+      // what separates a card, so an ordinary day needs no edge of its own.
       className={`${btnBase} text-left w-full rounded-2xl flex flex-col ${
         big ? "p-5 gap-4" : "p-3 gap-3"
       } ${
         ignored ? "grayscale opacity-60" : ""
       }`}
-      // `outline` rather than a ring: it draws inside the box, follows the
-      // radius, and leaves the hover shadow alone.
+      /* **The two days you can still write to are the two with an edge**, and
+         they wear the same colour because they are the same fact: this can
+         still be changed. Every other card is plain, which is what makes these
+         two findable at a glance in a month of thirty.
+
+         **The same width, and only the colour tells them apart.** Yesterday's
+         line was thinner to start with, which made the rank out of two
+         properties at once — and two axes is how a page with this many
+         coloured things on it stops reading as a system. A 1px line beside a
+         2px one is also read as an inconsistency long before it is read as a
+         hierarchy: nobody measures an edge, they only notice that the edges
+         disagree. Half the strength of one colour is a difference you feel
+         without having to name it, and it says the right thing — same fact,
+         less of it left.
+
+         `outline` rather than a ring: it draws inside the box, follows the
+         radius, and leaves the hover shadow alone, and the offset matches the
+         width so the line follows the corner instead of cutting it. */
       style={{
         ...surface,
-        ...(isToday
-          ? { outline: `2px solid ${c.accent}`, outlineOffset: "-2px" }
+        ...(isToday || stillOpen
+          ? {
+              outline: `2px solid ${c.accent}${stillOpen && !isToday ? "80" : ""}`,
+              outlineOffset: "-2px",
+            }
           : {}),
       }}
     >
@@ -296,7 +325,20 @@ function FullDayCard({
               provisional={isToday}
             />
             {onExpand && (
-              <Tip text="Open this day in a larger view">
+              /* **Where a sealed day answers for itself.** The absence of the
+                 "+" is the honest drawing and it is also silent: nothing
+                 distinguishes "this day is finished" from "something failed to
+                 render". The explanation goes on the control you press when
+                 you want to do something with an old day, so it arrives at the
+                 moment the question is asked and costs nothing at every other
+                 moment. */
+              <Tip
+                text={
+                  sealed
+                    ? "Open this day in a larger view. It is sealed: the log can be written for today and yesterday, so this day can be read but not changed."
+                    : "Open this day in a larger view"
+                }
+              >
                 <button
                   onClick={(ev) => {
                     ev.stopPropagation()
@@ -342,6 +384,31 @@ function FullDayCard({
             >
               Today
             </span>
+          )}
+          {/* **The open day gets the mark, not the ninety-nine closed ones.**
+              The log can be written for today and yesterday, so a card with no
+              "+" is the rule and a card with one is the exception — and
+              marking the rule is how a glyph stops being read. In a week that
+              is five cards out of seven, in a month twenty-eight out of
+              thirty, in a year all but two. A padlock on all of them would say
+              *forbidden* three hundred and sixty-three times a year, about
+              nothing anybody did wrong.
+
+              So the exception is marked instead, and it says something worth
+              acting on rather than something inert: yesterday can still be
+              fixed, and only until midnight. Today already had its badge; this
+              is the same family one step down — the accent at 10% rather than
+              filled — because the two of them are the live end of the log and
+              nothing else is. */}
+          {stillOpen && (
+            <Tip text="The log can be written for today and yesterday. This day seals at midnight.">
+              <span
+                className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
+                style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
+              >
+                Open till tonight
+              </span>
+            </Tip>
           )}
           {verdict.state === "frozen" && (
             <Tip text="Streak freeze used — the goal was missed, but the streak held">
@@ -532,10 +599,18 @@ function FullDayCard({
         <p
           className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
         >
-          {/* "Tap to add" only where tapping adds something. A day that has
-              not happened has no way in, so the invitation would be a dead
-              end. */}
-          No study logged{onEdit || onQuickAdd ? " — tap to add" : ""}
+          {/* **"Tap to add" only where tapping adds something**, and it was
+              reading `onEdit` — which a sealed day still has, since tapping
+              opens the dialog. So an empty day from last month invited you to
+              add to it and then offered nothing to add with: the dead end the
+              comment was written to prevent, arriving through the other door.
+              Only the "+" means something can be added.
+
+              And a sealed day says so in the one place the question actually
+              comes up. An empty card with no way in is the most confusing
+              thing this view can show, and one word fixes it. */}
+          No study logged
+          {onQuickAdd ? " — tap to add" : sealed ? " — sealed" : ""}
         </p>
       )}
       <EntriesReadout
@@ -600,7 +675,6 @@ export function FullCardGrid({
   settings,
   counterUnits,
   todayKey,
-  onEditDay,
   weekIgnore = {},
   monthIgnore = {},
   big,
@@ -623,7 +697,6 @@ export function FullCardGrid({
   settings: Settings
   counterUnits: CounterUnit[]
   todayKey: DayKey
-  onEditDay?: (key: DayKey) => void
   weekIgnore?: Record<DayKey, boolean>
   monthIgnore?: Record<DayKey, boolean>
   big?: boolean
@@ -713,15 +786,14 @@ export function FullCardGrid({
             goal={goalForDate(settings, date)}
             isToday={toKey(date) === todayKey}
             isFuture={isFuture}
+            stillOpen={!locked && toKey(date) !== todayKey}
+            sealed={locked && !isFuture}
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             verdict={verdictOf(key)}
             canFreeze={!locked && canFreezeDay ? canFreezeDay(key) : false}
             onFreeze={
               !locked && onFreezeDay ? () => onFreezeDay(key) : undefined
-            }
-            onEdit={
-              !isFuture && onEditDay ? () => onEditDay(key) : undefined
             }
             onExpand={onExpandDay ? () => onExpandDay(key) : undefined}
             longDate={longDate}
