@@ -706,16 +706,25 @@ export default function StudyTrackerApp() {
     }
     add(noticePrefs.open && noticeList.length > 0, "sec-notices", "Notices", c.accent, Bell)
     add(showFilter, "sec-filter", "What counts", c.filter, Filter)
-    add(openStreak === KEPT_PANEL, "sec-kept", "The composite", c.project, Flame)
-    ruleStatuses.forEach((s2) => {
-      if (openStreak === s2.rule.id)
+    /* **One entry, because there is one section.** A rule used to have a
+       panel of its own and `sec-rule-<id>` to point at; it is a block inside
+       the composite's panel now, and an index entry pointing at a section that
+       no longer exists is worse than no entry at all.
+
+       It takes the expanded rule's name and colour when there is one, since
+       that is what you would be looking for — "the composite" is the right
+       label only when the composite is all that is open. */
+    {
+      const expanded = ruleStatuses.find((s2) => s2.rule.id === openStreak)
+      if (openStreak !== null)
         out.push({
-          id: `sec-rule-${s2.rule.id}`,
-          label: s2.rule.label,
-          tint: s2.rule.color,
-          iconName: s2.rule.iconName,
+          id: "sec-kept",
+          label: expanded ? expanded.rule.label : "The composite",
+          tint: expanded ? expanded.rule.color : c.project,
+          iconName: expanded ? expanded.rule.iconName : undefined,
+          icon: expanded ? undefined : Flame,
         })
-    })
+    }
     add(showAccount && !!project.settings.balanceStart, "sec-account", "The account", c.project, Coins)
     add(showShop, "sec-shop", "Rewards", c.accent, Gift)
     add(showHistory, "sec-achievements", "Achievements", c.accent, Trophy)
@@ -1554,13 +1563,80 @@ export default function StudyTrackerApp() {
             width and scrolling with the page — on every screen size. It used
             to be a fixed bottom sheet on phones, which covered the log it was
             meant to be compared against. */}
-        {openStreak === KEPT_PANEL && kept && keptWeekly && (
+        {/* **One block for the whole subject.**
+
+            There were two: the composite's panel, and a rule's panel that
+            replaced it. They are not two subjects — a rule is what the
+            composite is made of, which the breakdown says out loud — and
+            keeping them apart meant the composite could name the promise
+            costing you the day and then vanish to show it to you.
+
+            So `openStreak` still holds one value and now has three readings:
+            nothing, the composite alone, or the composite with one rule
+            expanded inside it. The chips in the row above and the breakdown
+            rows inside both land on the third. */}
+        {openStreak !== null && kept && keptWeekly && (
           <section id="sec-kept" className="scroll-mt-28">
           <KeptSection
-            /* One panel at a time, so opening a rule from the breakdown
-               swaps this one out for it — which is what "go and look at that
-               one" means, and what clicking its chip in the row does. */
-            onOpenRule={setOpenStreak}
+            onOpenRule={(id) =>
+              setOpenStreak(openStreak === id ? KEPT_PANEL : id)
+            }
+            expandedRule={openStreak === KEPT_PANEL ? null : openStreak}
+            renderExpanded={(ruleId) => {
+              const s2 = ruleStatuses.find((x) => x.rule.id === ruleId)
+              if (!s2) return null
+              return (
+                <CustomStreakSection
+                  nested
+                  status={s2}
+                  /* The worst the board has on this rule, so it opens on the
+                     state before it opens on the drawings. The board keeps the
+                     sentences; this is only which of the five it is. */
+                  level={worstLevel(
+                    noticeList.filter((n) => n.ruleId === s2.rule.id),
+                  )}
+                  project={project}
+                  rangeStart={range.start}
+                  rangeEnd={range.end}
+                  today={new Date()}
+                  onSpendFreeze={(key, vKey, cost, line, othersUnfrozen) =>
+                    setFreezeAsk({
+                      ruleId: s2.rule.id,
+                      dayKey: key,
+                      violationKey: vKey,
+                      line,
+                      othersUnfrozen,
+                      title: s2.rule.label,
+                      tint: s2.rule.color,
+                      cost,
+                      // In spending order. The allowance expires on Sunday, so
+                      // it goes first — the same order `ruleStatus` accounts in.
+                      pools: [
+                        {
+                          label: "This week's allowance",
+                          hint: "Granted every Monday and lost unused.",
+                          left: s2.freezes.weeklyLeft,
+                          total: s2.freezes.weeklyTotal,
+                        },
+                        {
+                          label: "Banked",
+                          hint: "One for every week you keep clean. Carried until spent.",
+                          left: s2.freezes.banked,
+                          total: s2.freezes.cap,
+                        },
+                      ],
+                    })
+                  }
+                  solo={soloRule === s2.rule.id}
+                  onSolo={() =>
+                    setSoloRule(soloRule === s2.rule.id ? null : s2.rule.id)
+                  }
+                  /* Collapses the row rather than closing the panel: the
+                     composite is still the thing you are looking at. */
+                  onClose={() => setOpenStreak(KEPT_PANEL)}
+                />
+              )
+            }}
             project={project}
             days={kept}
             weeks={keptWeekly}
@@ -1573,63 +1649,6 @@ export default function StudyTrackerApp() {
           />
           </section>
         )}
-
-        {ruleStatuses
-          .filter((s2) => s2.rule.id === openStreak)
-          .map((s2) => (
-            <section
-              key={s2.rule.id}
-              id={`sec-rule-${s2.rule.id}`}
-              className="scroll-mt-28"
-            >
-            <CustomStreakSection
-              status={s2}
-              /* The worst the board has on this rule, so the panel opens on
-                 the state before it opens on the drawings. The board keeps the
-                 sentences; this is only which of the five it is. */
-              level={worstLevel(
-                noticeList.filter((n) => n.ruleId === s2.rule.id),
-              )}
-              project={project}
-              rangeStart={range.start}
-              rangeEnd={range.end}
-              today={new Date()}
-              onSpendFreeze={(key, vKey, cost, line, othersUnfrozen) =>
-                setFreezeAsk({
-                  ruleId: s2.rule.id,
-                  dayKey: key,
-                  violationKey: vKey,
-                  line,
-                  othersUnfrozen,
-                  title: s2.rule.label,
-                  tint: s2.rule.color,
-                  cost,
-                  // In spending order. The allowance expires on Sunday, so it
-                  // goes first — the same order `ruleStatus` accounts in.
-                  pools: [
-                    {
-                      label: "This week's allowance",
-                      hint: "Granted every Monday and lost unused.",
-                      left: s2.freezes.weeklyLeft,
-                      total: s2.freezes.weeklyTotal,
-                    },
-                    {
-                      label: "Banked",
-                      hint: "One for every week you keep clean. Carried until spent.",
-                      left: s2.freezes.banked,
-                      total: s2.freezes.cap,
-                    },
-                  ],
-                })
-              }
-              solo={soloRule === s2.rule.id}
-              onSolo={() =>
-                setSoloRule(soloRule === s2.rule.id ? null : s2.rule.id)
-              }
-              onClose={() => setOpenStreak(null)}
-            />
-            </section>
-          ))}
 
         {showAccount && project.settings.balanceStart && (
           <section id="sec-account" className="scroll-mt-28">

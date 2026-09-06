@@ -24,12 +24,29 @@
 --------------------------------------------------------------- */
 
 import type { ReactNode } from "react"
-import { X } from "lucide-react"
+import { ChevronUp, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import { btnBase } from "../lib/theme"
+import { PANEL_INSET, btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
 
-export function PanelSection({
+/**
+ * **The same panel, folded inside another one.**
+ *
+ * A rule's panel is now opened from the row that names it in the composite's
+ * breakdown, which means it renders *inside* a panel. It cannot be a
+ * `PanelSection` there: a rail inside a rail and a second close X on a block
+ * that is already closable is a box in a box, which is the arrangement this
+ * file's own notes were written to get rid of.
+ *
+ * So it takes the same props and draws them recessed — `PANEL_INSET`, which
+ * is what everything laid on a panel wears — with the tint surviving as the
+ * icon badge rather than as an edge, and the close button becoming a collapse
+ * for the row that opened it.
+ *
+ * One signature, two shells, so the rule's five hundred lines of body do not
+ * have to know which one it is standing in.
+ */
+export function NestedPanel({
   tint,
   icon: Icon,
   title,
@@ -38,7 +55,43 @@ export function PanelSection({
   onClose,
   action,
   children,
-}: {
+}: PanelProps) {
+  return (
+    <div className={`panel-in ${PANEL_INSET} p-3 sm:p-4 mt-1.5`}>
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
+          style={{ backgroundColor: `${tint}30` }}
+        >
+          <Icon size={11} style={{ color: tint }} />
+        </span>
+        <h4 className="font-sans font-extrabold uppercase tracking-tight text-xs text-ink flex-1 min-w-0 truncate">
+          {title}
+        </h4>
+        {action}
+        {onClose && (
+          <Tip text={closeLabel}>
+            <button
+              onClick={onClose}
+              className={`${btnBase} p-1 -mr-1 rounded-full text-ink/45 bg-ink/[0.05] hover:text-ink hover:bg-ink/[0.1]`}
+            >
+              <ChevronUp size={14} />
+            </button>
+          </Tip>
+        )}
+      </div>
+      {subtitle && (
+        <p className="text-[10px] font-mono text-ink/50 mb-3 uppercase tracking-widest">
+          {subtitle}
+        </p>
+      )}
+      {children}
+    </div>
+  )
+}
+
+/** What both shells take. */
+export interface PanelProps {
   tint: string
   icon: LucideIcon
   title: ReactNode
@@ -49,7 +102,18 @@ export function PanelSection({
   /** Sits between the title and the close button. */
   action?: ReactNode
   children: ReactNode
-}) {
+}
+
+export function PanelSection({
+  tint,
+  icon: Icon,
+  title,
+  subtitle,
+  closeLabel,
+  onClose,
+  action,
+  children,
+}: PanelProps) {
   return (
     <div
       /* **Square on the left, round on the right.** A rail that follows a

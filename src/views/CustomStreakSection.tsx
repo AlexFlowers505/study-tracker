@@ -73,7 +73,7 @@ import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { Sentence } from "../ui/Sentence"
-import { PanelSection } from "./PanelSection"
+import { NestedPanel, PanelSection } from "./PanelSection"
 import { FALLBACK_ICON, ICON_MAP } from "../ui/iconLibrary"
 import { StreakChart } from "./StreakChart"
 import type { StreakChartRow } from "./StreakChart"
@@ -126,6 +126,7 @@ export function CustomStreakSection({
   solo,
   onSolo,
   onClose,
+  nested = false,
 }: {
   status: RuleStatus
   /**
@@ -156,6 +157,12 @@ export function CustomStreakSection({
   solo?: boolean
   onSolo?: () => void
   onClose?: () => void
+  /**
+   * Drawn inside the composite panel rather than as a panel of its own — the
+   * breakdown row that names this rule is what opened it. Same body, lighter
+   * shell; see `NestedPanel`.
+   */
+  nested?: boolean
 }) {
   const c = usePalette()
   const { rule, freezes } = status
@@ -392,8 +399,14 @@ export function CustomStreakSection({
       ? weekPace(rule, ctx, project.days, thisWeek, todayKey)
       : []
 
+  /* **The same body, in whichever shell it is standing in.** Opened from
+     the composite's breakdown it is a block inside that panel; opened on its
+     own it is a panel. Two shells with one signature rather than two
+     renderings of five hundred lines, which is how the two would drift. */
+  const Shell = nested ? NestedPanel : PanelSection
+
   return (
-    <PanelSection
+    <Shell
       tint={rule.color}
       icon={(rule.iconName && ICON_MAP[rule.iconName]) || FALLBACK_ICON}
       title={rule.label}
@@ -567,6 +580,6 @@ export function CustomStreakSection({
           inset
         />
       </div>
-    </PanelSection>
+    </Shell>
   )
 }

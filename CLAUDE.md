@@ -1304,8 +1304,16 @@ history, mostly red. **A wall of old failures is not information, it is a
 mood.** The period bar is already the control for seeing further back and
 should not need a second one hiding in a card.
 
-`KeptSection` is the card opened up, sharing `openStreak` with the rule
-panels so one panel at a time falls out rather than being arranged. It answers
+`KeptSection` is **the only panel this row opens**, and a rule is a block
+inside it. There were two — the composite's, and a rule's that replaced it —
+and they are not two subjects: a rule is what the composite is made of, which
+the breakdown says out loud. Keeping them apart meant the composite could name
+the promise costing you the day and then vanish in order to show it to you.
+So `openStreak` still holds one value and has three readings: nothing, the
+composite alone, or the composite with one rule expanded inside it. A chip in
+the row above and a breakdown row inside both land on the third, and the rule
+opens **under the row that named it** — growing downward from the line your eye
+is already on, so nothing you were reading moves. It answers
 what the card cannot, which on a bad month is not *how am I doing* but **which
 promise keeps doing this to me**: the period as days, then `keptBreakdown` —
 per rule, the days it broke and, separately, the days it broke **alone** — and
@@ -1623,11 +1631,22 @@ be tellable apart at a glance**, since one is gone on Sunday night and the
 other is not: the allowance is bare and dim, the bank sits in a tinted pill in
 the freeze colour.
 
-One panel at a time (`openStreak`), built from `PanelSection` in the rule's own
-colour. **The goal streak's panel and a custom one are the same three parts in
-the same order**, from the same two components — `StreakStrip` and
-`StreakChart` — because they answer the same question about different rules,
-and two panels that merely looked alike would drift.
+One panel at a time (`openStreak`). **The goal streak's panel and a custom one
+are the same three parts in the same order**, from the same two components —
+`StreakStrip` and `StreakChart` — because they answer the same question about
+different rules, and two panels that merely looked alike would drift.
+
+**Two shells, one signature.** `PanelSection` is the panel; `NestedPanel` is
+the same props drawn recessed, for a rule standing inside the composite's
+panel. It cannot be a `PanelSection` there — a rail inside a rail and a second
+close X on a block that is already closable is the box-in-a-box that section
+was written to get rid of — so the tint survives as the icon badge, the
+surface is `PANEL_INSET`, and the close button becomes a chevron that collapses
+the row. `CustomStreakSection` picks its shell from one `nested` prop, so its
+five hundred lines of body never learn which one they are standing in. The
+composite takes the expanded rule as a **render slot**, not as props: a rule's
+panel needs the freeze ledger, the spend dialog and solo, none of which is any
+business of a block whose subject is *how many days held*.
 
 - **`StreakStrip`** is the period as a seven-column calendar grid: met green,
   frozen blue, missed red, and the days outside the period left blank so the

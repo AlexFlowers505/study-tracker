@@ -27,6 +27,7 @@
 --------------------------------------------------------------- */
 
 import { useMemo } from "react"
+import type { ReactNode } from "react"
 import { Flame, Focus } from "lucide-react"
 import type { DayKey, Project } from "../types/model"
 import type { KeptWeeks } from "../lib/dayVerdict"
@@ -67,6 +68,8 @@ export function KeptSection({
   solo,
   onSolo,
   onOpenRule,
+  expandedRule,
+  renderExpanded,
   onClose,
 }: {
   project: Project
@@ -83,6 +86,18 @@ export function KeptSection({
    * you the day; without this it named it and stopped there.
    */
   onOpenRule?: (ruleId: string) => void
+  /** The rule whose own panel is open inside this one, if any. */
+  expandedRule?: string | null
+  /**
+   * The expanded rule's block, as a slot rather than as props.
+   *
+   * A rule's panel needs the freeze ledger, the spend dialog, solo and the
+   * period — none of which is any business of the composite, whose subject is
+   * *how many days held*. Handing it a piece of rendered tree keeps it that
+   * way: this component decides only **where** the rule goes, which is
+   * directly under the row that named it.
+   */
+  renderExpanded?: (ruleId: string) => ReactNode
   onClose: () => void
 }) {
   const c = usePalette()
@@ -166,10 +181,12 @@ export function KeptSection({
             What it is made of
           </p>
           <div className="space-y-1">
-            {breakdown.map((row) => (
+            {breakdown.map((row) => {
+              const open = expandedRule === row.rule.id
+              return (
+              <div key={row.rule.id}>
               <div
-                key={row.rule.id}
-                className="flex items-center gap-2 rounded-lg bg-ink/[0.04] px-2.5 py-1.5"
+                className={`flex items-center gap-2 rounded-lg bg-ink/[0.04] px-2.5 py-1.5 ${open ? "rounded-b-none" : ""}`}
               >
                 {/* **The name is the way in.** This block answers *which
                     promise keeps doing this to me* and then, until now, left
@@ -317,7 +334,17 @@ export function KeptSection({
                   )}
                 </span>
               </div>
-            ))}
+              {/* **The rule opens where it was named.** Under its own row and
+                  nowhere else: the block above answers *which promise keeps
+                  doing this to me*, and the answer to *so how is that one
+                  doing* belongs at the answer, not four hundred pixels below
+                  it in a panel that replaced this one. Growing downward from
+                  the row also means nothing you were reading moves — your eye
+                  is already at the line you clicked. */}
+              {open && renderExpanded?.(row.rule.id)}
+              </div>
+              )
+            })}
           </div>
         </div>
       )}
