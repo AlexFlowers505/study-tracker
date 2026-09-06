@@ -130,7 +130,7 @@ const Fold = ({
         {summary}
       </span>
     </summary>
-    <div className="px-3 pb-3 pt-1 space-y-2">{children}</div>
+    <div className="fold-body px-3 pb-3 pt-1 space-y-2">{children}</div>
   </details>
 )
 

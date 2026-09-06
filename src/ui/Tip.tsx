@@ -102,18 +102,47 @@ function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
           transform: side === "left" ? "translateX(-100%)" : "translateX(-50%)",
         }
 
+  /* **The bubble is two spans, and it has to be.** The outer one is nothing
+     but a position: everything above resolves to a `transform` — the
+     `translateX(-50%)` that centres it on the trigger, or the
+     `translate(-100%, -50%)` that hangs it off the left — and an arrival
+     animation is also a transform. One element cannot carry both, and the
+     positioning is not negotiable.
+
+     So the inner span is the bubble: the fill, the padding, the shadow and
+     the scale it comes up from. It grows out of the edge nearest its
+     trigger, which is the whole of what `transform-origin` is for on a thing
+     that is anchored to something — a tooltip that scales from its own centre
+     reads as arriving from nowhere in particular, which is exactly what it is
+     not doing.
+
+     Measuring stays on the outer span, and stays exact: a child's transform
+     does not move its parent's border box, so the clamp above still reads the
+     real rectangle while the inner one is still at 97%. */
+  const origin =
+    side === "left"
+      ? "right center"
+      : side === "bottom" || box.top < TIP_FLIP_THRESHOLD
+        ? "top center"
+        : "bottom center"
+
   return (
     <span
       ref={ref}
       role="tooltip"
       style={{ position: "fixed", ...corrected }}
-      className={`pointer-events-none z-[100] rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
-        multiline
-          ? "whitespace-pre-line max-w-[220px] text-left"
-          : "whitespace-nowrap"
-      }`}
+      className="pointer-events-none z-[100]"
     >
-      {text}
+      <span
+        style={{ transformOrigin: origin }}
+        className={`tip-in block rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
+          multiline
+            ? "whitespace-pre-line max-w-[220px] text-left"
+            : "whitespace-nowrap"
+        }`}
+      >
+        {text}
+      </span>
     </span>
   )
 }

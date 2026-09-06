@@ -340,7 +340,18 @@ export const cardSmall = (roomy?: boolean) =>
 export const SECTION_HEADING =
   "font-sans font-extrabold uppercase tracking-tight text-base text-ink"
 
-export const btnBase = "transition-colors duration-150 ease-out"
+/**
+ * What every pressable thing in the app wears.
+ *
+ * `press` is a marker for the `:active` rule in `App.css` — see there for why
+ * the scale is not a Tailwind variant. The property list is explicit rather
+ * than `transition` (which would sweep in `box-shadow` and `filter`) or
+ * `transition-all` (which would animate layout): colours because that is what
+ * hover does, opacity because that is what disabling does, and transform
+ * because that is what pressing does.
+ */
+export const btnBase =
+  "press transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out"
 
 /**
  * Recharts draws its tooltip as an inline-styled box, so it cannot be reached

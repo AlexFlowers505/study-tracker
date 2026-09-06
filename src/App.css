@@ -26,6 +26,20 @@
      as a real string (Recharts attributes, `${colour}1A` alpha suffixes).
      Keep this in step with `PALETTES.*.exam`. */
   --color-exam: #c1595b;
+
+  /* **The curves, and they replace the built-in ones by name.** Tailwind's
+     easing utilities read `--ease-*` out of the theme, so re-pointing them
+     here sharpens every `ease-out` already written across the app without
+     touching one of them.
+
+     The keywords are too weak to be worth the transition: `ease-out` is a
+     lazy curve that spends its first third barely moving, which is the third
+     the eye is watching hardest. These are the standard strong variants —
+     most of the movement is over almost at once and the tail is the settle,
+     which is what makes a 150ms transition read as *fast* rather than as
+     150ms. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 /* `page` is the deepest layer and `card` sits above it — the same order as in
@@ -320,9 +334,17 @@ html {
   animation: wash-in 180ms ease-out both;
 }
 
+/* **From the centre, not from the corner.** This was anchored at the top
+   right, on the reasoning that the Setup button is up there — which is the
+   right instinct for a popover and the wrong one for a modal. A popover
+   belongs to its trigger and should grow out of it; a modal belongs to the
+   viewport, arrives in the middle of it, and is not a thing that came out of
+   a button. Scaling it from a corner makes it drift on the way in.
+
+   The curve is the theme's own `--ease-out` now rather than a weaker one
+   written out in place. */
 .rise-in {
-  transform-origin: 100% 0;
-  animation: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: rise-in 220ms var(--ease-out) both;
 }
 
 /* Shorter than the panel's own arrival: this one happens on every tab switch,
@@ -334,6 +356,113 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   .rise-in {
+    animation-name: wash-in;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Nothing here acknowledged being pressed.
+
+   Not one `:active` state in the whole app, and a single streak-rule form is
+   forty-one pressable pills. A button that changes only on hover is a button
+   that does nothing until its consequence arrives, and on a touch screen
+   there is no hover at all — so the press itself was the one moment the
+   interface never answered.
+
+   Three per cent, which is the amount you feel and do not see. It goes on
+   `btnBase` as a marker class rather than as a Tailwind variant because
+   `:active` matches *any* element under the pointer, and three places put
+   `btnBase` on a `<span>` badge that is not pressable at all — a badge that
+   shrinks when you happen to press it is worse than one that does nothing.
+   Naming `button` and `a` in the selector is what excludes them, and
+   `:not(:disabled)` is what stops a refused Done from pretending it took the
+   click.
+
+   The transition itself stays on `btnBase` as utilities, so a call site can
+   still lengthen or shorten it; only the press is fixed here.
+--------------------------------------------------------------- */
+
+button.press:not(:disabled):active,
+a.press:active {
+  transform: scale(0.97);
+}
+
+/* A three per cent scale is feedback rather than travel, but it is still
+   movement, and the setting asks for none. The button keeps its colour
+   change, which is the half that carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  button.press:not(:disabled):active,
+  a.press:active {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------
+   A fold whose contents arrive, rather than being there already.
+
+   The rule form is four of these and Days alone is 473px of weekday grid, so
+   opening one is the largest single change anywhere in the app — in the one
+   place you are meant to be reading carefully.
+
+   **What this is not is a height animation, and that is a finding rather than
+   a shortcut.** Two recipes ought to have worked and neither does:
+   `::details-content` with `interpolate-size`, which is the modern answer,
+   and the `.grow-open` helper above, which is the same idea by hand.
+   `document.getAnimations()` reports **no transition created at all** for
+   either — `block-size: 0 → auto` is not interpolating, whatever
+   `CSS.supports` says about `interpolate-size`. Which means `.grow-open` has
+   been decorative since the day it was written, and the streaks row it was
+   built for has been snapping open all along.
+
+   A one-row grid from `0fr` to `1fr` *does` interpolate — the transition is
+   really created — and it was the next thing tried. It was then put back,
+   because using it means the fold can no longer be a `<details>`: that
+   element hides its own content when closed, so a grid inside it has nothing
+   to size against. And `Fold`'s own notes buy something real with being
+   native — find-in-page reveals a closed fold that contains the match, which
+   in a twenty-field form is worth more than a smooth height.
+
+   So the box still snaps to size and the *content* arrives: a fade and four
+   pixels of settle, which is enough to say something opened without pretending
+   to measure it. Under reduced motion it keeps the fade and drops the travel,
+   by borrowing the name of the animation that is only a fade.
+--------------------------------------------------------------- */
+
+@keyframes fold-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+details[open] > .fold-body {
+  animation: fold-in 180ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  details[open] > .fold-body {
+    animation-name: wash-in;
+  }
+}
+
+/* A tooltip arriving. 125ms, which is at the short end on purpose: this is
+   the one thing in the app you may meet fifteen times on a single form, and
+   what is pleasant once an hour is a delay by the fifth time. Ninety-seven
+   per cent rather than nothing — a bubble that starts at no size at all
+   appears out of a point, and nothing in the world does that. */
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.tip-in {
+  animation: tip-in 125ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip-in {
     animation-name: wash-in;
   }
 }
