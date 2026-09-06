@@ -850,7 +850,16 @@ One page, not tabs. A single period drives everything:
   default to `min-width: auto` and refuse to shrink below their content, so an
   overflowing strip pushes the whole page sideways instead of scrolling
   inside itself. That is one bug, and it turned up in the period bar, the
-  log's heading row and `ChartCard` (a Recharts container has its own minimum).
+  log's heading row and `ChartCard` (a Recharts container has its own minimum)
+  — and a fourth time in `ChartCard`'s **action slot**, which is a different
+  part of the same file: the title beside it had `min-w-0` and the slot did
+  not, so `SegmentedControl` with five chart modes on it — 338px of pills
+  that neither wrap nor shrink — gave a 320px phone fifty pixels of horizontal
+  scroll, and pushed the fixed page-nav button out with it. Both halves are
+  needed: `min-w-0` on the slot so it *may* shrink, and `max-w-full` plus
+  `overflow-x-auto` inside `SegmentedControl` so what will not shrink scrolls
+  instead. The wrapper is in `ChartCard` rather than at the four call sites,
+  because the constraint belongs to the slot and not to what is put in it.
 - **Three levels of heading, and only three.** The period's own label is the
   page's heading (`text-lg sm:text-xl`); `Counters`, `Days`, `Summary` and
   `Trends` are its subsections and all wear `SECTION_HEADING` from `theme.ts`;

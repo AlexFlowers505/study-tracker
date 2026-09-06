@@ -30,7 +30,16 @@ export function ChartCard({
             </p>
           )}
         </div>
-        {action}
+        {/* **`min-w-0`, exactly as the title block beside it already has.**
+            The action slot is a row of controls whose width is data — five
+            chart modes come to 338px — and a flex item defaults to
+            `min-width: auto`, so it refuses to go below its content and
+            pushes the card, the page and the whole document sideways instead.
+            One control inside one card gave a 320px phone fifty pixels of
+            horizontal scroll. Wrapped here rather than at the four call
+            sites: the constraint belongs to the slot, not to what is put in
+            it, and the next caller should not have to know. */}
+        {action && <div className="min-w-0">{action}</div>}
       </div>
       {children}
     </div>
