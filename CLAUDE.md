@@ -1979,17 +1979,21 @@ Match the existing file:
   already written across the app got the strong curve without being touched.
   The built-ins spend their first third barely moving, which is the third the
   eye is watching hardest.
-- **`.grow-open` does not work, and has never worked.** It is the
-  `interpolate-size` helper for opening a section to its own height, and
-  `document.getAnimations()` reports **no transition created at all** when it
-  fires — `block-size: 0 → auto` is simply not interpolating, whatever
-  `CSS.supports` says. The same is true of `::details-content`, which is the
-  modern form of the same idea. A one-row grid from `0fr` to `1fr` *does*
-  interpolate, and is the technique to reach for — but it cannot live inside a
-  `<details>`, which hides its own content and leaves the grid nothing to size
-  against. Where the element must stay native (`Fold` buys find-in-page with
-  it) the answer is `.fold-body`: the box snaps and the **content** arrives,
-  a fade and four pixels of settle.
+- **`.grow-open` and `::details-content` both work, and a note here once
+  said they did not.** `block-size: 0 → auto` under `interpolate-size`
+  interpolates in both directions — measured on the streaks row, 0 → 59 → 95
+  → 100 opening and 100 → 51 → 0 closing — and `::details-content` ramps just
+  as cleanly. **The false finding came from how it was tested**, and the
+  method is the part worth keeping: a scratch element created and toggled
+  inside the same task has no previously computed value to transition *from*,
+  so it jumps and looks like a feature that does not exist. Let the element
+  live a few frames first. And `document.getAnimations()` is not the
+  authority it looks like — it does not surface transitions on a pseudo-element
+  in that list, so `::details-content` reads as "no animation" while plainly
+  animating. **Sample the layout of a long-lived element; do not trust either
+  a fresh node or an empty `getAnimations()`.**
+  A one-row grid from `0fr` to `1fr` also works and is what `.leaving` uses,
+  chosen because it needs no `interpolate-size` and so is not Chromium-only.
 - **No new hex literals.** Surfaces come from the Tailwind tokens (`bg-card`,
   `text-ink/40`), accents from `usePalette()`, and the shared class strings
   (`CARD`, `FIELD_*`) from `theme.ts`. A hardcoded colour is a colour that will

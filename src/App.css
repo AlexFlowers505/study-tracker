@@ -420,23 +420,18 @@ a.press:active {
    opening one is the largest single change anywhere in the app — in the one
    place you are meant to be reading carefully.
 
-   **What this is not is a height animation, and that is a finding rather than
-   a shortcut.** Two recipes ought to have worked and neither does:
-   `::details-content` with `interpolate-size`, which is the modern answer,
-   and the `.grow-open` helper above, which is the same idea by hand.
-   `document.getAnimations()` reports **no transition created at all** for
-   either — `block-size: 0 → auto` is not interpolating, whatever
-   `CSS.supports` says about `interpolate-size`. Which means `.grow-open` has
-   been decorative since the day it was written, and the streaks row it was
-   built for has been snapping open all along.
+   **This is the content moving, not the box, and it is a smaller answer than
+   the one available.** It was written believing `::details-content` could not
+   animate here — a scratch element created and toggled in the same task jumps,
+   because there is no previously computed value to transition from, and
+   `document.getAnimations()` does not list transitions on a pseudo-element, so
+   both checks agreed on the wrong thing. Measured properly on an element that
+   has lived a few frames, `::details-content` ramps cleanly.
 
-   A one-row grid from `0fr` to `1fr` *does` interpolate — the transition is
-   really created — and it was the next thing tried. It was then put back,
-   because using it means the fold can no longer be a `<details>`: that
-   element hides its own content when closed, so a grid inside it has nothing
-   to size against. And `Fold`'s own notes buy something real with being
-   native — find-in-page reveals a closed fold that contains the match, which
-   in a twenty-field form is worth more than a smooth height.
+   So the box could collapse as well, keeping the `<details>` and the
+   find-in-page that comes with it. Left as it is for now rather than changed
+   in passing: it is a visible change to four folds in the form with a lock on
+   it, and it deserves to be looked at rather than assumed.
 
    So the box still snaps to size and the *content* arrives: a fade and four
    pixels of settle, which is enough to say something opened without pretending
