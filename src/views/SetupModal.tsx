@@ -316,8 +316,23 @@ export function SetupModal({
           key={tab}
           ref={attachBody}
           style={{ backgroundColor: c.card, ...edgeFade(false, bodyEnd) }}
-          className="tab-fade edge-fade-y p-5 overflow-y-auto rounded-b-xl flex-1 min-h-0"
+          className="tab-fade edge-fade-y overflow-y-auto rounded-b-xl flex-1 min-h-0"
         >
+          {/* **The padding is inside the scroller, not on it.**
+
+              `position: sticky` is measured against the scroll container's
+              *content* box, so with `p-5` out here every pinned thing in every
+              tab parked twenty pixels below the edge you can see — and rows
+              scrolling past showed in the band above it, which reads as a
+              rendering fault rather than as a panel edge. Two of them were
+              already compensating by hand with matched negative values, which
+              is a workaround repeated once per sticky element and forgotten on
+              the third.
+
+              With the padding on a box inside, the content box and the visible
+              edge are the same line: `top-0` means the top, and nothing else
+              has to know about it. */}
+          <div className="p-5">
           {tab === "tags" && (
             <TagsTab
               settings={settings}
@@ -418,6 +433,7 @@ export function SetupModal({
               onChange={onUpdateUnits}
             />
           )}
+          </div>
         </div>
 
         {/* Outside the tabs because it covers everything, not the tab you

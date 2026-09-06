@@ -1422,6 +1422,25 @@ one (`figuresPerDay`); otherwise the shared pair stands. A day deliberately
 left blank while its siblings carry figures still asks nothing, which is the
 meaning that had to survive.
 
+**A base figure with exceptions is not available, and the grid says so by
+copying instead.** *Three hours, except Thursday* is written as seven figures,
+because in per-day mode a day left blank asks nothing rather than falling back
+to a shared pair — `boundsOnWeekday` is explicit about it and several readers
+depend on it. That is bearable to write once and miserable to change: three
+hours becoming four is seven edits, six identical, and one missed is a rule
+quietly asking the wrong thing on a Wednesday. So each row of the grid carries
+a copy button that gives every judged day *its* figures. **Only the figures
+travel** — a day also carries which slots it counts and what a named slot
+owes, and those are per-day for their own reasons.
+
+**A category's members are counted out loud and named one click down.**
+`Resolved` in `CountersPicker` printed every activity on the shelf as one
+comma-separated run — four solid lines in the middle of the form, every time
+the rule was opened. The count is the fact worth having in front of you
+always, because it is the one that changes behind your back: file a thirteenth
+activity under the category tomorrow and the rule silently starts counting it.
+Which twelve is a question with an answer, and it is a chevron away.
+
 **The lock reads slots weekday by weekday, and reads the riders at all.** A
 floor on a named slot is a term like any other — *of which at least an hour in
 the morning* is half of what some rules ask — and lowering it, raising its

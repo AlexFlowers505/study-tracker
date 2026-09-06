@@ -404,16 +404,14 @@ export function CounterUnitsTab({
           the control — which is the same trip the tab strip above exists to
           save you.
 
-          The three negative values are all the same bill: the panel scrolls
-          with `p-5` on it, and sticky is measured against the scroller's
-          **content** box, twenty pixels inside the edge you can actually see.
-          So `-mx-5` widens the row to the visible box, or rows would slide
-          past it down either side; `-mt-5` puts it back where it was before
-          the padding; and `-top-5` moves the line it sticks to up by the same
-          twenty, without which the row parks one padding below the top and
-          sits on the caption underneath it. Each pays itself back as padding
-          inside the row, so nothing moves when it comes unstuck. */}
-      <div className="sticky-skirt sticky -top-5 z-10 -mx-5 -mt-5 px-5 pt-5 pb-3 bg-card flex flex-wrap items-center gap-2">
+          The negative margins are the bill for the tab's own `p-5`: the row
+          has to be as wide as the visible box, or other rows slide past it
+          down either side, and it has to start where it would have without
+          the padding. It pays both back as padding inside itself, so nothing
+          moves when it comes unstuck. `top-0` is simply the top — the
+          panel's padding lives inside its scroller now, so the content box
+          and the edge you can see are the same line. */}
+      <div className="sticky-skirt sticky top-0 z-10 -mx-5 -mt-5 px-5 pt-5 pb-3 bg-card flex flex-wrap items-center gap-2">
         {/* **One track, divided**, rather than two of them a gap apart. The
             two were the same shape, the same depth and the same accent fill
             eight pixels from each other, which is the trap the file's own

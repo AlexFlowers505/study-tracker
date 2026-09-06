@@ -50,6 +50,7 @@ import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
 import {
   ChevronRight,
+  Copy,
   Gauge,
   Hourglass,
   Lock,
@@ -202,7 +203,9 @@ const Fold = ({
         {summary}
       </span>
     </summary>
-    <div className="px-3 pb-3 pt-1 space-y-2">{children}</div>
+    {/* `fold-body` is what arrives — see App.css, and the note there on why
+        this is the content moving rather than the box. */}
+    <div className="fold-body px-3 pb-3 pt-1 space-y-2">{children}</div>
   </details>
 )
 
@@ -405,6 +408,7 @@ function ClauseForm({
   /** Absent on the only condition — a rule with none is not a rule. */
   onRemove?: () => void
 }) {
+  const c = usePalette()
   const target = clauseTarget(clause)
   const info = targetInfo(target, ctx)
   const timed = info.measure === "time"
@@ -468,6 +472,38 @@ function ClauseForm({
           </Tip>
         )}
       </legend>
+
+      {/* **The sentence it will be read back as, and it stays on screen.**
+
+          The summary, the streak panel and the supervisor's plain-text digest
+          all print `clauseSentence`, and the form prints the same one — never
+          a second rendering of the same idea, because a preview that can
+          disagree with what it previews is worse than none.
+
+          It used to sit at the foot of the condition, which is where it was
+          least use: a condition is some eight hundred pixels of controls, so
+          checking what you had just built meant scrolling past everything you
+          had built it with, and at the bottom the sticky Cancel/Done bar was
+          half over it. Pinned under the name it is the one line that never
+          leaves while you work, and it rewrites itself under every control you
+          touch — which is the whole of what it is for. With two conditions
+          each one holds the top of its own block and hands over at the
+          hairline, so the sentence on screen is always the one you are
+          editing.
+
+          It carries the row's surface rather than the card's, for the reason
+          the action bar does: a wash needs an opaque base, and `bg-card` over
+          a recessed row is a lighter patch. `z-10` keeps it under that bar,
+          which is the one thing that should never be covered. */}
+      <p
+        style={cellSurface(`${c.ink}0A`, c.card)}
+        className="sticky top-0 z-10 -mx-2.5 px-2.5 py-1.5 text-[11px] font-mono text-ink/60 leading-relaxed"
+      >
+        <span className="text-[9px] uppercase tracking-widest text-ink/30">
+          Reads as{" "}
+        </span>
+        <Sentence text={clauseSentence(clause, ctx, byWeek ? "week" : "day")} />
+      </p>
 
       {/* **Why this condition is here, directly under its name.** It is the
           one thing on the block that is about the condition rather than about
@@ -590,23 +626,6 @@ function ClauseForm({
         </Fold>
       )}
 
-      {/* **The sentence it will be read back as, while you are writing it.**
-
-          The summary, the streak panel and the supervisor's plain-text digest
-          all print `clauseSentence`, and until now the form did not — so the
-          only way to find out what twenty controls had added up to was to
-          save and look. That is the wrong moment for a rule with a week-long
-          lock on undoing it.
-
-          The same function, never a second rendering of the same idea: a
-          preview that can disagree with what it previews is worse than none,
-          and this one cannot, because it *is* the thing it is previewing. */}
-      <p className="text-[11px] font-mono text-ink/60 leading-relaxed pt-0.5">
-        <span className="text-[9px] uppercase tracking-widest text-ink/30">
-          Reads as{" "}
-        </span>
-        <Sentence text={clauseSentence(clause, ctx, byWeek ? "week" : "day")} />
-      </p>
     </fieldset>
   )
 }
@@ -1414,6 +1433,35 @@ function WeekdayRow({
       days: { ...clause.days, [wd]: { ...clause.days?.[wd], ...bounds } },
     })
 
+  /**
+   * **This day's figures onto every day the condition judges.**
+   *
+   * Per-day figures are how you say "three hours, except Thursday", and the
+   * grid makes you say it seven times — which is bearable to write once and
+   * miserable to *change*: three hours becoming four is seven edits, six of
+   * them identical, and any one of them missed is a rule that quietly asks
+   * something you did not mean on a Wednesday.
+   *
+   * A base figure with exceptions is the shape this really wants, and it is
+   * not available: in per-day mode a day left blank asks nothing rather than
+   * falling back to a shared pair, which `boundsOnWeekday` is explicit about
+   * and which several readers depend on. Changing that is a change to what
+   * rules mean, not to a form. So the form removes the typing instead.
+   *
+   * **Only the figures travel.** A day also carries which slots it counts and
+   * what a named slot owes, and those are per-day for their own reasons —
+   * copying them along would silently overwrite the answer to a different
+   * question.
+   */
+  const copyToEveryDay = (wd: number) => {
+    const from = clause.days?.[wd] ?? {}
+    const days = { ...clause.days }
+    judged.forEach((d) => {
+      days[d] = { ...days[d], min: from.min, max: from.max }
+    })
+    onChange({ days })
+  }
+
   const perDayGrid = counting && perDay
 
   return (
@@ -1537,7 +1585,7 @@ function WeekdayRow({
            boxes and a count is one, and a fixed width has to be wrong for one
            of them. */
         <div className="overflow-x-auto -mx-1 px-1">
-        <div className="grid grid-cols-[2rem_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
+        <div className="grid grid-cols-[2rem_auto_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
           <span />
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
             Minimum
@@ -1545,6 +1593,7 @@ function WeekdayRow({
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
             Maximum
           </span>
+          <span />
           {judged.map((wd) => {
             const b = clause.days?.[wd] ?? {}
             return (
@@ -1564,6 +1613,25 @@ function WeekdayRow({
                   timed={timed}
                   onChange={(v) => setDay(wd, { max: v })}
                 />
+                {/* On every row rather than only on rows that differ: a
+                    control that comes and goes as you type is a moving
+                    target, and copying a row onto days that already match it
+                    costs nothing. Absent entirely on a one-day condition,
+                    where there is nowhere to copy to. */}
+                {judged.length > 1 ? (
+                  <Tip text={`Give every judged day ${WEEKDAY_LABELS[wd]}'s figures`}>
+                    <button
+                      type="button"
+                      onClick={() => copyToEveryDay(wd)}
+                      aria-label={`Give every judged day ${WEEKDAY_LABELS[wd]}'s figures`}
+                      className={`${btnBase} p-1 rounded-md text-ink/25 hover:text-ink hover:bg-ink/5`}
+                    >
+                      <Copy size={11} />
+                    </button>
+                  </Tip>
+                ) : (
+                  <span />
+                )}
               </Fragment>
             )
           })}
@@ -1820,9 +1888,23 @@ function RuleForm({
           Not a term the lock protects, either way: joining or leaving the
           day's verdict changes what the *day* is worth, never what this rule
           asks of you. */}
-      {/* Not a term the lock protects: joining or leaving the day's verdict
-          changes what the *day* is worth, never what this rule asks of you. */}
-      <Row label="The day">
+      {/* **One row, because it is one subject.** Whether this rule votes and
+          how loudly it votes were two rows with two labels and two identical
+          pill tracks, stacked under a third — three of the same shape down the
+          top of the form, where the fundamental question (a day or a week?)
+          weighed exactly as much on the page as a drawing detail. And they are
+          not two questions: the weight is meaningless unless the rule votes,
+          which is why it was already conditional on it. One label over both
+          says what they are together — what this rule is worth to the day —
+          and the second half is absent, not disabled, when there is no vote to
+          weigh.
+
+          Neither half is a term the lock protects. Joining or leaving the
+          day's verdict changes what the *day* is worth, never what this rule
+          asks of you; and the weight is drawing only — the verdict is
+          unchanged either way, because a day is missed the moment anything is
+          missed. */}
+      <Row label="In the day's verdict">
         <Pills<"in" | "out">
           value={draft.inDayVerdict ? "in" : "out"}
           onChange={(v) => patch({ inDayVerdict: v === "in" })}
@@ -1831,6 +1913,32 @@ function RuleForm({
             { id: "out", label: "On its own" },
           ]}
         />
+        {draft.inDayVerdict && (
+          <>
+            <Tip
+              multiline
+              text={
+                "How much of the day's ring this rule takes, and where its arc starts." +
+                String.fromCharCode(10, 10) +
+                "Drawing only. The verdict is unchanged either way, because a day is missed the moment anything is missed — a rule that should genuinely count for less is a rule that should not be voting, which the switch beside this says honestly."
+              }
+            >
+              <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
+                weight
+              </span>
+            </Tip>
+            <Pills<string>
+              value={String(
+                Math.min(5, Math.max(1, Math.round(draft.weight ?? 1))),
+              )}
+              onChange={(w) => patch({ weight: Number(w) })}
+              options={["1", "2", "3", "4", "5"].map((n) => ({
+                id: n,
+                label: n,
+              }))}
+            />
+          </>
+        )}
         <Tip
           multiline
           text={
@@ -1846,24 +1954,6 @@ function RuleForm({
           </span>
         </Tip>
       </Row>
-
-      {/* Drawing only, so it is not a term and the lock never sees it. It sets
-          how much of the day's ring this rule takes and where its arc starts;
-          the verdict is unchanged, because a day is missed the moment anything
-          is missed. A rule that should genuinely count for less is a rule that
-          should not be voting — the switch above says that honestly. */}
-      {draft.inDayVerdict && (
-        <Row label="Weight in the ring">
-          <Pills<string>
-            value={String(Math.min(5, Math.max(1, Math.round(draft.weight ?? 1))))}
-            onChange={(w) => patch({ weight: Number(w) })}
-            options={["1", "2", "3", "4", "5"].map((n) => ({ id: n, label: n }))}
-          />
-          <span className="text-[10px] font-mono text-ink/40">
-            how much of the day this is about
-          </span>
-        </Row>
-      )}
 
 
       {/* The conditions are the body of the form, not a section of it. They

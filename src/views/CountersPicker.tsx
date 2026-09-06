@@ -5,6 +5,7 @@
    for the taxonomy it walks and for why the two are separate files.
 --------------------------------------------------------------- */
 
+import { ChevronRight } from "lucide-react"
 import type { StreakTarget } from "../types/model"
 import type { StreakContext } from "../lib/customStreaks"
 import { targetInfo, targetsUnits } from "../lib/customStreaks"
@@ -245,8 +246,28 @@ export function CountersPicker({
   )
 }
 
-/** What a set resolves to today. Named, not counted: a number tells you nothing
- *  about whether you picked the right shelf. */
+/**
+ * What a set resolves to today — **the count out loud, the names one click
+ * down.**
+ *
+ * This began as the names alone, on the reasoning that a number tells you
+ * nothing about whether you picked the right shelf. That is true the once,
+ * when you are choosing the shelf; it stops being true immediately
+ * afterwards, and the line does not. A category with a dozen activities under
+ * it printed four solid lines of comma-separated names in the middle of the
+ * form, between what the condition counts and the folds that refine it —
+ * every time you opened the rule, forever. Prose is what you read; this is a
+ * list, and a list set as prose is something the eye has to climb over.
+ *
+ * So the number is the line and the names are the fold. The count is the fact
+ * that is worth having in front of you always, because it is the one that
+ * changes behind your back: file a thirteenth activity under this category
+ * tomorrow and the rule silently starts counting it. "12" answers that. Which
+ * twelve is a question with an answer, and it is a chevron away.
+ *
+ * An empty shelf keeps its plain line — one short sentence, and a warning is
+ * not something to make anybody open.
+ */
 function Resolved({
   targets,
   ctx,
@@ -267,18 +288,31 @@ function Resolved({
           .map((a) => a.label)
       : targetsUnits(targets, ctx).map((u) => u.label)
 
+  if (!names.length) {
+    return (
+      <p className="text-[10px] font-mono text-ink/40 leading-relaxed">
+        Nothing is filed here yet, so this condition counts nothing.
+      </p>
+    )
+  }
+
   return (
-    <p className="text-[10px] font-mono text-ink/40 leading-relaxed">
-      {names.length ? (
-        <>
-          Counts {names.length} today: <span className="text-ink/60">{names.join(", ")}</span>
-        </>
-      ) : (
-        <span style={{ color: "inherit" }}>
-          Nothing is filed here yet, so this condition counts nothing.
-        </span>
-      )}
-    </p>
+    /* A bare `<details>` rather than the boxed fold the rule form uses: this
+       is one quiet line among the fields, and wrapping it in a filled row
+       would make the least important thing on screen the most drawn one.
+       `fold-body` gives the names the same arrival every other fold has. */
+    <details className="group text-[10px] font-mono text-ink/40 leading-relaxed">
+      <summary
+        className={`${btnBase} inline-flex items-center gap-1 cursor-pointer list-none [&::-webkit-details-marker]:hidden hover:text-ink/60`}
+      >
+        <ChevronRight
+          size={10}
+          className="shrink-0 transition-transform duration-150 ease-out group-open:rotate-90"
+        />
+        Counts {names.length} today
+      </summary>
+      <p className="fold-body pl-3.5 pt-1 text-ink/60">{names.join(", ")}</p>
+    </details>
   )
 }
 
