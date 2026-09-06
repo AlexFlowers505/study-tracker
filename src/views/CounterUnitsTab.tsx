@@ -396,228 +396,265 @@ export function CounterUnitsTab({
   )
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center gap-1 rounded-full bg-ink/[0.07] p-1">
+    <div>
+      {/* **Sticky.** These are navigation, not content: By kind decides what
+          the tab *is*, and the kind pills decide which of three lists you are
+          looking at. On twelve activities they scrolled away with the first
+          row, so changing your mind meant scrolling back to the top to find
+          the control — which is the same trip the tab strip above exists to
+          save you.
+
+          The three negative values are all the same bill: the panel scrolls
+          with `p-5` on it, and sticky is measured against the scroller's
+          **content** box, twenty pixels inside the edge you can actually see.
+          So `-mx-5` widens the row to the visible box, or rows would slide
+          past it down either side; `-mt-5` puts it back where it was before
+          the padding; and `-top-5` moves the line it sticks to up by the same
+          twenty, without which the row parks one padding below the top and
+          sits on the caption underneath it. Each pays itself back as padding
+          inside the row, so nothing moves when it comes unstuck. */}
+      <div className="sticky-skirt sticky -top-5 z-10 -mx-5 -mt-5 px-5 pt-5 pb-3 bg-card flex flex-wrap items-center gap-2">
+        {/* **One track, divided**, rather than two of them a gap apart. The
+            two were the same shape, the same depth and the same accent fill
+            eight pixels from each other, which is the trap the file's own
+            header warns about one level up — an identical control beside an
+            identical control reads as one control drawn twice, and no amount
+            of gap has ever fixed it. `CountOptions` under the counter charts
+            met this exact problem and this is its answer, so the app has one
+            shape for it rather than two.
+
+            The hairline is also the sentence: everything right of it is what
+            lives *inside* By kind, which is why it goes when By category
+            does. A rule with nothing after it would be a promise of a control
+            that is not there. */}
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full bg-ink/[0.07] p-1">
           {pill(group === "kind", "By kind", () => setGroup("kind"))}
           {pill(group === "category", "By category", () => setGroup("category"))}
+          {group === "kind" && (
+            <>
+              <span className="self-stretch w-px my-1 mx-1 bg-ink/20" />
+              {TABS.map((t) =>
+                pill(t.id === tab, t.label, () => setTab(t.id), countOf(t.id)),
+              )}
+            </>
+          )}
         </div>
-        {group === "kind" && (
-          <div className="inline-flex items-center gap-1 rounded-full bg-ink/[0.07] p-1">
-            {TABS.map((t) =>
-              pill(t.id === tab, t.label, () => setTab(t.id), countOf(t.id)),
-            )}
-          </div>
-        )}
       </div>
 
-      {group === "category" ? (
-        <>
-          <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
-            Everything you count, under the category it is filed in. Change the
-            filing here; the rest of what a counter is — its name, colour,
-            total, tags — lives under <strong>By kind</strong>.
-          </p>
-          {categories.length === 0 && (
-            <p className="text-[10px] font-mono text-ink/35">
-              No categories yet. Add them in the Categories tab and they will
-              appear here as headings.
+      {/* The spacing the outer box used to hand out. It moved in here when
+          the pill row went sticky: `space-y` puts a margin on the sibling
+          *after* each child, so the sticky row would have gone on receiving
+          one whatever padding it carries of its own, and the gap under the
+          pills would have been counted twice. */}
+      <div className="space-y-3">
+        {group === "category" ? (
+            <>
+            <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
+              Everything you count, under the category it is filed in. Change the
+              filing here; the rest of what a counter is — its name, colour,
+              total, tags — lives under <strong>By kind</strong>.
             </p>
-          )}
-          <div className="space-y-3">
-            {shelf
-              .filter((g) => g.rows.length > 0 || g.cat)
-              .map((g) => (
-                <div key={g.cat?.id || "none"} className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    {g.cat ? (
-                      <>
-                        <span style={{ color: g.cat.color }}>
-                          <Icon name={g.cat.iconName} size={12} />
+            {categories.length === 0 && (
+              <p className="text-[10px] font-mono text-ink/35">
+                No categories yet. Add them in the Categories tab and they will
+                appear here as headings.
+              </p>
+            )}
+            <div className="space-y-3">
+              {shelf
+                .filter((g) => g.rows.length > 0 || g.cat)
+                .map((g) => (
+                  <div key={g.cat?.id || "none"} className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      {g.cat ? (
+                        <>
+                          <span style={{ color: g.cat.color }}>
+                            <Icon name={g.cat.iconName} size={12} />
+                          </span>
+                          <span
+                            className="text-[10px] font-mono uppercase tracking-widest font-bold"
+                            style={{ color: g.cat.color }}
+                          >
+                            {g.cat.label}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-ink/35">
+                          Not filed
                         </span>
-                        <span
-                          className="text-[10px] font-mono uppercase tracking-widest font-bold"
-                          style={{ color: g.cat.color }}
-                        >
-                          {g.cat.label}
-                        </span>
-                      </>
+                      )}
+                      <span className="text-[10px] font-mono text-ink/30">
+                        {g.rows.length}
+                      </span>
+                    </div>
+                    {g.rows.length === 0 ? (
+                      <p className="text-[10px] font-mono text-ink/25 pl-1">
+                        Nothing here yet.
+                      </p>
                     ) : (
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-ink/35">
-                        Not filed
+                      <div className="space-y-1">
+                        {g.rows.map(({ item, kind }) => (
+                          <ShelfRow
+                            key={item.id}
+                            item={item}
+                            kind={kind}
+                            categories={categories}
+                            onCategory={(next) => setCategory(item.id, kind, next)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
+              {TABS.find((t) => t.id === tab)!.caption}
+            </p>
+
+            {tab === "activity" ? (
+              <EditableList<Activity>
+                key="activity"
+                items={activities}
+                onChange={onChangeActivities}
+                noun="activity"
+                warningNote={(label) =>
+                  `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
+                }
+                extra={(activity, update) => (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-1 pt-0.5">
+                    <CategoryPicker
+                      categories={categories}
+                      categoryId={activity.categoryId}
+                      onChange={(categoryId) => update({ categoryId })}
+                    />
+                    {/* **An activity wears tags too** — `spec 019`. It used not
+                        to, on the reasoning that nothing counts an activity;
+                        true, and beside the point, since an activity is one of
+                        the three kinds of counter and a condition can already
+                        name a tag. Same row, same component as a tally's. */}
+                    {tags.length > 0 && (
+                      <TagRow
+                        tags={tags}
+                        tagIds={activity.tagIds || []}
+                        onChange={(tagIds) => update({ tagIds })}
+                      />
+                    )}
+                  </div>
+                )}
+              />
+            ) : (
+              <EditableList<CounterUnit>
+                // Keyed on the kind so switching tabs remounts the list rather
+                // than re-labelling the rows of the one you were just looking
+                // at, which is how an open delete confirmation ends up pointing
+                // at a different unit.
+                key={tab}
+                items={units.filter((u) => counterKind(u) === tab)}
+                onChange={(next) => onChange(replaceKind(units, next, tab))}
+                noun={isCheckTab ? "check" : "tally"}
+                minItems={0}
+                newItem={() => ({ kind: tab, tagIds: [] })}
+                warningNote={(label) =>
+                  isCheckTab
+                    ? `Remove "${label}"? The days already marked against it stay in the data but stop being shown.`
+                    : `Remove "${label}"? Counts already recorded against it stay in the data but stop being shown.`
+                }
+                extra={(unit, update) => (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-1 pt-0.5">
+                    {/* A total is a tally's alone. "How many oversleeps are
+                        there in all" is not a question, and a switch offering to
+                        answer it would be the form asking something the kind has
+                        ruled out. */}
+                    {!isCheckTab && (
+                      <div className="flex items-center gap-1.5">
+                        <Tip multiline text={TOTAL_HELP}>
+                          <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
+                            Known total
+                          </span>
+                        </Tip>
+                        <SwitchToggle
+                          checked={unit.total != null}
+                          onChange={(on) =>
+                            update({
+                              // Never below what is already recorded: a finish
+                              // line behind you is not a number anyone meant to
+                              // type, and it would render as "78 / 0" the moment
+                              // the switch flipped.
+                              total: on
+                                ? Math.max(1, progress[unit.id] || 0)
+                                : undefined,
+                            })
+                          }
+                          label="This unit has a known total"
+                        />
+                        {unit.total != null && (
+                          <TotalField
+                            value={unit.total}
+                            onChange={(total) => update({ total })}
+                          />
+                        )}
+                        {/* How far along you are. The day cards show the day's
+                            own count; the running total belongs where the total
+                            is set. */}
+                        <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
+                          {progress[unit.id] || 0}
+                          {unit.total != null ? ` / ${unit.total}` : " so far"}
+                        </span>
+                      </div>
+                    )}
+
+                    {isCheckTab && (
+                      <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
+                        {progress[unit.id] || 0} day
+                        {progress[unit.id] === 1 ? "" : "s"} marked yes
                       </span>
                     )}
-                    <span className="text-[10px] font-mono text-ink/30">
-                      {g.rows.length}
-                    </span>
-                  </div>
-                  {g.rows.length === 0 ? (
-                    <p className="text-[10px] font-mono text-ink/25 pl-1">
-                      Nothing here yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-1">
-                      {g.rows.map(({ item, kind }) => (
-                        <ShelfRow
-                          key={item.id}
-                          item={item}
-                          kind={kind}
-                          categories={categories}
-                          onCategory={(next) => setCategory(item.id, kind, next)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-[10px] font-mono text-ink/45 leading-relaxed">
-            {TABS.find((t) => t.id === tab)!.caption}
-          </p>
 
-          {tab === "activity" ? (
-            <EditableList<Activity>
-              key="activity"
-              items={activities}
-              onChange={onChangeActivities}
-              noun="activity"
-              warningNote={(label) =>
-                `Remove "${label}"? Entries already logged under it stay stored but will show as removed.`
-              }
-              extra={(activity, update) => (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-1 pt-0.5">
-                  <CategoryPicker
-                    categories={categories}
-                    categoryId={activity.categoryId}
-                    onChange={(categoryId) => update({ categoryId })}
-                  />
-                  {/* **An activity wears tags too** — `spec 019`. It used not
-                      to, on the reasoning that nothing counts an activity;
-                      true, and beside the point, since an activity is one of
-                      the three kinds of counter and a condition can already
-                      name a tag. Same row, same component as a tally's. */}
-                  {tags.length > 0 && (
+                    <CategoryPicker
+                      categories={categories}
+                      categoryId={unit.categoryId}
+                      onChange={(categoryId) => update({ categoryId })}
+                    />
+
                     <TagRow
                       tags={tags}
-                      tagIds={activity.tagIds || []}
+                      tagIds={unit.tagIds || []}
                       onChange={(tagIds) => update({ tagIds })}
                     />
-                  )}
-                </div>
-              )}
-            />
-          ) : (
-            <EditableList<CounterUnit>
-              // Keyed on the kind so switching tabs remounts the list rather
-              // than re-labelling the rows of the one you were just looking
-              // at, which is how an open delete confirmation ends up pointing
-              // at a different unit.
-              key={tab}
-              items={units.filter((u) => counterKind(u) === tab)}
-              onChange={(next) => onChange(replaceKind(units, next, tab))}
-              noun={isCheckTab ? "check" : "tally"}
-              minItems={0}
-              newItem={() => ({ kind: tab, tagIds: [] })}
-              warningNote={(label) =>
-                isCheckTab
-                  ? `Remove "${label}"? The days already marked against it stay in the data but stop being shown.`
-                  : `Remove "${label}"? Counts already recorded against it stay in the data but stop being shown.`
-              }
-              extra={(unit, update) => (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-1 pt-0.5">
-                  {/* A total is a tally's alone. "How many oversleeps are
-                      there in all" is not a question, and a switch offering to
-                      answer it would be the form asking something the kind has
-                      ruled out. */}
-                  {!isCheckTab && (
-                    <div className="flex items-center gap-1.5">
-                      <Tip multiline text={TOTAL_HELP}>
-                        <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
-                          Known total
-                        </span>
-                      </Tip>
-                      <SwitchToggle
-                        checked={unit.total != null}
-                        onChange={(on) =>
-                          update({
-                            // Never below what is already recorded: a finish
-                            // line behind you is not a number anyone meant to
-                            // type, and it would render as "78 / 0" the moment
-                            // the switch flipped.
-                            total: on
-                              ? Math.max(1, progress[unit.id] || 0)
-                              : undefined,
-                          })
+
+                    {/* The way out of the wrong tab. Without it a counter filed
+                        under the wrong kind can only be deleted and retyped,
+                        which throws away everything recorded against it — a
+                        steep price for having clicked one tab rather than the
+                        other. */}
+                    <Tip multiline text={MOVE_HELP}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChange(
+                            units.map((u) =>
+                              u.id === unit.id
+                                ? { ...u, kind: isCheckTab ? "tally" : "check" }
+                                : u,
+                            ),
+                          )
                         }
-                        label="This unit has a known total"
-                      />
-                      {unit.total != null && (
-                        <TotalField
-                          value={unit.total}
-                          onChange={(total) => update({ total })}
-                        />
-                      )}
-                      {/* How far along you are. The day cards show the day's
-                          own count; the running total belongs where the total
-                          is set. */}
-                      <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
-                        {progress[unit.id] || 0}
-                        {unit.total != null ? ` / ${unit.total}` : " so far"}
-                      </span>
-                    </div>
-                  )}
-
-                  {isCheckTab && (
-                    <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
-                      {progress[unit.id] || 0} day
-                      {progress[unit.id] === 1 ? "" : "s"} marked yes
-                    </span>
-                  )}
-
-                  <CategoryPicker
-                    categories={categories}
-                    categoryId={unit.categoryId}
-                    onChange={(categoryId) => update({ categoryId })}
-                  />
-
-                  <TagRow
-                    tags={tags}
-                    tagIds={unit.tagIds || []}
-                    onChange={(tagIds) => update({ tagIds })}
-                  />
-
-                  {/* The way out of the wrong tab. Without it a counter filed
-                      under the wrong kind can only be deleted and retyped,
-                      which throws away everything recorded against it — a
-                      steep price for having clicked one tab rather than the
-                      other. */}
-                  <Tip multiline text={MOVE_HELP}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onChange(
-                          units.map((u) =>
-                            u.id === unit.id
-                              ? { ...u, kind: isCheckTab ? "tally" : "check" }
-                              : u,
-                          ),
-                        )
-                      }
-                      className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-mono uppercase tracking-widest text-ink/40 hover:text-ink hover:bg-ink/5`}
-                    >
-                      <ArrowLeftRight size={10} />
-                      {isCheckTab ? "Make a tally" : "Make a check"}
-                    </button>
-                  </Tip>
-                </div>
-              )}
-            />
-          )}
-        </>
-      )}
+                        className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-mono uppercase tracking-widest text-ink/40 hover:text-ink hover:bg-ink/5`}
+                      >
+                        <ArrowLeftRight size={10} />
+                        {isCheckTab ? "Make a tally" : "Make a check"}
+                      </button>
+                    </Tip>
+                  </div>
+                )}
+              />
+            )}
+            </>
+        )}
+      </div>
     </div>
   )
 }

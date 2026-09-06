@@ -114,3 +114,226 @@ html {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------
+   Soft edges on a scroll container, and a strip with no scrollbar.
+
+   A hard cut is not a signal. Content sliced through at the foot of a panel
+   looks exactly like content that ends there, and the tab strip running off
+   the side of the setup dialog looks exactly like a strip with no more tabs
+   on it — in both cases the only thing saying otherwise is a hairline
+   scrollbar, which is a control rather than a sentence.
+
+   So the edge goes soft while there is more past it and hard once there is
+   not, which is what `useScrollEdges` decides: it writes the two stop sizes
+   in as `--edge-start` / `--edge-end`, and nought means no fade. A mask
+   rather than a gradient laid over the top, because a mask fades the content
+   itself — an overlay has to know what colour is behind it, which in a
+   two-theme app is two more values to keep in step, and it sits in front of
+   the text it is fading unless it is also told not to take clicks.
+
+   The colour in the gradient is `black` and means nothing: only its alpha is
+   read. It is not a hex literal and it is not a colour decision.
+
+   `@property` is what makes the two lengths animatable — an unregistered
+   custom property interpolates discretely, so without it the fade would pop
+   on and off at the ends of every scroll rather than arriving.
+--------------------------------------------------------------- */
+
+@property --edge-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --edge-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.edge-fade-y,
+.edge-fade-x {
+  transition:
+    --edge-start 150ms ease-out,
+    --edge-end 150ms ease-out;
+}
+
+.edge-fade-y {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--edge-start),
+    black calc(100% - var(--edge-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--edge-start),
+    black calc(100% - var(--edge-end)),
+    transparent 100%
+  );
+}
+
+.edge-fade-x {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--edge-start),
+    black calc(100% - var(--edge-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--edge-start),
+    black calc(100% - var(--edge-end)),
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-fade-y,
+  .edge-fade-x {
+    transition: none;
+  }
+}
+
+/* Where the fade is the affordance, the scrollbar is noise: an 8px bar under
+   a row of tabs reads as a piece of the interface rather than as a hint that
+   the row goes on. Overriding the `*` rule above, which is right everywhere
+   else. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* The soft edge under a sticky header, in place of the hairline that would
+   otherwise go there. A rule says "these are two regions"; what is actually
+   true is that one is passing behind the other, and a fade says that. Twelve
+   pixels of the card's own colour, so it is invisible until something scrolls
+   underneath it — no state to track and nothing to switch on.
+
+   This one is an overlay rather than a mask, which is the one place an
+   overlay is the better tool: a mask on the scroll container would fade the
+   sticky row itself, since the row is inside the box being masked. The usual
+   objection — that an overlay has to know the colour behind it — does not
+   apply, because the colour behind it is this row's own `bg-card`, and
+   `--color-card` re-points itself in dark mode. `pointer-events` off, or it
+   would eat the clicks of the first row under it. */
+.sticky-skirt::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 12px;
+  background: linear-gradient(to bottom, var(--color-card), transparent);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------
+   The prompt on an optional field, said when you come near it.
+
+   A list of seven slots drew "What counts as this slot? (optional)" seven
+   times, in a column, under seven names — the same sentence repeated until it
+   stops being read, and the names, which are what you are scanning for, had
+   to be picked out from between them. A placeholder is a prompt for the field
+   you are about to use, and it was behaving like a caption on every field you
+   are not.
+
+   So it is transparent until the row is hovered or the field has focus, and
+   the field keeps its height either way, so nothing moves as it arrives.
+   Inside `@media (hover: hover)` on purpose: where there is no pointer there
+   is no approach, and a prompt that could only be summoned by tapping a line
+   you cannot see is worse than one repeated seven times.
+--------------------------------------------------------------- */
+
+@media (hover: hover) {
+  .hint-near::placeholder {
+    color: transparent;
+    transition: color 150ms ease-out;
+  }
+
+  .group:hover .hint-near::placeholder,
+  .hint-near:focus::placeholder {
+    color: color-mix(in oklab, var(--color-ink) 30%, transparent);
+  }
+}
+
+/* ---------------------------------------------------------------
+   Arriving.
+
+   A panel that is simply *there* on the next frame has no relation to the
+   button that opened it — nothing travelled, so nothing connects the two, and
+   the eye has to find the new thing rather than follow it. The same is true
+   one level down: a tab whose content is swapped between frames reads as a
+   different screen rather than as the same panel showing something else.
+
+   **Keyframes rather than a transition**, which is the opposite of the rule
+   for anything you can touch: a gesture-driven thing must animate from
+   wherever it currently is and be catchable mid-flight, and a keyframe cannot
+   do that. Nothing here is dragged. What is wanted is one prescribed arrival
+   per mount, and an animation is the tool that runs on mount without a
+   starting state to remember or a class to toggle.
+
+   **No overshoot.** Bounce belongs to motion that inherited momentum from a
+   flick; a dialog opened by a click did not, and a settings panel that
+   springs past its size and settles back is a panel drawing attention to
+   itself. The curve is a critically damped ease-out at 220ms.
+
+   `transform-origin` is the top right because that is where the Setup button
+   is. At a scale of 0.97 it is a few pixels either way — this is not a zoom
+   out of the trigger, only a nod in its direction.
+
+   Under `prefers-reduced-motion` every one of them becomes the same plain
+   cross-fade, by swapping the animation's name rather than switching it off:
+   reduced motion asks for a gentler equivalent, not for nothing at all.
+
+   The exit is still a hard cut, and deliberately unfinished rather than
+   forgotten. Enter and exit ought to run the same path, and doing that here
+   means holding the modal mounted after it has been asked to close — a
+   timer, a closing state, and every one of the four ways out routed through
+   it. It is nearly free the moment this becomes a real `<dialog>`, where
+   `::backdrop` and `allow-discrete` do it in CSS, so it belongs with that
+   change and not before it.
+--------------------------------------------------------------- */
+
+@keyframes wash-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.wash-in {
+  animation: wash-in 180ms ease-out both;
+}
+
+.rise-in {
+  transform-origin: 100% 0;
+  animation: rise-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Shorter than the panel's own arrival: this one happens on every tab switch,
+   and what is quick enough to be pleasant once an hour is not quick enough to
+   be pleasant ten times in a row. */
+.tab-fade {
+  animation: wash-in 140ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in {
+    animation-name: wash-in;
+  }
+}

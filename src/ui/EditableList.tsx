@@ -14,6 +14,7 @@ import type { Labeled } from "../types/model"
 import { makeId } from "../lib/id"
 import { BTN_SOFT, PALETTE, btnBase } from "../lib/theme"
 import { IconGrid } from "./IconGrid"
+import { PopoverMenu } from "./PopoverMenu"
 import { RenderIcon } from "./icons"
 import { Tip } from "./Tip"
 import { usePalette } from "./useTheme"
@@ -65,7 +66,6 @@ export function EditableList<T extends Labeled>({
   minItems?: number
 }) {
   const c = usePalette()
-  const [openPickerId, setOpenPickerId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [removeReason, setRemoveReason] = useState("")
 
@@ -192,26 +192,44 @@ export function EditableList<T extends Labeled>({
                what makes the name and the description line up down the left —
                they are the content column, and everything that acts on the row
                sits beside it rather than in front of it. */
-            <div className="space-y-1">
+            <div className="group space-y-1">
               <div className="flex items-center gap-2">
-                <div className="relative shrink-0">
-                  <button
-                    onClick={() =>
-                      setOpenPickerId(openPickerId === item.id ? null : item.id)
-                    }
+                {/* **Portalled, like everything else that floats.** This was
+                    an `absolute` panel inside the row, which meant the one
+                    place it is opened from — a scrolling list inside a modal —
+                    was the one place it could not be shown: the picker was
+                    clipped by the panel's own scroll area, and on a row near
+                    the bottom most of it simply was not there. That is the
+                    rule the whole of `src/ui` exists to keep, and this was the
+                    hand-rolled bubble it warns about.
+
+                    `wrapClassName` because `Tip` puts a span between the
+                    button and this flex row, and without sizing that span the
+                    trigger stops being the flex item. The colour moves to a
+                    span inside the button, which is the only difference the
+                    conversion makes to how it looks. */}
+                <PopoverMenu
+                  width={256}
+                  label="Icon and colour"
+                  wrapClassName="shrink-0"
+                  triggerClassName={`${btnBase} rounded-xl hover:opacity-75`}
+                  trigger={
                     // Filled with its own colour rather than outlined in it.
                     // The swatch is the point of this button, and a tint shows
                     // it over a larger area than a 2px ring did.
-                    style={{
-                      backgroundColor: `${item.color}24`,
-                      color: item.color,
-                    }}
-                    className={`${btnBase} w-8 h-8 rounded-xl flex items-center justify-center hover:opacity-75 shrink-0`}
-                  >
-                    <RenderIcon name={item.iconName} size={15} />
-                  </button>
-                  {openPickerId === item.id && (
-                    <div className="absolute z-30 top-10 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-64">
+                    <span
+                      style={{
+                        backgroundColor: `${item.color}24`,
+                        color: item.color,
+                      }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center"
+                    >
+                      <RenderIcon name={item.iconName} size={15} />
+                    </span>
+                  }
+                >
+                  {(close) => (
+                    <div>
                       <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                         Icon
                       </p>
@@ -259,7 +277,7 @@ export function EditableList<T extends Labeled>({
                       <div className="flex justify-end mt-3">
                         <button
                           type="button"
-                          onClick={() => setOpenPickerId(null)}
+                          onClick={close}
                           className={`${btnBase} ${BTN_SOFT} px-3 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-widest`}
                         >
                           Done
@@ -267,7 +285,7 @@ export function EditableList<T extends Labeled>({
                       </div>
                     </div>
                   )}
-                </div>
+                </PopoverMenu>
                 {/* No fill. It is the row's title, not a form control you
                     hunt for — and at this size, on its own line, nothing else
                     could be mistaken for it. The focus ring is what confirms
@@ -326,7 +344,11 @@ export function EditableList<T extends Labeled>({
                   placeholder={`What counts as this ${noun}? (optional)`}
                   rows={1}
                   maxHeight={100}
-                  className="flex-1 min-w-0 bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-[11px] text-ink/70 placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
+                  /* `hint-near` holds the prompt back until the row is
+                     hovered or the field has focus — see App.css. The
+                     Tailwind colour stays as the answer where there is no
+                     pointer to approach with. */
+                  className="hint-near flex-1 min-w-0 bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-[11px] text-ink/70 placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
                 />
               </div>
               {extra?.(item, (patch) => updateItem(item.id, patch))}

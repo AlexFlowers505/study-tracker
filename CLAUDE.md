@@ -429,7 +429,16 @@ which are Node config and get their own lint block.
   - `controls.tsx` (`AutoTextarea`, `SegmentedControl`), `toggles.tsx`
     (`SwitchToggle`, `MenuToggle`), `EditableList.tsx`, `StatTile.tsx`,
     `ChartCard.tsx`, `ToggleChips.tsx`, `Brand.tsx`, and the hooks
-    `useSeriesToggle.ts` / `useRevealOnScrollUp.ts`.
+    `useSeriesToggle.ts` / `useRevealOnScrollUp.ts` / `useScrollEdges.ts`.
+  - `useScrollEdges.ts` — whether a scroll container has more content past
+    each end, plus the two custom properties `.edge-fade-x` / `.edge-fade-y`
+    read. **A soft edge while there is more, a hard one once there is not**:
+    content sliced through at the foot of a panel says nothing that content
+    ending there does not, and a hairline scrollbar is a control rather than a
+    sentence. It hands back a **callback ref**, not a `useRef` — Setup's body
+    is keyed on the tab and so is replaced on every switch, and a `useRef`
+    updates `.current` without waking any effect, which would leave it
+    measuring a detached box forever.
   - **A module here exports components or plain values, never both** —
     mixing them fails `react-refresh/only-export-components`. That is why the
     hooks, the icon list and the button styles each have their own file.
@@ -753,7 +762,8 @@ which are Node config and get their own lint block.
     driven by the one range `periodRange()` hands them.
   - `DayCards.tsx` (the week row and the day view's wide card),
     `DayEditor.tsx` (the day dialog: preview that flips into the editor),
-    `QuickAddEntryModal.tsx`, `FreezeConfirm.tsx`, `SetupModal.tsx`,
+    `QuickAddEntryModal.tsx`, `FreezeConfirm.tsx`, `SetupModal.tsx` (see
+    **Setup's shape** below),
     `TopBar.tsx`, `AuthScreen.tsx`, `PeriodBar.tsx`, `NoteCard.tsx`.
 - `src/App.tsx` — the shell and nothing else: auth, the load, the save queue,
   the count-filter projection, and which panels are open. ~700 lines, down
@@ -772,6 +782,52 @@ which are Node config and get their own lint block.
   It points at this file rather than restating it, so repo facts have one
   home; keep the pointer honest and don't let the two drift.
 - `README.md` is the untouched Vite template. Don't treat it as documentation.
+
+## Setup's shape
+
+Nine tabs in a strip that scrolls, over one body that scrolls, over the
+admin-only import/export footer. Four things about it are decisions rather
+than accidents:
+
+- **The panel is a fixed height, not a maximum.** It is centred, so with
+  `max-h` every tab switch moved the top edge and the heading, the tabs and
+  the first field all jumped. Nothing about the window should depend on which
+  tab is open — which also means the answer to a half-empty tab is never to
+  shrink the window, but to ask what should be on it.
+- **The body is keyed on the tab**, so the scroll position leaves with it.
+  One box serves all nine and React keeps its `scrollTop` across a switch:
+  leaving Slots scrolled down opened Counters at the same offset, with the
+  first control half under the top edge.
+- **Project and Projects are one tab.** Two of the ten were half empty with
+  the same subject — this project's four fields, and a list of the others —
+  so the panel's one unhelpful stretch of nothing was being drawn twice. The
+  list below does **not** scroll itself into view at the active project: the
+  block above already says which project you are in, and the jump would land
+  past the thing you came for. Each row states how many days are logged in
+  it, because a name is not always a name and eight projects called "Time
+  tracker" are told apart by which of them has anything in it.
+- **The strip fades at whichever end has more tabs**, has no scrollbar, and
+  scrolls the tab you chose into view. Measured through
+  `getBoundingClientRect` rather than `offsetLeft` — the strip sets no
+  `position`, so the offset parent is whatever positioned ancestor happens to
+  be above it.
+
+Arriving is `.rise-in` / `.wash-in` / `.tab-fade` in `App.css`: keyframes
+rather than transitions, which is the opposite of the rule for anything you
+can touch, and right here because nothing in a dialog is dragged — what is
+wanted is one prescribed arrival per mount. No overshoot: bounce belongs to
+motion that inherited momentum from a flick, and a click did not. **The exit
+is still a hard cut**, deliberately, because doing it properly means holding
+the modal mounted after it has been asked to close — and that is nearly free
+the moment this becomes a real `<dialog>`, so it waits for that.
+
+Which is the other unfinished half. The panel carries `role="dialog"`,
+`aria-modal` and a name, takes focus on the way in and gives it back to the
+opener on the way out (in `useModalDismiss`, so every modal in the app gets
+it). It is **not** a focus trap and not the top layer, and it cannot be until
+`Tip`, `PopoverMenu` and `DateField` stop portalling to `document.body` —
+they would be painted underneath a top-layer dialog and left outside any trap
+drawn round this subtree. Its own change.
 
 ## Page structure
 
@@ -987,8 +1043,15 @@ Setup's Counters tab is therefore **two arrangements of the same things**:
   everywhere, so it should never happen, and a row that silently disappears
   from every heading would be a far worse failure than one filed under nothing.
 
-Both toggles are **recessed** tracks — Setup's own tabs are two rows up, and an
-identical shape there would read as the same control drawn twice.
+The two toggles are **one recessed track with a hairline down the middle**,
+not two of them a gap apart. They were separate and identical — same shape,
+same depth, same accent fill, eight pixels between them — which is the trap
+one level up (Setup's own tabs are two rows above, and an identical shape
+there would read as the same control drawn twice) arriving between the two
+halves of the same row. `CountOptions` under the counter charts had already
+answered this, so the app has one shape for it rather than two. The hairline
+is also the sentence: everything right of it is what lives *inside* By kind,
+so it goes when By category does.
 
 **An edit that touches more than one of a project's arrays must be one write.**
 Deleting a category changes `settings` *and* strips the id off `activities`

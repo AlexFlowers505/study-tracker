@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Flame,
-  FolderOpen,
   Hash,
   LayoutGrid,
   Moon,
@@ -38,10 +37,12 @@ import { DateField } from '../ui/DateField'
 import { EditableList } from '../ui/EditableList'
 import { Field } from '../ui/Field'
 import { IconGrid } from '../ui/IconGrid'
+import { PopoverMenu } from '../ui/PopoverMenu'
 import { RenderIcon } from '../ui/icons'
 import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
+import { edgeFade, useScrollEdges } from '../ui/useScrollEdges'
 import { CounterUnitsTab } from './CounterUnitsTab'
 import { StreakRulesTab } from './StreakRulesTab'
 import { AchievementsTab } from './AchievementsTab'
@@ -122,13 +123,76 @@ export function SetupModal({
   const c = usePalette()
   const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    panelRef.current?.focus()
+  }, [])
+  /* Destructured rather than held as two objects: `react-hooks/refs` reads
+     anything with a callback-ref member as a ref, and then refuses every
+     sibling field on the same value as a ref read during render — which
+     `start` and `end` are precisely there to be. Separate bindings say what
+     is true, that only one of the four is a ref. */
+  const {
+    attach: attachStrip,
+    node: stripNode,
+    start: stripStart,
+    end: stripEnd,
+  } = useScrollEdges("x")
+  const { attach: attachBody, end: bodyEnd } = useScrollEdges("y")
+
+  /* **Bring the tab you just chose into view.** Ten tabs make a strip 655px
+     wide inside a panel that is 512px at its widest and 343px on a phone, so
+     "Projects" and "App" live off the right-hand end at every size — and
+     until now choosing one left the strip exactly where it was, with nothing
+     under the cursor to say which tab is lit.
+
+     Measured through `getBoundingClientRect` rather than `offsetLeft`: the
+     strip sets no `position`, so the offset parent is whatever positioned
+     ancestor happens to be above it, and the numbers would be about the wrong
+     box. `scrollBy` needs no such assumption. */
+  useEffect(() => {
+    if (!stripNode) return
+    const btn = stripNode.querySelector(`[data-tab="${tab}"]`)
+    if (!btn) return
+    const strap = stripNode.getBoundingClientRect()
+    const seat = btn.getBoundingClientRect()
+    const pad = 16
+    const behavior: ScrollBehavior = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
+      ? "auto"
+      : "smooth"
+    if (seat.left < strap.left + pad) {
+      stripNode.scrollBy({ left: seat.left - strap.left - pad, behavior })
+    } else if (seat.right > strap.right - pad) {
+      stripNode.scrollBy({ left: seat.right - strap.right + pad, behavior })
+    }
+  }, [tab, stripNode])
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4"
+      className="wash-in fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4"
       onMouseDown={onBackdropClick}
     >
+      {/* **Announced as a dialog, and focused as one.** It is a plain
+           `div`, so without this an assistive technology is told nothing
+           about it: no name, no role, and no reason to treat the logbook
+           behind it as out of play. `aria-modal` is what says the latter, the
+           heading supplies the name, and `tabIndex` lets the panel itself
+           take focus on the way in — so the first Tab lands on the close
+           button rather than somewhere back at the top of the page.
+
+           This is the cheap half of becoming a real `<dialog>`. The other
+           half — a genuine focus trap and the top layer — waits on the
+           floating primitives in `src/ui/`, which portal to `document.body`
+           and would be left underneath a top-layer dialog and outside any
+           trap drawn round this subtree. That is its own change. */}
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="setup-title"
+        tabIndex={-1}
         style={{ backgroundColor: c.card }}
         /* A **fixed** height, not a maximum.
 
@@ -137,14 +201,23 @@ export function SetupModal({
            heading, the tabs and the first field all jumped, and on a tall tab
            it grew from both ends at once. Nothing about the window should
            depend on which tab is open. */
-        className="w-full max-w-lg rounded-2xl shadow-2xl h-[85vh] flex flex-col"
+        /* `focus:outline-none` because the focus this panel takes is given
+           to it, never reached by tabbing: it is a container, and a ring
+           round the whole dialog says the dialog is the control. The rings
+           on what is inside it are untouched, which is where a keyboard user
+           actually needs to see one. */
+        className="rise-in focus:outline-none w-full max-w-lg rounded-2xl shadow-2xl h-[85vh] flex flex-col"
       >
         <div className="flex items-center justify-between px-5 py-4 shrink-0 rounded-t-xl">
-          <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
+          <h2
+            id="setup-title"
+            className="font-sans font-extrabold uppercase tracking-tight text-sm"
+          >
             Setup
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close setup"
             className={`${btnBase} text-ink/50 hover:text-ink`}
           >
             <X size={18} />
@@ -156,9 +229,16 @@ export function SetupModal({
             row simply overflowed the panel and "App" sat outside the rounded
             corner. It scrolls instead — the same answer the period bar gives
             to the same problem, and each tab now keeps its natural width. */}
+        {/* **The ends go soft, and the scrollbar goes.** A strip cut off
+            square at the panel's edge looks like a strip with no more tabs on
+            it; an 8px bar underneath is the only thing that said otherwise,
+            and a scrollbar is a control rather than a sentence. The fade is
+            the sentence, and it is absent at whichever end you have reached,
+            so it never claims tabs that are not there. */}
         <div
-          style={{ backgroundColor: c.card }}
-          className="flex border-b border-ink/10 shrink-0 overflow-x-auto"
+          ref={attachStrip}
+          style={{ backgroundColor: c.card, ...edgeFade(stripStart, stripEnd, 20) }}
+          className="edge-fade-x no-scrollbar flex border-b border-ink/10 shrink-0 overflow-x-auto"
         >
           {/* An icon each. Seven tabs of small uppercase type is a wall of
               words to read every time; a glyph is what the eye actually aims
@@ -178,7 +258,12 @@ export function SetupModal({
             // trophy beside it said which one this really was.
             { id: "achievements", label: "Achievements", icon: Trophy },
             { id: "shop", label: "Rewards", icon: Gift },
-            { id: "projects", label: "Projects", icon: FolderOpen },
+            // Projects had a tab of its own and no longer does. Two of these
+            // ten were half empty — this project's four fields, and a list of
+            // the others — and they were half empty with the *same* subject,
+            // so the panel's one really unhelpful stretch of nothing was
+            // being drawn twice over. They are one tab: which project you are
+            // in, and then every project there is.
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
             { id: "app", label: "App", icon: Palette },
@@ -187,6 +272,7 @@ export function SetupModal({
             return (
               <button
                 key={t.id}
+                data-tab={t.id}
                 onClick={() => setTab(t.id)}
                 style={
                   active ? { borderColor: c.accent, color: c.accent } : undefined
@@ -204,9 +290,33 @@ export function SetupModal({
           })}
         </div>
 
+        {/* **Keyed on the tab**, so the scroll position leaves with it.
+            One box serves all ten and React keeps its `scrollTop` across a
+            switch, so leaving Slots scrolled 42px down opened Counters 42px
+            down as well — with the By kind / By category row, the first thing
+            you came for, half under the top edge. On a tab whose content runs
+            to eighteen hundred pixels the miss is that much larger.
+
+            A key rather than a ref and `scrollTop = 0`: the key says what is
+            true — this is a different box, not the same one moved back — and
+            it needs no ref, no effect and no second place to remember when a
+            tab is added. Remounting costs nothing here, since every tab inside
+            already mounts and unmounts on the same switch. */}
+        {/* **The bottom edge only.** A row sliced through against the
+            footer's hairline reads the same as a row that ends there, which
+            is the one thing the panel must not be ambiguous about — so the
+            content fades out while there is more below it and stops fading
+            the moment there is not.
+
+            The top is left hard on purpose. It is bounded by the tab strip
+            rather than by floating chrome, and the Counters tab parks its
+            sub-tabs up there on a sticky row: a fade at that end would take
+            the one control it is most important to be able to read. */}
         <div
-          style={{ backgroundColor: c.card }}
-          className="p-5 overflow-y-auto rounded-b-xl flex-1 min-h-0"
+          key={tab}
+          ref={attachBody}
+          style={{ backgroundColor: c.card, ...edgeFade(false, bodyEnd) }}
+          className="tab-fade edge-fade-y p-5 overflow-y-auto rounded-b-xl flex-1 min-h-0"
         >
           {tab === "tags" && (
             <TagsTab
@@ -219,10 +329,29 @@ export function SetupModal({
           )}
           {tab === "app" && <AppearanceTab />}
           {tab === "details" && (
-            <ProjectDetailsTab
-              settings={settings}
-              onSave={onSaveSettings}
-            />
+            <div className="space-y-5">
+              <ProjectDetailsTab
+                settings={settings}
+                onSave={onSaveSettings}
+              />
+              {/* A rule, which is otherwise not how this app divides things
+                  up — but these are two subjects rather than two groups of
+                  one: everything above is *this* project, and everything
+                  below is which project you are in at all. A gap alone would
+                  have read as one more field. */}
+              <div className="border-t border-ink/10 pt-5">
+                <ProjectsTab
+                  projects={projects}
+                  activeProjectId={activeProjectId}
+                  onSwitch={(id) => {
+                    onSwitchProject(id)
+                    onClose()
+                  }}
+                  onAdd={onAddProject}
+                  onDelete={onDeleteProject}
+                />
+              </div>
+            </div>
           )}
           {tab === "slots" && (
             <EditableList
@@ -289,18 +418,6 @@ export function SetupModal({
               onChange={onUpdateUnits}
             />
           )}
-          {tab === "projects" && (
-            <ProjectsTab
-              projects={projects}
-              activeProjectId={activeProjectId}
-              onSwitch={(id) => {
-                onSwitchProject(id)
-                onClose()
-              }}
-              onAdd={onAddProject}
-              onDelete={onDeleteProject}
-            />
-          )}
         </div>
 
         {/* Outside the tabs because it covers everything, not the tab you
@@ -330,17 +447,42 @@ function ProjectsTab({
 
   return (
     <div className="space-y-2 font-mono text-sm">
-      <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-        Switch between separate projects, each with its own slots, activities
-        and log.
+      {/* Capitals label; they do not carry prose. This *is* a label, and
+          the sentence under it is set the way the same paragraph is set on
+          Tags and Categories — two lines of tracked-out capitals being the
+          least readable thing the app can draw. */}
+      <span className="block text-[10px] uppercase tracking-widest text-ink/50">
+        All projects
+      </span>
+      <p className="text-[11px] font-mono text-ink/45 leading-relaxed mb-1">
+        Each one keeps its own slots, activities and log. Switching closes
+        this panel and reopens the logbook on the project you picked.
       </p>
       {projects.map((p) => {
         const active = p.id === activeProjectId
-        return (
-          <div
-            key={p.id}
-            className={`rounded-xl p-2.5 flex items-center gap-2.5 ${active ? "bg-ink/[0.10]" : "bg-ink/[0.04]"}`}
-          >
+        /* **How many days are in it**, beside the date it started.
+
+           A project's name is not always a name: eight of them called "Time
+           tracker" is what a New project button and a busy week produce, and
+           until now the only thing separating them was a start date, which
+           for projects made in the same fortnight separates nothing. What
+           actually tells them apart is which one has anything in it — the
+           real logbook has hundreds of days and the accidents have none — and
+           that is a number the tab was already holding and not printing. It
+           is also what makes the delete button usable: nobody removes a
+           project they cannot identify. */
+        const logged = Object.keys(p.days || {}).length
+        const detail = [
+          p.settings.startDate
+            ? fmtDateLong(p.settings.startDate)
+            : "No start date",
+          p.settings.endDate ? `→ ${fmtDateLong(p.settings.endDate)}` : null,
+          logged ? `${logged} day${logged === 1 ? "" : "s"} logged` : "empty",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+        const face = (
+          <>
             <span
               className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
               style={{
@@ -350,19 +492,46 @@ function ProjectsTab({
             >
               <RenderIcon name={p.settings.projectIcon} size={16} />
             </span>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <div className="text-xs font-bold truncate">
                 {p.settings.projectName || "Untitled project"}
               </div>
-              <div className="text-[10px] text-ink/40 truncate">
-                {p.settings.startDate
-                  ? fmtDateLong(p.settings.startDate)
-                  : "No start date"}
-                {p.settings.endDate
-                  ? ` → ${fmtDateLong(p.settings.endDate)}`
-                  : ""}
-              </div>
+              <div className="text-[10px] text-ink/40 truncate">{detail}</div>
             </div>
+          </>
+        )
+        return (
+          <div
+            key={p.id}
+            /* **No scrolling to the active one, deliberately.** The list
+               used to jump to it on the way in, because on sixteen projects
+               the one you were in was as likely as not below the fold and the
+               tab opened on rows you were not looking at. It shares the tab
+               with the project's own name and dates now, which answers that
+               question higher up and without moving anything — and the jump
+               would land past the block you actually came for. */
+            className={`rounded-xl flex items-center gap-2.5 pr-2.5 ${active ? "bg-ink/[0.10]" : "bg-ink/[0.04]"}`}
+          >
+            {/* **The row is the switch**, rather than carrying one.
+
+                This is a list you pick from, and a button per line put ten
+                identical accent-filled rectangles down the right-hand edge —
+                a column of colour saying nothing except that there are ten of
+                them, while the thing you were actually reading, the name, was
+                not clickable. The active row is a `div` rather than a
+                disabled button: there is nowhere for it to take you. */}
+            {active ? (
+              <div className="flex-1 min-w-0 flex items-center gap-2.5 p-2.5">
+                {face}
+              </div>
+            ) : (
+              <button
+                onClick={() => onSwitch(p.id)}
+                className={`${btnBase} flex-1 min-w-0 flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-ink/[0.04]`}
+              >
+                {face}
+              </button>
+            )}
             {confirmDeleteId === p.id ? (
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
@@ -383,17 +552,11 @@ function ProjectsTab({
               </div>
             ) : (
               <div className="flex items-center gap-1 shrink-0">
-                {!active && (
-                  <button
-                    onClick={() => onSwitch(p.id)}
-                    style={{ backgroundColor: c.accent, color: c.onFill }}
-                    className={`${btnBase} px-2.5 py-1.5 rounded-lg uppercase tracking-widest text-[9px]`}
-                  >
-                    Switch
-                  </button>
-                )}
                 {active && (
-                  <span className="text-[9px] uppercase tracking-widest text-ink/40 px-1">
+                  <span
+                    className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-full"
+                    style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
+                  >
                     Active
                   </span>
                 )}
@@ -449,7 +612,6 @@ function ProjectDetailsTab({
     settings.startDate || toKey(new Date()),
   )
   const [endDate, setEndDate] = useState(settings.endDate || "")
-  const [iconPickerOpen, setIconPickerOpen] = useState(false)
   // This form auto-saves, so it must not fire on mount: merely opening the
   // setup modal would write whatever it was seeded with. That is exactly how a
   // blank default project got saved over a real one when the modal opened on a
@@ -484,17 +646,27 @@ function ProjectDetailsTab({
           Project
         </span>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIconPickerOpen((o) => !o)}
-              className={`${btnBase} w-10 h-10 rounded-xl border-2 flex items-center justify-center hover:opacity-75 shrink-0`}
-              style={{ borderColor: c.accent, color: c.accent }}
-            >
-              <RenderIcon name={projectIcon} size={18} />
-            </button>
-            {iconPickerOpen && (
-              <div className="absolute z-30 top-12 left-0 bg-card rounded-xl shadow-xl ring-1 ring-ink/10 p-2.5 w-64">
+          {/* Portalled, for the reason the same picker in `EditableList` is:
+              an `absolute` panel inside the panel's scroll area is clipped by
+              it, and this tab now has a list of projects under it to scroll.
+              The border moves to a span inside the button, since the trigger's
+              class is the popover's to set. */}
+          <PopoverMenu
+            width={256}
+            label="Project icon"
+            wrapClassName="shrink-0"
+            triggerClassName={`${btnBase} rounded-xl hover:opacity-75`}
+            trigger={
+              <span
+                className="w-10 h-10 rounded-xl border-2 flex items-center justify-center"
+                style={{ borderColor: c.accent, color: c.accent }}
+              >
+                <RenderIcon name={projectIcon} size={18} />
+              </span>
+            }
+          >
+            {(close) => (
+              <div>
                 <p className="text-[9px] uppercase tracking-widest text-ink/40 mb-1.5">
                   Project icon
                 </p>
@@ -502,12 +674,12 @@ function ProjectDetailsTab({
                   value={projectIcon}
                   onPick={(name) => {
                     setProjectIcon(name)
-                    setIconPickerOpen(false)
+                    close()
                   }}
                 />
               </div>
             )}
-          </div>
+          </PopoverMenu>
           <input
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}

@@ -76,13 +76,21 @@ export function DataTransfer({
 
   return (
     <div className="px-5 py-3 border-t border-ink/10 shrink-0 rounded-b-xl bg-card">
-      <div className="flex items-center justify-between gap-3">
+      {/* **It wraps.** Two pills and a line of prose do not fit across a
+          phone: the row measured 358px inside a 303px panel, so "Export JSON"
+          was cut off at the edge — and since nothing on the way out is
+          `overflow-hidden`, the overflow reached the backdrop and gave the
+          whole page a horizontal scroll for as long as Setup was open. The
+          buttons take `ml-auto` so they stay hard right whether they sit
+          beside the line or drop below it, which is what a day card's action
+          group already does with the same problem. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span className="text-[10px] font-mono text-ink/45">
           {staged
             ? `Into ${PROJECT_REF || "this database"}`
             : "Every project, in one file"}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           <input
             ref={fileRef}
             type="file"

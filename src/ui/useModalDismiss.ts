@@ -39,6 +39,14 @@ const unlock = () => {
  * app already calls this, so there is one place that knows one is up, and a
  * dialog you can scroll the whole logbook behind reads as a rendering fault
  * rather than a layer.
+ *
+ * **And putting the keyboard back where it was found.** Closing a modal left
+ * focus on a button inside a tree that had just been unmounted, so it fell to
+ * `<body>` — which for anyone driving by keyboard means the next Tab starts
+ * again from the top of the page, with no way back to the thing they had just
+ * been using except by walking the whole logbook. The opener is remembered on
+ * the way in and focused on the way out, after the scroll lock has been
+ * released so the page is its own size again when it moves.
  */
 export function useModalDismiss(onClose: () => void) {
   useEffect(() => {
@@ -50,8 +58,16 @@ export function useModalDismiss(onClose: () => void) {
   }, [onClose])
 
   useEffect(() => {
+    // Read before the lock: `document.activeElement` is still the button that
+    // opened this, and one render later it may not be anything.
+    const opener = document.activeElement
     lock()
-    return unlock
+    return () => {
+      unlock()
+      // `isConnected` because the opener is not always still there — switching
+      // project closes this modal by replacing everything behind it.
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
   }, [])
 
   return (e: ReactMouseEvent) => {
