@@ -64,6 +64,7 @@ import {
   startOfWeek,
   toKey,
 } from "../lib/date"
+import { t, useT } from "../lib/i18n"
 import { fmtHours } from "../lib/time"
 import { levelColour, minutesLeftToday } from "../lib/notices"
 import type { NoticeLevel } from "../lib/notices"
@@ -98,22 +99,30 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
  * state — which the board does not say in a word anywhere — in the level's own
  * colour, so the two read as one vocabulary rather than two.
  */
-const LEVEL_WORD: Record<NoticeLevel, string> = {
-  gone: "Lost",
-  danger: "Broken — a freeze still reaches it",
-  warning: "At risk",
-  notice: "Owed today",
-  allClear: "Holding",
-}
+/* Getters rather than tables: a module-level object is built once at import
+   and would stay English for the life of the panel. */
+const levelWord = (level: NoticeLevel): string =>
+  t(
+    {
+      gone: "state:Lost",
+      danger: "Broken — a freeze still reaches it",
+      warning: "At risk",
+      notice: "Owed today",
+      allClear: "Holding",
+    }[level],
+  )
 
-const STATE_WORD: Record<RuleState, string> = {
-  met: "kept",
-  frozen: "frozen",
-  missed: "missed",
-  pending: "still open",
-  unjudged: "not judged",
-  watching: "not yet judged",
-}
+const stateWord = (state: RuleState): string =>
+  t(
+    {
+      met: "state:kept",
+      frozen: "state:frozen",
+      missed: "state:missed",
+      pending: "still open",
+      unjudged: "not judged",
+      watching: "not yet judged",
+    }[state],
+  )
 
 export function CustomStreakSection({
   status,
@@ -165,6 +174,7 @@ export function CustomStreakSection({
   nested?: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const { rule, freezes } = status
   const todayKey = toKey(today)
   const byWeek = rule.scope === "week"
@@ -266,10 +276,14 @@ export function CustomStreakSection({
          the condition had to say. `Tip` renders it with `whitespace-pre-line`,
          so a bubble listing two checks reads as two checks. */
       tooltip: [
-        `${fmtDateLong(key)} — ${STATE_WORD[state]}`,
+        `${fmtDateLong(key)} — ${stateWord(state)}`,
         ...(state === "unjudged" ? [] : breakdown(readings, key)),
         ...(state === "watching"
-          ? ["This week began before the rule did — only its ceilings apply."]
+          ? [
+              t(
+                "This week began before the rule did — only its ceilings apply.",
+              ),
+            ]
           : []),
         ...(short
           ? [
@@ -279,8 +293,19 @@ export function CustomStreakSection({
               )} and you have ${unpaid[0].available}`,
             ]
           : []),
+        /* **Named, not counted.** This said `2 of 3 frozen`, which tells you
+           there is something to find out and not what it is — and on a weekly
+           rule, where every violation is bought separately now, *which* of
+           them you already paid for is the whole question. The cell's corner
+           snowflake says that some of it is bought; this says which. */
         ...(offers.length > unpaid.length
-          ? [`${offers.length - unpaid.length} of ${offers.length} frozen`]
+          ? [
+              "",
+              `Frozen — ${offers.length - unpaid.length} of ${offers.length}:`,
+              ...offers
+                .filter((o) => o.frozen)
+                .map((o) => `· ${o.violation.line}`),
+            ]
           : []),
       ].join("\n"),
       /* **Every violation the day has, listed** — `spec 017`, part 6. The
@@ -442,7 +467,7 @@ export function CustomStreakSection({
             <Tip
               text={
                 solo
-                  ? "Show every rule again"
+                  ? t("Show every rule again")
                   : `Show the page as though “${rule.label}” were the only rule that votes`
               }
             >
@@ -501,7 +526,7 @@ export function CustomStreakSection({
             className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ backgroundColor: levelColour(level, c) }}
           />
-          {LEVEL_WORD[level]}
+          {levelWord(level)}
         </div>
       )}
 
@@ -519,17 +544,24 @@ export function CustomStreakSection({
                 className="shrink-0"
                 style={{ color: w.wouldKeep ? c.freeze : `${c.ink}40` }}
               />
+              {/* One sentence with the verdict spliced in, rather than four
+                  fragments joined at render: the pieces go in a different
+                  order in a different language, and a sentence assembled out
+                  of them is the one thing a translation cannot follow. */}
               <span className="text-ink/70">
-                Week of {fmtDateLong(w.weekStart)} is still open —{" "}
+                {t("Week of {start} is still open — ", {
+                  start: fmtDateLong(w.weekStart),
+                })}
                 {w.wouldKeep ? (
-                  <>
-                    on track for{" "}
-                    <strong style={{ color: c.freeze }}>+1 freeze</strong>
-                  </>
+                  <strong style={{ color: c.freeze }}>
+                    {t("on track for +1 freeze")}
+                  </strong>
                 ) : (
-                  <strong className="text-ink/50">no freeze as it stands</strong>
+                  <strong className="text-ink/50">
+                    {t("no freeze as it stands")}
+                  </strong>
                 )}
-                , sealing {fmtDateLong(w.sealsOn)}
+                {t(", sealing {date}", { date: fmtDateLong(w.sealsOn) })}
               </span>
             </div>
           ))}
@@ -542,15 +574,21 @@ export function CustomStreakSection({
 
       <StreakStrip
         cells={cells}
-        note="Freezes go on today and yesterday, the same window the log is written in. A day costs one freeze for every unit it fell short by."
+        note={t(
+          "Freezes go on today and yesterday, the same window the log is written in. A day costs one freeze for every unit it fell short by.",
+        )}
       />
 
       <StreakChart
         rows={chartRows}
         tint={rule.color}
-        valueName={compound ? "Over the limit by" : sole?.label || "Counted"}
+        valueName={
+          compound ? t("Over the limit by") : sole?.label || t("Counted")
+        }
         limitName={
-          compound || clauses[0]?.op === "atMost" ? "At most" : "At least"
+          t(
+            compound || clauses[0]?.op === "atMost" ? "At most" : "At least",
+          )
         }
         // Bars and the limit line are both minutes for a rule about hours, so
         // the axis and the tooltip have to read them as durations.
@@ -559,21 +597,21 @@ export function CustomStreakSection({
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatTile
-          label="Current streak"
+          label={t("Current streak")}
           value={status.current}
           sub={unitWord(status.current)}
           icon={Flame}
           inset
         />
         <StatTile
-          label="Best streak"
+          label={t("Best streak")}
           value={status.best}
           sub={unitWord(status.best)}
           icon={Trophy}
           inset
         />
         <StatTile
-          label="Freezes banked"
+          label={t("Freezes banked")}
           value={freezes.banked}
           sub={`of ${freezes.cap}`}
           icon={Snowflake}

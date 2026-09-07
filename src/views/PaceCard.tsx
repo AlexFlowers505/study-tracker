@@ -24,6 +24,7 @@
    of the chart for one rule and at the bottom for the next.
 --------------------------------------------------------------- */
 
+import { pluralOf, useT } from "../lib/i18n"
 import type { ClausePace, PaceState } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER } from "../lib/date"
 import { fmtHours } from "../lib/time"
@@ -33,8 +34,12 @@ import { usePalette } from "../ui/useTheme"
 /** Tall enough to compare two bars by eye, short enough to sit above a strip. */
 const HEIGHT = 34
 
+const nDays = (n: number) =>
+  pluralOf(n, ["day", "days"], ["день", "дня", "дней"])
+
 export function PaceCard({ pace }: { pace: ClausePace }) {
   const c = usePalette()
+  const t = useT()
   const fmt = (n: number) =>
     pace.measure === "time" ? fmtHours(n) : String(n)
 
@@ -54,10 +59,10 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
 
   const done = pace.side === "min" && pace.value >= pace.limit
   const status = pace.lostOn
-    ? "lost"
+    ? t("pace:lost")
     : done
-      ? "done"
-      : `${pace.daysLeft} ${pace.daysLeft === 1 ? "day" : "days"} left`
+      ? t("pace:done")
+      : t("{days} left", { days: nDays(pace.daysLeft) })
 
   const statusColour = pace.lostOn
     ? c.exam
@@ -69,8 +74,8 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
     <div className="rounded-xl bg-ink/[0.04] px-3 py-2.5 mb-2">
       <div className="flex items-baseline justify-between gap-3 mb-2">
         <span className="text-[10px] font-mono uppercase tracking-widest text-ink/55 truncate">
-          {pace.label} · {pace.side === "max" ? "at most" : "at least"}{" "}
-          {fmt(pace.limit)} a week
+          {pace.label} · {t(pace.side === "max" ? "at most" : "at least")}{" "}
+          {t("{amount} a week", { amount: fmt(pace.limit) })}
         </span>
         <span
           className="text-[10px] font-mono shrink-0 tabular-nums"
@@ -85,7 +90,9 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
           const height = peak > 0 ? Math.round((day.bar / peak) * 100) : 0
           const label =
             day.state === "outside"
-              ? `${WEEKDAY_LABELS[WEEKDAY_ORDER[i]]} — not judged by this condition`
+              ? t("{day} — not judged by this condition", {
+                  day: WEEKDAY_LABELS[WEEKDAY_ORDER[i]],
+                })
               : `${WEEKDAY_LABELS[WEEKDAY_ORDER[i]]} — ${fmt(day.cumulative)} of ${fmt(
                   pace.limit,
                 )}${
@@ -123,9 +130,11 @@ export function PaceCard({ pace }: { pace: ClausePace }) {
           cards stack directly on each other, so that single header still reads
           down all of them. */}
       <p className="text-[9px] font-mono text-ink/35 mt-1.5">
-        {pace.side === "max"
-          ? "The bar is what you have spent of the week's allowance."
-          : "The bar is what is still owed. It should reach nothing by Sunday."}
+        {t(
+          pace.side === "max"
+            ? "The bar is what you have spent of the week's allowance."
+            : "The bar is what is still owed. It should reach nothing by Sunday.",
+        )}
       </p>
     </div>
   )

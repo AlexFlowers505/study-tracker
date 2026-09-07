@@ -7,6 +7,7 @@
 import { useMemo } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import type { Activity, Day, DayKey, IsIgnored, Slot } from "../types/model"
+import { useT } from "../lib/i18n"
 import { elapsedDayCount, periodBreakdown } from "../lib/stats"
 import { fmtHours, toHours } from "../lib/time"
 import { CARD, chartTooltip } from "../lib/theme"
@@ -148,6 +149,7 @@ export function PeriodTotals({
   activities: Activity[]
   isIgnored: IsIgnored
 }) {
+  const t = useT()
   const { total, slotRows, activityRows } = useMemo(
     () => periodBreakdown(dates, days, slots, activities, isIgnored),
     [dates, days, slots, activities, isIgnored],
@@ -162,7 +164,7 @@ export function PeriodTotals({
   if (total === 0) {
     return (
       <div className={`${CARD} mb-4 text-[10px] font-mono text-ink/40`}>
-        No study logged in this period.
+        {t("No study logged in this period.")}
       </div>
     )
   }
@@ -173,13 +175,13 @@ export function PeriodTotals({
   return (
     <div className="grid md:grid-cols-2 gap-4 mb-4">
       <ChartCard
-        title="Time by slot"
+        title={t("Time by slot")}
         subtitle={`When the ${fmtHours(total)}${perDay} went`}
       >
         <TotalsDonut rows={slotRows} total={total} divisor={divisor} />
       </ChartCard>
       <ChartCard
-        title="Time by activity"
+        title={t("Time by activity")}
         subtitle={`What the ${fmtHours(total)}${perDay} went on`}
       >
         <TotalsDonut rows={activityRows} total={total} divisor={divisor} />

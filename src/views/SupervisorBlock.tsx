@@ -12,20 +12,18 @@
 --------------------------------------------------------------- */
 
 import { Copy, ShieldCheck } from "lucide-react"
+import { t, useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
-const HELP =
-  "With a supervisor, a loosening still waits out its week — and then has to " +
-  "be agreed by somebody else before it takes effect. Narrowing a rule is " +
-  "untouched: you never need permission to ask more of yourself." +
-  String.fromCharCode(10, 10) +
-  "They see the request, the rule before and after, and your reason. Nothing " +
-  "else — not your log, not your counters, not your streaks." +
-  String.fromCharCode(10, 10) +
-  "Send the link however you like. Whoever opens it first becomes the " +
-  "supervisor, and it works once."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const help = () =>
+  [
+    t("With a supervisor, a loosening still waits out its week — and then has to be agreed by somebody else before it takes effect. Narrowing a rule is untouched: you never need permission to ask more of yourself."),
+    t("They see the request, the rule before and after, and your reason. Nothing else — not your log, not your counters, not your streaks."),
+    t("Send the link however you like. Whoever opens it first becomes the supervisor, and it works once."),
+  ].join(String.fromCharCode(10, 10))
 
 export function SupervisorBlock({
   count,
@@ -39,6 +37,7 @@ export function SupervisorBlock({
   onMake: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   return (
     <div className="mt-4 rounded-2xl bg-ink/[0.04] px-3.5 py-3 space-y-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -53,7 +52,7 @@ export function SupervisorBlock({
             ? `${count} — loosening needs their yes`
             : "none — the clock is the only gate"}
         </span>
-        <Tip multiline text={HELP}>
+        <Tip multiline text={help()}>
           <span className="ml-auto text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
             what this means
           </span>
@@ -67,7 +66,7 @@ export function SupervisorBlock({
           className={`${btnBase} px-3 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-widest`}
           style={{ backgroundColor: `${c.sleep}24`, color: c.sleep }}
         >
-          {count ? "Another link" : "Create an invite link"}
+          {t(count ? "Another link" : "Create an invite link")}
         </button>
         {url && (
           <button

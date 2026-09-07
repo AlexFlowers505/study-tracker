@@ -14,6 +14,7 @@
 import { useRef, useState } from "react"
 import { Download, Upload } from "lucide-react"
 import type { AppData } from "../types/model"
+import { useT } from "../lib/i18n"
 import { normalizeData } from "../lib/defaults"
 import { btnBase } from "../lib/theme"
 import { PROJECT_REF } from "../data/supabase"
@@ -37,6 +38,7 @@ export function DataTransfer({
   onImport: (data: AppData) => Promise<void>
 }) {
   const c = usePalette()
+  const t = useT()
   const fileRef = useRef<HTMLInputElement>(null)
   const [staged, setStaged] = useState<Staged | null>(null)
   const [busy, setBusy] = useState(false)
@@ -88,7 +90,7 @@ export function DataTransfer({
         <span className="text-[10px] font-mono text-ink/45">
           {staged
             ? `Into ${PROJECT_REF || "this database"}`
-            : "Every project, in one file"}
+            : t("Every project, in one file")}
         </span>
         <div className="flex items-center gap-2 ml-auto">
           <input
@@ -134,7 +136,7 @@ export function DataTransfer({
                 style={{ backgroundColor: c.exam }}
                 className={`${pillBtn} hover:opacity-90 disabled:opacity-40`}
               >
-                {busy ? "Writing…" : "Overwrite"}
+                {t(busy ? "Writing…" : "Overwrite")}
               </button>
             </>
           )}

@@ -20,6 +20,7 @@
 
 import { useMemo, useState } from "react"
 import { Search } from "lucide-react"
+import { useT } from "../lib/i18n"
 import { FIELD_SOFT, btnBase } from "../lib/theme"
 import { Tip } from "./Tip"
 import { ICON_GROUPS, ICON_LIBRARY, iconMatches } from "./iconLibrary"
@@ -33,6 +34,7 @@ export function IconGrid({
   value?: string
   onPick: (name: string) => void
 }) {
+  const t = useT()
   const [query, setQuery] = useState("")
   const searching = query.trim().length > 0
 
@@ -84,7 +86,7 @@ export function IconGrid({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search icons"
+          placeholder={t("Search icons")}
           // Not autofocused: this opens inside a modal that already has fields,
           // and stealing the caret on every swatch click is worse than a tap.
           className={`${FIELD_SOFT} text-[11px] pl-6`}

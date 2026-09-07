@@ -4,50 +4,87 @@
 
 import type { AppData, Activity, Project, Settings, Slot } from "../types/model"
 import { toKey } from "./date"
+import { t } from "./i18n"
 import { makeId } from "./id"
 import { dayCounters, legacyUnits } from "./counters"
 
-export const DEFAULT_SLOTS: Slot[] = [
+/**
+ * The seed a brand-new project starts from.
+ *
+ * **A function, and the labels are translated; the ids never are.** These
+ * become the user's own data the moment a project exists, and from then on
+ * they are theirs — renamed, deleted, whatever they like — so nothing here
+ * ever revisits them. What it does mean is that somebody creating a logbook in
+ * Russian is not handed five English slot names to rename before they can
+ * start, which is the half-translated feel this whole pass is about.
+ *
+ * A `const` array would be built once at import and translated once, which is
+ * *almost* right — the language is resolved before any module loads — but it
+ * would freeze to whatever the language was on the first page view of the
+ * session, and this is read again whenever a project comes back without slots.
+ */
+export const defaultSlots = (): Slot[] => [
   {
     id: "morningSubway",
-    label: "Morning Transit",
+    label: t("seed:Morning Transit"),
     iconName: "Train",
     color: "#E29A3E",
   },
-  { id: "morning", label: "Morning", iconName: "Sunrise", color: "#4C8FBD" },
-  { id: "daytime", label: "Daytime", iconName: "Sun", color: "#2F9E8F" },
+  {
+    id: "morning",
+    label: t("seed:Morning"),
+    iconName: "Sunrise",
+    color: "#4C8FBD",
+  },
+  {
+    id: "daytime",
+    label: t("seed:Daytime"),
+    iconName: "Sun",
+    color: "#2F9E8F",
+  },
   {
     id: "eveningSubway",
-    label: "Evening Transit",
+    label: t("seed:Evening Transit"),
     iconName: "Train",
     color: "#8B6FB3",
   },
-  { id: "evening", label: "Evening", iconName: "Moon", color: "#C1595B" },
+  {
+    id: "evening",
+    label: t("seed:Evening"),
+    iconName: "Moon",
+    color: "#C1595B",
+  },
 ]
 
-export const DEFAULT_ACTIVITIES: Activity[] = [
+/** The same, for what a fresh project files its time under. */
+export const defaultActivities = (): Activity[] => [
   {
     id: "notes",
-    label: "Lesson notes",
+    label: t("seed:Lesson notes"),
     iconName: "NotebookPen",
     color: "#4C8FBD",
   },
   {
     id: "gatherQuestions",
-    label: "Gather questions",
+    label: t("seed:Gather questions"),
     iconName: "MessageCircleQuestion",
     color: "#E29A3E",
   },
   {
     id: "gatherTasks",
-    label: "Gather tasks",
+    label: t("seed:Gather tasks"),
     iconName: "ListChecks",
     color: "#2F9E8F",
   },
-  { id: "qa", label: "Q&A", iconName: "HelpCircle", color: "#8B6FB3" },
+  {
+    id: "qa",
+    label: t("seed:Q&A"),
+    iconName: "HelpCircle",
+    color: "#8B6FB3",
+  },
   {
     id: "solvingTasks",
-    label: "Solving tasks",
+    label: t("seed:Solving tasks"),
     iconName: "Calculator",
     color: "#C1595B",
   },
@@ -85,8 +122,8 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: makeId("project"),
     settings: { ...DEFAULT_SETTINGS, startDate: toKey(new Date()) },
-    slots: DEFAULT_SLOTS,
-    activities: DEFAULT_ACTIVITIES,
+    slots: defaultSlots(),
+    activities: defaultActivities(),
     // Deliberately empty. A new project tallies nothing until you say what,
     // rather than inheriting two units somebody else's syllabus needed.
     counterUnits: [],
@@ -111,9 +148,11 @@ export function normalizeProject(p: Partial<Project>): Project {
   return {
     id: p.id || makeId("project"),
     settings,
-    slots: p.slots && p.slots.length ? p.slots : DEFAULT_SLOTS,
+    slots: p.slots && p.slots.length ? p.slots : defaultSlots(),
     activities:
-      p.activities && p.activities.length ? p.activities : DEFAULT_ACTIVITIES,
+      p.activities && p.activities.length
+        ? p.activities
+        : defaultActivities(),
     counterUnits: p.counterUnits ?? legacyUnits(settings),
     days: migrated
       ? Object.fromEntries(

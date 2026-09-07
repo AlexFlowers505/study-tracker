@@ -19,6 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { CounterUnit, Project, Slot, Tag } from '../types/model'
+import { t, useT } from '../lib/i18n'
 import { computeOverviewStats } from '../lib/analytics'
 import type {
   CounterGroupBy,
@@ -68,12 +69,16 @@ type Sums = Record<string, number>
 /* The Lessons series left with `spec 008`: lessons became a user-defined
    counter unit, and charting one hard-coded unit is exactly what that change
    was undoing. Per-unit series come back with the new statistics. */
-const CHART_MODES = [
-  { id: "hours", label: "Hours" },
-  { id: "activity", label: "Activities" },
-  { id: "slot", label: "Slots" },
-  { id: "tag", label: "Tags" },
-  { id: "counter", label: "Counters" },
+/* **Getters, not constants.** A module-level array is built once at import
+   and would say `Hours` in English for the life of the tab. Seven `t()` hits
+   per render is nothing worth caching, and the alternative — translating at
+   each of the four call sites — is four places for one of them to be missed. */
+const chartModes = () => [
+  { id: "hours", label: t("mode:Hours") },
+  { id: "activity", label: t("mode:Activities") },
+  { id: "slot", label: t("mode:Slots") },
+  { id: "tag", label: t("mode:Tags") },
+  { id: "counter", label: t("mode:Counters") },
 ]
 
 /** Counts, not minutes — a different axis, so it formats differently too. */
@@ -89,13 +94,17 @@ const countSubtitle = (
   bySlot: boolean,
   per: string,
 ) => {
-  const what =
+  const what = t(
     mode === "counter"
       ? "Counts per counter"
       : groupBy === "tag"
         ? "Counts summed per tag"
-        : "Counts per tagged counter"
-  return `${what}, per ${per}${bySlot ? ", split by slot" : ""}`
+        : "Counts per tagged counter",
+  )
+  return (
+    t("{what}, per {per}", { what, per: t(`per:${per}`) }) +
+    (bySlot ? t(", split by slot") : "")
+  )
 }
 
 /* The two sections this half of the page is made of.
@@ -106,28 +115,31 @@ const countSubtitle = (
  * for the same thing — both halves are statistics; they differ only in how
  * they are drawn, and that is not the useful distinction to hang a heading on.
  */
-const SUMMARY_TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "averages", label: "Averages" },
-  { id: "remarkable", label: "Remarkable" },
+const summaryTabs = () => [
+  { id: "overview", label: t("Overview") },
+  { id: "averages", label: t("Averages") },
+  { id: "remarkable", label: t("Remarkable") },
 ]
 
-const SUMMARY_CAPTIONS: Record<string, string> = {
-  overview: "Totals for the selected period",
-  averages: "Pace over the selected period",
-  remarkable: "Best & worst, within the selected period, in hours",
-}
+const summaryCaption = (id: string): string =>
+  t(
+    {
+      overview: "Totals for the selected period",
+      averages: "Pace over the selected period",
+      remarkable: "Best & worst, within the selected period, in hours",
+    }[id] ?? "",
+  )
 
 const SUMMARY_HELP =
   "The selected period as single figures: how much time it holds and where " +
   "that time went, the average pace, and its best and worst days, weeks and " +
   "months. Days marked ignored count towards none of it."
 
-const TREND_TABS = [
-  { id: "daily", label: "Daily" },
-  { id: "weekday", label: "Weekday" },
-  { id: "weekly", label: "Weekly" },
-  { id: "monthly", label: "Monthly" },
+const trendTabs = () => [
+  { id: "daily", label: t("Daily") },
+  { id: "weekday", label: t("Weekday") },
+  { id: "weekly", label: t("Weekly") },
+  { id: "monthly", label: t("Monthly") },
 ]
 
 const TRENDS_HELP =
@@ -192,14 +204,14 @@ function CountOptions({
       {mode === "tag" && (
         <>
           {pill(groupBy === "tag", "By tag", () => onGroupBy("tag"))}
-          {pill(groupBy === "counter", "By counter", () =>
+          {pill(groupBy === "counter", t("By counter"), () =>
             onGroupBy("counter"),
           )}
           <span className="self-stretch w-px my-1 mx-1 bg-ink/20" />
         </>
       )}
-      {pill(!bySlot, "Whole day", () => onBySlot(false))}
-      {pill(bySlot, "By slot", () => onBySlot(true))}
+      {pill(!bySlot, t("Whole day"), () => onBySlot(false))}
+      {pill(bySlot, t("By slot"), () => onBySlot(true))}
     </div>
   )
 }
@@ -268,6 +280,7 @@ export function AnalyticsView({
   rangeEnd: Date
 }) {
   const c = usePalette()
+  const t = useT()
   const {
     slots,
     activities,
@@ -305,7 +318,7 @@ export function AnalyticsView({
   // A stored choice can still say 'lessons' from before that mode existed, so
   // anything unrecognised falls back rather than rendering an empty chart.
   const known = (mode: string, to: string) =>
-    CHART_MODES.some((m) => m.id === mode) ? mode : to
+    chartModes().some((m) => m.id === mode) ? mode : to
   const dailyMode = known(rawDailyMode, 'slot')
   const weekdayMode = known(rawWeekdayMode, 'hours')
   const weeklyMode = known(rawWeeklyMode, 'hours')
@@ -736,12 +749,12 @@ export function AnalyticsView({
   return (
     <div className="space-y-8">
       <TabbedSection
-        title="Summary"
-        help={SUMMARY_HELP}
-        tabs={SUMMARY_TABS}
+        title={t("Summary")}
+        help={t(SUMMARY_HELP)}
+        tabs={summaryTabs()}
         activeId={summaryTab}
         onChange={setSummaryTab}
-        caption={SUMMARY_CAPTIONS[summaryTab]}
+        caption={summaryCaption(summaryTab)}
       >
         {summaryTab === "overview" && (
           <OverviewStats period={periodStats}>
@@ -763,15 +776,15 @@ export function AnalyticsView({
       </TabbedSection>
 
       <TabbedSection
-        title="Trends"
-        help={TRENDS_HELP}
-        tabs={TREND_TABS}
+        title={t("Trends")}
+        help={t(TRENDS_HELP)}
+        tabs={trendTabs()}
         activeId={trendTab}
         onChange={setTrendTab}
       >
         {trendTab === "daily" && (
         <ChartCard
-          title="Daily study time"
+          title={t("Daily study time")}
           subtitle={
             dailyMode === "hours"
               ? "Total hours logged per day"
@@ -782,7 +795,7 @@ export function AnalyticsView({
           action={
             <div className="flex flex-wrap items-center gap-1.5 justify-end">
               <SegmentedControl
-                items={CHART_MODES}
+                items={chartModes()}
                 activeId={dailyMode}
                 onChange={setDailyMode}
               />
@@ -896,7 +909,7 @@ export function AnalyticsView({
         )}
         {trendTab === "weekday" && (
         <ChartCard
-          title="Weekday effectiveness"
+          title={t("Weekday totals")}
           subtitle={
             weekdayMode === "hours"
               ? goalsEnabled
@@ -909,7 +922,7 @@ export function AnalyticsView({
           action={
             <div className="flex flex-wrap items-center gap-1.5 justify-end">
               <SegmentedControl
-                items={CHART_MODES}
+                items={chartModes()}
                 activeId={weekdayMode}
                 onChange={setWeekdayMode}
               />
@@ -1004,7 +1017,7 @@ export function AnalyticsView({
         )}
         {trendTab === "weekly" && (
         <ChartCard
-          title="Weekly effectiveness"
+          title={t("Weekly totals")}
           subtitle={
             weeklyMode === "hours"
               ? goalsEnabled
@@ -1017,7 +1030,7 @@ export function AnalyticsView({
           action={
             <div className="flex flex-wrap items-center gap-1.5 justify-end">
               <SegmentedControl
-                items={CHART_MODES}
+                items={chartModes()}
                 activeId={weeklyMode}
                 onChange={setWeeklyMode}
               />
@@ -1115,7 +1128,7 @@ export function AnalyticsView({
         )}
         {trendTab === "monthly" && (
           <ChartCard
-            title="Monthly effectiveness"
+            title={t("Monthly totals")}
             subtitle={
               monthlyMode === "hours"
                 ? goalsEnabled
@@ -1128,7 +1141,7 @@ export function AnalyticsView({
             action={
               <div className="flex flex-wrap items-center gap-1.5 justify-end">
                 <SegmentedControl
-                  items={CHART_MODES}
+                  items={chartModes()}
                   activeId={monthlyMode}
                   onChange={setMonthlyMode}
                 />

@@ -18,6 +18,7 @@
 import type { ReactNode } from "react"
 import { Snowflake } from "lucide-react"
 import type { DayKey } from "../types/model"
+import { pluralOf, t, useT } from "../lib/i18n"
 import { WEEKDAY_ORDER, addDays, fromKey, startOfWeek, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
 import { PopoverMenu } from "../ui/PopoverMenu"
@@ -68,18 +69,24 @@ export interface StripCell {
   }
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+const nFreezes = (n: number) =>
+  pluralOf(n, ["freeze", "freezes"], ["заморозка", "заморозки", "заморозок"])
 
-/** One letter per weekday at these sizes — three would wrap in a month grid. */
-const INITIALS: Record<number, string> = {
-  1: "M",
-  2: "T",
-  3: "W",
-  4: "T",
-  5: "F",
-  6: "S",
-  0: "S",
-}
+/** One letter per weekday at these sizes — three would wrap in a month grid.
+ *  A getter, so the letters follow the language rather than freezing at
+ *  import; `М В С Ч П С В` is what a Russian reader is looking for. */
+const initial = (weekday: number): string =>
+  t(
+    {
+      1: "wd:M",
+      2: "wd:T",
+      3: "wd:W",
+      4: "wd:Th",
+      5: "wd:F",
+      6: "wd:Sa",
+      0: "wd:Su",
+    }[weekday] ?? "",
+  )
 
 export function StreakStrip({
   cells,
@@ -91,6 +98,7 @@ export function StreakStrip({
   note?: ReactNode
 }) {
   const c = usePalette()
+  const t = useT()
   if (!cells.length) return null
 
   const byKey = new Map(cells.map((cell) => [cell.key, cell]))
@@ -124,7 +132,7 @@ export function StreakStrip({
             key={wd}
             className="text-[9px] font-mono uppercase tracking-widest text-ink/35 text-center"
           >
-            {INITIALS[wd]}
+            {initial(wd)}
           </span>
         ))}
       </div>
@@ -145,6 +153,18 @@ export function StreakStrip({
             )
 
           const tint = tintFor(cell.state)
+          /* **What has been paid for, on the cell itself.**
+
+             Only a *fully* covered period turns colour — half a freeze saves
+             nothing, and a blue cell that still breaks is the same lie as
+             *four of five almost counts*. But a period can now be partly paid
+             for, and until this mark the only way to find that out was to open
+             the popover on every red cell in the row and read it. So the
+             colour still answers *is this saved*, and a small snowflake in the
+             corner answers *is anything here bought* — two different questions
+             that were sharing one signal, with the second one silent. */
+          const paid = cell.freeze?.items.filter((i) => i.frozen).length ?? 0
+          const part = paid > 0 && cell.state !== "frozen"
           /* **A freezable day says so at rest.**
 
              It used to differ from its neighbours only by `hover:brightness`,
@@ -155,7 +175,7 @@ export function StreakStrip({
              that already means "freeze" everywhere else in the app. */
           const body = (
             <div
-              className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg"
+              className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg"
               style={{
                 backgroundColor: tint ? `${tint}24` : `${c.ink}0A`,
                 color: tint || `${c.ink}55`,
@@ -174,6 +194,24 @@ export function StreakStrip({
                   (cell.value ?? "·")
                 )}
               </span>
+              {/* The figure stays: what the period *did* is still the thing
+                  the cell reports, and a mark that replaced it would trade one
+                  fact for another. It sits in the corner, in the freeze colour
+                  the inset hairline round the same cell already uses, so the
+                  two read as one sentence — *something can be bought here, and
+                  some of it has been*. */}
+              {part && (
+                <span
+                  /* Inside the cell, not on its edge. The same hairline ring
+                     that says *something can be bought here* runs round that
+                     corner in this very colour, and a mark sitting on it read
+                     as a thickening of the border rather than as a mark. */
+                  className="absolute top-[3px] right-[3px] leading-none"
+                  style={{ color: c.freeze }}
+                >
+                  <Snowflake size={roomy ? 9 : 7} strokeWidth={3} />
+                </span>
+              )}
             </div>
           )
 
@@ -237,10 +275,18 @@ export function StreakStrip({
                         <Sentence text={item.line} />
                         <span className="block text-[10px] text-ink/45">
                           {item.frozen
-                            ? `already frozen — ${plural(item.cost, "freeze")} spent`
+                            ? t("already frozen — {cost} spent", {
+                                cost: nFreezes(item.cost),
+                              })
                             : item.ok
-                              ? `freeze this — ${plural(item.cost, "freeze")} of ${item.available} available`
-                              : `needs ${plural(item.cost, "freeze")} and you have ${item.available}`}
+                              ? t("freeze this — {cost} of {available} available", {
+                                  cost: nFreezes(item.cost),
+                                  available: item.available,
+                                })
+                              : t("needs {cost} and you have {available}", {
+                                  cost: nFreezes(item.cost),
+                                  available: item.available,
+                                })}
                         </span>
                       </button>
                     ))}

@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Menu, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { usePalette } from "../ui/useTheme"
@@ -46,6 +47,7 @@ export interface NavEntry {
 
 export function PageNav({ entries }: { entries: NavEntry[] }) {
   const c = usePalette()
+  const t = useT()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement | null>(null)
 
@@ -98,7 +100,7 @@ export function PageNav({ entries }: { entries: NavEntry[] }) {
       {open && (
         <nav
           id="page-nav-list"
-          aria-label="Sections on this page"
+          aria-label={t("Sections on this page")}
           className="rounded-2xl bg-card shadow-lg ring-1 ring-ink/10 p-1.5 max-h-[60vh] overflow-y-auto min-w-52"
         >
           <p className="px-2.5 pt-1 pb-1.5 text-[9px] font-mono uppercase tracking-widest text-ink/35">
@@ -143,7 +145,7 @@ export function PageNav({ entries }: { entries: NavEntry[] }) {
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-controls="page-nav-list"
-        aria-label={open ? "Hide the section list" : "Jump to a section"}
+        aria-label={t(open ? "Hide the section list" : "Jump to a section")}
         className={`${btnBase} flex items-center justify-center w-10 h-10 rounded-full bg-card shadow-lg ring-1 ring-ink/10 text-ink/60 hover:text-ink hover:brightness-105`}
       >
         {/* Three bars. `List` drew bullets beside them, which says *a list of

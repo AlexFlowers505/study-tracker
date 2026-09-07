@@ -7,6 +7,7 @@
 
 import { ChevronRight } from "lucide-react"
 import type { StreakTarget } from "../types/model"
+import { useT } from "../lib/i18n"
 import type { StreakContext } from "../lib/customStreaks"
 import { targetInfo, targetsUnits } from "../lib/customStreaks"
 import { Pills } from "../ui/Pills"
@@ -53,6 +54,7 @@ export function CountersPicker({
   ctx: StreakContext
   onChange: (targets: StreakTarget[]) => void
 }) {
+  const t = useT()
   const first = targets[0]
   const pick = pickOf(first, ctx)
   const isSet = SET_PICKS.includes(pick)
@@ -147,12 +149,12 @@ export function CountersPicker({
         >
           {kinds.map((k) => (
             <option key={k} value={k}>
-              {PICK_LABEL[k]}
+              {t(PICK_LABEL[k])}
             </option>
           ))}
         </select>
         {pick === "time" && (
-          <span className={WORD}>whatever it was filed under</span>
+          <span className={WORD}>{t("whatever it was filed under")}</span>
         )}
 
         {/* **The two actions sit on the question's line, not among the
@@ -188,7 +190,9 @@ export function CountersPicker({
 
       {options.length === 0 && pick !== "time" && (
         <p className="text-[10px] font-mono text-ink/40">
-          No {PICK_LABEL[pick].toLowerCase()} yet — Setup has the tab for them.
+          {t("No {kind} yet — Setup has the tab for them.", {
+            kind: t(PICK_LABEL[pick]).toLowerCase(),
+          })}
         </p>
       )}
 
@@ -232,7 +236,7 @@ export function CountersPicker({
                 // an older rule reads as itself and cannot be returned to.
                 ...(member === "any" ? (["any"] as MemberPick[]) : []),
               ] as MemberPick[]
-            ).map((m) => ({ id: m, label: MEMBER_LABEL[m] }))}
+            ).map((m) => ({ id: m, label: t(MEMBER_LABEL[m]) }))}
           />
         </div>
       )}

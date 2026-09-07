@@ -1,4 +1,5 @@
 import { LogOut, Settings2 } from 'lucide-react'
+import { useT } from "../lib/i18n"
 import { APP_NAME } from '../lib/defaults'
 import { fmtDateLong } from '../lib/date'
 import { btnBase } from '../lib/theme'
@@ -25,6 +26,7 @@ export function TopBar({
   session: { user?: { email?: string } } | null
   onSignOut: () => void
 }) {
+  const t = useT()
   // Scrolls away with the page — the period bar below is the thing worth
   // keeping within reach, and it carries its own period label.
   return (
@@ -47,7 +49,7 @@ export function TopBar({
               {startDate && (
                 <span className="shrink-0 hidden sm:inline text-ink/40">
                   · {fmtDateLong(startDate)} →{" "}
-                  {endDate ? fmtDateLong(endDate) : "ongoing"}
+                  {endDate ? fmtDateLong(endDate) : t("ongoing")}
                 </span>
               )}
             </p>

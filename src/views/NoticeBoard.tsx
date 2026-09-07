@@ -35,6 +35,7 @@
 import { Bell } from "lucide-react"
 import type { Notice, NoticeLevel } from "../lib/notices"
 import { LEVELS, countByLevel, levelColour } from "../lib/notices"
+import { t, useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { Sentence } from "../ui/Sentence"
@@ -42,24 +43,55 @@ import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 
-/** What each level is called — on its filter button and over its group. */
-const LEVEL_WORD: Record<NoticeLevel, string> = {
-  gone: "gone",
-  danger: "danger",
-  warning: "warning",
-  notice: "notice",
-  allClear: "all clear",
-}
+/** What each level is called — on its filter button and over its group.
+ *  A getter rather than a constant: a module-level object is built once at
+ *  import and would say `gone` in English forever. */
+const levelWord = (level: NoticeLevel): string =>
+  t(
+    {
+      gone: "level:gone",
+      danger: "level:danger",
+      warning: "level:warning",
+      notice: "level:notice",
+      allClear: "level:all clear",
+    }[level],
+  )
 
-const LEVEL_TIP: Record<NoticeLevel, string> = {
-  gone: "Lost, and nothing covers it — no freeze can reach it. Nothing to do.",
-  danger: "Lost unless a freeze is spent on it. A freeze can still reach it.",
-  warning: "Still reachable, and the margin is gone.",
-  notice: "Still owed, and there is room.",
-  allClear: "Nothing owed and nothing spent — for now.",
-}
+const levelTip = (level: NoticeLevel): string =>
+  t(
+    {
+      gone: "Lost, and nothing covers it — no freeze can reach it. Nothing to do.",
+      danger: "Lost unless a freeze is spent on it. A freeze can still reach it.",
+      warning: "Still reachable, and the margin is gone.",
+      notice: "Still owed, and there is room.",
+      allClear: "Nothing owed and nothing spent — for now.",
+    }[level],
+  )
 
-/** Every notice, in its level's colour. */
+/**
+ * Every notice, in its level's colour.
+ *
+ * **Two kinds of thing share the board, and now say which they are.** A rule
+ * notice is about a promise you wrote; the four fixed sources — today's
+ * verdict, the allowance, the open weeks, the achievements in reach — are
+ * bookkeeping *about* those promises. They were drawn identically, so a level
+ * holding both read as one striped run in which "Today" was just another rule
+ * you could not remember writing.
+ *
+ * The level still decides the colour, because the level is what you are
+ * scanning for and burying a red one under a second heading would cost more
+ * than it bought. What changes is the **surface**: a rule is raised — the
+ * coloured wash inside a ring of the same colour — and a fixed source is
+ * recessed, the neutral `bg-ink/[0.04]` every subordinate block in this app
+ * already wears, with no outline at all. The level survives in its icon and
+ * its title, so nothing about urgency is lost.
+ *
+ * One device, no extra words, and it happens to say the true thing twice
+ * over: a rule block is a button into that rule's panel and wears an edge
+ * accordingly, and a fixed one has nowhere to go. The four bells repeating
+ * down the recessed run are not a shortage of glyphs either — they are the
+ * board speaking about itself, which is exactly what those four are.
+ */
 function NoticeBlock({
   notice,
   active,
@@ -71,6 +103,7 @@ function NoticeBlock({
 }) {
   const c = usePalette()
   const tint = levelColour(notice.level, c)
+  const fixed = !notice.ruleId
   const inner = (
     <>
       <div className="flex items-center gap-2 mb-1">
@@ -104,10 +137,14 @@ function NoticeBlock({
     </>
   )
 
-  const style = {
-    backgroundColor: `${tint}14`,
-    boxShadow: `inset 0 0 0 1px ${tint}${active ? "AA" : "55"}`,
-  }
+  const style = fixed
+    ? {
+        backgroundColor: `${c.ink}0A`,
+      }
+    : {
+        backgroundColor: `${tint}14`,
+        boxShadow: `inset 0 0 0 1px ${tint}${active ? "AA" : "55"}`,
+      }
   if (!onClick)
     return (
       <div className="w-full rounded-2xl px-3.5 py-2.5" style={style}>
@@ -131,48 +168,71 @@ function NoticeBlock({
  * The filter row — a count per level, inside the panel.
  *
  * Not in the toggle row, which already scrolls sideways on a phone. Each
- * button carries its level's colour, which is the legend. Several can be held
- * at once; a level with nothing in it keeps its button, dimmed and inert,
- * because buttons that vanish mean the control changes shape under your hand.
+ * button carries its level's colour, which is the legend. A level with
+ * nothing in it keeps its button, dimmed and inert, because buttons that
+ * vanish mean the control changes shape under your hand.
+ *
+ * **It takes away rather than picks out**, like every other legend here — see
+ * `useNoticePrefs` for why that reversed. A chip is filled while its level is
+ * drawn and struck out once it is not, which is `ToggleChips`' shape at this
+ * row's size.
+ *
+ * **One bulk button, not two.** With everything already hidden, "hide all"
+ * has nothing to do, so the control shows whichever half applies — the same
+ * argument `bulkToggleFor` makes for the chart legends. It leads the row
+ * because it is the way back: a board filtered down to nothing has no chip
+ * left saying so.
  */
 function LevelFilter({
   counts,
-  held,
+  hidden,
   onToggle,
+  onBulk,
 }: {
   counts: Record<NoticeLevel, number>
-  held: NoticeLevel[]
+  hidden: NoticeLevel[]
   onToggle: (level: NoticeLevel) => void
+  onBulk: (hideAll: boolean) => void
 }) {
   const c = usePalette()
+  const t = useT()
+  const live = LEVELS.filter((l) => counts[l] > 0)
+  const allHidden = live.length > 0 && live.every((l) => hidden.includes(l))
   return (
     <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+      <button
+        type="button"
+        onClick={() => onBulk(!allHidden)}
+        className={`${btnBase} rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide text-ink/45 hover:text-ink hover:bg-ink/5`}
+      >
+        {t(allHidden ? "Show all" : "Hide all")}
+      </button>
       {LEVELS.map((level) => {
         const n = counts[level]
-        const on = held.includes(level)
+        const off = hidden.includes(level)
         const tint = levelColour(level, c)
         return (
-          <Tip key={level} text={LEVEL_TIP[level]}>
+          <Tip key={level} text={levelTip(level)}>
             <button
               type="button"
               disabled={!n}
               onClick={() => onToggle(level)}
-              aria-pressed={on}
+              aria-pressed={!off}
               style={
                 n
                   ? {
-                      backgroundColor: on ? tint : `${tint}1F`,
-                      color: on ? c.onFill : tint,
-                      boxShadow: on ? undefined : `inset 0 0 0 1px ${tint}40`,
+                      backgroundColor: off ? "transparent" : `${tint}1F`,
+                      color: off ? `${c.ink}55` : tint,
+                      boxShadow: `inset 0 0 0 1px ${off ? `${c.ink}22` : `${tint}40`}`,
                     }
                   : undefined
               }
               className={`${btnBase} flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide ${
                 n ? "hover:brightness-110" : "text-ink/25 cursor-default"
-              }`}
+              } ${off ? "line-through" : ""}`}
             >
               <span className="font-bold tabular-nums">{n}</span>
-              {LEVEL_WORD[level]}
+              {levelWord(level)}
             </button>
           </Tip>
         )
@@ -183,45 +243,51 @@ function LevelFilter({
 
 export function NoticeBoard({
   notices,
-  held,
+  hidden,
   onToggleLevel,
+  onBulkLevels,
   activeRule,
   onOpenRule,
   onClose,
 }: {
   notices: Notice[]
-  /** Levels the filter is holding. Empty means everything. */
-  held: NoticeLevel[]
+  /** Levels the filter is striking out. Empty means everything is drawn. */
+  hidden: NoticeLevel[]
   onToggleLevel: (level: NoticeLevel) => void
+  onBulkLevels: (hideAll: boolean) => void
   /** Which rule panel is open, so the block it belongs to can say so. */
   activeRule: string | null
   onOpenRule: (ruleId: string) => void
   onClose: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const counts = countByLevel(notices)
-  const shown = held.length
-    ? notices.filter((n) => held.includes(n.level))
-    : notices
+  const shown = notices.filter((n) => !hidden.includes(n.level))
 
   return (
     <PanelSection
       tint={c.accent}
       icon={Bell}
-      title="Notices"
-      subtitle="Today"
-      closeLabel="Hide the notices"
+      title={t("Notices")}
+      subtitle={t("board:Today")}
+      closeLabel={t("Hide the notices")}
       onClose={onClose}
     >
-      <LevelFilter counts={counts} held={held} onToggle={onToggleLevel} />
+      <LevelFilter
+        counts={counts}
+        hidden={hidden}
+        onToggle={onToggleLevel}
+        onBulk={onBulkLevels}
+      />
 
       {/* A sentence rather than an empty box: a box saying nothing is here
           reads as something that failed to load. */}
       {!shown.length ? (
         <p className="text-[11px] font-mono text-ink/40">
           {notices.length
-            ? "Nothing at the levels you are showing."
-            : "Nothing to say about today."}
+            ? t("Every level is struck out. Show one to read it.")
+            : t("Nothing to say about today.")}
         </p>
       ) : (
         /* **Grouped under its level's name, with air between the groups.**
@@ -244,7 +310,7 @@ export function NoticeBoard({
                   className="text-[9px] font-mono uppercase tracking-widest mb-1.5 flex items-center gap-2"
                   style={{ color: levelColour(level, c) }}
                 >
-                  {LEVEL_WORD[level]}
+                  {levelWord(level)}
                   <span className="text-ink/25">{group.length}</span>
                   {/* Runs out to the right edge, so the heading reads as a
                       lid on what follows rather than as a floating word. */}
@@ -253,21 +319,46 @@ export function NoticeBoard({
                     style={{ backgroundColor: `${levelColour(level, c)}33` }}
                   />
                 </h4>
-                <ul className="space-y-1.5">
-                  {group.map((notice) => (
-                    <li key={notice.key}>
-                      <NoticeBlock
-                        notice={notice}
-                        active={!!notice.ruleId && activeRule === notice.ruleId}
-                        onClick={
-                          notice.ruleId
-                            ? () => onOpenRule(notice.ruleId as string)
-                            : undefined
-                        }
-                      />
-                    </li>
-                  ))}
-                </ul>
+                {/* **The promises first, the bookkeeping after, and two
+                    lists rather than one.** `notices()` already returned them
+                    in that order; what was missing was any way to see where
+                    one run stopped. The surface says it (see `NoticeBlock`)
+                    and the gap between the lists says it again for anyone
+                    reading the shape rather than the colours — the same pair
+                    of devices that separates one level from the next, one
+                    size down.
+
+                    No sub-heading: a fifth word per level is how a board
+                    becomes the dashboard `spec 010` part 3 deleted, and there
+                    is nothing to say that the blocks do not say themselves.
+                    Two `<ul>`s and not one `<ul>` with a wider gap in it,
+                    because they really are two lists — a reader who cannot
+                    see the surfaces is told "3 items", then "2 items", which
+                    is the whole of what the gap is for. */}
+                {[
+                  group.filter((n) => n.ruleId),
+                  group.filter((n) => !n.ruleId),
+                ].map((run, i) =>
+                  run.length ? (
+                    <ul key={i} className="space-y-1.5 [&+ul]:mt-3">
+                      {run.map((notice) => (
+                        <li key={notice.key}>
+                          <NoticeBlock
+                            notice={notice}
+                            active={
+                              !!notice.ruleId && activeRule === notice.ruleId
+                            }
+                            onClick={
+                              notice.ruleId
+                                ? () => onOpenRule(notice.ruleId as string)
+                                : undefined
+                            }
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null,
+                )}
               </section>
             )
           })}

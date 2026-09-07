@@ -8,6 +8,7 @@ import { DayPicker } from "react-day-picker"
 import "react-day-picker/style.css"
 import { CalendarDays } from "lucide-react"
 import type { DayKey } from "../types/model"
+import { useT } from "../lib/i18n"
 import { fmtShort, fromKey, toKey } from "../lib/date"
 import { FIELD_BOXED, btnBase } from "../lib/theme"
 import {
@@ -22,7 +23,7 @@ import { usePalette } from "./useTheme"
 export function DateField({
   value,
   onChange,
-  placeholder = "Pick a date",
+  placeholder,
   clearable = false,
   className = "",
 }: {
@@ -33,6 +34,7 @@ export function DateField({
   className?: string
 }) {
   const c = usePalette()
+  const t = useT()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover()
   const selected = value ? fromKey(value) : undefined
@@ -47,7 +49,7 @@ export function DateField({
       >
         <CalendarDays size={13} className="text-ink/40 shrink-0" />
         <span className={value ? "" : "text-ink/35"}>
-          {value ? fmtShort(value) : placeholder}
+          {value ? fmtShort(value) : (placeholder ?? t("Pick a date"))}
         </span>
       </button>
       {open &&
@@ -110,6 +112,7 @@ export function DateRangeField({
   openOnMount?: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover(openOnMount)
   // Left to itself, react-day-picker grows or trims the existing range
@@ -153,9 +156,9 @@ export function DateRangeField({
       >
         <CalendarDays size={13} className="text-ink/40 shrink-0" />
         <span>
-          {start ? fmtShort(start) : "Start"}
+          {start ? fmtShort(start) : t("Start")}
           <span className="text-ink/35"> – </span>
-          {end ? fmtShort(end) : "End"}
+          {end ? fmtShort(end) : t("End")}
         </span>
       </button>
       {open &&
@@ -179,7 +182,7 @@ export function DateRangeField({
               onDayClick={handleDayClick}
             />
             <p className="px-2 pb-1 pt-0.5 text-[9px] font-mono uppercase tracking-widest text-ink/35">
-              {pendingFrom ? "Now pick the end" : "Click a start, then an end"}
+              {t(pendingFrom ? "Now pick the end" : "Click a start, then an end")}
             </p>
           </div>,
           document.body,

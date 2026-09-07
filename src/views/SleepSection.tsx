@@ -21,6 +21,7 @@ import {
   YAxis,
 } from "recharts"
 import type { DateRange, Day, DayKey } from "../types/model"
+import { useT } from "../lib/i18n"
 import { pad } from "../lib/date"
 import { makeIsIgnored } from "../lib/stats"
 import type { NightRow } from "../lib/sleep"
@@ -103,6 +104,7 @@ export function SleepSection({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const stats = useMemo(
     () => sleepStats(days, range, makeIsIgnored(weekIgnore, monthIgnore)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,38 +132,41 @@ export function SleepSection({
     <PanelSection
       tint={c.sleep}
       icon={Moon}
-      title="Sleep"
+      title={t("Sleep")}
       subtitle={
         stats
-          ? `${stats.nights} nights logged across ${stats.daysWithSleep} days in this period`
-          : "For the chosen period"
+          ? t("{nights} nights logged across {days} days in this period", {
+              nights: stats.nights,
+              days: stats.daysWithSleep,
+            })
+          : t("For the chosen period")
       }
-      closeLabel="Hide sleep"
+      closeLabel={t("Hide sleep")}
       onClose={onClose}
     >
       {!stats ? (
         // The normal case for any range that predates sleep tracking, so it
         // gets a sentence rather than an empty axis.
         <p className="text-xs font-mono text-ink/50">
-          No sleep with a start and end time in this period yet.
+          {t("No sleep with a start and end time in this period yet.")}
         </p>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <StatTile
-              label="Average bedtime"
+              label={t("Average bedtime")}
               value={stats.bedtime}
               icon={Moon}
               inset
             />
             <StatTile
-              label="Average wake-up"
+              label={t("Average wake-up")}
               value={stats.wake}
               icon={Sunrise}
               inset
             />
             <StatTile
-              label="Average night"
+              label={t("Average night")}
               // No minutes sub-label any more — "7h 12m" is already the
               // whole answer, and "432m" underneath was the same number said
               // again in a unit nobody asked for.
@@ -173,8 +178,10 @@ export function SleepSection({
 
           <div className="space-y-4">
             <ChartCard
-              title="Nights, one row each"
-              subtitle="Same clock as below — every logged night on its own line"
+              title={t("Nights, one row each")}
+              subtitle={t(
+                "Same clock as below — every logged night on its own line",
+              )}
             >
               <ResponsiveContainer width="100%" height={rowsHeight}>
                 <BarChart
@@ -235,7 +242,7 @@ export function SleepSection({
 
             <ChartCard
               title="Hours slept per night"
-              subtitle="One bar per logged night"
+              subtitle={t("One bar per logged night")}
             >
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={stats.perNight}>
@@ -268,8 +275,8 @@ export function SleepSection({
             </ChartCard>
 
             <ChartCard
-              title="When you sleep"
-              subtitle="Share of logged nights asleep at each hour"
+              title={t("When you sleep")}
+              subtitle={t("Share of logged nights asleep at each hour")}
             >
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={stats.data}>

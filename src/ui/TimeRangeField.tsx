@@ -5,6 +5,15 @@
    hour, start minutes, end hour, end minutes) and show the resulting duration
    as you hover, which no off-the-shelf picker does.
 
+   **Everything that acts on one half sits in that half.** `now` and a clear
+   cross live inside each of the two inputs rather than in a row under the
+   dial, and the row under the dial is one `Done`. The old row had one of each
+   button acting on whichever field the dial was driving, so the same control
+   meant two different things a minute apart and *start now, end now* was two
+   trips through the mode — while the panel's own hardest problem, saying which
+   half you are editing, was being asked again of two buttons that had no
+   business asking it.
+
    The panel goes through `useDatePopover`, so it portals to <body> and
    dismisses the same way the date fields do.
 --------------------------------------------------------------- */
@@ -12,12 +21,14 @@
 import { useEffect, useState } from "react"
 import type { MouseEvent as ReactMouseEvent } from "react"
 import { createPortal } from "react-dom"
-import { Clock } from "lucide-react"
+import { Clock, X } from "lucide-react"
 import type { TimeOfDay } from "../types/model"
+import { useT } from "../lib/i18n"
 import { pad } from "../lib/date"
 import { fmtHours, nowTime, spanMinutes, timeToMinutes } from "../lib/time"
 import { BTN_SOFT, FIELD_BARE, FIELD_BOXED, btnBase } from "../lib/theme"
 import { DATE_PANEL_CLASS, useDatePopover } from "./datePopover"
+import { Tip } from "./Tip"
 
 import { usePalette } from "./useTheme"
 type Step = "start-hour" | "start-minute" | "end-hour" | "end-minute"
@@ -44,6 +55,7 @@ export function TimeRangeField({
   bare?: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const { triggerRef, panelRef, open, setOpen, box, panelStyle, toggle } =
     useDatePopover()
   const [step, setStep] = useState<Step>("start-hour")
@@ -91,6 +103,33 @@ export function TimeRangeField({
     else if (step === "start-minute") setStep("end-hour")
     else if (step === "end-hour") setStep("end-minute")
     else setOpen(false)
+  }
+
+  /* **Both actions belong to a field, so they live in that field.**
+     They were a row of buttons under the dial acting on whichever half the
+     dial happened to be driving, which meant `Now` and `Clear` changed their
+     meaning depending on a state you had to read off the ring above them —
+     and there was only ever one of each, so setting a start and an end from
+     the clock took two trips through the mode. Sitting inside the input,
+     each one names its own subject by where it is.
+
+     Both also make their field the one the dial is driving. One rule rather
+     than two, and the accent moving to the half you pressed is what confirms
+     you hit the one you meant — which matters at this size. */
+  const setNow = (field: Field) => {
+    setValue(field, nowTime())
+    setHoverValue(null)
+    setStep(`${field}-hour`)
+  }
+
+  const clearField = (field: Field) => {
+    // Both gone means the entry has no times at all, which is a real state
+    // with its own handler — it is what puts the row back on plain minutes.
+    if (field === "start" ? !end : !start) onClear()
+    else if (field === "start") onChange(undefined, end)
+    else onChange(start, undefined)
+    setHoverValue(null)
+    setStep(`${field}-hour`)
   }
 
   const handleTextTime = (field: Field, value: string) => {
@@ -149,19 +188,19 @@ export function TimeRangeField({
     previewStart && previewEnd ? spanMinutes(previewStart, previewEnd) : null
   const crossesMidnight = duration !== null && duration > 12 * 60
   const triggerLabel =
-    start || end ? `${start || "…"} – ${end || "…"}` : "Set time"
+    start || end ? `${start || "…"} – ${end || "…"}` : t("Set time")
 
   // Screen-reader wording for the dial. The visible version of this sits above
   // the dial and is built from `editingStart` / `isMinute` directly, so it can
   // put the accent on the field name.
   const hint =
     step === "start-hour"
-      ? "Pick the start hour"
+      ? t("Pick the start hour")
       : step === "start-minute"
-        ? "Now the start minutes"
+        ? t("Now the start minutes")
         : step === "end-hour"
-          ? "Now the end hour"
-          : "Now the end minutes"
+          ? t("Now the end hour")
+          : t("Now the end minutes")
 
   return (
     <>
@@ -189,7 +228,11 @@ export function TimeRangeField({
           <div
             ref={panelRef}
             style={panelStyle ?? undefined}
-            className={`${DATE_PANEL_CLASS} w-[236px]`}
+            /* 260 is `DATE_PANEL_MAX_WIDTH`, the figure the popover's own
+               viewport clamp is written against — and the two inputs now
+               carry a control at each end, so the panel takes the whole of
+               what it was already allowed. The dial grows with it. */
+            className={`${DATE_PANEL_CLASS} w-[260px]`}
           >
             {/* Which of the two the dial is driving has to be unmissable: the
                 panel looks the same either way, and picking the end when you
@@ -212,40 +255,84 @@ export function TimeRangeField({
                       }`}
                       style={active ? { color: c.accent } : undefined}
                     >
-                      {field}
+                      {t(`field:${field}`)}
                     </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="HH:MM"
-                      value={
-                        active && hoverValue !== null
-                          ? previewTime
-                          : field === "start"
-                            ? startText
-                            : endText
-                      }
-                      onFocus={() => setStep(`${field}-hour`)}
-                      onChange={(event) => {
-                        const value = event.target.value
-                        if (field === "start") setStartText(value)
-                        else setEndText(value)
-                        handleTextTime(field, value)
-                      }}
-                      style={
-                        active
-                          ? {
-                              boxShadow: `0 0 0 2px ${c.accent}`,
-                              borderColor: c.accent,
-                              backgroundColor: `${c.accent}12`,
-                              color: c.accent,
-                            }
-                          : undefined
-                      }
-                      className={`${FIELD_BOXED} w-full px-2 py-1 text-center ${
-                        active ? "font-bold" : ""
-                      }`}
-                    />
+                    {/* The two actions this field can take, inside it. The
+                        cross is on the left and `now` on the right in both
+                        halves, so the pair is learned once and read four
+                        times — and neither ever needs to say which field it
+                        means, because it is standing in it.
+
+                        `now` keeps its word rather than becoming a second
+                        glyph: two icons a centimetre apart in a box this size
+                        are a puzzle, and there is no drawing of *the current
+                        time* that is not just another clock. The cross does
+                        not need one. */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="HH:MM"
+                        value={
+                          active && hoverValue !== null
+                            ? previewTime
+                            : field === "start"
+                              ? startText
+                              : endText
+                        }
+                        onFocus={() => setStep(`${field}-hour`)}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          if (field === "start") setStartText(value)
+                          else setEndText(value)
+                          handleTextTime(field, value)
+                        }}
+                        style={
+                          active
+                            ? {
+                                boxShadow: `0 0 0 2px ${c.accent}`,
+                                borderColor: c.accent,
+                                backgroundColor: `${c.accent}12`,
+                                color: c.accent,
+                              }
+                            : undefined
+                        }
+                        className={`${FIELD_BOXED} w-full px-[22px] py-1 text-center ${
+                          active ? "font-bold" : ""
+                        }`}
+                      />
+                      {/* Absent with nothing to clear — a button that refuses
+                          when pressed is worse than one that is not there.
+                          The padding stays either way, so the figure does not
+                          shuffle sideways as the range fills in. */}
+                      {(field === "start" ? start : end) && (
+                        <Tip
+                          text={t(`clear:${field}`)}
+                          className="absolute left-[3px] top-1/2 -translate-y-1/2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => clearField(field)}
+                            aria-label={t(`clear:${field}`)}
+                            className={`${btnBase} rounded p-[3px] text-ink/35 hover:text-ink hover:bg-ink/10`}
+                          >
+                            <X size={10} strokeWidth={2.5} />
+                          </button>
+                        </Tip>
+                      )}
+                      <Tip
+                        text={t(`setnow:${field}`)}
+                        className="absolute right-[3px] top-1/2 -translate-y-1/2"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setNow(field)}
+                          className={`${btnBase} rounded px-[3px] py-[2px] text-[8px] font-mono uppercase tracking-wide leading-none text-ink/35 hover:text-ink hover:bg-ink/10`}
+                        >
+                          {t("btn:now")}
+                        </button>
+                      </Tip>
+                    </div>
                   </label>
                 )
               })}
@@ -255,9 +342,10 @@ export function TimeRangeField({
                 not found afterwards. It is always present, so nothing shifts
                 under the cursor as the range fills in. */}
             <p className="px-1 pt-2 text-[9px] font-mono uppercase tracking-widest text-ink/45">
-              Setting{" "}
+              {t("Setting")}{" "}
               <span className="font-bold" style={{ color: c.accent }}>
-                {editingStart ? "start" : "end"} {isMinute ? "minutes" : "hour"}
+                {t(editingStart ? "the start" : "the end")}{" "}
+                {t(isMinute ? "minutes" : "hour")}
               </span>
             </p>
             <svg
@@ -344,47 +432,21 @@ export function TimeRangeField({
                 </>
               )}
             </div>
-            {/* Three buttons, and all three act on **the field the dial is
-                currently driving** — the same one the ring and the line above
-                point at. Clear used to wipe both halves, which is a different
-                gesture wearing the same word: you reach for it to fix the end
-                you just mistyped, not to start the row again. */}
-            <div className="flex gap-1 pt-1">
-              {/* Rounded to the same 5 minutes the dial itself snaps to, so
-                  what it fills in is a value you could have picked by hand. */}
-              <button
-                type="button"
-                onClick={() => setValue(editingStart ? "start" : "end", nowTime())}
-                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
-              >
-                Now
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  // Both gone means the entry has no times at all, which is a
-                  // real state with its own handler — it is what puts the row
-                  // back on plain minutes.
-                  if (editingStart ? !end : !start) onClear()
-                  else if (editingStart) onChange(undefined, end)
-                  else onChange(start, undefined)
-                }}
-                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:bg-ink/5 hover:text-ink`}
-              >
-                Clear {editingStart ? "start" : "end"}
-              </button>
-              {/* The way out. Without it the only way to keep a start and no
-                  end was to click somewhere harmless outside the panel and
-                  hope that counted as agreeing. */}
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
-                className={`${btnBase} flex-1 rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest font-bold hover:opacity-80`}
-              >
-                Done
-              </button>
-            </div>
+            {/* **One button, because there is one thing left to say here.**
+                `Now` and `Clear` used to share this row and act on whichever
+                half the dial was driving, so the row's meaning changed under
+                you and each action existed once for two fields; they are in
+                the fields now. What is left is the way out — and without it
+                the only way to keep a start and no end was to click somewhere
+                harmless outside the panel and hope that counted as agreeing. */}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
+              className={`${btnBase} mt-1 w-full rounded-xl px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest font-bold hover:opacity-80`}
+            >
+              {t("Done")}
+            </button>
           </div>,
           document.body,
         )}

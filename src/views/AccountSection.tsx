@@ -33,6 +33,10 @@ import {
   YAxis,
 } from "recharts"
 import type { Project } from "../types/model"
+import { t, pluralOf, useT } from "../lib/i18n"
+
+const nDays = (n: number) =>
+  pluralOf(n, ["day", "days"], ["день", "дня", "дней"])
 import type { Balance } from "../lib/balance"
 import type { EarningBar } from "../lib/earnings"
 import {
@@ -42,15 +46,22 @@ import {
   stepFor,
 } from "../lib/earnings"
 import { daysBetween, fmtDateLong } from "../lib/date"
-import { PANEL_INSET, btnBase, chartTooltip } from "../lib/theme"
+import {
+  PANEL_INSET,
+  btnBase,
+  chartTooltip,
+  chartTooltipItem,
+} from "../lib/theme"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 
-const HOW_IT_WORKS =
-  "A finished day pays 10 points; a missed one takes 20. Neither figure is a setting — what matters is the ratio, and at two to one the account grows only above a two-thirds keep rate." +
-  String.fromCharCode(10, 10) +
-  "Today and yesterday can still be written, so they are not counted yet. A day's mark is written once when it leaves that window and never revisited: this is the one figure here you can spend, so editing a Tuesday must not move a balance something was already bought against."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const howItWorks = () =>
+  [
+    t("A finished day pays 10 points; a missed one takes 20. Neither figure is a setting — what matters is the ratio, and at two to one the account grows only above a two-thirds keep rate."),
+    t("Today and yesterday can still be written, so they are not counted yet. A day's mark is written once when it leaves that window and never revisited: this is the one figure here you can spend, so editing a Tuesday must not move a balance something was already bought against."),
+  ].join(String.fromCharCode(10, 10))
 
 export function AccountSection({
   project,
@@ -69,6 +80,7 @@ export function AccountSection({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const step = stepFor(daysBetween(rangeStart, rangeEnd) + 1)
   const bars = earningBars(project, rangeStart, rangeEnd, step)
   const events = accountEvents(project)
@@ -78,9 +90,11 @@ export function AccountSection({
     <PanelSection
       tint={c.project}
       icon={Coins}
-      title="The account"
-      subtitle={<Tip multiline text={HOW_IT_WORKS}><span className="cursor-help">How points work</span></Tip>}
-      closeLabel="Hide the account"
+      title={t("The account")}
+      subtitle={<Tip multiline text={howItWorks()}>
+          <span className="cursor-help">{t("How points work")}</span>
+        </Tip>}
+      closeLabel={t("Hide the account")}
       onClose={onClose}
       action={
         <button
@@ -89,7 +103,7 @@ export function AccountSection({
           className={`${btnBase} flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide hover:bg-ink/5`}
           style={{ color: c.project }}
         >
-          To the shop
+          {t("To the shop")}
           <ArrowRight size={12} />
         </button>
       }
@@ -99,7 +113,7 @@ export function AccountSection({
       <div className={`${PANEL_INSET} px-4 py-3 mb-3`}>
         <div className="flex items-baseline gap-3">
           <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
-            On the account
+            {t("On the account")}
           </span>
           <span className="ml-auto flex items-baseline gap-1.5">
             <strong
@@ -109,22 +123,30 @@ export function AccountSection({
               {balance.total}
             </strong>
             <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-              {balance.total === 1 ? "point" : "points"}
+              {t(balance.total === 1 ? "unit:point" : "unit:points")}
             </span>
           </span>
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[9px] font-mono uppercase tracking-widest text-ink/30">
-          <span className="tabular-nums">{balance.earned} pts earned</span>
-          <span className="tabular-nums">{balance.spent} pts spent</span>
-          <span className="tabular-nums">{balance.sealed} days counted</span>
+          <span className="tabular-nums">
+            {t("{n} pts earned", { n: balance.earned })}
+          </span>
+          <span className="tabular-nums">
+            {t("{n} pts spent", { n: balance.spent })}
+          </span>
+          <span className="tabular-nums">
+            {t("{n} days counted", { n: balance.sealed })}
+          </span>
           {(balance.pendingKept > 0 || balance.pendingMissed > 0) && (
-            <Tip text="Today and yesterday can still be written, so they are not counted yet.">
+            <Tip
+              text={t(
+                "Today and yesterday can still be written, so they are not counted yet.",
+              )}
+            >
               <span className="tabular-nums cursor-help">
-                {balance.pendingKept + balance.pendingMissed}{" "}
-                {balance.pendingKept + balance.pendingMissed === 1
-                  ? "day"
-                  : "days"}{" "}
-                not counted yet
+                {t("{days} not counted yet", {
+                  days: nDays(balance.pendingKept + balance.pendingMissed),
+                })}
               </span>
             </Tip>
           )}
@@ -135,7 +157,7 @@ export function AccountSection({
           in one card is what every other chart here refuses. */}
       <div className="flex items-baseline gap-2 mb-1">
         <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
-          Earned this period
+          {t("Earned this period")}
         </span>
         <strong
           className="text-sm font-mono font-bold tabular-nums"
@@ -174,13 +196,22 @@ export function AccountSection({
               <ReferenceLine y={0} stroke={`${c.ink}44`} />
               <Tooltip
                 contentStyle={chartTooltip(c)}
+                /* The bars are coloured per `<Cell>`, so the series carries no
+                   colour and Recharts falls back to a literal black row —
+                   invisible on the dark card. The sign is already in the
+                   figure; the row only has to be readable. */
+                itemStyle={chartTooltipItem(c)}
                 formatter={(v, _n, item) => {
                   const row = item?.payload as EarningBar | undefined
                   const kept = row?.kept ?? 0
                   const missed = row?.missed ?? 0
                   return [
-                    `${Number(v) > 0 ? "+" : ""}${v} — ${kept} kept, ${missed} missed`,
-                    "Points",
+                    t("{v} — {kept} kept, {missed} missed", {
+                      v: `${Number(v) > 0 ? "+" : ""}${v}`,
+                      kept,
+                      missed,
+                    }),
+                    t("Points"),
                   ]
                 }}
               />
@@ -197,7 +228,7 @@ export function AccountSection({
       {events.length > 0 && (
         <div>
           <p className="text-[9px] font-mono uppercase tracking-widest text-ink/40 mb-1.5">
-            Everything else that moved it
+            {t("Everything else that moved it")}
           </p>
           <div className="space-y-1">
             {events.map((e) => (

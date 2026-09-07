@@ -27,6 +27,7 @@
 --------------------------------------------------------------- */
 
 import { ChevronDown, Flame } from "lucide-react"
+import { useT } from "../lib/i18n"
 import type { KeptWeeks, WeekMark } from "../lib/dayVerdict"
 import { fromKey, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
@@ -111,8 +112,9 @@ export function KeptFigure({
   open: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   return (
-    <Tip text="What the streak is made of — which rules broke which days">
+    <Tip text={t("What the streak is made of — which rules broke which days")}>
       {/* **It has to look like it opens.** A bare figure with a hover tint is
           no affordance at all: you have to already know some numbers on this
           row do something in order to try one. A resting surface plus the
@@ -140,7 +142,7 @@ export function KeptFigure({
           {days.current}
         </span>
         <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45">
-          days
+          {t("unit:days")}
         </span>
         <ChevronDown
           size={12}

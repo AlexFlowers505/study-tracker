@@ -21,6 +21,16 @@
 
 import { ArrowRight, Snowflake } from "lucide-react"
 import type { DayKey } from "../types/model"
+import { pluralOf, useT } from "../lib/i18n"
+
+const nFreezes = (n: number) =>
+  pluralOf(n, ["freeze", "freezes"], ["заморозка", "заморозки", "заморозок"])
+const nViolations = (n: number) =>
+  pluralOf(n, ["violation", "violations"], [
+    "нарушение",
+    "нарушения",
+    "нарушений",
+  ])
 import { fmtDateLong } from "../lib/date"
 import { CARD, btnBase } from "../lib/theme"
 import { useModalDismiss } from "../ui/useModalDismiss"
@@ -75,6 +85,7 @@ export function FreezeConfirm({
   onConfirm: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const onBackdropClick = useModalDismiss(onCancel)
 
   // The same order the ledger spends in, so the arithmetic on screen is the
@@ -105,9 +116,10 @@ export function FreezeConfirm({
     >
       <div className={`${CARD} w-full max-w-[360px] p-5`}>
         <p className="text-xs font-mono text-ink/80 mb-1">
-          Use{" "}
-          {ask.cost === 1 ? "a streak freeze" : `${ask.cost} streak freezes`} on{" "}
-          {fmtDateLong(ask.dayKey)}?
+          {t("Use {cost} on {date}?", {
+            cost: nFreezes(ask.cost),
+            date: fmtDateLong(ask.dayKey),
+          })}
         </p>
         <p
           className="text-[10px] font-mono uppercase tracking-widest mb-3"
@@ -119,8 +131,9 @@ export function FreezeConfirm({
           <Sentence text={ask.line} />
         </p>
         <p className="text-[11px] font-mono text-ink/45 mb-3">
-          Bought against this one thing, at this price, for good. Logging the
-          day up afterwards does not hand it back.
+          {t(
+            "Bought against this one thing, at this price, for good. Logging the day up afterwards does not hand it back.",
+          )}
         </p>
         {/* **The reversal, said where the money is spent.** `spec 009` refused
             partial spending precisely so a day that breaks anyway would not
@@ -132,10 +145,9 @@ export function FreezeConfirm({
             className="text-[11px] font-mono mb-3 rounded-xl px-2.5 py-2"
             style={{ color: c.warn, backgroundColor: `${c.warn}14` }}
           >
-            {ask.othersUnfrozen === 1
-              ? "1 more violation is unfrozen"
-              : `${ask.othersUnfrozen} more violations are unfrozen`}{" "}
-            — this alone does not save the day.
+            {t("{n} still unfrozen — this alone does not save the day.", {
+              n: nViolations(ask.othersUnfrozen),
+            })}
           </p>
         )}
 
@@ -173,7 +185,7 @@ export function FreezeConfirm({
             onClick={onCancel}
             className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             onClick={onConfirm}
@@ -181,7 +193,7 @@ export function FreezeConfirm({
             className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
             style={{ backgroundColor: c.freeze, color: c.onFill }}
           >
-            Use {ask.cost === 1 ? "a freeze" : `${ask.cost} freezes`}
+            {t("Use {cost}", { cost: nFreezes(ask.cost) })}
           </button>
         </div>
       </div>

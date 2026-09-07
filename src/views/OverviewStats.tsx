@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { AlertCircle, CalendarDays, Clock } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useT } from "../lib/i18n"
 import type { OverviewTotals } from "../lib/analytics"
 import { fmtDaysWithMonths } from "../lib/date"
 import { StatTile } from "../ui/StatTile"
@@ -14,18 +15,19 @@ export function OverviewStats({
    *  time went is one of the period's numbers, not a heading of its own. */
   children?: ReactNode
 }) {
+  const t = useT()
   const hours = (period.totalMinutes / 60).toFixed(1)
 
   // The lessons and exams tiles left with `spec 008`; what remains is the
   // hours-and-days half, which never read either.
   const stats: { label: string; value: ReactNode; icon: LucideIcon }[] = [
-    { label: "Hours studied", value: hours, icon: Clock },
+    { label: t("Hours studied"), value: hours, icon: Clock },
     {
-      label: "Days since start",
+      label: t("Days since start"),
       value: fmtDaysWithMonths(period.daysSinceStart),
       icon: CalendarDays,
     },
-    { label: "Empty days", value: period.emptyDays, icon: AlertCircle },
+    { label: t("Empty days"), value: period.emptyDays, icon: AlertCircle },
   ]
 
   // The heading and its caption live on the tab row above — see

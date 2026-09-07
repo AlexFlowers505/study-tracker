@@ -365,3 +365,19 @@ export const chartTooltip = (c: Palette): CSSProperties => ({
   borderRadius: 10,
   color: c.ink,
 })
+
+/**
+ * The tooltip's *rows*, which `chartTooltip` cannot reach.
+ *
+ * Recharts colours each row after its series — `entry.color || "#000"` — so a
+ * chart whose colour lives on its `<Cell>`s rather than on the series itself
+ * hands it nothing and gets that literal black. On the dark card that is text
+ * you cannot see, which is exactly what the account's earnings chart did: its
+ * bars are green or red per cell, so `<Bar>` carries no `fill` of its own.
+ *
+ * Only for a chart in that position. Where a series does have a colour, the
+ * row wearing it is the legend, and overriding it would throw that away.
+ */
+export const chartTooltipItem = (c: Palette): CSSProperties => ({
+  color: c.ink,
+})

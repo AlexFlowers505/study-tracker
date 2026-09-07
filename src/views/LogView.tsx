@@ -16,6 +16,7 @@ import {
   toKey,
   weekDates,
 } from '../lib/date'
+import { useT } from "../lib/i18n"
 import { fmtHours } from '../lib/time'
 import { activityMinutesIn, makeIsIgnored, rangeStats } from '../lib/stats'
 import { counterTotalsIn } from '../lib/counters'
@@ -86,6 +87,7 @@ export function LogView({
   sleepSection?: ReactNode
 }) {
   const c = usePalette()
+  const t = useT()
   const granularity = period
   // Card-wide default for entry comments; each entry can still be folded on
   // its own button, and flipping this resets those.
@@ -230,7 +232,7 @@ export function LogView({
       <div className="flex items-baseline justify-between gap-x-3 mb-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 min-w-0">
           {periodIgnored && (
-            <Tip text={`This ${granularity} is excluded from every statistic`}>
+            <Tip text={t(`excluded:${granularity}`)}>
               <EyeOff size={14} className="text-ink/45" />
             </Tip>
           )}
@@ -244,9 +246,11 @@ export function LogView({
           {periodGoalOutcome && (
             <Tip
               text={
-                periodGoalOutcome === "met"
-                  ? `${granularity === "week" ? "Weekly" : "Monthly"} goal met`
-                  : `${granularity === "week" ? "Weekly" : "Monthly"} goal missed`
+                t(
+                  `${granularity === "week" ? "Weekly" : "Monthly"} goal ${
+                    periodGoalOutcome === "met" ? "met" : "missed"
+                  }`,
+                )
               }
             >
               <span
@@ -260,10 +264,15 @@ export function LogView({
           )}
           {headerStats && (
             <span className="text-xs font-mono text-ink/50">
-              {headerStats.total > 0 ? fmtHours(headerStats.total) : "0h"}{" "}
-              studied
+              {t("{hours} studied", {
+                hours:
+                  headerStats.total > 0 ? fmtHours(headerStats.total) : "0h",
+              })}
               {headerStats.goal > 0 && (
-                <> · goal {fmtHours(headerStats.goal)}</>
+                <>
+                  {" · "}
+                  {t("goal {hours}", { hours: fmtHours(headerStats.goal) })}
+                </>
               )}
             </span>
           )}
@@ -276,12 +285,12 @@ export function LogView({
           // `inline-flex` rather than a block so it keeps the baseline the
           // trigger had when it was the flex item itself.
           <span className="shrink-0 inline-flex">
-          <PopoverMenu label={`${granularity} settings`}>
+          <PopoverMenu label={t(`settings:${granularity}`)}>
             {granularity !== "day" && (
               <MenuToggle
-                label="Ignore in statistics"
+                label={t("Ignore in statistics")}
                 icon={EyeOff}
-                hint="Every figure on this page skips it"
+                hint={t("Every figure on this page skips it")}
                 checked={periodIgnored}
                 onChange={(next) =>
                   granularity === "week"
@@ -291,9 +300,9 @@ export function LogView({
               />
             )}
             <MenuToggle
-              label="Show entry comments"
+              label={t("Show entry comments")}
               icon={MessageSquare}
-              hint="Each entry can still be folded on its own"
+              hint={t("Each entry can still be folded on its own")}
               checked={commentsOpen}
               onChange={setCommentsOpen}
             />
@@ -308,7 +317,7 @@ export function LogView({
       {granularity === "day" && (
         <NoteCard
           key={dayKey}
-          label="Day notes"
+          label={t("Day notes")}
           icon={MessageSquare}
           value={days[dayKey]?.comment}
           onSave={(text) => onUpdateDayNote(dayKey, text)}
@@ -317,7 +326,7 @@ export function LogView({
       {granularity === "week" && (
         <NoteCard
           key={weekKey}
-          label="Week notes"
+          label={t("Week notes")}
           icon={MessageSquare}
           value={weekNotes[weekKey]}
           onSave={(text) => onUpdateWeekNote(weekKey, text)}
@@ -326,7 +335,7 @@ export function LogView({
       {granularity === "month" && (
         <NoteCard
           key={monthKey}
-          label="Month notes"
+          label={t("Month notes")}
           icon={MessageSquare}
           value={monthNotes[monthKey]}
           onSave={(text) => onUpdateMonthNote(monthKey, text)}

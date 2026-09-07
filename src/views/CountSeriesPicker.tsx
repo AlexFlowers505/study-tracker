@@ -19,6 +19,7 @@
 import { useState } from "react"
 import { ChevronLeft, Plus, X } from "lucide-react"
 import type { Slot } from "../types/model"
+import { useT } from "../lib/i18n"
 import type { CounterPick, CounterThing } from "../lib/counterSeries"
 import { pickId, slotOpacity } from "../lib/counterSeries"
 import { btnBase } from "../lib/theme"
@@ -138,6 +139,7 @@ export function CountSeriesPicker({
   picks: CounterPick[]
   onChange: (next: CounterPick[]) => void
 }) {
+  const t = useT()
   // Only the picks this mode can actually draw — the same filter
   // `counterSeries` applies, so the legend and the chart cannot disagree.
   const shown = picks.flatMap((p) => {
@@ -190,7 +192,7 @@ export function CountSeriesPicker({
       {things.length > 0 && slots.length > 0 && (
         <PopoverMenu
           width={220}
-          label="Add a counter in a slot"
+          label={t("Add a counter in a slot")}
           triggerClassName={`${btnBase} flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border border-dashed border-ink/25 text-ink/45 hover:text-ink hover:border-ink/50`}
           trigger={
             <>

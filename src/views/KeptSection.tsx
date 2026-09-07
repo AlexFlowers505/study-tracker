@@ -33,6 +33,12 @@ import { useMemo } from "react"
 import type { ReactNode } from "react"
 import { Flame, Focus } from "lucide-react"
 import type { DayKey, Project } from "../types/model"
+import { pluralOf, useT } from "../lib/i18n"
+
+const nDays = (n: number) =>
+  pluralOf(n, ["day", "days"], ["день", "дня", "дней"])
+const nWeeks = (n: number) =>
+  pluralOf(n, ["week", "weeks"], ["неделя", "недели", "недель"])
 import type { KeptWeeks } from "../lib/dayVerdict"
 import { dayReport, keptBreakdown } from "../lib/dayVerdict"
 import { streakContext } from "../lib/customStreaks"
@@ -104,6 +110,7 @@ export function KeptSection({
   onClose: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const todayKey = toKey(today)
   const from = toKey(rangeStart)
   const to = toKey(rangeEnd)
@@ -156,21 +163,29 @@ export function KeptSection({
     <PanelSection
       tint={c.project}
       icon={Flame}
-      title="Kept"
-      closeLabel="Hide the composite"
+      title={t("Kept")}
+      closeLabel={t("Hide the composite")}
       onClose={onClose}
       /* `PanelSection` puts this inside a `<p>`, so it may hold no block of
          its own — a `<div>` or a second `<p>` in here is invalid HTML that
          React unpicks at runtime. Spans and a break. */
       subtitle={
         <>
-          A day is kept when <strong>every rule that votes</strong> held on it.
-          Freezes count — a day paid for is a day kept.
+          {t("A day is kept when every rule that votes held on it. Freezes count — a day paid for is a day kept.")}
           <br />
           <span className="text-ink/45">
-            {plural(days.current, "day")} running, best {days.best} ·{" "}
-            {plural(weeks.current, "week")} running, best {weeks.best} ·{" "}
-            {keptHere.length} of {inRange.length} kept in this period
+            {t("{days} running, best {bestDays}", {
+              days: nDays(days.current),
+              bestDays: days.best,
+            })}{" · "}
+            {t("{weeks} running, best {bestWeeks}", {
+              weeks: nWeeks(weeks.current),
+              bestWeeks: weeks.best,
+            })}{" · "}
+            {t("{kept} of {all} kept in this period", {
+              kept: keptHere.length,
+              all: inRange.length,
+            })}
           </span>
         </>
       }
@@ -181,7 +196,7 @@ export function KeptSection({
       {breakdown.length > 0 && (
         <div className="mb-4">
           <p className="text-[9px] font-mono uppercase tracking-widest text-ink/40 mb-1.5">
-            What it is made of
+            {t("What it is made of")}
           </p>
           <div className="space-y-1">
             {breakdown.map((row) => {
@@ -345,7 +360,7 @@ export function KeptSection({
                     <Tip
                       text={
                         solo === row.rule.id
-                          ? "Show every rule again"
+                          ? t("Show every rule again")
                           : `Show the page as though “${row.rule.label}” were the only rule that votes`
                       }
                     >
@@ -409,8 +424,8 @@ export function KeptSection({
         <StreakChart
           rows={rows}
           tint={c.project}
-          valueName="Rules held"
-          limitName="Rules voting"
+          valueName={t("Rules held")}
+          limitName={t("Rules voting")}
           formatter={(n) => String(n)}
         />
       )}

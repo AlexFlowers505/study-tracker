@@ -7,14 +7,16 @@
 --------------------------------------------------------------- */
 
 import { Clock } from "lucide-react"
+import { useT } from "../lib/i18n"
 import type { OverviewTotals } from "../lib/analytics"
 import { StatTile } from "../ui/StatTile"
 
 export function AveragesStats({ period }: { period: OverviewTotals }) {
+  const t = useT()
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <StatTile
-        label="Avg hours / day"
+        label={t("Avg hours / day")}
         value={
           period.avgHoursPerDay != null
             ? `${period.avgHoursPerDay.toFixed(1)}h`

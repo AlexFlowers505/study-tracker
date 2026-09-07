@@ -27,6 +27,10 @@
 import { useState } from "react"
 import { ArrowRight, Gift, Lock } from "lucide-react"
 import type { Project, ShopItem } from "../types/model"
+import { t, pluralOf, useT } from "../lib/i18n"
+
+const nPoints = (n: number) =>
+  pluralOf(n, ["point", "points"], ["очко", "очка", "очков"])
 import type { Balance } from "../lib/balance"
 import { boughtOn, canBuy, purchaseHistory } from "../lib/shop"
 import { fmtDateLong } from "../lib/date"
@@ -37,20 +41,14 @@ import { useModalDismiss } from "../ui/useModalDismiss"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 
-const HOW_IT_WORKS =
-  "Buying something here is permitting yourself to buy it in life. The app is " +
-  "the ledger of a promise you made yourself about spending; nothing else " +
-  "enforces it." +
-  String.fromCharCode(10, 10) +
-  "Prices are in points. A finished day pays 10 and a missed one takes 20 — " +
-  "nothing else mints them, and the rate is not a setting, so there is " +
-  "nothing here to game." +
-  String.fromCharCode(10, 10) +
-  "Buying spends points and nothing else. Your streak is a run of days and " +
-  "is never touched by it." +
-  String.fromCharCode(10, 10) +
-  "Raising a price lands at once. Lowering one waits a week, like loosening a " +
-  "rule. A purchase is never refunded."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const howItWorks = () =>
+  [
+    t("Buying something here is permitting yourself to buy it in life. The app is the ledger of a promise you made yourself about spending; nothing else enforces it."),
+    t("Prices are in points. A finished day pays 10 and a missed one takes 20 — nothing else mints them, and the rate is not a setting, so there is nothing here to game."),
+    t("Buying spends points and nothing else. Your streak is a run of days and is never touched by it."),
+    t("Raising a price lands at once. Lowering one waits a week, like loosening a rule. A purchase is never refunded."),
+  ].join(String.fromCharCode(10, 10))
 
 export function ShopSection({
   project,
@@ -68,6 +66,7 @@ export function ShopSection({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const [asking, setAsking] = useState<ShopItem | null>(null)
   const items = project.settings.shop || []
   const history = purchaseHistory(project)
@@ -77,20 +76,20 @@ export function ShopSection({
     <PanelSection
       tint={c.goalMet}
       icon={Gift}
-      title="Rewards"
+      title={t("Rewards")}
       subtitle={
         balance
-          ? `${available} ${available === 1 ? "point" : "points"} to spend`
-          : "The balance has not started counting yet"
+          ? t("{points} to spend", { points: nPoints(available) })
+          : t("The balance has not started counting yet")
       }
       action={
-        <Tip multiline text={HOW_IT_WORKS}>
+        <Tip multiline text={howItWorks()}>
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
             how this works
           </span>
         </Tip>
       }
-      closeLabel="Hide the rewards"
+      closeLabel={t("Hide the rewards")}
       onClose={onClose}
     >
       {/* **One line, not four** — `spec 016`, part 4. The comment this block
@@ -102,7 +101,7 @@ export function ShopSection({
       {balance && (
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-[10px] font-mono uppercase tracking-widest text-ink/45">
-            On the account
+            {t("On the account")}
           </span>
           <strong
             className="text-lg font-mono font-extrabold tabular-nums leading-none"
@@ -111,7 +110,7 @@ export function ShopSection({
             {available}
           </strong>
           <span className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-            {available === 1 ? "point" : "points"}
+            {t(available === 1 ? "unit:point" : "unit:points")}
           </span>
           {onOpenAccount && (
             <button
@@ -120,7 +119,7 @@ export function ShopSection({
               className={`${btnBase} ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide hover:bg-ink/5`}
               style={{ color: c.accent }}
             >
-              Where it came from
+              {t("Where it came from")}
               <ArrowRight size={12} />
             </button>
           )}
@@ -173,7 +172,7 @@ export function ShopSection({
                     {item.price}
                   </p>
                   <p className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
-                    {item.price === 1 ? "point" : "points"}
+                    {t(item.price === 1 ? "unit:point" : "unit:points")}
                   </p>
                 </div>
                 <button
@@ -183,7 +182,7 @@ export function ShopSection({
                   className={`${btnBase} shrink-0 px-3 py-2 rounded-full text-[10px] font-mono uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed`}
                   style={{ backgroundColor: c.goalMet, color: c.onFill }}
                 >
-                  Take it
+                  {t("Take it")}
                 </button>
               </div>
             )
@@ -191,9 +190,9 @@ export function ShopSection({
         </div>
       ) : (
         <p className="text-[11px] font-mono text-ink/40 leading-relaxed">
-          Nothing written yet. Setup has the tab — put the thing you have been
-          circling for months in it, at a price that would make having it feel
-          earned.
+          {t(
+            "Nothing written yet. Setup has the tab — put the thing you have been circling for months in it, at a price that would make having it feel earned.",
+          )}
         </p>
       )}
 

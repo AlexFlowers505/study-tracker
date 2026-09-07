@@ -21,6 +21,7 @@ import type {
   Settings,
 } from "../types/model"
 import { EditableList } from "../ui/EditableList"
+import { useT } from "../lib/i18n"
 
 export function CategoriesTab({
   settings,
@@ -44,13 +45,13 @@ export function CategoriesTab({
    */
   onApply: (patch: Partial<Project>) => void
 }) {
+  const t = useT()
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        Groupings for your counters — "study", "health", "things to do less
-        of", or whatever the useful shelf turns out to be. One per counter, so
-        the Counters tab can lay them all out under headings with each thing
-        appearing exactly once. A counter can still wear any number of tags.
+        {t(
+          'Groupings for your counters — "study", "health", "things to do less of", or whatever the useful shelf turns out to be. One per counter, so the Counters tab can lay them all out under headings with each thing appearing exactly once. A counter can still wear any number of tags.',
+        )}
       </p>
       <EditableList<Category>
         items={categories}
@@ -75,7 +76,10 @@ export function CategoriesTab({
         noun="category"
         minItems={0}
         warningNote={(label) =>
-          `Remove "${label}"? Everything filed under it keeps its counts and simply stops being grouped.`
+          t(
+            'Remove "{name}"? Everything filed under it keeps its counts and simply stops being grouped.',
+            { name: label },
+          )
         }
       />
     </div>

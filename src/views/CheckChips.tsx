@@ -36,7 +36,11 @@
 import { Check, Ghost, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { CheckState, CounterUnit, Day } from "../types/model"
-import { CHECK_CHOICES, CHECK_LABELS, checkState } from "../lib/checks"
+import {
+  checkLabel,
+  CHECK_CHOICES,
+  checkState,
+} from "../lib/checks"
 import { btnBase, cardTiny } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { PopoverMenu } from "../ui/PopoverMenu"
@@ -105,7 +109,7 @@ export function CheckChips({
         const chipClass = `${btnBase} flex items-center gap-1 ${cardTiny(
           roomy,
         )} uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full ${className}`
-        const label = `${unit.label} — ${CHECK_LABELS[state]}`
+        const label = `${unit.label} — ${checkLabel(state)}`
 
         if (!onSet)
           return (
@@ -155,7 +159,7 @@ export function CheckChips({
                       }`}
                     >
                       <ChoiceGlyph size={13} strokeWidth={3} />
-                      {CHECK_LABELS[choice]}
+                      {checkLabel(choice)}
                     </button>
                   )
                 })}

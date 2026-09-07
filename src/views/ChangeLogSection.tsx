@@ -1,5 +1,6 @@
 import { History } from "lucide-react"
 import type { ChangeLogEntry } from "../types/model"
+import { useT } from "../lib/i18n"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
 import { PANEL_INSET } from "../lib/theme"
 import { PanelSection } from "./PanelSection"
@@ -14,13 +15,16 @@ export function ChangeLogSection({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   return (
     <PanelSection
       tint={c.changelog}
       icon={History}
-      title="Change log"
-      subtitle={`The last ${CHANGE_LOG_LIMIT} edits · oldest fall off the end`}
-      closeLabel="Hide the change log"
+      title={t("Change log")}
+      subtitle={t("The last {n} edits · oldest fall off the end", {
+        n: CHANGE_LOG_LIMIT,
+      })}
+      closeLabel={t("Hide the change log")}
       onClose={onClose}
     >
       {!entries.length ? (

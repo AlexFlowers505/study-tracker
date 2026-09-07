@@ -42,6 +42,12 @@ export type WriteOp =
       projectId: string
       achievementId: string
     }
+  | {
+      key: string
+      kind: "deleteEarned"
+      projectId: string
+      achievementId: string
+    }
   | { key: string; kind: "purchase"; projectId: string; purchaseId: string }
   | { key: string; kind: "proposalNew"; projectId: string; proposalId: string }
   | { key: string; kind: "proposalState"; proposalId: string }
@@ -127,6 +133,32 @@ export const opEarned = (
 ): WriteOp => ({
   key: `earned:${projectId}:${achievementId}`,
   kind: "earned",
+  projectId,
+  achievementId,
+})
+
+/**
+ * The row going, because its definition went.
+ *
+ * **The one deletion in a ledger otherwise written once**, and it is not a
+ * contradiction: everything else here is append-only so that *history* cannot
+ * be rewritten — re-breaking and re-fixing a week must not mint a second
+ * reward. A badge whose achievement no longer exists is not history, it is
+ * litter: it pays into the balance for something you can no longer see, name
+ * or check, and the only moment anybody can tidy it is the moment they delete
+ * the thing it belonged to. Deleting an achievement is already deliberate,
+ * already confirmed and already gated on the clock and a written reason.
+ *
+ * **Same key as `opEarned`**, so the two collapse rather than racing: reaching
+ * something and then deleting it in one debounce window is one write, and it
+ * is the last one that stands.
+ */
+export const opDeleteEarned = (
+  projectId: string,
+  achievementId: string,
+): WriteOp => ({
+  key: `earned:${projectId}:${achievementId}`,
+  kind: "deleteEarned",
   projectId,
   achievementId,
 })
@@ -339,6 +371,15 @@ export async function applyWriteOp(
         ),
       )
     }
+
+    case "deleteEarned":
+      return run(
+        client
+          .from("achievements")
+          .delete()
+          .eq("project_id", op.projectId)
+          .eq("achievement_id", op.achievementId),
+      )
 
     case "purchase": {
       if (!project) return

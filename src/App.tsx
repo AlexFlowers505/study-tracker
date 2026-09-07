@@ -83,6 +83,7 @@ import type { NavEntry } from "./views/PageNav"
 import { AccountSection } from "./views/AccountSection"
 import { SoloBanner } from "./views/SoloBanner"
 import { useNoticePrefs } from "./ui/useNoticePrefs"
+import { t, useLocale } from "./lib/i18n"
 import {
   periodRange,
 } from "./lib/period"
@@ -94,6 +95,7 @@ import {
   applyWriteOp,
   opDay,
   opDayMark,
+  opDeleteEarned,
   opEarned,
   opProposalNew,
   opProposalState,
@@ -171,6 +173,7 @@ export default function StudyTrackerApp() {
     /** Preselected when the dialog was opened from a slot's own "+". */
     slotId?: string
   } | null>(null)
+  const locale = useLocale()
   const [showSetup, setShowSetup] = useState(false)
   // Set when the initial read threw. While true the app is read-only: it holds
   // placeholder state that must never be written back over the real row.
@@ -256,6 +259,7 @@ export default function StudyTrackerApp() {
     prefs: noticePrefs,
     setOpen: setNoticesOpen,
     toggleLevel: toggleNoticeLevel,
+    setAllHidden: setNoticeLevelsHidden,
   } = useNoticePrefs()
   // Which slots/activities are left out of the figures. Deliberately not tied
   // to the period and not saved: it's a way of looking at the data, not part
@@ -486,6 +490,36 @@ export default function StudyTrackerApp() {
   )
   const updateSettings = (patch: Settings) =>
     updateProject({ settings: patch })
+
+  /**
+   * The achievements list, and whatever its removals took with them.
+   *
+   * **One write, because it touches two of the project's fields.** Deleting an
+   * achievement changes `settings` *and* drops its row from `earned`, and two
+   * calls to `updateProject` in one tick both close over the same `project`,
+   * so the second silently undoes the first — the bug the tag cleanup shipped
+   * with and the reason `CategoriesTab` takes a single `onApply`.
+   *
+   * **The record goes with the definition.** It used to stay, under a warning
+   * that said so: *if it was already earned the record of that stays — it
+   * happened.* That is true of a badge you can still see, and false of one
+   * whose achievement no longer exists — which pays into your balance for
+   * something you can no longer name or check, and leaves points behind that
+   * nothing on the page accounts for. Deleting is already deliberate, already
+   * confirmed and already gated on the clock and a written reason; it is also
+   * the only moment anybody can tidy this.
+   */
+  const saveAchievements = (achievements: Achievement[], forget: string[]) => {
+    const earned = { ...(project.earned || {}) }
+    forget.forEach((id) => delete earned[id])
+    patchProject(
+      { settings: { ...project.settings, achievements }, earned },
+      [
+        opProject(project.id),
+        ...forget.map((id) => opDeleteEarned(project.id, id)),
+      ],
+    )
+  }
   const updateSlots = (slots: Slot[]) => updateProject({ slots })
   const updateActivities = (activities: Activity[]) =>
     updateProject({ activities })
@@ -706,7 +740,7 @@ export default function StudyTrackerApp() {
       if (when) out.push({ id, label, tint, icon })
     }
     add(noticePrefs.open && noticeList.length > 0, "sec-notices", "Notices", c.accent, Bell)
-    add(showFilter, "sec-filter", "What counts", c.filter, Filter)
+    add(showFilter, "sec-filter", t("What counts"), c.filter, Filter)
     /* **One entry, because there is one section.** A rule used to have a
        panel of its own and `sec-rule-<id>` to point at; it is a block inside
        the composite's panel now, and an index entry pointing at a section that
@@ -720,18 +754,28 @@ export default function StudyTrackerApp() {
       if (openStreak !== null)
         out.push({
           id: "sec-kept",
-          label: expanded ? expanded.rule.label : "The composite",
+          label: expanded ? expanded.rule.label : t("The composite"),
           tint: expanded ? expanded.rule.color : c.project,
           iconName: expanded ? expanded.rule.iconName : undefined,
           icon: expanded ? undefined : Flame,
         })
     }
-    add(showAccount && !!project.settings.balanceStart, "sec-account", "The account", c.project, Coins)
-    add(showShop, "sec-shop", "Rewards", c.accent, Gift)
-    add(showHistory, "sec-achievements", "Achievements", c.accent, Trophy)
-    add(showLog, "sec-changelog", "Change log", c.changelog, History)
+    add(
+      showAccount && !!project.settings.balanceStart,
+      "sec-account",
+      t("The account"),
+      c.project,
+      Coins,
+    )
+    add(showShop, "sec-shop", t("Rewards"), c.accent, Gift)
+    add(showHistory, "sec-achievements", t("Achievements"), c.accent, Trophy)
+    add(showLog, "sec-changelog", t("Change log"), c.changelog, History)
     out.push({ id: "sec-log", label: "Days", icon: CalendarDays })
-    out.push({ id: "sec-trends", label: "Summary & trends", icon: ChartLine })
+    out.push({
+      id: "sec-trends",
+      label: t("Summary & trends"),
+      icon: ChartLine,
+    })
     return out
   }, [
     noticePrefs.open,
@@ -871,7 +915,7 @@ export default function StudyTrackerApp() {
       const token = await createInvite(cloudClient, project, session.user.id)
       setInviteUrl(inviteLink(token))
     } catch (e) {
-      setInviteNote(e instanceof Error ? e.message : "Could not make a link")
+      setInviteNote(e instanceof Error ? e.message : t("Could not make a link"))
     }
   }
 
@@ -984,7 +1028,9 @@ export default function StudyTrackerApp() {
     claimInvite(cloudClient, token)
       .then((name) => setInviteNote(`You are now supervising ${name}.`))
       .catch((e) =>
-        setInviteNote(e instanceof Error ? e.message : "That link did not work"),
+        setInviteNote(
+          e instanceof Error ? e.message : t("That link did not work"),
+        ),
       )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, !!cloudClient, session?.user.id])
@@ -1146,7 +1192,7 @@ export default function StudyTrackerApp() {
   // persist(): the queue is one request per row, which is right for editing
   // and wrong for a whole logbook at once.
   const importData = async (next: AppData) => {
-    if (!canUseCloud) throw new Error("Sign in first — there's nowhere to write")
+    if (!canUseCloud) throw new Error(t("Sign in first — there's nowhere to write"))
     if (loadFailed)
       throw new Error("Not while the load is broken — reload and try again")
     // Anything already queued was computed against the data being replaced, so
@@ -1338,27 +1384,38 @@ export default function StudyTrackerApp() {
       <div className="min-h-screen flex items-center justify-center bg-page text-ink p-6">
         <div className={`${CARD} max-w-md text-center`}>
           <h1 className="font-sans font-extrabold uppercase tracking-tight text-base mb-2">
-            Couldn't load your logbook
+            {t("Couldn't load your logbook")}
           </h1>
           <p className="text-xs font-mono text-ink/60 leading-relaxed mb-4">
-            The server answered, but your saved data didn't come back. Nothing
-            has been changed — saving is switched off until it loads, so the
-            stored copy stays exactly as it is.
+            {t(
+              "The server answered, but your saved data didn't come back. Nothing has been changed — saving is switched off until it loads, so the stored copy stays exactly as it is.",
+            )}
           </p>
           <button
             onClick={() => window.location.reload()}
             style={{ backgroundColor: c.accent, color: c.onFill }}
             className={`${btnBase} text-xs font-mono uppercase tracking-widest px-4 py-2.5 rounded-xl hover:opacity-90`}
           >
-            Try again
+            {t("Try again")}
           </button>
         </div>
       </div>
     )
   }
 
+  /* **The tree is keyed on the language, so changing it remounts.**
+     `t()` is a plain function — it has to be, since half the prose in the app
+     is built in `lib/` by pure functions no hook can reach — so a component
+     that renders a translated string without subscribing would keep the old
+     one until something else happened to re-render it. Half a page in each
+     language is worse than either.
+
+     Remounting throws away which panels were open and where you had scrolled.
+     That is a real cost and it is the right one: this is a control you touch
+     once, and the alternative is a discipline that fails silently in whichever
+     component somebody forgets. */
   return (
-    <div className="min-h-screen bg-page text-ink">
+    <div key={locale} className="min-h-screen bg-page text-ink">
       <TopBar
         onOpenSetup={() => setShowSetup(true)}
         projectName={project.settings.projectName || "Time Tracker"}
@@ -1491,8 +1548,9 @@ export default function StudyTrackerApp() {
           <section id="sec-notices" className="scroll-mt-28">
           <NoticeBoard
             notices={noticeList}
-            held={noticePrefs.held}
+            hidden={noticePrefs.hidden}
             onToggleLevel={toggleNoticeLevel}
+            onBulkLevels={setNoticeLevelsHidden}
             activeRule={openStreak}
             onOpenRule={(id) => setOpenStreak(openStreak === id ? null : id)}
             onClose={() => setNoticesOpen(false)}
@@ -1617,14 +1675,16 @@ export default function StudyTrackerApp() {
                       // it goes first — the same order `ruleStatus` accounts in.
                       pools: [
                         {
-                          label: "This week's allowance",
-                          hint: "Granted every Monday and lost unused.",
+                          label: t("This week's allowance"),
+                          hint: t("Granted every Monday and lost unused."),
                           left: s2.freezes.weeklyLeft,
                           total: s2.freezes.weeklyTotal,
                         },
                         {
-                          label: "Banked",
-                          hint: "One for every week you keep clean. Carried until spent.",
+                          label: t("Banked"),
+                          hint: t(
+                            "One for every week you keep clean. Carried until spent.",
+                          ),
                           left: s2.freezes.banked,
                           total: s2.freezes.cap,
                         },
@@ -1782,14 +1842,15 @@ export default function StudyTrackerApp() {
           <div className="max-w-6xl mx-auto flex items-center gap-3 text-xs font-mono">
             <AlertCircle size={16} className="shrink-0" />
             <span className="flex-1">
-              Your changes are <strong>not being saved</strong>. Retrying — keep
-              this tab open. If it persists, sign out and back in.
+              {t(
+                "Your changes are not being saved. Retrying — keep this tab open. If it persists, sign out and back in.",
+              )}
             </span>
             <button
               onClick={writeNow}
               className={`${btnBase} shrink-0 rounded-full bg-card/20 hover:bg-card/30 px-3 py-1 uppercase tracking-widest text-[10px]`}
             >
-              Retry now
+              {t("Retry now")}
             </button>
           </div>
         </div>
@@ -1905,6 +1966,7 @@ export default function StudyTrackerApp() {
           counterProgress={counterProgress}
           onUpdateUnits={updateCounterUnits}
           onUpdateProject={updateProject}
+          onSaveAchievements={saveAchievements}
           projects={data.projects}
           activeProjectId={data.activeProjectId}
           onSwitchProject={switchProject}

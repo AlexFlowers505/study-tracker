@@ -28,6 +28,7 @@ import type {
   StudyEntry,
   TimeOfDay,
 } from "../types/model"
+import { useT } from "../lib/i18n"
 import { getById } from "../lib/id"
 import { fmtHours } from "../lib/time"
 import { FIELD_BARE, btnBase } from "../lib/theme"
@@ -66,6 +67,7 @@ export function EntryEditRow({
   onClose: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   const timed = !!(entry.start && entry.end)
   const isStudy = !!slots && !!activities && !!slotId
@@ -178,7 +180,7 @@ export function EntryEditRow({
       <AutoTextarea
         value={entry.comment || ""}
         onChange={(e) => onChange({ comment: e.target.value })}
-        placeholder="Note"
+        placeholder={t("Note")}
         rows={1}
         maxHeight={160}
         className="w-full bg-transparent border-0 p-0 text-[10px] font-mono italic text-ink/60 placeholder:text-ink/30 focus:outline-none"
@@ -188,7 +190,7 @@ export function EntryEditRow({
           the left, away from the two you reach for constantly; the pair on the
           right in the order they are decided — first "not this", then "yes". */}
       <div className="flex items-center justify-between gap-1.5 pt-0.5">
-        <Tip text="Delete this entry">
+        <Tip text={t("Delete this entry")}>
           <button
             onClick={onDelete}
             className={`${iconBtn} hover:bg-card/70`}
@@ -198,7 +200,7 @@ export function EntryEditRow({
           </button>
         </Tip>
         <div className="flex items-center gap-0.5 shrink-0">
-          <Tip text="Cancel changes">
+          <Tip text={t("Cancel changes")}>
             <button
               onClick={onCancel}
               className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
@@ -207,7 +209,7 @@ export function EntryEditRow({
             </button>
           </Tip>
           {/* Closes rather than saves — everything above is already written. */}
-          <Tip text="Done">
+          <Tip text={t("Done")}>
             <button
               onClick={onClose}
               className={`${iconBtn} hover:bg-card/70`}

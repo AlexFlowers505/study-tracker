@@ -22,6 +22,7 @@ import type {
   Settings,
   Slot,
 } from "../types/model"
+import { useT } from "../lib/i18n"
 import { fromKey, toKey } from "../lib/date"
 import { Tip } from "../ui/Tip"
 import { useModalDismiss } from "../ui/useModalDismiss"
@@ -65,6 +66,7 @@ export function DayQuickviewModal({
   canFreeze?: (key: DayKey) => boolean
   onFreeze?: (key: DayKey) => void
 }) {
+  const t = useT()
   const onBackdropClick = useModalDismiss(onClose)
   const d = fromKey(dateKey)
 
@@ -94,7 +96,7 @@ export function DayQuickviewModal({
               // so aiming wide of an entry does nothing.
               titleActions={
                 <div className="flex items-center gap-1">
-                  <Tip text="Go to day view">
+                  <Tip text={t("Go to day view")}>
                     <button
                       onClick={() => {
                         onGoToDayView(dateKey)

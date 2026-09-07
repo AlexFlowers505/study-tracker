@@ -75,7 +75,11 @@ import type {
   StreakTarget,
   Tag,
 } from "../types/model"
-import { splitByKind } from "../lib/checks"
+import { t, useT } from "../lib/i18n"
+import {
+  checkLabel,
+  splitByKind,
+} from "../lib/checks"
 import type {
   ClauseBounds,
   StreakContext,
@@ -110,7 +114,9 @@ import {
   startOfWeek,
   toKey,
 } from "../lib/date"
-import { CHECK_CHOICES, CHECK_LABELS } from "../lib/checks"
+import {
+  CHECK_CHOICES,
+} from "../lib/checks"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { AutoTextarea } from "../ui/controls"
@@ -122,28 +128,21 @@ import { CountersPicker } from "./CountersPicker"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 
-const LOCK_HELP =
-  "A change lands at once when it can be proved not to make the rule easier " +
-  "— a lower limit, more days judged, fewer freezes, or one more condition." +
-  String.fromCharCode(10, 10) +
-  "Anything else waits a week from the last such change, including anything " +
-  "that cannot be compared at all: inverting a test, swapping what is " +
-  "measured, dropping a condition, switching between judging a day and " +
-  "judging a week." +
-  String.fromCharCode(10, 10) +
-  "The day you write a rule is yours to get it right on: nothing is locked " +
-  "until the next day, because the rule has judged nothing yet." +
-  String.fromCharCode(10, 10) +
-  "The point of setting a limit in advance is to be the person who set it, " +
-  "not the person living under it."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const lockHelp = () =>
+  [
+    t("A change lands at once when it can be proved not to make the rule easier — a lower limit, more days judged, fewer freezes, or one more condition."),
+    t("Anything else waits a week from the last such change, including anything that cannot be compared at all: inverting a test, swapping what is measured, dropping a condition, switching between judging a day and judging a week."),
+    t("The day you write a rule is yours to get it right on: nothing is locked until the next day, because the rule has judged nothing yet."),
+    t("The point of setting a limit in advance is to be the person who set it, not the person living under it."),
+  ].join(String.fromCharCode(10, 10))
 
-const CONDITION_HELP =
-  "A rule can keep several things at once, and all of them have to hold — " +
-  "no Pinterest on a weekday morning, and no YouTube in the evening or at " +
-  "night, any day." + String.fromCharCode(10, 10) +
-  "One rule rather than two, because breaking either half breaks the same " +
-  "week. Two rules would be two streaks to keep and two allowances to spend, " +
-  "which is a weaker promise wearing the same name."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const conditionHelp = () =>
+  [
+    t("A rule can keep several things at once, and all of them have to hold — no Pinterest on a weekday morning, and no YouTube in the evening or at night, any day."),
+    t("One rule rather than two, because breaking either half breaks the same week. Two rules would be two streaks to keep and two allowances to spend, which is a weaker promise wearing the same name."),
+  ].join(String.fromCharCode(10, 10))
 
 
 /**
@@ -309,12 +308,12 @@ const NUM = `${FIELD_SOFT_INLINE} w-14 rounded-lg py-1 text-[11px] text-center`
 function startChoices(today: Date): { id: string; label: string }[] {
   const monday = startOfWeek(addDays(today, 7))
   const out = [
-    { id: toKey(today), label: "Today" },
-    { id: toKey(addDays(today, 1)), label: "Tomorrow" },
+    { id: toKey(today), label: t("date:Today") },
+    { id: toKey(addDays(today, 1)), label: t("Tomorrow") },
   ]
   const mondayKey = toKey(monday)
   if (!out.some((o) => o.id === mondayKey))
-    out.push({ id: mondayKey, label: "Monday" })
+    out.push({ id: mondayKey, label: t("Monday") })
   return out
 }
 /**
@@ -460,7 +459,7 @@ function ClauseForm({
           Condition {ordinal}
         </span>
         {onRemove && (
-          <Tip className="ml-auto" text="Drop this condition">
+          <Tip className="ml-auto" text={t("Drop this condition")}>
             <button
               type="button"
               onClick={onRemove}
@@ -511,11 +510,11 @@ function ClauseForm({
           the terms — a footnote to the slots. Its own rather than the rule's,
           since a compound rule is one promise made for several reasons. Not a
           term, so the lock never sees it. */}
-      <Fold title="Note" summary={clause.note || "none"}>
+      <Fold title={t("Note")} summary={clause.note || t("none")}>
         <AutoTextarea
           value={clause.note ?? ""}
           onChange={(e) => onChange({ note: e.target.value || undefined })}
-          placeholder="Why this condition is here"
+          placeholder={t("Why this condition is here")}
           rows={1}
           maxHeight={100}
           className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
@@ -563,7 +562,7 @@ function ClauseForm({
           out here. By day it lives inside `Days`, where the days it applies to
           are chosen — see below. */}
       {!info.check && byWeek && (
-        <Row label="Per week">
+        <Row label={t("Per week")}>
           <BoundField
             label="Minimum"
             value={bounds.min}
@@ -580,13 +579,13 @@ function ClauseForm({
       )}
 
       {info.check && byWeek && (
-        <Row label="Answers a week">
+        <Row label={t("Answers a week")}>
           <CheckWeekFields clause={clause} onChange={onChange} />
         </Row>
       )}
 
       {info.check && !byWeek && (
-        <Row label="Accepted answers">
+        <Row label={t("Accepted answers")}>
           <CheckDayFields clause={clause} onChange={onChange} />
         </Row>
       )}
@@ -604,7 +603,7 @@ function ClauseForm({
           already: a weekday with no accepted answer is a weekday it does not
           judge, and that is what its grid says in the row it leaves empty. */}
       {!byWeek && !info.check && (
-        <Fold title="Days" summary={daysSummary(clause)}>
+        <Fold title={t("Days")} summary={daysSummary(clause)}>
           <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
         </Fold>
       )}
@@ -615,7 +614,7 @@ function ClauseForm({
           policy, and a control offering figures that could never be read is
           worse than one that is not there. */}
       {!info.check && !sleepTarget && ctx.slots.length > 0 && (
-        <Fold title="Slots" summary={slotsSummary(clause, ctx)}>
+        <Fold title={t("Slots")} summary={slotsSummary(clause, ctx)}>
           <SlotsFields
             clause={clause}
             ctx={ctx}
@@ -816,8 +815,8 @@ function CheckDayFields({
               key={answer}
               text={
                 full
-                  ? `Take ${CHECK_LABELS[answer]} off every day`
-                  : `Accept ${CHECK_LABELS[answer]} on every day`
+                  ? `Take ${checkLabel(answer)} off every day`
+                  : `Accept ${checkLabel(answer)} on every day`
               }
             >
               <button
@@ -833,7 +832,7 @@ function CheckDayFields({
                   full ? "font-bold" : "text-ink/30 hover:text-ink/70"
                 }`}
               >
-                {CHECK_LABELS[answer]}
+                {checkLabel(answer)}
               </button>
             </Tip>
           )
@@ -861,7 +860,7 @@ function CheckDayFields({
                   on ? "font-bold" : "text-ink/35 hover:text-ink/70"
                 }`}
               >
-                {CHECK_LABELS[answer]}
+                {checkLabel(answer)}
               </button>
             )
           })}
@@ -930,7 +929,7 @@ function CheckWeekFields({
           return (
             <div key={answer} className="flex items-center gap-1.5">
               <span className="w-16 shrink-0 text-[10px] font-mono text-ink/60">
-                {CHECK_LABELS[answer]}
+                {checkLabel(answer)}
               </span>
               <input
                 type="number"
@@ -1088,20 +1087,20 @@ function SlotsFields({
           below it is about: one answer, or the answer for the weekday you have
           selected. */}
       {!byWeek && (
-        <Row label="Across the days">
+        <Row label={t("Across the days")}>
           <TwoWay<"same" | "each">
             value={perDay ? "each" : "same"}
             onChange={(v) => setPerDay(v === "each")}
             options={[
               {
                 id: "same",
-                label: "Shared time slots",
-                tip: "Same slot rules for each countable day",
+                label: t("Shared time slots"),
+                tip: t("Same slot rules for each countable day"),
               },
               {
                 id: "each",
-                label: "Individual time slots",
-                tip: "Can set individual slot rules for chosen countable days",
+                label: t("Individual time slots"),
+                tip: t("Can set individual slot rules for chosen countable days"),
               },
             ]}
           />
@@ -1132,7 +1131,7 @@ function SlotsFields({
           every one is lit: all-lit and none-lit look alike at a glance and
           mean opposite things, and the chips are noise until you have actually
           decided to narrow. */}
-      <Row label="Counts in">
+      <Row label={t("Counts in")}>
         <TwoWay<"all" | "some">
           value={choosing ? "some" : "all"}
           onChange={(v) => {
@@ -1142,13 +1141,17 @@ function SlotsFields({
           options={[
             {
               id: "all",
-              label: "All slots",
-              tip: "Everything logged that day counts towards the figure, wherever it fell",
+              label: t("All slots"),
+              tip: t(
+                "Everything logged that day counts towards the figure, wherever it fell",
+              ),
             },
             {
               id: "some",
-              label: "Chosen slots",
-              tip: "Only what falls in the slots you pick counts towards the figure",
+              label: t("Chosen slots"),
+              tip: t(
+                "Only what falls in the slots you pick counts towards the figure",
+              ),
             },
           ]}
         />
@@ -1197,7 +1200,7 @@ function SlotsFields({
           only this, and *two hours anywhere* wants only the other. Off, every
           counted slot owes nothing, which is what the rows say when you turn
           it on and leave them alone. */}
-      <Row label="Count by slot">
+      <Row label={t("Count by slot")}>
         <TwoWay<"off" | "on">
           value={figuring ? "on" : "off"}
           onChange={(v) => {
@@ -1207,13 +1210,17 @@ function SlotsFields({
           options={[
             {
               id: "off",
-              label: "No slot figures",
-              tip: "The day's own figure is the whole requirement, wherever the time falls inside it",
+              label: t("No slot figures"),
+              tip: t(
+                "The day's own figure is the whole requirement, wherever the time falls inside it",
+              ),
             },
             {
               id: "on",
-              label: "A figure per slot",
-              tip: "A named slot carries its own floor or ceiling as well as the day's",
+              label: t("A figure per slot"),
+              tip: t(
+                "A named slot carries its own floor or ceiling as well as the day's",
+              ),
             },
           ]}
         />
@@ -1469,7 +1476,7 @@ function WeekdayRow({
       {/* **Which days first.** Everything under this is a figure *on* those
           days, so choosing them is the question the rest depends on — and it
           used to sit two folds below the numbers it governs. */}
-      <Row label="Judged on">
+      <Row label={t("Judged on")}>
         <div className="flex flex-wrap items-center gap-1">
           {WEEKDAY_ORDER.map((wd) => {
             const on = judged.includes(wd)
@@ -1510,40 +1517,46 @@ function WeekdayRow({
           hope that read as deliberate. Independent of `Count by slot` in the
           block below — either, both, or the condition asks nothing and is
           refused. */}
-      <Row label="Count by day">
+      <Row label={t("Count by day")}>
         <TwoWay<"off" | "on">
           value={counting ? "on" : "off"}
           onChange={(v) => setCounted(v === "on")}
           options={[
             {
               id: "off",
-              label: "No day figure",
-              tip: "The day as a whole is unbounded — only a named slot can ask for anything",
+              label: t("No day figure"),
+              tip: t(
+                "The day as a whole is unbounded — only a named slot can ask for anything",
+              ),
             },
             {
               id: "on",
-              label: "A figure per day",
-              tip: "The day as a whole carries a floor, a ceiling, or both",
+              label: t("A figure per day"),
+              tip: t("The day as a whole carries a floor, a ceiling, or both"),
             },
           ]}
         />
       </Row>
 
       {counting && (
-        <Row label="How much">
+        <Row label={t("How much")}>
           <TwoWay<"same" | "each">
             value={perDay ? "each" : "same"}
             onChange={(v) => setPerDay(v === "each")}
             options={[
               {
                 id: "same",
-                label: "The same every day",
-                tip: "One floor and one ceiling, on every day this condition judges",
+                label: t("The same every day"),
+                tip: t(
+                  "One floor and one ceiling, on every day this condition judges",
+                ),
               },
               {
                 id: "each",
-                label: "One per weekday",
-                tip: "Set the floor and the ceiling separately for each chosen day",
+                label: t("One per weekday"),
+                tip: t(
+                  "Set the floor and the ceiling separately for each chosen day",
+                ),
               },
             ]}
           />
@@ -1551,7 +1564,7 @@ function WeekdayRow({
       )}
 
       {counting && !perDay && (
-        <Row label="Per day">
+        <Row label={t("Per day")}>
           <BoundField
             label="Minimum"
             value={shared.min}
@@ -1669,7 +1682,7 @@ function RuleSummary({
       {/* The same sentence the panel reads back, from the same function. A
           summary written separately is a summary that can drift. */}
       <p className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-        {rule.scope === "week" ? "Every week" : "Every day"}
+        {t(rule.scope === "week" ? "Every week" : "Every day")}
       </p>
       <ul className="space-y-0.5">
         {clauses.map((clause) => (
@@ -1685,8 +1698,8 @@ function RuleSummary({
       </p>
       <p className="text-[10px] font-mono text-ink/40">
         {rule.inDayVerdict
-          ? "Counts towards the day's verdict"
-          : "Keeps its own streak only"}
+          ? t("Counts towards the day's verdict")
+          : t("Keeps its own streak only")}
       </p>
       {/* The last thing you told yourself. Reading it back is what makes
           writing it worth anything. */}
@@ -1726,8 +1739,8 @@ function RuleSummary({
               style={isBenchmark ? { color: c.accent } : undefined}
             />
             {isBenchmark
-              ? "The day's goal is read from this rule"
-              : "Read the day's goal from this rule"}
+              ? t("The day's goal is read from this rule")
+              : t("Read the day's goal from this rule")}
           </button>
         )}
       </div>
@@ -1739,14 +1752,14 @@ function RuleSummary({
         >
           <Pencil size={10} /> Edit
         </button>
-        <Tip multiline text={LOCK_HELP}>
+        <Tip multiline text={lockHelp()}>
           <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
             <Lock size={10} />
             {settingUp
-              ? "Being set up — open until tomorrow"
+              ? t("Being set up — open until tomorrow")
               : locked
                 ? `Narrowing only until ${fmtDateLong(rule.lockedUntil)}`
-                : "Open to any change"}
+                : t("Open to any change")}
           </span>
         </Tip>
       </div>
@@ -1859,13 +1872,13 @@ function RuleForm({
           total matters. It is a property of the rule rather than of any one
           condition — a rule with three conditions has one scope — which is why
           it sits above them rather than inside each. */}
-      <Row label="Judged">
+      <Row label={t("Judged")}>
         <Pills<"day" | "week">
           value={draft.scope}
           onChange={(scope) => patch({ scope })}
           options={[
-            { id: "day", label: "Every day" },
-            { id: "week", label: "Every week" },
+            { id: "day", label: t("Every day") },
+            { id: "week", label: t("Every week") },
           ]}
         />
         <span className="text-[10px] font-mono text-ink/40">
@@ -1904,13 +1917,13 @@ function RuleForm({
           asks of you; and the weight is drawing only — the verdict is
           unchanged either way, because a day is missed the moment anything is
           missed. */}
-      <Row label="In the day's verdict">
+      <Row label={t("In the day's verdict")}>
         <Pills<"in" | "out">
           value={draft.inDayVerdict ? "in" : "out"}
           onChange={(v) => patch({ inDayVerdict: v === "in" })}
           options={[
-            { id: "in", label: "Counts" },
-            { id: "out", label: "On its own" },
+            { id: "in", label: t("Counts") },
+            { id: "out", label: t("On its own") },
           ]}
         />
         {draft.inDayVerdict && (
@@ -1918,9 +1931,14 @@ function RuleForm({
             <Tip
               multiline
               text={
-                "How much of the day's ring this rule takes, and where its arc starts." +
-                String.fromCharCode(10, 10) +
-                "Drawing only. The verdict is unchanged either way, because a day is missed the moment anything is missed — a rule that should genuinely count for less is a rule that should not be voting, which the switch beside this says honestly."
+                [
+                  t(
+                    "How much of the day's ring this rule takes, and where its arc starts.",
+                  ),
+                  t(
+                    "Drawing only. The verdict is unchanged either way, because a day is missed the moment anything is missed — a rule that should genuinely count for less is a rule that should not be voting, which the switch beside this says honestly.",
+                  ),
+                ].join(String.fromCharCode(10, 10))
               }
             >
               <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
@@ -1942,15 +1960,21 @@ function RuleForm({
         <Tip
           multiline
           text={
-            "A day is kept when every rule that counts held. That run of days is the streak on the row above the log — the one number worth being afraid of." +
-            String.fromCharCode(10, 10) +
-            "A rule left out still keeps its own streak. It simply gets no vote on the day." +
-            String.fromCharCode(10, 10) +
-            "Switching this on counts from today, never backwards: a rule two months old could otherwise rewrite a streak out of history you can no longer edit."
+            [
+              t(
+                "A day is kept when every rule that counts held. That run of days is the streak on the row above the log — the one number worth being afraid of.",
+              ),
+              t(
+                "A rule left out still keeps its own streak. It simply gets no vote on the day.",
+              ),
+              t(
+                "Switching this on counts from today, never backwards: a rule two months old could otherwise rewrite a streak out of history you can no longer edit.",
+              ),
+            ].join(String.fromCharCode(10, 10))
           }
         >
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
-            what this means
+            {t("what this means")}
           </span>
         </Tip>
       </Row>
@@ -1987,7 +2011,7 @@ function RuleForm({
       ))}
 
       <Row label="">
-        <Tip multiline text={CONDITION_HELP}>
+        <Tip multiline text={conditionHelp()}>
           <button
             type="button"
             onClick={() =>
@@ -2025,7 +2049,7 @@ function RuleForm({
           rule has judged days, and moving its beginning would rewrite them. */}
       {settingUp && (
         <Fold
-          title="Starts"
+          title={t("Starts")}
           summary={
             startChoices(today).find((o) => o.id === draft.startedOn)?.label ??
             fmtDateLong(draft.startedOn)
@@ -2051,8 +2075,11 @@ function RuleForm({
           fold, and the lid states both: a fold reading `1 a week · bank 3` is
           a sentence you check without opening anything. */}
       <Fold
-        title="Freezes"
-        summary={`${draft.freezesPerWeek} a week · bank ${draft.freezeCap}`}
+        title={t("Freezes")}
+        summary={t("{n} a week · bank {cap}", {
+          n: draft.freezesPerWeek,
+          cap: draft.freezeCap,
+        })}
       >
       <Row label="">
         <label className="flex flex-col gap-1">
@@ -2093,11 +2120,11 @@ function RuleForm({
           appears only then — asking for a reason to *narrow* a rule would be
           asking you to justify keeping your own promise. */}
       {edit.changed && !edit.settingUp && !edit.narrowing && (
-        <Row label="Because">
+        <Row label={t("Because")}>
           <AutoTextarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Why this is going down"
+            placeholder={t("Why this is going down")}
             rows={1}
             maxHeight={120}
             className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
@@ -2159,7 +2186,7 @@ function RuleForm({
             color: c.onFill,
           }}
         >
-          {edit.needsApproval ? "Send for approval" : "Done"}
+          {t(edit.needsApproval ? "Send for approval" : "Done")}
         </button>
 
         {!edit.changed && !edit.asksNothing && !edit.impossible && (
@@ -2253,7 +2280,7 @@ function RuleForm({
             {fmtDateLong(rule.lockedUntil)}.
           </span>
         )}
-        <Tip multiline text={LOCK_HELP}>
+        <Tip multiline text={lockHelp()}>
           <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
             <Lock size={10} />
             How this works
@@ -2299,6 +2326,10 @@ export function StreakRulesTab({
   supervisorBlock?: ReactNode
   today?: Date
 }) {
+  /* The form's own prose is translated through the module-level `t` — it is
+     used from `startChoices` and from half a dozen sub-components — so this
+     is the subscription that re-renders the lot when the language changes. */
+  useT()
   const rules = settings.streakRules || []
   const categories: Category[] = settings.categories || []
   const tags: Tag[] = settings.tags || []
@@ -2333,8 +2364,8 @@ export function StreakRulesTab({
           The lid carries the sentence people actually get wrong, because that
           is the one worth saying whether or not anybody opens it. */}
       <Fold
-        title="How streaks work"
-        summary="kept by the day, paid for by the week"
+        title={t("How streaks work")}
+        summary={t("kept by the day, paid for by the week")}
       >
         <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
           Your own streaks, each one a promise about what you record — never

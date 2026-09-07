@@ -14,6 +14,7 @@
 
 import { Ban, Check, Trash2 } from "lucide-react"
 import type { CounterUnit } from "../types/model"
+import { useT } from "../lib/i18n"
 import type { DayCounters } from "../lib/counters"
 import { setSlotCount, slotUnitValue, unitsInSlot } from "../lib/counters"
 import {
@@ -51,6 +52,7 @@ export function SlotCounterRows({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const present = unitsInSlot(units, counters, slotId)
   if (!present.length) return null
 
@@ -95,7 +97,7 @@ export function SlotCounterRows({
                 className={`${FIELD_BARE} w-10 ${cardSmall(roomy)}`}
                 style={{ color: unit.color }}
               />
-              <Tip text="Remove from this slot">
+              <Tip text={t("Remove from this slot")}>
                 <button
                   onClick={() => {
                     onChange(setSlotCount(counters, unit.id, slotId, 0))
@@ -107,7 +109,7 @@ export function SlotCounterRows({
                   <Trash2 size={11} />
                 </button>
               </Tip>
-              <Tip text="Cancel changes">
+              <Tip text={t("Cancel changes")}>
                 <button
                   onClick={onCancel}
                   className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
@@ -115,7 +117,7 @@ export function SlotCounterRows({
                   <Ban size={11} />
                 </button>
               </Tip>
-              <Tip text="Done">
+              <Tip text={t("Done")}>
                 <button
                   onClick={onClose}
                   className={`${iconBtn} hover:bg-card/70`}
@@ -138,7 +140,7 @@ export function SlotCounterRows({
           </span>
         )
         return (
-          <Tip key={unit.id} text={onOpen ? "Edit this count" : unit.label}>
+          <Tip key={unit.id} text={onOpen ? t("Edit this count") : unit.label}>
             {onOpen ? (
               <button
                 onClick={(e) => {

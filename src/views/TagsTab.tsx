@@ -19,6 +19,7 @@ import type { Activity,
   Tag,
 } from "../types/model"
 import { EditableList } from "../ui/EditableList"
+import { useT } from "../lib/i18n"
 
 export function TagsTab({
   settings,
@@ -40,12 +41,13 @@ export function TagsTab({
    */
   onApply: (patch: Partial<Project>) => void
 }) {
+  const t = useT()
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
-        Labels for your counters. Put the same tag on several counters and the
-        filter can hide or show them together — "good", "health", "work", or
-        whatever the useful grouping turns out to be.
+        {t(
+          'Labels for your counters. Put the same tag on several counters and the filter can hide or show them together — "good", "health", "work", or whatever the useful grouping turns out to be.',
+        )}
       </p>
       <EditableList<Tag>
         items={tags}
@@ -71,7 +73,10 @@ export function TagsTab({
         noun="tag"
         minItems={0}
         warningNote={(label) =>
-          `Remove "${label}"? Counters carrying it keep their counts and simply stop being tagged.`
+          t(
+            'Remove "{name}"? Counters carrying it keep their counts and simply stop being tagged.',
+            { name: label },
+          )
         }
       />
     </div>

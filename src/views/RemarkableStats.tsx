@@ -1,6 +1,7 @@
 import { AlertCircle, Cloud, Flag, Star, Sun, TrendingUp } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { DayKey } from "../types/model"
+import { useT } from "../lib/i18n"
 import { fmtDateLong } from "../lib/date"
 import { fmtHoursChart } from "../lib/time"
 import { CARD } from "../lib/theme"
@@ -32,6 +33,7 @@ const fmtMonth = (k: string) => {
 
 export function RemarkableStats({ remarkable }: { remarkable: Remarkable }) {
   const c = usePalette()
+  const t = useT()
   const items: {
     label: string
     data?: Extreme | null
@@ -40,42 +42,42 @@ export function RemarkableStats({ remarkable }: { remarkable: Remarkable }) {
     icon: LucideIcon
   }[] = [
     {
-      label: "Best day",
+      label: t("Best day"),
       data: remarkable.bestDay,
       fmt: fmtDateLong,
       tone: "good",
       icon: Sun,
     },
     {
-      label: "Best week",
+      label: t("Best week"),
       data: remarkable.bestWeek,
       fmt: fmtWeek,
       tone: "good",
       icon: TrendingUp,
     },
     {
-      label: "Best month",
+      label: t("Best month"),
       data: remarkable.bestMonth,
       fmt: fmtMonth,
       tone: "good",
       icon: Star,
     },
     {
-      label: "Worst day",
+      label: t("Worst day"),
       data: remarkable.worstDay,
       fmt: fmtDateLong,
       tone: "bad",
       icon: Cloud,
     },
     {
-      label: "Worst week",
+      label: t("Worst week"),
       data: remarkable.worstWeek,
       fmt: fmtWeek,
       tone: "bad",
       icon: AlertCircle,
     },
     {
-      label: "Worst month",
+      label: t("Worst month"),
       data: remarkable.worstMonth,
       fmt: fmtMonth,
       tone: "bad",

@@ -15,6 +15,7 @@
 
 import { X } from "lucide-react"
 import type { StreakRule } from "../types/model"
+import { useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 
@@ -26,6 +27,7 @@ export function SoloBanner({
   rule: StreakRule | undefined
   onClear: () => void
 }) {
+  const t = useT()
   if (!rule) return null
   return (
     <div
@@ -40,7 +42,7 @@ export function SoloBanner({
       </span>
       <p className="min-w-0 text-[11px] font-mono leading-relaxed">
         <span className="font-bold" style={{ color: rule.color }}>
-          Showing “{rule.label}” only
+          {t("Showing “{name}” only", { name: rule.label })}
         </span>
         <span className="text-ink/60">
           {" "}
@@ -52,7 +54,7 @@ export function SoloBanner({
       <button
         type="button"
         onClick={onClear}
-        aria-label="Show every rule again"
+        aria-label={t("Show every rule again")}
         className={`${btnBase} ml-auto shrink-0 p-1 -mr-1 rounded-full text-ink/40 hover:text-ink hover:bg-ink/10`}
       >
         <X size={15} />

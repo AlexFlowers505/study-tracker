@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Lock, Mail } from 'lucide-react'
 import type { Client } from '../data/supabase'
+import { useT } from "../lib/i18n"
 import { CARD, btnBase } from '../lib/theme'
 import { APP_NAME } from '../lib/defaults'
 import { TimeLensMark } from '../ui/Brand'
@@ -22,6 +23,7 @@ export function AuthScreen({
   error?: unknown
 }) {
   const c = usePalette()
+  const t = useT()
   const [mode, setMode] = useState("signin") // signin | signup
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -40,7 +42,7 @@ export function AuthScreen({
   const resendConfirmation = async () => {
     if (!client) return
     if (!email) {
-      setMsg("Enter your email above, then tap resend.")
+      setMsg(t("Enter your email above, then tap resend."))
       return
     }
     setResendBusy(true)
@@ -52,9 +54,9 @@ export function AuthScreen({
         options: { emailRedirectTo },
       })
       if (error) throw error
-      setMsg("Confirmation email sent — check your inbox.")
+      setMsg(t("Confirmation email sent — check your inbox."))
     } catch (err) {
-      setMsg(errText(err) || "Couldn't resend the email.")
+      setMsg(errText(err) || t("Couldn't resend the email."))
     } finally {
       setResendBusy(false)
     }
@@ -63,7 +65,7 @@ export function AuthScreen({
   const sendReset = async () => {
     if (!client) return
     if (!email) {
-      setMsg("Enter your email above, then tap reset.")
+      setMsg(t("Enter your email above, then tap reset."))
       return
     }
     setResetBusy(true)
@@ -76,9 +78,9 @@ export function AuthScreen({
       // Deliberately the same message whether or not the address is
       // registered. Saying "no such account" would turn this box into a way to
       // find out who has one.
-      setMsg("If that email has an account, a reset link is on its way.")
+      setMsg(t("If that email has an account, a reset link is on its way."))
     } catch (err) {
-      setMsg(errText(err) || "Couldn't send the reset email.")
+      setMsg(errText(err) || t("Couldn't send the reset email."))
     } finally {
       setResetBusy(false)
     }
@@ -124,21 +126,27 @@ export function AuthScreen({
           })
           if (resendError) throw resendError
           setMsg(
-            "This email is already registered but not confirmed yet — we've sent a fresh confirmation email.",
+            t(
+              "This email is already registered but not confirmed yet — we've sent a fresh confirmation email.",
+            ),
           )
           return
         }
         if (error) throw error
         setMsg(
-          "Account created — check your inbox to confirm your email, then sign in.",
+          t(
+            "Account created — check your inbox to confirm your email, then sign in.",
+          ),
         )
       }
     } catch (err) {
       const notConfirmed = /email not confirmed/i.test(errText(err))
       setMsg(
         notConfirmed
-          ? "Your email isn't confirmed yet — use \"Didn't get the email? Resend it\" below."
-          : errText(err) || "Something went wrong.",
+          ? t(
+              "Your email isn't confirmed yet — use the resend button below.",
+            )
+          : errText(err) || t("Something went wrong."),
       )
     } finally {
       setBusy(false)
@@ -158,8 +166,8 @@ export function AuthScreen({
         </div>
         <p className="text-[11px] font-mono uppercase tracking-widest text-ink/45 mb-5">
           {mode === "signin"
-            ? "Sign in to your logbook"
-            : "Create your logbook"}
+            ? t("Sign in to your logbook")
+            : t("Create your logbook")}
         </p>
 
         {error ? (
@@ -172,7 +180,7 @@ export function AuthScreen({
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
             <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-              <Mail size={11} /> Email
+              <Mail size={11} /> {t("Email")}
             </span>
             <input
               type="email"
@@ -184,7 +192,7 @@ export function AuthScreen({
           </label>
           <label className="block">
             <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-              <Lock size={11} /> Password
+              <Lock size={11} /> {t("Password")}
             </span>
             <input
               type="password"
@@ -207,10 +215,10 @@ export function AuthScreen({
             className={`${btnBase} w-full text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
           >
             {busy
-              ? "Please wait…"
+              ? t("Please wait…")
               : mode === "signin"
-                ? "Sign in"
-                : "Create account"}
+                ? t("Sign in")
+                : t("Create account")}
           </button>
         </form>
 
@@ -222,8 +230,8 @@ export function AuthScreen({
           className={`${btnBase} mt-4 text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink`}
         >
           {mode === "signin"
-            ? "Need an account? Sign up"
-            : "Already have an account? Sign in"}
+            ? t("Need an account? Sign up")
+            : t("Already have an account? Sign in")}
         </button>
 
         <button
@@ -231,7 +239,7 @@ export function AuthScreen({
           disabled={resendBusy}
           className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink disabled:opacity-50`}
         >
-          {resendBusy ? "Sending…" : "Didn't get the email? Resend it"}
+          {t(resendBusy ? "Sending…" : "Didn't get the email? Resend it")}
         </button>
 
         {mode === "signin" && (
@@ -240,7 +248,7 @@ export function AuthScreen({
             disabled={resetBusy}
             className={`${btnBase} mt-2 block text-[10px] font-mono uppercase tracking-widest text-ink/50 hover:text-ink disabled:opacity-50`}
           >
-            {resetBusy ? "Sending…" : "Forgot your password? Reset it"}
+            {t(resetBusy ? "Sending…" : "Forgot your password? Reset it")}
           </button>
         )}
       </div>
@@ -266,6 +274,7 @@ export function SetPasswordScreen({
   onDone: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [busy, setBusy] = useState(false)
@@ -275,7 +284,7 @@ export function SetPasswordScreen({
     e.preventDefault()
     if (!client) return
     if (password !== confirm) {
-      setMsg("The two passwords don't match.")
+      setMsg(t("The two passwords don't match."))
       return
     }
     setBusy(true)
@@ -287,7 +296,7 @@ export function SetPasswordScreen({
       // left to do but get out of the way.
       onDone()
     } catch (err) {
-      setMsg(errText(err) || "Couldn't set the password.")
+      setMsg(errText(err) || t("Couldn't set the password."))
       setBusy(false)
     }
   }
@@ -310,7 +319,7 @@ export function SetPasswordScreen({
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
             <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-              <Lock size={11} /> New password
+              <Lock size={11} /> {t("New password")}
             </span>
             <input
               type="password"
@@ -324,7 +333,7 @@ export function SetPasswordScreen({
           </label>
           <label className="block">
             <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-              <Lock size={11} /> Repeat it
+              <Lock size={11} /> {t("Repeat it")}
             </span>
             <input
               type="password"
@@ -346,7 +355,7 @@ export function SetPasswordScreen({
             style={{ backgroundColor: c.accent, color: c.onFill }}
             className={`${btnBase} w-full text-xs font-mono uppercase tracking-widest px-3 py-2.5 rounded-xl hover:opacity-90 disabled:opacity-50`}
           >
-            {busy ? "Saving…" : "Save password"}
+            {t(busy ? "Saving…" : "Save password")}
           </button>
         </form>
 

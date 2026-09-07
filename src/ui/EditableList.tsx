@@ -11,6 +11,7 @@ import { useState } from "react"
 import type { ReactNode } from "react"
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react"
 import type { Labeled } from "../types/model"
+import { useT } from "../lib/i18n"
 import { makeId } from "../lib/id"
 import { BTN_SOFT, PALETTE, btnBase } from "../lib/theme"
 import { IconGrid } from "./IconGrid"
@@ -66,6 +67,7 @@ export function EditableList<T extends Labeled>({
   minItems?: number
 }) {
   const c = usePalette()
+  const t = useT()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [removeReason, setRemoveReason] = useState("")
 
@@ -79,7 +81,12 @@ export function EditableList<T extends Labeled>({
       ...items,
       {
         id: makeId(noun),
-        label: `New ${noun}`,
+        /* **A whole phrase per noun, not a word slotted into one.**
+           `New ${noun}` is fine in English and unwritable in Russian, where
+           the adjective agrees with the gender of what follows — новый слот,
+           новое занятие, новая метка. There are nine nouns; there are nine
+           keys. */
+        label: t(`new:${noun}`),
         iconName: "Star",
         color: PALETTE[items.length % PALETTE.length],
         ...(newItem ? newItem() : {}),
@@ -127,7 +134,7 @@ export function EditableList<T extends Labeled>({
                     <AutoTextarea
                       value={removeReason}
                       onChange={(e) => setRemoveReason(e.target.value)}
-                      placeholder="Why it is going"
+                      placeholder={t("Why it is going")}
                       rows={1}
                       maxHeight={100}
                       className="w-full bg-transparent border-0 rounded-lg px-1 py-1 font-mono text-[11px] text-ink/70 placeholder:text-ink/30 hover:bg-ink/[0.04] focus:outline-none focus:ring-2 focus:ring-ink/15"
@@ -158,7 +165,7 @@ export function EditableList<T extends Labeled>({
                       }}
                       className={`${btnBase} px-2 py-1 rounded-md bg-exam text-page hover:bg-exam/85 uppercase tracking-widest text-[10px] disabled:opacity-40 disabled:cursor-not-allowed`}
                     >
-                      {gate?.needsApproval ? "Send for approval" : "Remove"}
+                      {t(gate?.needsApproval ? "Send for approval" : "Remove")}
                     </button>
 
                     {gate?.waitsUntil && (
@@ -210,7 +217,7 @@ export function EditableList<T extends Labeled>({
                     conversion makes to how it looks. */}
                 <PopoverMenu
                   width={256}
-                  label="Icon and colour"
+                  label={t("Icon and colour")}
                   wrapClassName="shrink-0"
                   triggerClassName={`${btnBase} rounded-xl hover:opacity-75`}
                   trigger={
@@ -301,7 +308,7 @@ export function EditableList<T extends Labeled>({
                   text={
                     items.length <= minItems
                       ? `At least ${minItems} is required`
-                      : "Remove"
+                      : t("Remove")
                   }
                 >
                   <button
@@ -322,7 +329,7 @@ export function EditableList<T extends Labeled>({
                   <button
                     disabled={index === 0}
                     onClick={() => moveItem(index, -1)}
-                    aria-label="Move up"
+                    aria-label={t("Move up")}
                     className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                   >
                     <ChevronUp size={13} />
@@ -330,7 +337,7 @@ export function EditableList<T extends Labeled>({
                   <button
                     disabled={index === items.length - 1}
                     onClick={() => moveItem(index, 1)}
-                    aria-label="Move down"
+                    aria-label={t("Move down")}
                     className={`${btnBase} p-0.5 rounded text-ink/35 hover:text-ink hover:bg-ink/10 disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed`}
                   >
                     <ChevronDown size={13} />
@@ -341,7 +348,7 @@ export function EditableList<T extends Labeled>({
                   onChange={(e) =>
                     updateItem(item.id, { description: e.target.value })
                   }
-                  placeholder={`What counts as this ${noun}? (optional)`}
+                  placeholder={t(`describe:${noun}`)}
                   rows={1}
                   maxHeight={100}
                   /* `hint-near` holds the prompt back until the row is
@@ -360,7 +367,7 @@ export function EditableList<T extends Labeled>({
         onClick={addItem}
         className={`${btnBase} flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-ink/60 hover:text-ink px-1 py-1.5`}
       >
-        <Plus size={13} /> Add {noun}
+        <Plus size={13} /> {t(`add:${noun}`)}
       </button>
     </div>
   )

@@ -12,6 +12,7 @@ import type {
   Slot,
   StudyEntry,
 } from "../types/model"
+import { useT } from "../lib/i18n"
 import type { DayCounters } from "../lib/counters"
 import { getById } from "../lib/id"
 import { fmtHours, nowTime, startedPreviousDay } from "../lib/time"
@@ -86,6 +87,7 @@ function ReadoutEntry({
   roomy?: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const [open, setOpen] = useState(defaultOpen)
   const showComment = !!comment && open
   const rail = { borderLeftColor: borderColor }
@@ -123,7 +125,7 @@ function ReadoutEntry({
         <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-ink/70`}>
           <span className="text-ink/45 shrink-0">{timeLabel}</span>
           {onEndNow && (
-            <Tip text="End this session now">
+            <Tip text={t("End this session now")}>
               <button
                 onClick={(ev) => {
                   ev.stopPropagation()
@@ -143,7 +145,7 @@ function ReadoutEntry({
             </Tip>
           )}
           {comment && (
-            <Tip text={!showComment ? "Show comment" : "Hide comment"}>
+            <Tip text={t(!showComment ? "Show comment" : "Hide comment")}>
               <button
                 // The whole card is a button that opens the editor, so this one
                 // has to keep its click to itself.

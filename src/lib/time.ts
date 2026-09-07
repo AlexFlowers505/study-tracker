@@ -2,6 +2,8 @@
    Times of day, durations, and the rotated clock the sleep view runs on.
 --------------------------------------------------------------- */
 
+import { t } from "./i18n"
+
 import type { TimeEntry, TimeOfDay } from "../types/model"
 import { pad } from "./date"
 
@@ -65,9 +67,14 @@ export const fmtHours = (minutes: number): string => {
   const total = Math.round(Math.abs(minutes))
   const h = Math.floor(total / 60)
   const m = total % 60
-  if (!h) return `${sign}${m}m`
-  if (!m) return `${sign}${h}h`
-  return `${sign}${h}h ${m}m`
+  /* **The unit letters are translated, the shape is not.** `2h 30m` becomes
+     `2ч 30м` and never `2 часа 30 минут`: this figure appears on day cards,
+     in chart tooltips and inside generated sentences, where it has to stay
+     one short token. The suffixes are single letters in both languages, so
+     nothing about the layout moves. */
+  if (!h) return `${sign}${m}${t("unit:m")}`
+  if (!m) return `${sign}${h}${t("unit:h")}`
+  return `${sign}${h}${t("unit:h")} ${m}${t("unit:m")}`
 }
 
 /** Full precision, for stacking and summing in charts. */

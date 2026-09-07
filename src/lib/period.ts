@@ -6,6 +6,8 @@
    log and the analytics can never disagree about the range.
 --------------------------------------------------------------- */
 
+import { dateLocale } from "./date"
+import { t } from "./i18n"
 import type { DateRange, DayKey, PeriodId } from "../types/model"
 import {
   addDays,
@@ -113,7 +115,7 @@ export function periodRange(
 }
 
 export const fmtRangeEdge = (d: Date, withYear?: boolean): string =>
-  d.toLocaleDateString(undefined, {
+  d.toLocaleDateString(dateLocale(), {
     month: "short",
     day: "numeric",
     ...(withYear ? { year: "numeric" } : {}),
@@ -133,21 +135,21 @@ export function compactRangeLabel(
   range: DateRange,
 ): string {
   const shortMonth = (d: Date) =>
-    d.toLocaleDateString(undefined, { month: "short" })
+    d.toLocaleDateString(dateLocale(), { month: "short" })
   switch (period) {
     case "year":
       return String(cursor.getFullYear())
     case "all":
-      return "All time"
+      return t("All time")
     case "month":
-      return cursor.toLocaleDateString(undefined, {
+      return cursor.toLocaleDateString(dateLocale(), {
         month: "short",
         year: "numeric",
       })
     case "quarter":
       return `${shortMonth(range.start)} – ${shortMonth(range.end)}`
     case "day":
-      return cursor.toLocaleDateString(undefined, {
+      return cursor.toLocaleDateString(dateLocale(), {
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -173,7 +175,7 @@ export function rangeLabel(
   if (period === "month") return monthLabel(cursor)
   if (period === "year") return String(cursor.getFullYear())
   if (period === "day") {
-    return cursor.toLocaleDateString(undefined, {
+    return cursor.toLocaleDateString(dateLocale(), {
       weekday: "long",
       month: "long",
       day: "numeric",
@@ -183,7 +185,7 @@ export function rangeLabel(
   // Whole months, so name the months rather than their first and last days.
   if (period === "quarter") {
     const month = (d: Date, withYear?: boolean) =>
-      d.toLocaleDateString(undefined, {
+      d.toLocaleDateString(dateLocale(), {
         month: "short",
         ...(withYear ? { year: "numeric" } : {}),
       })

@@ -7,6 +7,7 @@ import type {
   Slot,
   Tag,
 } from "../types/model"
+import { t, useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { ToggleChips } from "../ui/ToggleChips"
 import { PanelSection } from "./PanelSection"
@@ -31,8 +32,8 @@ function FilterGroup({
 
 const chipTip = (it: { label: string }, isHidden: boolean) =>
   isHidden
-    ? `Count "${it.label}" again`
-    : `Leave "${it.label}" out of every total`
+    ? t('Count "{name}" again', { name: it.label })
+    : t('Leave "{name}" out of every total', { name: it.label })
 
 /**
  * Page-level filter: which slots, activities and tag-tagged counters count
@@ -78,6 +79,7 @@ export function CountFilter({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const hiddenCount =
     hiddenSlots.size +
     hiddenActivities.size +
@@ -88,9 +90,11 @@ export function CountFilter({
     <PanelSection
       tint={c.filter}
       icon={Filter}
-      title="Counted in every figure"
-      subtitle="Struck-through means left out — of the log, the stats and the charts"
-      closeLabel="Hide the filter"
+      title={t("Counted in every figure")}
+      subtitle={t(
+        "Struck-through means left out — of the log, the stats and the charts",
+      )}
+      closeLabel={t("Hide the filter")}
       onClose={onClose}
       action={
         hiddenCount > 0 ? (
@@ -108,7 +112,7 @@ export function CountFilter({
           heading a chip belonged to was a matter of guessing where the last
           group ended. */}
       <div className="space-y-4">
-        <FilterGroup label="Slots">
+        <FilterGroup label={t("Slots")}>
           <ToggleChips
             items={slots}
             hidden={hiddenSlots}
@@ -117,7 +121,7 @@ export function CountFilter({
             tipFor={chipTip}
           />
         </FilterGroup>
-        <FilterGroup label="Activities">
+        <FilterGroup label={t("Activities")}>
           <ToggleChips
             items={activities}
             hidden={hiddenActivities}
@@ -136,7 +140,7 @@ export function CountFilter({
             category says where it belongs, and hiding a shelf means hiding
             what is on it. */}
         {categories.length > 0 && (
-          <FilterGroup label="Categories">
+          <FilterGroup label={t("Categories")}>
             <ToggleChips
               items={categories}
               hidden={hiddenCategories}
@@ -144,14 +148,18 @@ export function CountFilter({
               className=""
               tipFor={(it, isHidden) =>
                 isHidden
-                  ? `Show everything filed under "${it.label}" again`
-                  : `Hide everything filed under "${it.label}"`
+                  ? t('Show everything filed under "{name}" again', {
+                      name: it.label,
+                    })
+                  : t('Hide everything filed under "{name}"', {
+                      name: it.label,
+                    })
               }
             />
           </FilterGroup>
         )}
         {counters.length > 0 && (
-          <FilterGroup label="Counters">
+          <FilterGroup label={t("Counters")}>
             <ToggleChips
               items={counters}
               hidden={hiddenCounters}
@@ -166,7 +174,7 @@ export function CountFilter({
           </FilterGroup>
         )}
         {tags.length > 0 && (
-          <FilterGroup label="Tags">
+          <FilterGroup label={t("Tags")}>
             <ToggleChips
               items={tags}
               hidden={hiddenTags}
@@ -174,8 +182,10 @@ export function CountFilter({
               className=""
               tipFor={(it, isHidden) =>
                 isHidden
-                  ? `Show counters tagged "${it.label}" again`
-                  : `Hide every counter tagged "${it.label}"`
+                  ? t('Show counters tagged "{name}" again', {
+                      name: it.label,
+                    })
+                  : t('Hide every counter tagged "{name}"', { name: it.label })
               }
             />
           </FilterGroup>

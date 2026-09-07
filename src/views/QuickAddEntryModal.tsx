@@ -38,16 +38,18 @@ import type {
   StudyEntry,
   TimeOfDay,
 } from "../types/model"
+import { useT } from "../lib/i18n"
 import type { DayCounters } from "../lib/counters"
 import { slotUnitValue } from "../lib/counters"
 import {
+  checkLabel,
+  unanswered,
   CHECK_CHOICES,
-  CHECK_LABELS,
-  UNANSWERED,
   checkState,
   splitByKind,
 } from "../lib/checks"
-import { fromKey } from "../lib/date"
+import {
+  dateLocale, fromKey } from "../lib/date"
 import { makeId } from "../lib/id"
 import { fmtHours, nowTime, spanMinutes } from "../lib/time"
 import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from "../lib/theme"
@@ -111,6 +113,7 @@ export function QuickAddEntryModal({
   onSetCheck?: (dateKey: DayKey, unitId: string, next: CheckState) => void
 }) {
   const c = usePalette()
+  const t = useT()
   /* What is being added is chosen *here*, not before the dialog opens.
      The day card had a "+" and a moon a few pixels apart, which made you
      decide what you were recording before you had opened anything — and with
@@ -129,10 +132,10 @@ export function QuickAddEntryModal({
      the project does not have — there is nothing behind a tab for tallies you
      never made — and below two options there is no choice left to offer. */
   const KINDS = [
-    { id: "activity" as const, label: "Activity", icon: Clock, on: true },
-    { id: "tally" as const, label: "Tally", icon: Hash, on: canCount },
-    { id: "check" as const, label: "Check", icon: ListChecks, on: canCheck },
-    { id: "sleep" as const, label: "Sleep", icon: Moon, on: !!sleepEnabled },
+    { id: "activity" as const, label: t("kind:Activity"), icon: Clock, on: true },
+    { id: "tally" as const, label: t("kind:Tally"), icon: Hash, on: canCount },
+    { id: "check" as const, label: t("kind:Check"), icon: ListChecks, on: canCheck },
+    { id: "sleep" as const, label: t("kind:Sleep"), icon: Moon, on: !!sleepEnabled },
   ].filter((k) => k.on)
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
   const [unitId, setUnitId] = useState(tallies[0]?.id)
@@ -181,16 +184,18 @@ export function QuickAddEntryModal({
         <div className="flex items-center justify-between px-5 pt-5 pb-1">
           <div>
             <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
-              {isSleep
-                ? "New sleep"
-                : counting
-                  ? "Add to a tally"
-                  : checking
-                    ? "Answer a check"
-                    : "New entry"}
+              {t(
+                isSleep
+                  ? "New sleep"
+                  : counting
+                    ? "Add to a tally"
+                    : checking
+                      ? "Answer a check"
+                      : "New entry",
+              )}
             </h2>
             <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
-              {d.toLocaleDateString(undefined, {
+              {d.toLocaleDateString(dateLocale(), {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
@@ -264,7 +269,7 @@ export function QuickAddEntryModal({
           <div className={`grid grid-cols-2 gap-3 ${isSleep ? "hidden" : ""}`}>
             <label className="block">
               <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
-                Slot
+                {t("Slot")}
               </span>
               <select
                 value={slotId}
@@ -280,7 +285,7 @@ export function QuickAddEntryModal({
             </label>
             <label className="block">
               <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
-                Activity
+                {t("field:Activity")}
               </span>
               <select
                 value={activity}
@@ -329,22 +334,22 @@ export function QuickAddEntryModal({
                 onClick={() => setEnd(nowTime())}
                 className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
               >
-                <Square size={9} /> End now
+                <Square size={9} /> {t("End now")}
               </button>
             </div>
             <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
-              {timed ? fmtHours(total) : start ? "running" : "no time set"}
+              {timed ? fmtHours(total) : t(start ? "running" : "no time set")}
             </span>
           </div>
 
           <label className="block">
             <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
-              Note
+              {t("Note")}
             </span>
             <AutoTextarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Optional"
+              placeholder={t("Optional")}
               rows={2}
               maxHeight={200}
               className={FIELD_SOFT}
@@ -358,7 +363,7 @@ export function QuickAddEntryModal({
               onClick={requestCancel}
               className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide text-ink/60 hover:text-ink hover:bg-ink/5`}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               onClick={() =>
@@ -373,7 +378,7 @@ export function QuickAddEntryModal({
             >
               {/* A check is answered, not added to. "Add" would promise a
                   second mark alongside the first. */}
-              {checking ? "Save" : "Add"}
+              {t(checking ? "Save" : "Add")}
             </button>
           </div>
         </div>
@@ -576,7 +581,7 @@ function CheckFields({
         <SegmentedControl
           items={CHECK_CHOICES.map((state) => ({
             id: state,
-            label: CHECK_LABELS[state],
+            label: checkLabel(state),
           }))}
           activeId={answer}
           onChange={(next) => setAnswer(next as CheckState)}
@@ -594,10 +599,10 @@ function CheckFields({
         <span className="text-ink/60">
           This day says{" "}
           <strong className="text-ink">
-            {now ? CHECK_LABELS[now] : UNANSWERED}
+            {now ? checkLabel(now) : unanswered()}
           </strong>
           {" → will say "}
-          <strong style={{ color: c.accent }}>{CHECK_LABELS[answer]}</strong>
+          <strong style={{ color: c.accent }}>{checkLabel(answer)}</strong>
         </span>
       </div>
     </>

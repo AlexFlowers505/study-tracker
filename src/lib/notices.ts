@@ -47,6 +47,7 @@
 --------------------------------------------------------------- */
 
 import type { Day, DayKey, Project, StreakRule } from "../types/model"
+import { pluralOf, t } from "./i18n"
 import { fmtHours } from "./time"
 import type { Palette } from "./theme"
 import type { RuleStatus, StreakContext } from "./customStreaks"
@@ -63,10 +64,12 @@ import {
   ruleDayState,
   ruleWeekState,
   slotBoundsOnWeekday,
+  frozenKeys,
   streakContext,
   targetsLabel,
   targetInfo,
   weekBounds,
+  violationKey,
   weekLostOn,
   weekSlotBounds,
 } from "./customStreaks"
@@ -178,13 +181,38 @@ export const minutesLeftToday = (now: Date) =>
  */
 const EVENING_MINUTES = 6 * 60
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+/**
+ * **Three forms, not an `s`.** Russian picks by the last two digits, so the
+ * word cannot be built by appending to the number — see `pluralOf`. Each call
+ * site names the forms it needs, because `freeze`/`заморозка` and
+ * `day`/`день` decline differently and a shared table would be a lie for one
+ * of them.
+ */
+const nDays = (n: number) =>
+  pluralOf(n, ["day", "days"], ["день", "дня", "дней"])
+const nWeeks = (n: number) =>
+  pluralOf(n, ["week", "weeks"], ["неделя", "недели", "недель"])
+const nFreezes = (n: number) =>
+  pluralOf(n, ["freeze", "freezes"], ["заморозка", "заморозки", "заморозок"])
+const nViolations = (n: number) =>
+  pluralOf(n, ["violation", "violations"], ["нарушение", "нарушения", "нарушений"])
 
 /* ---- one thing a condition has to say ----------------------------------- */
 
 interface Item {
   level: NoticeLevel
   line: string
+  /**
+   * **Which violation this line is about** — `violationKey`, or absent where
+   * the line is not about one (a floor still owed, a clean reading).
+   *
+   * `spec 017` made a freeze a purchase against *one* site; this file was
+   * written before that and could only see a freeze at the level of the whole
+   * rule (`state === "frozen"`). So a rule with two checks, one of them paid
+   * for, went on shouting `danger` about the one you had just bought — which
+   * is the board contradicting the receipt, and the receipt is right.
+   */
+  key?: string
 }
 
 /** A ceiling, wherever it sits: the condition's own, or one of its slots. */
@@ -193,11 +221,15 @@ interface Ceiling {
   max: number
   /** ` in “Evening”`, or empty for the condition's own bound. */
   where: string
+  /** Absent for the condition's own bound — see `keyFor`. */
+  slotId?: string
 }
 
 /** The same for a floor. */
 interface Floor {
   value: number
+  /** Absent for the condition's own bound — see `keyFor`. */
+  slotId?: string
   min: number
   where: string
 }
@@ -218,29 +250,61 @@ function ceilingItem(
    *  verdict word — `“0” in “Night” — clean this week` reads as a clean week
    *  rather than as a clean night. */
   when = "",
+  /** The violation this reading is about, so a paid one can be dropped. */
+  key?: string,
 ): Item {
   const { value, max, where } = ceiling
   const at = `${where}${when}`
   if (value > max)
     return {
+      key,
       level: "danger",
-      line: `${named} ${q(fmt(value))}${at} against at most ${q(fmt(max))}`,
+      line: t("{named} {value}{at} against at most {max}", {
+        named,
+        value: q(fmt(value)),
+        at,
+        max: q(fmt(max)),
+      }),
     }
   if (max <= 0)
-    return { level: "allClear", line: `${named} ${q(fmt(0))}${at} — clean` }
+    return {
+      key,
+      level: "allClear",
+      line: t("{named} {value}{at} — clean", { named, value: q(fmt(0)), at }),
+    }
   if (value === max)
     return {
+      key,
       level: "warning",
-      line: `${named} ${q(fmt(value))} of ${q(fmt(max))}${where} used${when} — one more ends it`,
+      line: t("{named} {value} of {max}{where} used{when} — one more ends it", {
+        named,
+        value: q(fmt(value)),
+        max: q(fmt(max)),
+        where,
+        when,
+      }),
     }
   if (value > 0)
     return {
+      key,
       level: "notice",
-      line: `${named} ${q(fmt(max - value))} of ${q(fmt(max))}${where} left${when}`,
+      line: t("{named} {left} of {max}{where} left{when}", {
+        named,
+        left: q(fmt(max - value)),
+        max: q(fmt(max)),
+        where,
+        when,
+      }),
     }
   return {
+    key,
     level: "allClear",
-    line: `${named} ${q(fmt(0))} of ${q(fmt(max))}${at} — clean`,
+    line: t("{named} {value} of {max}{at} — clean", {
+      named,
+      value: q(fmt(0)),
+      max: q(fmt(max)),
+      at,
+    }),
   }
 }
 
@@ -261,43 +325,83 @@ function dayFloorItem(
   left: number,
   /** The day is over — nothing on it is owed any more, only spent. */
   settled: boolean,
+  /** The violation this reading is about, so a paid one can be dropped. */
+  key?: string,
 ): Item {
   const { value, min, where } = floor
   const need = Math.max(0, min - value)
   if (need <= 0)
     return {
+      key,
       level: "allClear",
-      line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} — done`,
+      line: t("{named} {value} of {min}{where} — done", {
+        named,
+        value: q(fmt(value)),
+        min: q(fmt(min)),
+        where,
+      }),
     }
   if (settled)
     return {
+      key,
       level: "danger",
-      line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} — short by ${q(fmt(need))}`,
+      line: t("{named} {value} of {min}{where} — short by {need}", {
+        named,
+        value: q(fmt(value)),
+        min: q(fmt(min)),
+        where,
+        need: q(fmt(need)),
+      }),
     }
   if (measure === "time") {
     if (need > left)
       return {
+        key,
         level: "danger",
-        line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} — no longer reachable today`,
+        line: t("{named} {value} of {min}{where} — no longer reachable today", {
+          named,
+          value: q(fmt(value)),
+          min: q(fmt(min)),
+          where,
+        }),
       }
     // More than half of what is left would have to go on this one thing.
     if (need * 2 > left)
       return {
+        key,
         level: "warning",
-        line: `${q(fmt(need))} more of ${named}${where}, and ${q(fmt(left))} of the day left`,
+        line: t("{need} more of {named}{where}, and {left} of the day left", {
+          need: q(fmt(need)),
+          named,
+          where,
+          left: q(fmt(left)),
+        }),
       }
-    return { level: "notice", line: `${q(fmt(need))} more of ${named}${where}` }
+    return {
+      key,
+      level: "notice",
+      line: t("{need} more of {named}{where}", {
+        need: q(fmt(need)),
+        named,
+        where,
+      }),
+    }
   }
   return {
+    key,
     level: left <= EVENING_MINUTES ? "warning" : "notice",
-    line: `${q(fmt(need))} more of ${named}${where}`,
+    line: t("{need} more of {named}{where}", {
+      need: q(fmt(need)),
+      named,
+      where,
+    }),
   }
 }
 
 /* ---- a rule that judges days -------------------------------------------- */
 
 const slotLabel = (ctx: StreakContext, slotId: string) =>
-  ctx.slots.find((s) => s.id === slotId)?.label || "a removed slot"
+  ctx.slots.find((s) => s.id === slotId)?.label || t("a removed slot")
 
 function dayItems(
   rule: StreakRule,
@@ -336,18 +440,31 @@ function dayItems(
       for (const target of targets) {
         const state = checkState(day, target.id || "")
         const label = q(targetInfo(target, ctx).label)
+        const key = violationKey({ clauseId: clause.id, targetId: target.id })
         if (!state) {
           out.push(
             settled
-              ? { level: "danger", line: `${label} is ${q("not answered")}` }
+              ? {
+                  key,
+                  level: "danger",
+                  line: t("{label} is {answer}", {
+                    label,
+                    answer: q(t("not answered")),
+                  }),
+                }
               : {
+                  key,
                   level: left <= EVENING_MINUTES ? "warning" : "notice",
-                  line: `${label} to answer`,
+                  line: t("{label} to answer", { label }),
                 },
           )
         } else {
-          const said = `${label} is ${q(CHECK_LABELS[state].toLowerCase())}`
+          const said = t("{label} is {answer}", {
+            label,
+            answer: q(t(`answer:${CHECK_LABELS[state].toLowerCase()}`)),
+          })
           out.push({
+            key,
             level: allowed.includes(state) ? "allClear" : "danger",
             line: said,
           })
@@ -359,6 +476,16 @@ function dayItems(
     const bounds = clauseBounds(clause, ctx, todayKey)
     const slotRules = slotBoundsOnWeekday(clause, weekday)
 
+    /* **A time condition is one violation however many of its parts broke** —
+       `violationsOn` prices it that way, so every line it produces answers to
+       the same purchase. A count splits per bound, and the slot riders are
+       separate sites with separate prices. */
+    const keyFor = (slotId?: string) =>
+      violationKey({
+        clauseId: clause.id,
+        slotId: info.measure === "time" ? undefined : slotId,
+      })
+
     const ceilings: Ceiling[] = []
     const floors: Floor[] = []
     if (bounds.max !== undefined)
@@ -366,16 +493,29 @@ function dayItems(
     if (bounds.min !== undefined && bounds.min > 0)
       floors.push({ value: reading.value, min: bounds.min, where: "" })
     for (const [slotId, b] of Object.entries(slotRules)) {
-      const where = ` in ${q(slotLabel(ctx, slotId))}`
+      const where = t("frag: in {slot}", { slot: q(slotLabel(ctx, slotId)) })
       const value = measuredOn(clause, ctx, day, [slotId])
-      if (b.max !== undefined) ceilings.push({ value, max: b.max, where })
+      if (b.max !== undefined)
+        ceilings.push({ value, max: b.max, where, slotId })
       if (b.min !== undefined && b.min > 0)
-        floors.push({ value, min: b.min, where })
+        floors.push({ value, min: b.min, where, slotId })
     }
 
-    ceilings.forEach((ceiling) => out.push(ceilingItem(ceiling, named, fmt)))
+    ceilings.forEach((ceiling) =>
+      out.push(ceilingItem(ceiling, named, fmt, "", keyFor(ceiling.slotId))),
+    )
     floors.forEach((floor) =>
-      out.push(dayFloorItem(floor, named, fmt, info.measure, left, settled)),
+      out.push(
+        dayFloorItem(
+          floor,
+          named,
+          fmt,
+          info.measure,
+          left,
+          settled,
+          keyFor(floor.slotId),
+        ),
+      ),
     )
   }
   return out
@@ -428,6 +568,7 @@ function weekItems(
     if (info.check && clause.allow && !clause.states) {
       for (const target of targets) {
         const label = q(targetInfo(target, ctx).label)
+        const key = violationKey({ clauseId: clause.id, targetId: target.id })
         const bad = covered.filter((k) => {
           if (k > todayKey) return false
           const allowed = clause.allow?.[fromKey(k).getDay()] ?? []
@@ -439,18 +580,26 @@ function weekItems(
         ).length
         if (bad)
           out.push({
+            key,
             level: "danger",
-            line: `${label} refused on ${q(bad)} of ${q(covered.length)} days`,
+            line: t("{label} refused on {bad} of {all} days", {
+              label,
+              bad: q(bad),
+              all: q(covered.length),
+            }),
           })
         else if (waiting)
           out.push({
             level: remaining <= 1 ? "warning" : "notice",
-            line: `${label} unanswered on ${q(waiting)} days so far`,
+            line: t("{label} unanswered on {n} days so far", {
+              label,
+              n: q(waiting),
+            }),
           })
         else
           out.push({
             level: "allClear",
-            line: `${label} kept every day so far`,
+            line: t("{label} kept every day so far", { label }),
           })
       }
       continue
@@ -459,6 +608,14 @@ function weekItems(
     const bounds = weekBounds(clause, ctx, covered)
     const slotRules = weekSlotBounds(clause, covered)
 
+    // The same split `weekViolationsOn` prices: time is one site for the whole
+    // condition, a count splits per bound and per slot rider.
+    const keyFor = (slotId?: string) =>
+      violationKey({
+        clauseId: clause.id,
+        slotId: info.measure === "time" ? undefined : slotId,
+      })
+
     const ceilings: Ceiling[] = []
     const floors: Floor[] = []
     if (bounds.max !== undefined)
@@ -466,28 +623,43 @@ function weekItems(
     if (bounds.min !== undefined && bounds.min > 0)
       floors.push({ value: reading.value, min: bounds.min, where: "" })
     for (const [slotId, b] of Object.entries(slotRules)) {
-      const where = ` in ${q(slotLabel(ctx, slotId))}`
+      const where = t("frag: in {slot}", { slot: q(slotLabel(ctx, slotId)) })
       const value = covered.reduce(
         (sum, k) => sum + measuredOn(clause, ctx, days[k], [slotId]),
         0,
       )
-      if (b.max !== undefined) ceilings.push({ value, max: b.max, where })
+      if (b.max !== undefined)
+        ceilings.push({ value, max: b.max, where, slotId })
       if (b.min !== undefined && b.min > 0)
-        floors.push({ value, min: b.min, where })
+        floors.push({ value, min: b.min, where, slotId })
     }
 
     ceilings.forEach((ceiling) =>
-      out.push(ceilingItem(ceiling, named, fmt, " this week")),
+      out.push(
+        ceilingItem(
+          ceiling,
+          named,
+          fmt,
+          t("frag: this week"),
+          keyFor(ceiling.slotId),
+        ),
+      ),
     )
 
     if (partial) continue
 
-    floors.forEach(({ value, min, where }) => {
+    floors.forEach(({ value, min, where, slotId }) => {
+      const key = keyFor(slotId)
       const need = Math.max(0, min - value)
       if (need <= 0) {
         out.push({
           level: "allClear",
-          line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} this week — done`,
+          line: t("{named} {value} of {min}{where} this week — done", {
+            named,
+            value: q(fmt(value)),
+            min: q(fmt(min)),
+            where,
+          }),
         })
         return
       }
@@ -495,8 +667,14 @@ function weekItems(
       // day's colour is built on it too.
       if (weekLostOn(rule, ctx, days, weekStart, todayKey)) {
         out.push({
+          key,
           level: "danger",
-          line: `${named} ${q(fmt(value))} of ${q(fmt(min))}${where} this week — out of reach`,
+          line: t("{named} {value} of {min}{where} this week — out of reach", {
+            named,
+            value: q(fmt(value)),
+            min: q(fmt(min)),
+            where,
+          }),
         })
         return
       }
@@ -510,7 +688,12 @@ function weekItems(
           : need > min * (remaining / 7)
       out.push({
         level: tight ? "warning" : "notice",
-        line: `${q(fmt(need))} more of ${named}${where} this week, and ${plural(remaining, "day")} left`,
+        line: t("{need} more of {named}{where} this week, and {days} left", {
+          need: q(fmt(need)),
+          named,
+          where,
+          days: nDays(remaining),
+        }),
       })
     })
   }
@@ -555,9 +738,24 @@ function ruleNotices(
   // A frozen period is paid for; there is nothing left to say about it.
   if (state === "frozen") return []
 
-  const items = week
-    ? weekItems(rule, ctx, project.days, startOfWeek(now), todayKey)
-    : dayItems(rule, ctx, project.days[todayKey], todayKey, now)
+  /* **A violation you have paid for stops speaking.**
+   *
+   * `state === "frozen"` above catches only a period where *every* site is
+   * covered, because that is all `isFrozenFor` means. Since `spec 017` a
+   * freeze is bought against one site, so a rule asserting two checks with one
+   * of them paid for went on shouting `danger` about the one you had just
+   * bought — the board contradicting the receipt, with the receipt right.
+   *
+   * A weekly rule's receipts live on its Monday; a daily rule's on the day. */
+  const paid = frozenKeys(
+    project.days[week ? toKey(startOfWeek(now)) : todayKey],
+    rule.id,
+  )
+  const items = (
+    week
+      ? weekItems(rule, ctx, project.days, startOfWeek(now), todayKey)
+      : dayItems(rule, ctx, project.days[todayKey], todayKey, now)
+  ).filter((i) => !i.key || !paid.has(i.key))
 
   /* **Yesterday, while it can still be frozen.**
    *
@@ -584,8 +782,10 @@ function ruleNotices(
       "missed" &&
     yUnpaid.length > 0
   ) {
+    // Yesterday's receipts sit on yesterday, not on today.
+    const yPaid = frozenKeys(project.days[yesterdayKey], rule.id)
     dayItems(rule, ctx, project.days[yesterdayKey], yesterdayKey, now, true)
-      .filter((i) => i.level === "danger")
+      .filter((i) => i.level === "danger" && (!i.key || !yPaid.has(i.key)))
       .forEach((i) => items.unshift({ level: "danger", line: `Yesterday — ${i.line}` }))
   }
 
@@ -630,12 +830,22 @@ function ruleNotices(
   const settledLevel: NoticeLevel = nothingCovers ? "gone" : "danger"
   const detailFor = (level: NoticeLevel): string | undefined => {
     if (level === "warning")
-      return `${plural(status.current, week ? "week" : "day")} at stake`
+      return t("{n} at stake", {
+        n: week ? nWeeks(status.current) : nDays(status.current),
+      })
     if (level !== "danger" && level !== "gone") return undefined
-    if (!unpaid.length) return "Out of the writing window — nothing left to do"
+    if (!unpaid.length)
+      return t("Out of the writing window — nothing left to do")
     return affordable
-      ? `${plural(unpaid.length, "violation")} to freeze · ${plural(owedCost, "freeze")} in all · ${available} available`
-      : `${plural(owedCost, "freeze")} needed and you have ${available}`
+      ? t("{sites} to freeze · {cost} in all · {available} available", {
+          sites: nViolations(unpaid.length),
+          cost: nFreezes(owedCost),
+          available,
+        })
+      : t("{cost} needed and you have {available}", {
+          cost: nFreezes(owedCost),
+          available,
+        })
   }
 
   return group(
@@ -665,7 +875,7 @@ function compositeNotice(
   const report = dayReport(project, todayKey, todayKey)
   if (!report.judged) return []
   const run = keptDays(project, now)
-  const at = run ? `${plural(run.current, "day")} kept in a row` : ""
+  const at = run ? t("{n} kept in a row", { n: nDays(run.current) }) : ""
   if (report.state === "missed")
     return [
       {
@@ -674,8 +884,13 @@ function compositeNotice(
         level: "danger",
         tint: FIXED_TINT,
         icon: null,
-        title: "Today",
-        lines: [`${q(report.kept)} of ${q(report.judged)} rules held — the day is lost`],
+        title: t("board:Today"),
+        lines: [
+          t("{kept} of {judged} rules held — the day is lost", {
+            kept: q(report.kept),
+            judged: q(report.judged),
+          }),
+        ],
         detail: at,
       },
     ]
@@ -689,9 +904,12 @@ function compositeNotice(
       level: "notice",
       tint: FIXED_TINT,
       icon: null,
-      title: "Today",
+      title: t("board:Today"),
       lines: [
-        `${q(report.kept)} of ${q(report.judged)} rules holding so far${at ? ` · ${at}` : ""}`,
+        t("{kept} of {judged} rules holding so far", {
+          kept: q(report.kept),
+          judged: q(report.judged),
+        }) + (at ? ` · ${at}` : ""),
       ],
     },
   ]
@@ -708,7 +926,11 @@ function freezeNotices(statuses: RuleStatus[], now: Date): Notice[] {
   for (const s of statuses) {
     if (s.freezes.weeklyLeft <= 0) continue
     lines.push(
-      `${q(s.rule.label)} — ${q(s.freezes.weeklyLeft)} of ${q(s.freezes.weeklyTotal)} left, lost on Sunday`,
+      t("{rule} — {left} of {total} left, lost on Sunday", {
+        rule: q(s.rule.label),
+        left: q(s.freezes.weeklyLeft),
+        total: q(s.freezes.weeklyTotal),
+      }),
     )
   }
   if (!lines.length) return []
@@ -720,9 +942,9 @@ function freezeNotices(statuses: RuleStatus[], now: Date): Notice[] {
       level,
       tint: FIXED_TINT,
       icon: null,
-      title: "This week's allowance",
+      title: t("This week's allowance"),
       lines,
-      detail: weekend ? "Granted every Monday and lost unused" : undefined,
+      detail: weekend ? t("Granted every Monday and lost unused") : undefined,
     },
   ]
 }
@@ -733,7 +955,10 @@ function openWeekNotices(statuses: RuleStatus[]): Notice[] {
     for (const open of s.open)
       if (open.wouldKeep)
         lines.push(
-          `${q(s.rule.label)} — clean so far, pays out ${fmtDateLong(open.sealsOn)}`,
+          t("{rule} — clean so far, pays out {date}", {
+            rule: q(s.rule.label),
+            date: fmtDateLong(open.sealsOn),
+          }),
         )
   if (!lines.length) return []
   return [
@@ -743,7 +968,7 @@ function openWeekNotices(statuses: RuleStatus[]): Notice[] {
       level: "allClear",
       tint: FIXED_TINT,
       icon: null,
-      title: "Still in play",
+      title: t("Still in play"),
       lines,
     },
   ]
@@ -762,7 +987,12 @@ function achievementNotices(project: Project, now: Date): Notice[] {
     const time = measureOf(project, a) === "time" && achievementTargets(a.source).length
     const fmt = (n: number) => (time ? fmtHours(n) : String(n))
     lines.push(
-      `${q(a.label)} — ${q(fmt(a.threshold - at))} to go, at ${q(fmt(at))} of ${q(fmt(a.threshold))}`,
+      t("{name} — {togo} to go, at {value} of {threshold}", {
+        name: q(a.label),
+        togo: q(fmt(a.threshold - at)),
+        value: q(fmt(at)),
+        threshold: q(fmt(a.threshold)),
+      }),
     )
   }
   if (!lines.length) return []
@@ -773,7 +1003,7 @@ function achievementNotices(project: Project, now: Date): Notice[] {
       level: "notice",
       tint: FIXED_TINT,
       icon: null,
-      title: "Within reach",
+      title: t("Within reach"),
       lines,
     },
   ]

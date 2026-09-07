@@ -18,7 +18,14 @@
 
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { ChevronRight, Lock, Pencil, ShieldCheck, TriangleAlert } from "lucide-react"
+import {
+  ChevronRight,
+  Lock,
+  Pencil,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react"
 import type {
   Achievement,
   AchievementRun,
@@ -38,6 +45,7 @@ import {
   progressOf,
   runOf,
 } from "../lib/achievements"
+import { t, useT } from "../lib/i18n"
 import { LOCK_DAYS, lockFrom, removalGate, streakContext } from "../lib/customStreaks"
 import type { StreakContext } from "../lib/customStreaks"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
@@ -54,23 +62,25 @@ import { WORD } from "./countersPick"
 const NUM = `${FIELD_SOFT_INLINE} w-20 rounded-lg py-1 text-[11px] text-center`
 const SELECT = `${FIELD_SOFT_INLINE} field-sizing-content min-w-32 max-w-52 rounded-lg py-1 text-[11px]`
 
-const WINDOW_LABEL: Record<AchievementWindow, string> = {
-  ever: "Ever, in all",
-  month: "In a single month",
-  week: "In a single week",
-  day: "In a single day",
-}
+/* A getter: a module-level table is built once at import and would stay
+   English for the life of the tab. */
+const windowLabel = (w: AchievementWindow): string =>
+  t(
+    {
+      ever: "Ever, in all",
+      month: "In a single month",
+      week: "In a single week",
+      day: "In a single day",
+    }[w],
+  )
 
-const LOCK_HELP =
-  "Raising a threshold lands at once — it can only ever cost you more. " +
-  "Lowering one waits a week, like loosening a rule, and so does swapping " +
-  "what is counted: a hundred hours of lessons and a hundred gym visits are " +
-  "not two points on one scale, so the change cannot be classified and waits." +
-  String.fromCharCode(10, 10) +
-  "Asking for them in a row rather than in all is harder, so it lands. " +
-  "Narrowing the window is harder, so that lands too. Widening either waits." +
-  String.fromCharCode(10, 10) +
-  "The day you write one is yours to get it right on."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const lockHelp = () =>
+  [
+    t("Raising a threshold lands at once — it can only ever cost you more. Lowering one waits a week, like loosening a rule, and so does swapping what is counted: a hundred hours of lessons and a hundred gym visits are not two points on one scale, so the change cannot be classified and waits."),
+    t("Asking for them in a row rather than in all is harder, so it lands. Narrowing the window is harder, so that lands too. Widening either waits."),
+    t("The day you write one is yours to get it right on."),
+  ].join(String.fromCharCode(10, 10))
 
 /** What a fresh total points at — the project's own first activity. */
 const seedTarget = (ctx: StreakContext): StreakTarget =>
@@ -82,7 +92,7 @@ const seedTarget = (ctx: StreakContext): StreakTarget =>
 
 const daysSummary = (weekdays: number[] | undefined): string =>
   !weekdays?.length || weekdays.length === WEEKDAY_ORDER.length
-    ? "every day"
+    ? t("every day")
     : weekdays.map((wd) => WEEKDAY_LABELS[wd]).join(", ")
 
 /** One labelled field, with the label above it — the rule form's `Row`. */
@@ -188,10 +198,12 @@ function Form({
   today: Date
 }) {
   const c = usePalette()
+  const t = useT()
   const [draft, setDraft] = useState<Achievement | null>(null)
   const [reason, setReason] = useState("")
   const settingUp = toKey(today) === item.createdOn
   const locked = !settingUp && toKey(today) < item.lockedUntil
+  const badge = project.earned?.[item.id]
   const ctx = streakContext(project)
   const rules = project.settings.streakRules || []
 
@@ -204,43 +216,64 @@ function Form({
           <Sentence text={achievementSentence(project, item)} />
         </p>
         <p className="text-[10px] font-mono text-ink/40">
-          {project.earned?.[item.id]
-            ? `Earned ${fmtDateLong(earnedOn(project.earned[item.id].earnedAt))}${
-                project.earned[item.id].reward
-                  ? ` · paid ${project.earned[item.id].reward} points`
-                  : ""
+          {badge
+            ? `Earned ${fmtDateLong(earnedOn(badge.earnedAt))}${
+                badge.reward ? ` · paid ${badge.reward} points` : ""
               }`
             : `${fmtProgress(value, measure)} so far${
                 item.reward ? ` · worth ${item.reward} points` : ""
               }`}
         </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-          <button
-            type="button"
-            onClick={() => {
-              setReason("")
-              setDraft(item)
-            }}
-            className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
-          >
-            <Pencil size={10} /> Edit
-          </button>
-          <Tip multiline text={LOCK_HELP}>
-            <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
-              <Lock size={10} />
-              {settingUp
-                ? "Being set up — open until tomorrow"
-                : locked
-                  ? `Raising only until ${fmtDateLong(item.lockedUntil)}`
-                  : "Open to any change"}
-            </span>
-          </Tip>
-        </div>
+        {/* **Reached, so there is nothing left to edit.**
+
+            Not a disabled Edit button: a control that refuses when pressed and
+            one that is absent say the same thing, and only the absent one says
+            it before you reach for it. What replaces it is the reason, because
+            *why can I not change this* is the question a missing button always
+            raises — the ledger recorded what this was worth at the moment it
+            was reached and the account has already been paid, so a definition
+            that moved afterwards would leave the badge and the sentence
+            describing it disagreeing, with the points behind whichever you
+            happened not to be reading.
+
+            The name, the colour and the icon are above this block and stay
+            open, the same line the rules draw between a term and a label. */}
+        {badge ? (
+          <p className="flex items-center gap-1.5 pt-0.5 text-[9px] font-mono uppercase tracking-widest text-ink/35">
+            <ShieldCheck size={11} style={{ color: c.goalMet }} />
+            {t(
+              "Reached — its terms are settled. Delete is the only way back, and it takes the record and the points with it.",
+            )}
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setReason("")
+                setDraft(item)
+              }}
+              className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
+            >
+              <Pencil size={10} /> {t("Edit")}
+            </button>
+            <Tip multiline text={lockHelp()}>
+              <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
+                <Lock size={10} />
+                {settingUp
+                  ? t("Being set up — open until tomorrow")
+                  : locked
+                    ? `Raising only until ${fmtDateLong(item.lockedUntil)}`
+                    : t("Open to any change")}
+              </span>
+            </Tip>
+          </div>
+        )}
       </div>
     )
   }
 
-  const edit = achievementEdit(item, draft, LOCK_DAYS, today, reason)
+  const edit = achievementEdit(item, draft, LOCK_DAYS, today, reason, !!badge)
   const measure = measureOf(project, draft)
   const run = runOf(draft.source)
   const targets = achievementTargets(draft.source)
@@ -261,7 +294,7 @@ function Form({
       {/* **What kind of thing this is, first.** Every field below depends on
           the answer, the same way the rule form asks for the scope before it
           asks for anything else. */}
-      <Row label="Counting">
+      <Row label={t("Counting")}>
         <Pills<"run" | "total">
           value={run ? "run" : "total"}
           onChange={(next) =>
@@ -283,21 +316,21 @@ function Form({
             })
           }
           options={[
-            { id: "run", label: "Days that went well" },
-            { id: "total", label: "Something you recorded" },
+            { id: "run", label: t("Days that went well") },
+            { id: "total", label: t("Something you recorded") },
           ]}
         />
       </Row>
 
       {run && (
         <>
-          <Row label="Whose verdict">
+          <Row label={t("Whose verdict")}>
             <select
               value={run.ruleId ?? ""}
               onChange={(e) => setRun({ ruleId: e.target.value || undefined })}
               className={SELECT}
             >
-              <option value="">Every rule that votes</option>
+              <option value="">{t("Every rule that votes")}</option>
               {rules.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.label}
@@ -310,13 +343,13 @@ function Form({
               run, so *thirty days of studying* could only mean thirty in a
               row — and thirty of them, whenever they happened, is a different
               and equally real thing to have done. */}
-          <Row label="Counted">
+          <Row label={t("Counted")}>
             <Pills<"row" | "all">
               value={run.consecutive ? "row" : "all"}
               onChange={(v) => setRun({ consecutive: v === "row" })}
               options={[
-                { id: "row", label: "In a row" },
-                { id: "all", label: "In all" },
+                { id: "row", label: t("In a row") },
+                { id: "all", label: t("In all") },
               ]}
             />
             <Pills<"day" | "week">
@@ -330,18 +363,18 @@ function Form({
                 })
               }
               options={[
-                { id: "day", label: "Days" },
-                { id: "week", label: "Weeks" },
+                { id: "day", label: t("unit:Days") },
+                { id: "week", label: t("unit:Weeks") },
               ]}
             />
           </Row>
 
           {run.scale === "day" && (
-            <Fold title="Days" summary={daysSummary(run.weekdays)}>
+            <Fold title={t("Days")} summary={daysSummary(run.weekdays)}>
               {/* A filter on which days are *looked at*, never a bound on
                   them: four Mondays in a row is four Mondays with no broken
                   Monday between them, whatever the Tuesdays did. */}
-              <Row label="Counting only">
+              <Row label={t("Counting only")}>
                 <div className="flex flex-wrap gap-1">
                   {WEEKDAY_ORDER.map((wd) => {
                     const on = !run.weekdays?.length || run.weekdays.includes(wd)
@@ -412,8 +445,8 @@ function Form({
               turns the same figure into a record — the best single day, week or
               month there has ever been. Folded, because `ever` is still the
               common answer and a thousand hours in all is worth marking. */}
-          <Fold title="Over" summary={WINDOW_LABEL[window]}>
-            <Row label="Counted">
+          <Fold title={t("Over")} summary={windowLabel(window)}>
+            <Row label={t("Counted")}>
               <Pills<AchievementWindow>
                 value={window}
                 onChange={(next) =>
@@ -424,7 +457,7 @@ function Form({
                 }
                 options={(
                   ["ever", "month", "week", "day"] as AchievementWindow[]
-                ).map((w) => ({ id: w, label: WINDOW_LABEL[w] }))}
+                ).map((w) => ({ id: w, label: windowLabel(w) }))}
               />
             </Row>
           </Fold>
@@ -436,7 +469,7 @@ function Form({
           equal things. The lock reads it backwards from the threshold above:
           asking more points for the same work is a loosening of the bargain
           even though the bar has not moved. */}
-      <Row label="Worth">
+      <Row label={t("Worth")}>
         <input
           type="number"
           min={0}
@@ -452,7 +485,7 @@ function Form({
         <span className={WORD}>points</span>
       </Row>
 
-      <Row label="Reaching">
+      <Row label={t("Reaching")}>
         {measure === "time" ? (
           <HoursMinutes
             minutes={draft.threshold}
@@ -489,11 +522,11 @@ function Form({
       {/* Only when it is going the easy way. Asking you to justify raising your
           own bar would be asking the wrong question. */}
       {edit.changed && !edit.settingUp && !edit.narrowing && (
-        <Row label="Because">
+        <Row label={t("Because")}>
           <AutoTextarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Why it is asking for less"
+            placeholder={t("Why it is asking for less")}
             rows={1}
             maxHeight={120}
             className={`${FIELD_SOFT_INLINE} w-full rounded-lg py-1 text-[11px]`}
@@ -513,7 +546,7 @@ function Form({
           onClick={() => setDraft(null)}
           className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide text-ink/55 hover:text-ink hover:bg-ink/5`}
         >
-          Cancel
+          {t("Cancel")}
         </button>
         <button
           type="button"
@@ -525,7 +558,7 @@ function Form({
           className={`${btnBase} px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
           style={{ backgroundColor: c.accent, color: c.onFill }}
         >
-          Done
+          {t("Done")}
         </button>
 
         {!edit.changed && (
@@ -537,8 +570,8 @@ function Form({
           <span className="flex items-center gap-1 text-[10px] font-mono text-ink/50">
             <ShieldCheck size={11} />
             {edit.settingUp
-              ? "Today is yours to get this right on."
-              : "This only asks for more."}
+              ? t("Today is yours to get this right on.")
+              : t("This only asks for more.")}
           </span>
         )}
         {edit.needsReason && (
@@ -576,7 +609,8 @@ export function AchievementsTab({
 }: {
   project: Project
   settings: Settings
-  onSave: (next: Settings) => void
+  /** The list, plus the ids whose earned records go with them. */
+  onSave: (achievements: Achievement[], forget: string[]) => void
   /** Whether this project's loosenings need a second yes. */
   supervised?: boolean
   /** A rule or an achievement sent to be dropped, rather than dropped. */
@@ -589,7 +623,30 @@ export function AchievementsTab({
   ) => void
   today?: Date
 }) {
+  const c = usePalette()
   const items = settings.achievements || []
+
+  /* **Records whose achievement is gone.**
+   *
+   * Deleting one takes its record with it now, but that is only true from
+   * here on: anything deleted before this was written left a row behind, and
+   * that row goes on paying into the balance for something there is no longer
+   * any way to name, read back or check. The points are real and spendable,
+   * which is exactly why they cannot simply be swept away on load — a balance
+   * that quietly drops on a Tuesday is indistinguishable from a bug.
+   *
+   * So it is a block that appears only when there is something to say, names
+   * what it is about to take, and waits to be pressed. It reuses the same
+   * write the delete button does, so there is one path out and not two.
+   */
+  const orphans = Object.values(project.earned || {}).filter(
+    (b) => !items.some((a) => a.id === b.achievementId),
+  )
+  const orphanPoints = orphans.reduce(
+    (sum, b) => sum + Math.max(0, Number(b.reward) || 0),
+    0,
+  )
+
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-mono text-ink/45 leading-relaxed">
@@ -599,14 +656,77 @@ export function AchievementsTab({
         are worth more than thirty that were generated.
       </p>
 
+      {orphans.length > 0 && (
+        <div
+          className="rounded-xl p-2.5 space-y-1.5"
+          style={{ backgroundColor: `${c.exam}14` }}
+        >
+          {/* One whole sentence per case rather than a plural spliced into
+              the middle of one: "One record here belong to achievements" is
+              what splicing gets you, and it is the sort of seam that makes a
+              reader distrust the figure beside it. */}
+          <p className="text-[11px] font-mono text-ink/70 leading-relaxed">
+            {orphans.length === 1
+              ? t(
+                  "One record here belongs to an achievement that no longer exists",
+                )
+              : t("{n} records here belong to achievements that no longer exist", {
+                  n: orphans.length,
+                })}
+            {orphanPoints === 0
+              ? "."
+              : orphanPoints === 1
+                ? t(", and 1 point is still on your balance because of it.")
+                : t(
+                    ", and {n} points are still on your balance because of them.",
+                    { n: orphanPoints },
+                  )}
+          </p>
+          <p className="text-[10px] font-mono text-ink/40 leading-relaxed">
+            {t(
+              "Deleting an achievement takes its record with it. These are older than that rule, and nothing on the page can name what they were for.",
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => onSave(items, orphans.map((b) => b.achievementId))}
+            style={{ color: c.exam }}
+            className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
+          >
+            <Trash2 size={10} />
+            {orphanPoints
+              ? t("Remove them and the {n} points", { n: orphanPoints })
+              : t("Remove them")}
+          </button>
+        </div>
+      )}
+
       <EditableList<Achievement>
         items={items}
-        onChange={(achievements) => onSave({ ...settings, achievements })}
+        /* **Removals carry their records out with them**, in the same write.
+           `EditableList` hands back the list it wants; whatever left it is
+           what has to be forgotten, and working it out here rather than at the
+           delete button means nothing can remove an achievement by another
+           route and leave its badge behind. */
+        onChange={(achievements) =>
+          onSave(
+            achievements,
+            items
+              .filter((a) => !achievements.some((n) => n.id === a.id))
+              .map((a) => a.id),
+          )
+        }
         noun="achievement"
         minItems={0}
         newItem={() => newAchievement(today)}
+        /* **The record goes with it, and the points go with the record.**
+           This used to promise the opposite — *if it was already earned the
+           record of that stays* — which is true of a badge you can still see
+           and false of one whose achievement no longer exists: it went on
+           paying into the balance for something there was no longer any way
+           to name, read back or check. */
         warningNote={(label) =>
-          `Remove "${label}"? If it was already earned the record of that stays — it happened. Only the definition goes.`
+          `Remove "${label}"? If it was already earned, that record and the points it paid go with it. This cannot be undone.`
         }
         /* The same gates a rule's removal walks. An achievement has no
            supervisor channel of its own yet — proposals are keyed to rules —

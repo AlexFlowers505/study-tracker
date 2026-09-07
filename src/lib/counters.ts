@@ -15,6 +15,7 @@
 
 import type { CounterUnit, Day, DayKey, Settings } from "../types/model"
 import { toKey } from "./date"
+import { t } from "./i18n"
 
 /** `unitId -> slotId -> value`. See `Day.counters`. */
 export type DayCounters = Record<string, Record<string, number>>
@@ -158,7 +159,7 @@ export function legacyUnits(settings: Partial<Settings>): CounterUnit[] {
   if (settings.lessonsEnabled !== false) {
     units.push({
       id: LESSONS_UNIT_ID,
-      label: "Lessons",
+      label: t("seed:Lessons"),
       iconName: "GraduationCap",
       color: "#4C8FBD",
       relation: "positive",
@@ -168,7 +169,7 @@ export function legacyUnits(settings: Partial<Settings>): CounterUnit[] {
   if (settings.examsEnabled !== false) {
     units.push({
       id: EXAMS_UNIT_ID,
-      label: "Exams",
+      label: t("seed:Exams"),
       iconName: "Award",
       color: "#C1595B",
       relation: "positive",

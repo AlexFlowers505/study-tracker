@@ -13,6 +13,7 @@ import type {
   Settings,
   Slot,
 } from "../types/model"
+import { t, useLocale } from "../lib/i18n"
 import type { Palette } from "../lib/theme"
 import {
   fromKey,
@@ -51,7 +52,10 @@ import type {
 } from "../lib/periodCounters"
 import { usePalette } from "../ui/useTheme"
 
-const WEEKDAY_HEADS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+/* A getter: a module-level array is built once at import and would stay
+   English for the life of the page. */
+const weekdayHeads = () =>
+  ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => t(d))
 
 const stateColor = (
   c: Palette,
@@ -61,11 +65,14 @@ const stateColor = (
   missed: c.exam,
 })
 
-const WEEK_DOT_TIP: Record<"met" | "frozen" | "missed", string> = {
-  met: "Every day of this week hit its goal",
-  frozen: "A day was missed, but a streak freeze covered it",
-  missed: "A day was missed with no freeze on it",
-}
+const weekDotTip = (state: "met" | "frozen" | "missed"): string =>
+  t(
+    {
+      met: "Every day of this week hit its goal",
+      frozen: "A day was missed, but a streak freeze covered it",
+      missed: "A day was missed with no freeze on it",
+    }[state],
+  )
 
 /**
  * The caption above each week row — and, under it, what the week counted.
@@ -121,7 +128,7 @@ function WeekSummaryStrip({
         <span className="text-ink/40 shrink-0">of {fmtHours(goal)}</span>
       )}
       {goalOutcome && (
-        <Tip text={WEEK_DOT_TIP[goalOutcome]}>
+        <Tip text={weekDotTip(goalOutcome)}>
           <span
             className="w-2 h-2 rounded-full inline-block shrink-0"
             style={{ backgroundColor: stateColor(c)[goalOutcome] }}
@@ -234,13 +241,13 @@ function CompactDayCell({
           <div className="flex items-center gap-1">
             {ignored && <EyeOff size={11} className="text-ink/35" />}
             {verdict.state === "frozen" && (
-              <Tip text="Streak freeze used">
+              <Tip text={t("Streak freeze used")}>
                 <Snowflake size={11} style={{ color: c.freeze }} />
               </Tip>
             )}
             {settings?.sleepEnabled === true &&
               (entry?.sleep || []).length > 0 && (
-                <Tip text="Sleep logged">
+                <Tip text={t("Sleep logged")}>
                   <Moon size={11} style={{ color: c.sleep }} />
                 </Tip>
               )}
@@ -378,6 +385,9 @@ export function MonthGrid({
   weekIgnore?: Record<DayKey, boolean>
   monthIgnore?: Record<DayKey, boolean>
 }) {
+  // Nothing here reads `t` directly — `weekdayHeads` and `weekDotTip` do, and
+  // they are plain functions. This is the subscription that re-runs them.
+  useLocale()
   const year = cursor.getFullYear()
   const month = cursor.getMonth()
   const firstOfMonth = new Date(year, month, 1)
@@ -409,7 +419,7 @@ export function MonthGrid({
   return (
     <div>
       <div className="grid grid-cols-7 rounded-xl bg-ink/[0.04] text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-ink/45 text-center">
-        {WEEKDAY_HEADS.map((d) => (
+        {weekdayHeads().map((d) => (
           <div key={d} className="py-1.5">
             <span className="sm:hidden">{d[0]}</span>
             <span className="hidden sm:inline">{d}</span>

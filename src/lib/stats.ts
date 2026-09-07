@@ -19,6 +19,7 @@ import type {
 import { fromKey, monthKey, startOfWeek, toKey } from "./date"
 import { getById } from "./id"
 import { entryActivity } from "./entries"
+import { t } from "./i18n"
 
 export const goalForDate = (
   settings: Settings | undefined,
@@ -195,7 +196,7 @@ export function buildTooltip(
   if (!dayEntry || total === 0) {
     return dayEntry?.comment
       ? `No study logged\n—\n${dayEntry.comment}`
-      : "No study logged"
+      : t("No study logged")
   }
   const lines = [`Total: ${total}m`]
   slots.forEach((s) => {

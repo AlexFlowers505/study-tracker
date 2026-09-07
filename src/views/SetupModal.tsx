@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import type {
+  Achievement,
   AppData,
   Activity,
   CounterUnit,
@@ -32,6 +33,7 @@ import {
   fmtDateLong,
   toKey,
 } from '../lib/date'
+import { useT } from '../lib/i18n'
 import { FIELD_SOFT, btnBase } from '../lib/theme'
 import { DateField } from '../ui/DateField'
 import { EditableList } from '../ui/EditableList'
@@ -74,6 +76,7 @@ export function SetupModal({
   counterProgress,
   onUpdateUnits,
   onUpdateProject,
+  onSaveAchievements,
   projects,
   activeProjectId,
   onSwitchProject,
@@ -111,6 +114,8 @@ export function SetupModal({
   onUpdateUnits: (next: CounterUnit[]) => void
   /** One write for an edit that touches more than one of the arrays. */
   onUpdateProject: (patch: Partial<Project>) => void
+  /** The list, plus the ids whose earned records go with them. */
+  onSaveAchievements: (achievements: Achievement[], forget: string[]) => void
   projects: Project[]
   activeProjectId: string
   onSwitchProject: (id: string) => void
@@ -121,6 +126,7 @@ export function SetupModal({
   isAdmin: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const [tab, setTab] = useState("details")
   const onBackdropClick = useModalDismiss(onClose)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -217,7 +223,7 @@ export function SetupModal({
           </h2>
           <button
             onClick={onClose}
-            aria-label="Close setup"
+            aria-label={t("Close setup")}
             className={`${btnBase} text-ink/50 hover:text-ink`}
           >
             <X size={18} />
@@ -244,20 +250,20 @@ export function SetupModal({
               words to read every time; a glyph is what the eye actually aims
               at once you know where a thing lives. */}
           {[
-            { id: "details", label: "Project", icon: SlidersHorizontal },
-            { id: "slots", label: "Slots", icon: LayoutGrid },
+            { id: "details", label: t("tab:Project"), icon: SlidersHorizontal },
+            { id: "slots", label: t("tab:Slots"), icon: LayoutGrid },
             // Activities live inside Counters now — they are one of the three
             // kinds a counter can be, and a tab of their own said they were a
             // different sort of thing.
-            { id: "units", label: "Counters", icon: Hash },
-            { id: "categories", label: "Categories", icon: Shapes },
-            { id: "tags", label: "Tags", icon: Tags },
-            { id: "streaks", label: "Streaks", icon: Flame },
+            { id: "units", label: t("tab:Counters"), icon: Hash },
+            { id: "categories", label: t("tab:Categories"), icon: Shapes },
+            { id: "tags", label: t("tab:Tags"), icon: Tags },
+            { id: "streaks", label: t("tab:Streaks"), icon: Flame },
             // "History" was carried over from a sketch and was wrong in an app
             // that already has a change log: two words for one shelf, and the
             // trophy beside it said which one this really was.
-            { id: "achievements", label: "Achievements", icon: Trophy },
-            { id: "shop", label: "Rewards", icon: Gift },
+            { id: "achievements", label: t("tab:Achievements"), icon: Trophy },
+            { id: "shop", label: t("tab:Rewards"), icon: Gift },
             // Projects had a tab of its own and no longer does. Two of these
             // ten were half empty — this project's four fields, and a list of
             // the others — and they were half empty with the *same* subject,
@@ -266,14 +272,19 @@ export function SetupModal({
             // in, and then every project there is.
             // Last, and the only one that is not about a project — it is a
             // property of the device you are reading on.
-            { id: "app", label: "App", icon: Palette },
-          ].map((t) => {
-            const active = tab === t.id
+            { id: "app", label: t("tab:App"), icon: Palette },
+          /* **The loop variable was called `t`.** Harmless until the labels
+             above became `t("tab:Slots")` — at which point the parameter would
+             shadow the translator inside its own body and the file would stop
+             compiling, or worse, compile against the wrong `t`. Renamed rather
+             than worked around. */
+          ].map((item) => {
+            const active = tab === item.id
             return (
               <button
-                key={t.id}
-                data-tab={t.id}
-                onClick={() => setTab(t.id)}
+                key={item.id}
+                data-tab={item.id}
+                onClick={() => setTab(item.id)}
                 style={
                   active ? { borderColor: c.accent, color: c.accent } : undefined
                 }
@@ -283,8 +294,8 @@ export function SetupModal({
                     : "border-transparent text-ink/50 hover:text-ink hover:bg-ink/5"
                 }`}
               >
-                <t.icon size={14} />
-                {t.label}
+                <item.icon size={14} />
+                {item.label}
               </button>
             )
           })}
@@ -398,7 +409,7 @@ export function SetupModal({
                 projects.find((p) => p.id === activeProjectId) || projects[0]
               }
               settings={settings}
-              onSave={onSaveSettings}
+              onSave={onSaveAchievements}
             />
           )}
           {tab === "streaks" && (
@@ -459,6 +470,7 @@ function ProjectsTab({
   onDelete: (id: string) => void
 }) {
   const c = usePalette()
+  const t = useT()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   return (
@@ -491,7 +503,7 @@ function ProjectsTab({
         const detail = [
           p.settings.startDate
             ? fmtDateLong(p.settings.startDate)
-            : "No start date",
+            : t("No start date"),
           p.settings.endDate ? `→ ${fmtDateLong(p.settings.endDate)}` : null,
           logged ? `${logged} day${logged === 1 ? "" : "s"} logged` : "empty",
         ]
@@ -510,7 +522,7 @@ function ProjectsTab({
             </span>
             <div className="flex-1 min-w-0 text-left">
               <div className="text-xs font-bold truncate">
-                {p.settings.projectName || "Untitled project"}
+                {p.settings.projectName || t("Untitled project")}
               </div>
               <div className="text-[10px] text-ink/40 truncate">{detail}</div>
             </div>
@@ -579,8 +591,8 @@ function ProjectsTab({
                 <Tip
                   text={
                     projects.length <= 1
-                      ? "At least one project is required"
-                      : "Delete project"
+                      ? t("At least one project is required")
+                      : t("Delete project")
                   }
                 >
                   <button
@@ -614,6 +626,7 @@ function ProjectDetailsTab({
   onSave: (next: Settings) => void
 }) {
   const c = usePalette()
+  const t = useT()
   const [projectName, setProjectName] = useState(
     settings.projectName ?? "Time Tracker",
   )
@@ -669,7 +682,7 @@ function ProjectDetailsTab({
               class is the popover's to set. */}
           <PopoverMenu
             width={256}
-            label="Project icon"
+            label={t("Project icon")}
             wrapClassName="shrink-0"
             triggerClassName={`${btnBase} rounded-xl hover:opacity-75`}
             trigger={
@@ -699,7 +712,7 @@ function ProjectDetailsTab({
           <input
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-            placeholder="Project name"
+            placeholder={t("Project name")}
             className={`${FIELD_SOFT} flex-1 text-sm`}
           />
         </div>
@@ -716,24 +729,28 @@ function ProjectDetailsTab({
         <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50">
           <Moon size={12} /> Enable sleep tracking
         </span>
-        <Tip text="Log sleep on its own tab in the day editor, kept out of study totals">
+        <Tip
+          text={t(
+            "Log sleep on its own tab in the day editor, kept out of study totals",
+          )}
+        >
           <SwitchToggle
             checked={sleepEnabled}
             onChange={setSleepEnabled}
-            label="Enable sleep tracking"
+            label={t("Enable sleep tracking")}
           />
         </Tip>
       </div>
 
-      <Field label="Project start date">
+      <Field label={t("Project start date")}>
         <DateField
           value={startDate}
           onChange={setStartDate}
-          placeholder="Pick a start date"
+          placeholder={t("Pick a start date")}
           className="w-full"
         />
       </Field>
-      <Field label="Project end date (optional)">
+      <Field label={t("Project end date (optional)")}>
         <DateField
           value={endDate}
           onChange={setEndDate}

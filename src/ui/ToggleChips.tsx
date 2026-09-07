@@ -1,5 +1,6 @@
 import { Fragment } from "react"
 import type { ReactNode } from "react"
+import { useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { usePalette } from "./useTheme"
 import { Tip } from "./Tip"
@@ -31,6 +32,7 @@ export function ToggleChips({
   onBulk?: (showAll: boolean) => void
 }) {
   const c = usePalette()
+  const t = useT()
   const allHidden = items.length > 0 && items.every((it) => hidden.has(it.id))
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
@@ -39,7 +41,7 @@ export function ToggleChips({
           onClick={() => onBulk(allHidden)}
           className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-full text-ink/45 hover:text-ink hover:bg-ink/5`}
         >
-          {allHidden ? "Select all" : "Clear all"}
+          {t(allHidden ? "Select all" : "Clear all")}
         </button>
       )}
       {items.map((it) => {

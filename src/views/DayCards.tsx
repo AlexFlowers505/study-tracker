@@ -23,7 +23,9 @@ import type {
   Slot,
   StudyEntry,
 } from "../types/model"
-import { fromKey, pad, startOfWeek, toKey } from "../lib/date"
+import { useT } from "../lib/i18n"
+import {
+  dateLocale, fromKey, pad, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import { setCheck, splitByKind } from "../lib/checks"
 import { dayBreakdown, goalForDate } from "../lib/stats"
@@ -150,6 +152,7 @@ function FullDayCard({
   onUpdateDay?: (patch: Partial<Day>) => void
 }) {
   const c = usePalette()
+  const t = useT()
   // Above the early return, as every hook must be. Purely local: which card's
   // note is folded is a view preference, not something another card or the
   // shell has any reason to know.
@@ -161,7 +164,7 @@ function FullDayCard({
         className={`rounded-2xl bg-ink/[0.04] p-3 flex flex-col gap-1 ${big ? "w-full" : ""}`}
       >
         <div className="font-mono text-sm font-bold text-ink/25">
-          {date.toLocaleDateString(undefined, {
+          {date.toLocaleDateString(dateLocale(), {
             weekday: "short",
             day: "numeric",
           })}
@@ -304,7 +307,7 @@ function FullDayCard({
               style={isToday ? { color: c.accent } : undefined}
             >
               {date.toLocaleDateString(
-                undefined,
+                dateLocale(),
                 longDate
                   ? { weekday: "long", day: "numeric", month: "long" }
                   : { weekday: "short", day: "numeric" },
@@ -335,8 +338,10 @@ function FullDayCard({
               <Tip
                 text={
                   sealed
-                    ? "Open this day in a larger view. It is sealed: the log can be written for today and yesterday, so this day can be read but not changed."
-                    : "Open this day in a larger view"
+                    ? t(
+                        "Open this day in a larger view. It is sealed: the log can be written for today and yesterday, so this day can be read but not changed.",
+                      )
+                    : t("Open this day in a larger view")
                 }
               >
                 <button
@@ -356,7 +361,9 @@ function FullDayCard({
               itself. Absent while the note is open for editing — folding away
               a form you are typing into is never what you meant. */}
           {entry?.comment && !noteEditing && (
-            <Tip text={noteFolded ? "Show the day's note" : "Hide the day's note"}>
+            <Tip
+              text={t(noteFolded ? "Show the day's note" : "Hide the day's note")}
+            >
               <button
                 onClick={(ev) => {
                   ev.stopPropagation()
@@ -401,7 +408,11 @@ function FullDayCard({
               filled — because the two of them are the live end of the log and
               nothing else is. */}
           {stillOpen && (
-            <Tip text="The log can be written for today and yesterday. This day seals at midnight.">
+            <Tip
+              text={t(
+                "The log can be written for today and yesterday. This day seals at midnight.",
+              )}
+            >
               <span
                 className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
@@ -411,7 +422,11 @@ function FullDayCard({
             </Tip>
           )}
           {verdict.state === "frozen" && (
-            <Tip text="Streak freeze used — the goal was missed, but the streak held">
+            <Tip
+              text={t(
+                "Streak freeze used — the goal was missed, but the streak held",
+              )}
+            >
               <span
                 className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: c.freeze, color: c.onFill }}
@@ -421,7 +436,7 @@ function FullDayCard({
             </Tip>
           )}
           {ignored && (
-            <Tip text="Ignored in statistics">
+            <Tip text={t("Ignored in statistics")}>
               <span className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono text-ink/60 bg-ink/10 px-1.5 py-0.5 rounded-full">
                 <EyeOff size={10} />
               </span>
@@ -438,7 +453,7 @@ function FullDayCard({
               thing the card could least afford — and choosing what you are
               recording belongs inside the thing you are recording it in. */}
           {canFreeze && onFreeze && (
-            <Tip text="Use a streak freeze on this day">
+            <Tip text={t("Use a streak freeze on this day")}>
               <button
                 onClick={(ev) => {
                   ev.stopPropagation()
@@ -452,7 +467,7 @@ function FullDayCard({
             </Tip>
           )}
           {onQuickAdd && (
-            <Tip text="Add to this day">
+            <Tip text={t("Add to this day")}>
               <button
                 onClick={(ev) => {
                   ev.stopPropagation()
@@ -475,7 +490,7 @@ function FullDayCard({
               without moving it out of the corner people reach for. */}
           {onClose && (
             <span className="flex items-center pl-2 ml-1 border-l border-ink/15">
-              <Tip text="Close">
+              <Tip text={t("Close")}>
                 <button
                   onClick={(ev) => {
                     ev.stopPropagation()
@@ -493,7 +508,7 @@ function FullDayCard({
         <div
           className={`${cardTiny(big)} font-mono uppercase tracking-widest text-ink/40`}
         >
-          {date.toLocaleDateString(undefined, {
+          {date.toLocaleDateString(dateLocale(), {
             month: "short",
             year: "numeric",
           })}
@@ -609,8 +624,12 @@ function FullDayCard({
               And a sealed day says so in the one place the question actually
               comes up. An empty card with no way in is the most confusing
               thing this view can show, and one word fixes it. */}
-          No study logged
-          {onQuickAdd ? " — tap to add" : sealed ? " — sealed" : ""}
+          {t("No study logged")}
+          {onQuickAdd
+            ? t(" — tap to add")
+            : sealed
+              ? t(" — sealed")
+              : ""}
         </p>
       )}
       <EntriesReadout

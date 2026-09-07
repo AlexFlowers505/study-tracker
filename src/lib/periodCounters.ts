@@ -21,6 +21,7 @@ import type {
 } from "../types/model"
 import { counterKind } from "./checks"
 import { fmtHours } from "./time"
+import { t } from "./i18n"
 
 /** One thing a period counted. */
 export interface CounterChip {
@@ -45,9 +46,9 @@ export interface CounterGroup {
 export type CounterGrouping = "kind" | "category"
 
 const KIND_LABEL: Record<string, string> = {
-  activity: "Activities",
-  tally: "Tallies",
-  check: "Checks",
+  activity: "kinds:Activities",
+  tally: "kinds:Tallies",
+  check: "kinds:Checks",
 }
 
 /** The order kinds are read in: time first, then counts, then answers. */
@@ -109,7 +110,7 @@ export function periodCounterGroups({
   if (grouping === "kind")
     return KIND_ORDER.map((kind) => ({
       id: kind,
-      label: KIND_LABEL[kind],
+      label: t(KIND_LABEL[kind]),
       chips: chips.filter((x) => x.kind === kind).map((x) => x.chip),
     })).filter((g) => g.chips.length > 0)
 
@@ -129,7 +130,7 @@ export function periodCounterGroups({
     })),
     {
       id: "",
-      label: "Not filed",
+      label: t("Not filed"),
       chips: chips.filter((x) => filed(x.categoryId) === "").map((x) => x.chip),
     },
   ].filter((g) => g.chips.length > 0)

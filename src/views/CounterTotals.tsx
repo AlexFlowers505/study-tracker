@@ -31,6 +31,7 @@
    category out of the filter takes it out of here with everything else.
 --------------------------------------------------------------- */
 
+import { useT } from "../lib/i18n"
 import type { CounterChip, CounterGroup, CounterGrouping } from "../lib/periodCounters"
 import { ChevronDown, Hash } from "lucide-react"
 import { btnBase } from "../lib/theme"
@@ -144,6 +145,7 @@ export function CounterMenu({
   onSetAll: (hideAll: boolean) => void
   className?: string
 }) {
+  const t = useT()
   if (!groups.length) return null
   const shown = groups.filter((g) => !hidden.has(g.id))
   const chips = shown.reduce((n, g) => n + g.chips.length, 0)
@@ -153,12 +155,14 @@ export function CounterMenu({
     <PopoverMenu
       width={280}
       wrapClassName={className}
-      label="Which counters this period shows"
+      label={t("Which counters this period shows")}
       trigger={
         <span className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest">
           <Hash size={11} className="text-ink/35" />
           <span className={shown.length ? "text-ink/60" : "text-ink/35"}>
-            {shown.length ? `${chips} of ${all}` : "Counters"}
+            {shown.length
+              ? t("{shown} of {all}", { shown: chips, all })
+              : t("Counters")}
           </span>
           <ChevronDown size={11} className="text-ink/35" />
         </span>
@@ -198,6 +202,7 @@ export function CounterControls({
   className?: string
 }) {
   const c = usePalette()
+  const t = useT()
   if (!groups.length) return null
   const allHidden = groups.every((g) => hidden.has(g.id))
 
@@ -215,7 +220,7 @@ export function CounterControls({
             style={segBtnStyle(grouping === id, c)}
             className={`${segBtn(grouping === id)} !text-[10px] !px-2 !py-0.5`}
           >
-            {id === "kind" ? "By kind" : "By category"}
+            {t(id === "kind" ? "By kind" : "By category")}
           </button>
         ))}
       </div>
@@ -227,7 +232,12 @@ export function CounterControls({
         return (
           <Tip
             key={g.id}
-            text={`${off ? "Show" : "Hide"} ${g.label.toLowerCase()} — ${g.chips.length} in this period`}
+            text={t(
+              off
+                ? "Show {group} — {n} in this period"
+                : "Hide {group} — {n} in this period",
+              { group: g.label.toLowerCase(), n: g.chips.length },
+            )}
           >
             <button
               type="button"
@@ -250,7 +260,7 @@ export function CounterControls({
         onClick={() => onSetAll(!allHidden)}
         className={`${btnBase} text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full text-ink/40 hover:text-ink hover:bg-ink/5`}
       >
-        {allHidden ? "Show all" : "Hide all"}
+        {t(allHidden ? "Show all" : "Hide all")}
       </button>
     </div>
   )

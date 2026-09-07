@@ -21,7 +21,12 @@
    when the streak engine is touched.
 --------------------------------------------------------------- */
 
-import { achievementNarrows, progressOf } from "../src/lib/achievements"
+import {
+  achievementEdit,
+  achievementNarrows,
+  dueAchievements,
+  progressOf,
+} from "../src/lib/achievements"
 import { KEPT_VALUE, MISSED_COST } from "../src/lib/balance"
 import { removalGate } from "../src/lib/customStreaks"
 import { notices, worstLevel } from "../src/lib/notices"
@@ -44,6 +49,7 @@ import {
   totalDeficit,
   violationsCost,
   violationsOn,
+  weekViolationsOn,
   freezeOffers,
   freezeSpendOn,
 } from "../src/lib/customStreaks"
@@ -167,6 +173,12 @@ const checks = (...ids: string[]) => ({
 const everyDayYes = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, ["yes"]]),
 )
+/* **A per-day map with no figures in it.** `days` carries three unrelated
+   answers — the figure, which slots count, what a named slot owes — so the
+   weekday picker and the per-weekday slot grid both write a map like this,
+   and it is not a statement that each day has its own figure. */
+const everyDayBlank = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, {}]))
+const weekdaysBlank = Object.fromEntries([1, 2, 3, 4, 5].map((d) => [d, {}]))
 
 const CASES: Case[] = [
   /* ---- slots chosen per weekday ---- */
@@ -317,6 +329,37 @@ const CASES: Case[] = [
   c("weekly slot · at most 3, none in Evening · one in Evening", "week",
     { id: "c", ...target("unit", "u-yt"), max: 3, slots: { "s-pm": { max: 0 } } },
     { [MON]: counted("u-yt", "s-pm", 1) }, "missed"),
+
+  /* ---- a week whose `days` map carries no figures.
+     `weekBounds` read the mere presence of the map as *a figure per weekday*
+     and summed the week's own figure over its days, so `at most 3 a week`
+     allowed twenty-one — a ceiling no week of ordinary living could break,
+     wearing the face of a rule that was watching. `boundsOnWeekday` learned
+     this distinction (`figuresPerDay`) when the map grew its other two
+     answers; this function did not, and the fault surfaced the moment a
+     weekly rule was told which weekdays it judged ---- */
+  c("weekly count · empty per-day map · at most 3 · three", "week",
+    { id: "c", ...target("unit", "u-yt"), max: 3, days: everyDayBlank },
+    { [MON]: counted("u-yt", "s-am", 3) }, "met"),
+  c("weekly count · empty per-day map · at most 3 · four", "week",
+    { id: "c", ...target("unit", "u-yt"), max: 3, days: everyDayBlank },
+    { [MON]: counted("u-yt", "s-am", 4) }, "missed"),
+  /* Judged Mon–Fri, so the map has no Sunday in it — and the flat branch used
+     to ask weekday `0` what the condition was held to. `boundsOnWeekday`
+     answers `{}` for a weekday outside the map, which lost the ceiling
+     outright rather than merely loosening it. */
+  c("weekly count · judged Mon–Fri · at most 3 · four on Monday", "week",
+    { id: "c", ...target("unit", "u-yt"), max: 3, days: weekdaysBlank },
+    { [MON]: counted("u-yt", "s-am", 4) }, "missed"),
+  /* The slot half of the same fault, which hid behind the commonest rider
+     there is: seven noughts add up to a nought. It takes a rider above zero
+     to show at all. */
+  c("weekly slot · empty per-day map · at most 1 in Evening · one", "week",
+    { id: "c", ...target("unit", "u-yt"), max: 9, slots: { "s-pm": { max: 1 } }, days: everyDayBlank },
+    { [MON]: counted("u-yt", "s-pm", 1) }, "met"),
+  c("weekly slot · empty per-day map · at most 1 in Evening · two", "week",
+    { id: "c", ...target("unit", "u-yt"), max: 9, slots: { "s-pm": { max: 1 } }, days: everyDayBlank },
+    { [MON]: counted("u-yt", "s-pm", 2) }, "missed"),
 
   /* ---- a week of checks, counted per answer ---- */
   c("weekly check · at least 2 yes · two", "week",
@@ -1258,6 +1301,131 @@ for (const test of PROGRESS) {
   }
 }
 
+/* **When an achievement may be sealed, and when its terms stop moving.**
+
+   Both of these are one bug reported from ordinary use: pressing *+
+   Achievement* minted a hundred points and an indelible record before the
+   form had been looked at, because the defaults are thirty days in a row and
+   any project with a streak already has them. Then the terms could not be
+   raised — the terms of something already earned are frozen — and deleting it
+   left the badge and the points behind. */
+
+interface SealCase {
+  name: string
+  createdOn: DayKey
+  on: DayKey
+  want: number
+}
+
+const SEALS: SealCase[] = [
+  {
+    /* The lock has always said the day it is written is yours to get it right
+       on (`settingUp`); the sealer never honoured it. The rules can afford
+       that gap because a rule seals no week the day it is written — an
+       achievement seals the moment its figure is met. */
+    name: "the day it is written is not a day it can be earned on",
+    createdOn: A_TODAY,
+    on: A_TODAY,
+    want: 0,
+  },
+  {
+    name: "and the next day it seals, on whatever terms it ended up with",
+    createdOn: A_TODAY,
+    on: "2026-08-18",
+    want: 1,
+  },
+  {
+    name: "one written earlier is sealed today as before",
+    createdOn: A_START,
+    on: A_TODAY,
+    want: 1,
+  },
+]
+
+console.log("")
+for (const test of SEALS) {
+  // A total of something the fixture actually logged, so the threshold is
+  // plainly met and the only thing under test is the date.
+  const a = {
+    ...achievement(
+      { kind: "total", targets: [{ kind: "activity", id: "a-les" }], window: "ever" },
+      1,
+    ),
+    createdOn: test.createdOn,
+  } as Achievement
+  const proj = {
+    ...A_PROJECT,
+    settings: { ...A_PROJECT.settings, achievements: [a] },
+  } as Project
+  const got = dueAchievements(proj, new Date(`${test.on}T12:00:00`)).length
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  seals: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  seals: ${test.name} — ${got} sealed, want ${test.want}`,
+    )
+  }
+}
+
+interface FrozenCase {
+  name: string
+  earned: boolean
+  raise: boolean
+  allowed: boolean
+}
+
+const FROZEN: FrozenCase[] = [
+  {
+    /* The ledger recorded what it was worth at the moment it was reached and
+       the account has been paid. A definition that moved afterwards leaves the
+       badge and the sentence describing it disagreeing, and raising the bar
+       cannot un-earn it, because the row is written once. */
+    name: "already earned · raising the figure is refused",
+    earned: true,
+    raise: true,
+    allowed: false,
+  },
+  {
+    name: "already earned · a draft that changed nothing is not an edit",
+    earned: true,
+    raise: false,
+    allowed: true,
+  },
+  {
+    name: "not earned · the same raise still lands at once",
+    earned: false,
+    raise: true,
+    allowed: true,
+  },
+]
+
+console.log("")
+for (const test of FROZEN) {
+  const prev = {
+    ...achievement({ kind: "run", run: { consecutive: true, scale: "day" } }, 30),
+    createdOn: A_START,
+    lockedUntil: A_START,
+  } as Achievement
+  const draft = test.raise ? { ...prev, threshold: 40 } : { ...prev }
+  const edit = achievementEdit(
+    prev,
+    draft,
+    7,
+    new Date(`${A_TODAY}T12:00:00`),
+    "",
+    test.earned,
+  )
+  if (edit.allowed === test.allowed) {
+    console.log(`${GREEN}  ok${OFF}  frozen: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(
+      `${RED}FAIL${OFF}  frozen: ${test.name} — allowed=${edit.allowed}, want ${test.allowed}`,
+    )
+  }
+}
+
 console.log("")
 for (const test of A_LOCKS) {
   const before = achievement(test.before, test.beforeN ?? 30, test.beforeR ?? 0)
@@ -1664,6 +1832,168 @@ for (const test of SPLITS) {
   }
 }
 
+/* **A week splits exactly as a day does.** `spec 017` made a week one flat
+   violation costing one freeze, and that left the week as the cheap period: a
+   day rule pays what it fell short by, so four slips cost four, while the same
+   promise written weekly cost one however far past the line you went. These
+   assert the split *and* that the items still add back up to the week's
+   deficit — the streak must be untouched, only the buying changed. */
+
+interface WeekSplit {
+  name: string
+  clauses: object[]
+  days: Record<DayKey, Day>
+  sites: number
+}
+
+const WEEK_SPLITS: WeekSplit[] = [
+  {
+    name: "the week's own ceiling and its slot rider are two sites",
+    clauses: [
+      { id: "c", ...target("unit", "u-yt"), max: 2, slots: { "s-pm": { max: 0 } } },
+    ],
+    days: { [MON]: counted("u-yt", "s-pm", 4) },
+    sites: 2,
+  },
+  {
+    name: "a weekly floor is one site, priced by what it fell short by",
+    clauses: [{ id: "c", ...target("unit", "u-gym"), min: 3 }],
+    days: { [MON]: counted("u-gym", "s-am", 1) },
+    sites: 1,
+  },
+  {
+    /* One broken promise, not forty minutes' worth — the same rule the day
+       follows, and the reason a weekly time rule still costs exactly one. */
+    name: "weekly time is one site however many of its parts broke",
+    clauses: [
+      { id: "c", ...target("activity", "a-les"), min: 600, slots: { "s-pm": { min: 60 } } },
+    ],
+    days: { [MON]: studied(20) },
+    sites: 1,
+  },
+  {
+    name: "a compound weekly rule is one site per condition that broke",
+    clauses: [
+      { id: "c1", ...target("unit", "u-yt"), max: 1 },
+      { id: "c2", ...target("activity", "a-les"), min: 600 },
+    ],
+    days: { [MON]: { ...counted("u-yt", "s-am", 5), ...studied(60) } as Day },
+    sites: 2,
+  },
+  {
+    /* Two bounds on two different answers are two promises, so two sites. */
+    name: "a week of checks splits per accepted answer",
+    clauses: [
+      { id: "c", ...checks("u-wake"), states: { yes: { min: 4 }, no: { max: 0 } } },
+    ],
+    days: { [MON]: answered({ "u-wake": "yes" }), [TUE]: answered({ "u-wake": "no" }) },
+    sites: 2,
+  },
+  {
+    /* Day-shaped answers left behind by switching a rule from days to weeks:
+       one site per check, priced by how many days were not accepted. Not one
+       per day — `violationKey` has no room for a date, and giving it one would
+       orphan every freeze already bought. */
+    name: "day-shaped answers on a weekly rule split per check",
+    clauses: [{ id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes }],
+    days: { [MON]: answered({ "u-wake": "yes", "u-bed": "no" }) },
+    sites: 2,
+  },
+]
+
+console.log("")
+for (const test of WEEK_SPLITS) {
+  const rule = { ...ruleOf(test.clauses[0] as StreakClause, "week"), clauses: test.clauses as StreakClause[] }
+  const proj = project(rule, test.days)
+  const ctx = streakContext(proj)
+  const vs = weekViolationsOn(rule, ctx, test.days, WEEK, TODAY)
+  const deficit = totalDeficit(readWeek(rule, ctx, test.days, WEEK, TODAY))
+  const got = `${vs.length} sites, ${violationsCost(vs)} total`
+  const want = `${test.sites} sites, ${deficit} total`
+  if (got === want) {
+    console.log(`${GREEN}  ok${OFF}  week splits: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  week splits: ${test.name} — ${got}, want ${want}`)
+  }
+}
+
+/* **A violation you have paid for stops speaking.**
+   `notices.ts` predates `spec 017` and could only see a freeze at the level of
+   the whole rule — `state === "frozen"`, which is `isFrozenFor`, which means
+   *every* site covered. So a rule asserting two checks with one of them bought
+   went on shouting `danger` about the one you had just paid for: the board
+   contradicting the receipt, with the receipt right. */
+
+interface PaidCase {
+  name: string
+  freezes: unknown[]
+  wantDanger: string[]
+}
+
+const PAID: PaidCase[] = [
+  {
+    name: "nothing bought · the wrong answer is the alarm",
+    freezes: [],
+    wantDanger: ["“Wake up” is “no”"],
+  },
+  {
+    name: "that one violation bought · it stops speaking",
+    freezes: [
+      { ruleId: "r", clauseId: "c", targetId: "u-wake", cost: 1, boughtAt: "x" },
+    ],
+    wantDanger: [],
+  },
+  {
+    name: "a different violation bought · the alarm stands",
+    freezes: [
+      { ruleId: "r", clauseId: "c", targetId: "u-bed", cost: 1, boughtAt: "x" },
+    ],
+    wantDanger: ["“Wake up” is “no”"],
+  },
+]
+
+console.log("")
+for (const test of PAID) {
+  const rule = {
+    ...ruleOf(
+      {
+        id: "c",
+        ...checks("u-wake", "u-bed"),
+        allow: everyDayYes,
+      } as unknown as StreakClause,
+      "day",
+    ),
+    startedOn: RISK_DAY,
+    lockedUntil: RISK_DAY,
+    /* **Freezes have to be affordable, or the level is `gone` rather than
+       `danger`** — `ruleOf` grants none, and a violation nothing can reach is
+       a report rather than a call. This case is about the call. */
+    freezesPerWeek: 3,
+    freezeCap: 3,
+  } as StreakRule
+  // Woke up late; not yet in bed, so the second check is still an errand and
+  // the rule is never *fully* frozen — which is the whole point of the case.
+  const today = {
+    ...answered({ "u-wake": "no" }),
+    ...(test.freezes.length ? { ruleFreezes: test.freezes } : {}),
+  } as unknown as Day
+  const proj = project(rule, { [RISK_DAY]: today })
+  const at = new Date(`${RISK_DAY}T14:00:00`)
+  const got = linesOf(rule.id, proj, at, "danger")
+    .filter((l) => !l.startsWith("Yesterday"))
+    .join(" · ")
+  const want = test.wantDanger.join(" · ")
+  if (got === want) {
+    console.log(`${GREEN}  ok${OFF}  paid: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  paid: ${test.name}`)
+    console.log(`      got  ${got || "(nothing)"}`)
+    console.log(`      want ${want || "(nothing)"}`)
+  }
+}
+
 /* **Only what is already lost may be bought.** The case the whole spec exists
    for: at noon a wrong answer is spent and an unanswered check is an errand,
    and billing for the errand is what made one slip cost two freezes. */
@@ -1910,5 +2240,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

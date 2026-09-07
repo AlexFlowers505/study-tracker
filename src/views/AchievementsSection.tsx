@@ -37,6 +37,7 @@ import {
   measureOf,
   progressOf,
 } from "../lib/achievements"
+import { t, useT } from "../lib/i18n"
 import { fmtDateLong } from "../lib/date"
 import { PANEL_INSET } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
@@ -44,15 +45,13 @@ import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
 import { PanelSection } from "./PanelSection"
 
-const HOW_IT_WORKS =
-  "An achievement is the one thing here you cannot lose. It is written once, " +
-  "with the date and the figure it stood at, and nothing you do afterwards " +
-  "un-earns it." +
-  String.fromCharCode(10, 10) +
-  "Lowering a threshold waits a week, like loosening a rule. Raising one " +
-  "lands at once." +
-  String.fromCharCode(10, 10) +
-  "Keep them few. Six that mean something beat thirty that were generated."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const howItWorks = () =>
+  [
+    t("An achievement is the one thing here you cannot lose. It is written once, with the date and the figure it stood at, and nothing you do afterwards un-earns it."),
+    t("Lowering a threshold waits a week, like loosening a rule. Raising one lands at once."),
+    t("Keep them few. Six that mean something beat thirty that were generated."),
+  ].join(String.fromCharCode(10, 10))
 
 /** Wide enough for two lines of a real name, narrow enough for three across. */
 const GRID = "[grid-template-columns:repeat(auto-fill,minmax(150px,1fr))]"
@@ -67,6 +66,7 @@ export function AchievementsSection({
   onClose?: () => void
 }) {
   const c = usePalette()
+  const t = useT()
   const defs = project.settings.achievements || []
   const earned = project.earned || {}
 
@@ -97,20 +97,20 @@ export function AchievementsSection({
     <PanelSection
       tint={c.project}
       icon={Trophy}
-      title="Achievements"
+      title={t("Achievements")}
       subtitle={
         total
-          ? `${done.length} of ${total} earned`
-          : "Nothing written yet — Setup has the tab"
+          ? t("{done} of {total} earned", { done: done.length, total })
+          : t("Nothing written yet — Setup has the tab")
       }
       action={
-        <Tip multiline text={HOW_IT_WORKS}>
+        <Tip multiline text={howItWorks()}>
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35 cursor-help underline decoration-dotted underline-offset-2">
-            how this works
+            {t("how this works")}
           </span>
         </Tip>
       }
-      closeLabel="Hide the achievements"
+      closeLabel={t("Hide the achievements")}
       onClose={onClose}
     >
       {total > 0 && (
@@ -166,6 +166,7 @@ function TrophyTile({
   share?: number
   tip?: string
 }) {
+  const t = useT()
   const locked = share !== undefined
   const color = def?.color || fallbackColor
 
@@ -188,7 +189,7 @@ function TrophyTile({
           locked ? "text-ink/55" : ""
         }`}
       >
-        {def?.label || "a deleted achievement"}
+        {def?.label || t("a deleted achievement")}
       </p>
       <p className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
         {when}

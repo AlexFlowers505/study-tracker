@@ -304,8 +304,25 @@ export function dueAchievements(
 ): EarnedAchievement[] {
   const earned = project.earned || {}
   const at = new Date().toISOString()
+  const todayKey = toKey(today)
   return (project.settings.achievements || [])
     .filter((a) => !earned[a.id])
+    /* **The day it is written is yours to get it right on.**
+     *
+     * The lock has always said this (`settingUp` in `achievementEdit`) and the
+     * sealer never honoured it, which made the grace day a promise about one
+     * half of the same thing. The rules can afford the gap because a rule
+     * seals no week on the day it is written; an achievement seals the moment
+     * its figure is met, so *here* is where the promise had to be kept.
+     *
+     * What it cost: `newAchievement` hands you thirty days in a row, which any
+     * project with a streak already has, so pressing **+ Achievement** minted
+     * a hundred points and an indelible record before the form had been
+     * looked at — and then the terms could not be raised, because the terms of
+     * something already earned are frozen. The whole of that is one missing
+     * line, and it is this one.
+     */
+    .filter((a) => a.createdOn !== todayKey)
     .map((a) => ({ a, value: progressOf(project, a, today) }))
     .filter(({ a, value }) => a.threshold > 0 && value >= a.threshold)
     .map(({ a, value }) => ({
@@ -450,6 +467,8 @@ export interface AchievementEdit {
   settingUp: boolean
   /** The clock permits it; only the written reason is missing. */
   needsReason: boolean
+  /** Already reached, so the terms are settled and nothing may move them. */
+  sealed: boolean
   allowed: boolean
   next: Achievement
 }
@@ -486,13 +505,36 @@ export function achievementEdit(
   lockDays: number,
   today = new Date(),
   reason = "",
+  /** Whether it has already been reached — `project.earned[id]`. */
+  earned = false,
 ): AchievementEdit {
   const todayKey = toKey(today)
   const changed = terms(prev) !== terms(draft)
   const narrowing = achievementNarrows(prev, draft)
   const settingUp = todayKey === prev.createdOn
-  const base = { changed, narrowing, settingUp, needsReason: false }
+  const base = {
+    changed,
+    narrowing,
+    settingUp,
+    needsReason: false,
+    sealed: earned,
+  }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
+  /* **Reached is reached, and its terms stop moving.**
+   *
+   * The ledger records what an achievement was worth *at the moment it was
+   * reached*, and the account has already been paid. Editing the definition
+   * afterwards leaves a badge that says one thing and a sentence that says
+   * another, with the points sitting behind whichever you happen not to be
+   * reading — and raising the bar cannot un-earn it, because the row is
+   * written once and never revisited. Two states that contradict each other
+   * is worse than either, so the terms are simply closed.
+   *
+   * The name, the colour and the icon are not terms and stay editable, the
+   * same line the rules draw. Delete is still the way out, and it now takes
+   * the record and the points with it.
+   */
+  if (earned) return { ...base, allowed: false, next: prev }
   if (narrowing || settingUp) return { ...base, allowed: true, next: draft }
   if (todayKey < prev.lockedUntil)
     return { ...base, allowed: false, next: prev }

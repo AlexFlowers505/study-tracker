@@ -24,6 +24,7 @@ import type {
   Day,
 } from "../types/model"
 import { UNSLOTTED, dayCounters, setSlotCount, unitDayTotal } from "./counters"
+import { t } from "./i18n"
 
 /**
  * Which question a unit answers.
@@ -46,14 +47,26 @@ export const splitByKind = (units: CounterUnit[]) => ({
 /** All of them. There is no fourth, and no state you can only arrive at. */
 export const CHECK_CHOICES: CheckState[] = ["yes", "no", "skip"]
 
+/**
+ * **The stable English names, and a getter for what is shown.**
+ *
+ * `CHECK_LABELS` is a key as much as a label: it is lowercased and used to
+ * build `answer:yes` and friends all over the sentence builders, so it has to
+ * stay English and stay a constant. `checkLabel` is the one that reaches a
+ * reader.
+ */
 export const CHECK_LABELS: Record<CheckState, string> = {
   yes: "Yes",
   no: "No",
   skip: "Skipped",
 }
 
+export const checkLabel = (state: CheckState): string =>
+  t(`answer:${CHECK_LABELS[state].toLowerCase()}`)
+
 /** What an unanswered check reads as, wherever one has to be named. */
 export const UNANSWERED = "Not answered"
+export const unanswered = (): string => t("not answered")
 
 /**
  * What a check says about one day — the one place the three answers are worked

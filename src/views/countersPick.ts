@@ -53,13 +53,13 @@ export const PICKS: PickKind[] = [
 /* Plural, because every one of them now takes several: a condition names the
    counters it watches, not the counter. */
 export const PICK_LABEL: Record<PickKind, string> = {
-  time: "All study time",
-  sleep: "Sleep",
-  activity: "Activities",
-  tally: "Tallies",
-  check: "Checks",
-  category: "Categories",
-  tag: "Tags",
+  time: "pick:All study time",
+  sleep: "pick:Sleep",
+  activity: "pick:Activities",
+  tally: "pick:Tallies",
+  check: "pick:Checks",
+  category: "pick:Categories",
+  tag: "pick:Tags",
 }
 
 export const SET_PICKS: PickKind[] = ["category", "tag"]
@@ -80,10 +80,10 @@ export const SET_PICKS: PickKind[] = ["category", "tag"]
 export type MemberPick = "activity" | "tally" | "check" | "any"
 
 export const MEMBER_LABEL: Record<MemberPick, string> = {
-  activity: "Activities",
-  tally: "Tallies",
-  check: "Checks",
-  any: "Any counter",
+  activity: "pick:Activities",
+  tally: "pick:Tallies",
+  check: "pick:Checks",
+  any: "pick:Any counter",
 }
 
 /** How a set's two stored fields read back as one choice. */

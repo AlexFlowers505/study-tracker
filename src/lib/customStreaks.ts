@@ -78,6 +78,7 @@ import {
 import { dayCounters, slotUnitValue, unitDayTotal } from "./counters"
 import { entryActivity } from "./entries"
 import { makeId } from "./id"
+import { pluralOf, t } from "./i18n"
 import { fmtHours } from "./time"
 import { EDIT_HORIZON_DAYS, isEditableDay, isSealable } from "./freezes"
 
@@ -148,6 +149,23 @@ export const figuresPerDay = (clause: StreakClause): boolean =>
   WEEKDAY_ORDER.some((wd) => {
     const entry = clause.days?.[wd]
     return !!entry && (entry.min !== undefined || entry.max !== undefined)
+  })
+
+/**
+ * The same question about a **named slot's** figures.
+ *
+ * `days` carries three unrelated per-day answers, and each of them has to be
+ * asked about separately or one silently speaks for another — which is the
+ * whole reason `figuresPerDay` exists. A map that states which slots count on
+ * a Tuesday says nothing about what the Evening is allowed, and a map that
+ * states what the Evening is allowed on a Tuesday says nothing about the
+ * condition's own figure.
+ */
+export const slotFiguresPerDay = (clause: StreakClause): boolean =>
+  !!clause.days &&
+  WEEKDAY_ORDER.some((wd) => {
+    const own = clause.days?.[wd]?.slots
+    return !!own && Object.keys(own).length > 0
   })
 
 export const boundsOnWeekday = (
@@ -267,10 +285,27 @@ export const weekBounds = (
      The form labels that field `Per week`, and it means it. Summing is right
      for the *other* shape: writing out a figure per weekday is exactly the act
      of saying each day has its own, and then the week is their total. So the
-     two are told apart by which the condition actually carries. */
-  if (!clause.days && !clause.useDailyGoal)
-    // The weekday is not read when the bound is flat, so any of them will do.
-    return boundsOnWeekday(clause, ctx, 0)
+     two are told apart by which the condition actually carries.
+
+     **`figuresPerDay`, not the mere presence of `days`.** That guard was
+     written when the map held nothing but figures, and it has not been true
+     for some time: `days` now carries which slots a weekday counts in and what
+     a named slot owes there as well, so the weekday picker and the per-weekday
+     slot grid both write a map with no figure in it. `boundsOnWeekday` learned
+     that distinction when it was introduced — this function did not, and went
+     on multiplying by seven the moment a weekly rule was told which weekdays
+     it judged. *At most three Pinterest a week, none in the evening* then
+     allowed twenty-one, which is a rule that cannot be broken by anything a
+     person could do in a week: a ceiling that never speaks is worse than no
+     rule at all, because you believe it is watching. */
+  if (!figuresPerDay(clause) && !clause.useDailyGoal)
+    /* **A weekday the condition actually judges**, not any weekday at all.
+       It used to be `0` under a comment saying the weekday is not read when
+       the bound is flat — true only while `!clause.days` guaranteed there was
+       no map to read. `boundsOnWeekday` answers `{}` for a weekday missing
+       from the map, so a weekly rule told to judge Mon–Fri asked Sunday what
+       it was held to, got *nothing*, and lost its ceiling outright. */
+    return boundsOnWeekday(clause, ctx, clauseWeekdays(clause)[0] ?? 0)
 
   const each = keys.map((k) => clauseBounds(clause, ctx, k))
   const sum = (pick: (b: ClauseBounds) => number | undefined) =>
@@ -288,7 +323,13 @@ export const weekSlotBounds = (
   clause: StreakClause,
   keys: DayKey[],
 ): Record<string, ClauseBounds> => {
-  if (!clause.days) return clause.slots ?? {}
+  /* `slotFiguresPerDay` for exactly the reason `weekBounds` uses
+     `figuresPerDay`: a `days` map with no slot figures in it is not a
+     statement that each weekday has its own, so the shared pair is the week's
+     and summing it multiplies it by seven. It hid behind the commonest rider
+     there is — seven noughts add up to a nought — and surfaced the moment
+     anybody wrote *at most one in the evening a week*. */
+  if (!slotFiguresPerDay(clause)) return clause.slots ?? {}
   const out: Record<string, ClauseBounds> = {}
   keys.forEach((key) => {
     const weekday = fromKey(key).getDay()
@@ -402,30 +443,33 @@ export function targetInfo(
     check: false,
   })
 
-  if (target.kind === "time") return plain("Study time")
+  if (target.kind === "time") return plain(t("Study time"))
 
-  if (target.kind === "sleep") return plain("Sleep")
+  if (target.kind === "sleep") return plain(t("target:Sleep"))
 
   if (target.kind === "activity") {
     const activity = byId(ctx.activities, target.id)
-    return plain(activity?.label || "a removed activity", activity)
+    return plain(activity?.label || t("a removed activity"), activity)
   }
 
   if (target.kind === "category") {
     const category = byId(ctx.categories, target.id)
-    const label = category?.label || "a removed category"
-    return { ...plain(label, category), qualified: `${label} (category)` }
+    const label = category?.label || t("a removed category")
+    return {
+      ...plain(label, category),
+      qualified: t("{name} (category)", { name: label }),
+    }
   }
 
   if (target.kind === "tag") {
     const tag = byId(ctx.tags, target.id)
-    const label = tag?.label || "a removed tag"
-    return { ...plain(label, tag), qualified: `${label} (tag)` }
+    const label = tag?.label || t("a removed tag")
+    return { ...plain(label, tag), qualified: t("{name} (tag)", { name: label }) }
   }
 
   const unit = byId(ctx.units, target.id)
   return {
-    ...plain(unit?.label || "a removed counter", unit),
+    ...plain(unit?.label || t("a removed counter"), unit),
     check: !!unit && isCheck(unit),
   }
 }
@@ -457,6 +501,16 @@ interface Labelish {
  * quotes in it still separates a three-word counter name from the words
  * around it. `ui/Sentence` gives the same spans weight where it can.
  */
+/** «раз» declines: 1 раз, 2 раза, 5 раз. */
+const nDaysWord = (n: number) =>
+  pluralOf(n, ["day", "days"], ["день", "дня", "дней"])
+
+const nTimes = (n: number) =>
+  pluralOf(n, ["time", "times"], ["раз", "раза", "раз"]).replace(
+    /^-?\d+\s/,
+    "",
+  )
+
 export const q = (text: string | number): string =>
   `“${text}”`
 
@@ -474,8 +528,14 @@ export function targetsLabel(
   const names = targets.map((target) => q(targetInfo(target, ctx).qualified))
   if (names.length === 1) return names[0]
   if (names.length > 3)
-    return `${join === "and" ? "all" : "any"} of ${q(names.length)} things`
-  return `${names.slice(0, -1).join(", ")} ${join} ${names.at(-1)}`
+    return t(join === "and" ? "all of {n} things" : "any of {n} things", {
+      n: q(names.length),
+    })
+  return t("{list} {join} {last}", {
+    list: names.slice(0, -1).join(", "),
+    join: t(join === "and" ? "join:and" : "join:or"),
+    last: names.at(-1) ?? "",
+  })
 }
 
 /**
@@ -974,7 +1034,24 @@ const freezesFor = (day: Day | undefined, ruleId: string) =>
  * for why there is no migration.
  */
 const wholeRuleFrozen = (day: Day | undefined, ruleId: string): boolean =>
-  freezesFor(day, ruleId).some((f) => typeof f === "string")
+  freezesFor(day, ruleId).some(
+    (f) =>
+      typeof f === "string" ||
+      /* **A weekly freeze bought before the week was itemised.**
+       *
+       * `spec 017` sold a week as one flat violation with no site on it, so it
+       * stored no `clauseId`, no `targetId` and no `slotId` — key `"||"`.
+       * `spec 017`'s successor itemises, and its keys carry the clause, so the
+       * two never match: a week somebody had paid for went back to broken and
+       * the freeze was simply gone. A purchase must not stop covering what it
+       * was bought against, and what this one was bought against was *the
+       * week*, because that was the only thing on sale. So it reads exactly
+       * like the bare id above — the whole rule, entirely.
+       *
+       * Nothing new can be written in this shape: every offer now carries at
+       * least a `clauseId`. */
+      (!f.clauseId && !f.targetId && !f.slotId),
+  )
 
 /** The violations already paid for, by key. */
 export const frozenKeys = (
@@ -986,6 +1063,36 @@ export const frozenKeys = (
       .filter((f): f is RuleFreeze => typeof f !== "string")
       .map((f) => violationKey(f)),
   )
+
+/**
+ * The same, carrying **what each one was bought for**.
+ *
+ * A violation can grow after it has been paid for: a ceiling is settled the
+ * moment it is crossed — there is no doing less of something already done —
+ * but there is nothing to stop you doing *more* of it before the period
+ * closes. On a day that is one afternoon of exposure. On a **week** it is six
+ * further days, and it would have turned "freeze the Monday, then binge until
+ * Sunday" into a free week: the very failure this whole change is about,
+ * wearing a different coat.
+ *
+ * So coverage is a comparison, not a lookup. The stamped price still stands —
+ * a purchase is never repriced, and `freezeSpendOn` still reads the stored
+ * figure — but a violation that has since grown past what was paid is simply
+ * not the violation that was bought.
+ */
+const frozenCosts = (
+  day: Day | undefined,
+  ruleId: string,
+): Map<string, number> => {
+  const out = new Map<string, number>()
+  freezesFor(day, ruleId)
+    .filter((f): f is RuleFreeze => typeof f !== "string")
+    .forEach((f) => {
+      const key = violationKey(f)
+      out.set(key, Math.max(out.get(key) ?? 0, f.cost))
+    })
+  return out
+}
 
 /**
  * **What a day's freezes actually cost**, out of the ledger rather than the
@@ -1024,15 +1131,35 @@ export function isFrozenFor(
   ctx: StreakContext,
   day: Day | undefined,
   dayKey: DayKey,
+  /**
+   * A weekly rule's violations live in its week, not in the Monday its
+   * receipts are filed on, so that scope has to be handed the days to read.
+   *
+   * Optional because the day scope never needs it, and absent it a weekly
+   * rule itemises an empty week and reads as **not** frozen. That is the safe
+   * direction on purpose: a period wrongly left unfrozen breaks and is
+   * visible, where one wrongly turned blue is a miss you never find out about.
+   */
+  weekDays?: Record<DayKey, Day>,
+  todayKey?: DayKey,
 ): boolean {
   if (wholeRuleFrozen(day, rule.id)) return true
-  const paid = frozenKeys(day, rule.id)
+  const paid = frozenCosts(day, rule.id)
   if (!paid.size) return false
   const owed =
     rule.scope === "week"
-      ? [weekViolation("")]
+      ? weekViolationsOn(
+          rule,
+          ctx,
+          weekDays ?? {},
+          startOfWeek(fromKey(dayKey)),
+          todayKey ?? dayKey,
+        )
       : violationsOn(rule, ctx, day, dayKey)
-  return owed.length > 0 && owed.every((v) => paid.has(violationKey(v)))
+  return (
+    owed.length > 0 &&
+    owed.every((v) => (paid.get(violationKey(v)) ?? 0) >= v.cost)
+  )
 }
 
 /**
@@ -1207,7 +1334,9 @@ export function ruleWeekState(
   // that were left when the rule started is a rule nobody agreed to.
   if (toKey(weekStart) < rule.startedOn || toKey(weekStart) > todayKey)
     return "unjudged"
-  if (isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart)))
+  if (
+    isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart), days, todayKey)
+  )
     return "frozen"
   const deficit = totalDeficit(readWeek(rule, ctx, days, weekStart, todayKey))
   if (deficit === 0) return "met"
@@ -1575,7 +1704,14 @@ export function ruleWeekDayState(
 
   const lost = weekLostOn(rule, ctx, days, weekStart, todayKey)
   if (lost !== dayKey) return "met"
-  return isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart))
+  return isFrozenFor(
+    rule,
+    ctx,
+    days[toKey(weekStart)],
+    toKey(weekStart),
+    days,
+    todayKey,
+  )
     ? "frozen"
     : "missed"
 }
@@ -1743,9 +1879,14 @@ export function violationsOn(
              waiting for anything, and leaving it unsettled meant yesterday
              could no longer be frozen at all. */
           settled: !!state || minutesLeft <= 0,
-          line: state
-            ? `${label} is ${q(CHECK_LABELS[state].toLowerCase())}`
-            : `${label} is ${q("not answered")}`,
+          line: t("{label} is {answer}", {
+            label,
+            answer: q(
+              state
+                ? t(`answer:${CHECK_LABELS[state].toLowerCase()}`)
+                : t("not answered"),
+            ),
+          }),
         })
       }
       continue
@@ -1764,9 +1905,14 @@ export function violationsOn(
           clauseId: clause.id,
           cost: 1,
           settled: !!state || minutesLeft <= 0,
-          line: `${q(targetInfo(targets[0], ctx).label)} is ${q(
-            state ? CHECK_LABELS[state].toLowerCase() : "not answered",
-          )}`,
+          line: t("{label} is {answer}", {
+            label: q(targetInfo(targets[0], ctx).label),
+            answer: q(
+              state
+                ? t(`answer:${CHECK_LABELS[state].toLowerCase()}`)
+                : t("not answered"),
+            ),
+          }),
         })
       continue
     }
@@ -1794,8 +1940,16 @@ export function violationsOn(
         // ruled it out.
         settled: over || need > minutesLeft,
         line: over
-          ? `${named} ${q(fmt(value))} against at most ${q(fmt(bounds.max ?? 0))}`
-          : `${named} ${q(fmt(value))} of ${q(fmt(bounds.min ?? 0))}`,
+          ? t("{named} {value} against at most {bound}", {
+              named,
+              value: q(fmt(value)),
+              bound: q(fmt(bounds.max ?? 0)),
+            })
+          : t("{named} {value} of {bound}", {
+              named,
+              value: q(fmt(value)),
+              bound: q(fmt(bounds.min ?? 0)),
+            }),
       })
       continue
     }
@@ -1810,8 +1964,16 @@ export function violationsOn(
         // day itself is over — which is what `minutesLeft` of nought says.
         settled: over || minutesLeft <= 0,
         line: over
-          ? `${named} ${q(value)} against at most ${q(bounds.max ?? 0)}`
-          : `${named} ${q(value)} of ${q(bounds.min ?? 0)}`,
+          ? t("{named} {value} against at most {bound}", {
+              named,
+              value: q(value),
+              bound: q(bounds.max ?? 0),
+            })
+          : t("{named} {value} of {bound}", {
+              named,
+              value: q(value),
+              bound: q(bounds.min ?? 0),
+            }),
       })
     }
 
@@ -1820,15 +1982,25 @@ export function violationsOn(
       const short = shortBy(inSlot, b.min, b.max)
       if (short <= 0) return
       const over = b.max !== undefined && inSlot > b.max
-      const where = ` in ${q(slotLabel(ctx, slotId))}`
+      const where = t("frag: in {slot}", { slot: q(slotLabel(ctx, slotId)) })
       out.push({
         clauseId: clause.id,
         slotId,
         cost: short,
         settled: over || minutesLeft <= 0,
         line: over
-          ? `${named} ${q(inSlot)}${where} against at most ${q(b.max ?? 0)}`
-          : `${named} ${q(inSlot)}${where} of ${q(b.min ?? 0)}`,
+          ? t("{named} {value}{where} against at most {bound}", {
+              named,
+              value: q(inSlot),
+              where,
+              bound: q(b.max ?? 0),
+            })
+          : t("{named} {value}{where} of {bound}", {
+              named,
+              value: q(inSlot),
+              where,
+              bound: q(b.min ?? 0),
+            }),
       })
     })
   }
@@ -1836,19 +2008,223 @@ export function violationsOn(
 }
 
 /**
- * A whole week as one violation — `spec 017`, part 5.
+ * Every violation on one week, itemised — the week-scope sibling of
+ * `violationsOn`.
  *
- * **Flat, deliberately.** Itemising a weekly rule per condition would raise a
- * compound one from a single freeze to several, which is a tightening nobody
- * asked for and one the lock would make you wait a week for if it were a term
- * of the rule rather than a detail of its accounting. A week has one verdict;
- * its freeze has one price.
+ * **This reverses `spec 017`, part 5**, which made a week one flat violation
+ * costing one freeze. The argument then was that itemising would raise a
+ * compound weekly rule from one freeze to several, a tightening nobody asked
+ * for. What that missed is that the week was already *the* cheap period: a day
+ * rule pays what it fell short by, so four slips cost four — and the identical
+ * promise written weekly cost one, however far past the line you went. *At
+ * most three Pinterest a week* broken by seventeen was a single freeze. A
+ * price that does not move with the failure is not a price, and the whole
+ * freeze economy is built on the idea that it is.
+ *
+ * So the same three rules the day already follows: a **count** costs what it
+ * actually fell short by, a **time** condition costs one however many of its
+ * parts broke — one broken promise, not forty minutes' worth — and a **check**
+ * splits, per accepted answer where the week counts them and per named check
+ * where it asserts them. The items add back up to `totalDeficit(readWeek())`,
+ * so the streak itself is unchanged: only the buying is.
+ *
+ * `settled` is the week's version of the clock. A breached ceiling and an
+ * answer already written are spent at any hour; a floor is an errand until the
+ * week is out of days.
  */
-export const weekViolation = (line: string): Violation => ({
-  cost: 1,
-  settled: true,
-  line,
-})
+export function weekViolationsOn(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+  todayKey: DayKey,
+): Violation[] {
+  if (rule.scope !== "week") return []
+  const out: Violation[] = []
+  const weekOver = toKey(addDays(weekStart, 6)) < todayKey
+
+  /* The same days `readWeek` reads, and read the same way — the two have to
+     agree to the unit, or a freeze buys something the verdict does not sell. */
+  const keys = weekDates(weekStart)
+    .map(toKey)
+    .filter((k) => k <= todayKey && k >= rule.startedOn)
+
+  for (const clause of ruleClauses(rule)) {
+    const covered = keys.filter((k) => clauseCoversDay(clause, k))
+    if (!covered.length) continue
+    const targets = clauseTargets(clause)
+    const info = targetInfo(targets[0], ctx)
+    const named = targetsLabel(targets, ctx)
+    const fmt = (n: number) => (info.measure === "time" ? fmtHours(n) : String(n))
+
+    /* **A week of checks counted per answer.** `{ yes: { min: 6 }, no:
+       { max: 0 } }` is two different promises about two different answers, so
+       it is two sites. The synthetic `targetId` is what keeps their keys
+       apart; a colon cannot appear in a generated id (`makeId`), so it can
+       never collide with a real target. */
+    if (clause.states) {
+      const tally: Record<string, number> = { yes: 0, no: 0, skip: 0 }
+      covered.forEach((k) =>
+        targets.forEach((t) => {
+          const state = checkState(days[k], t.id || "")
+          if (state) tally[state] += 1
+        }),
+      )
+      CHECK_CHOICES.forEach((answer) => {
+        const bound = clause.states?.[answer]
+        if (!bound) return
+        const had = tally[answer]
+        const over = bound.max !== undefined && had > bound.max
+        const short = Math.max(
+          bound.min === undefined ? 0 : bound.min - had,
+          bound.max === undefined ? 0 : had - bound.max,
+          0,
+        )
+        if (short <= 0) return
+        const word = q(CHECK_LABELS[answer].toLowerCase())
+        out.push({
+          clauseId: clause.id,
+          targetId: `answer:${answer}`,
+          cost: short,
+          settled: over || weekOver,
+          line: over
+            ? t("{named} {word} {value} against at most {bound}", {
+                named,
+                word,
+                value: q(had),
+                bound: q(bound.max ?? 0),
+              })
+            : t("{named} {word} {value} of {bound}", {
+                named,
+                word,
+                value: q(had),
+                bound: q(bound.min ?? 0),
+              }),
+        })
+      })
+      continue
+    }
+
+    /* **Day-shaped accepted answers on a weekly rule** — what switching a rule
+       from days to weeks leaves behind, and it means what it says: every day
+       must be an accepted answer. One site per check, priced by how many days
+       were not, which is exactly what `readWeek` sums. Not one site per day:
+       `violationKey` has three segments and no room for a date, and giving it
+       one would change every key in storage and orphan every freeze already
+       bought. */
+    if (clause.allow) {
+      for (const target of targets) {
+        let bad = 0
+        covered.forEach((k) => {
+          const allowed = clause.allow?.[fromKey(k).getDay()]
+          if (!allowed) return
+          const state = checkState(days[k], target.id || "")
+          if (!state || !allowed.includes(state)) bad += 1
+        })
+        if (!bad) continue
+        out.push({
+          clauseId: clause.id,
+          targetId: target.id,
+          cost: bad,
+          settled: weekOver,
+          line: t("{label} not accepted on {days}", {
+            label: q(targetInfo(target, ctx).label),
+            days: q(nDaysWord(bad)),
+          }),
+        })
+      }
+      continue
+    }
+
+    const value = covered.reduce(
+      (sum, k) => sum + readClauseDay(clause, ctx, days[k], k).value,
+      0,
+    )
+    const bounds = weekBounds(clause, ctx, covered)
+    const slotRules = weekSlotBounds(clause, covered)
+    const inSlot = (slotId: string) =>
+      covered.reduce(
+        (sum, k) => sum + measuredOn(clause, ctx, days[k], [slotId]),
+        0,
+      )
+
+    // One violation however many of its parts broke, exactly as the day does.
+    if (info.measure === "time") {
+      let short = shortOf(value, bounds)
+      Object.entries(slotRules).forEach(([slotId, b]) => {
+        short += shortOf(inSlot(slotId), b)
+      })
+      if (short <= 0) continue
+      const over = bounds.max !== undefined && value > bounds.max
+      out.push({
+        clauseId: clause.id,
+        cost: 1,
+        settled: over || weekOver,
+        line: over
+          ? t("{named} {value} against at most {bound}", {
+              named,
+              value: q(fmt(value)),
+              bound: q(fmt(bounds.max ?? 0)),
+            })
+          : t("{named} {value} of {bound}", {
+              named,
+              value: q(fmt(value)),
+              bound: q(fmt(bounds.min ?? 0)),
+            }),
+      })
+      continue
+    }
+
+    const own = shortOf(value, bounds)
+    if (own > 0) {
+      const over = bounds.max !== undefined && value > bounds.max
+      out.push({
+        clauseId: clause.id,
+        cost: own,
+        settled: over || weekOver,
+        line: over
+          ? t("{named} {value} against at most {bound}", {
+              named,
+              value: q(value),
+              bound: q(bounds.max ?? 0),
+            })
+          : t("{named} {value} of {bound}", {
+              named,
+              value: q(value),
+              bound: q(bounds.min ?? 0),
+            }),
+      })
+    }
+
+    Object.entries(slotRules).forEach(([slotId, b]) => {
+      const had = inSlot(slotId)
+      const short = shortOf(had, b)
+      if (short <= 0) return
+      const over = b.max !== undefined && had > b.max
+      const where = t("frag: in {slot}", { slot: q(slotLabel(ctx, slotId)) })
+      out.push({
+        clauseId: clause.id,
+        slotId,
+        cost: short,
+        settled: over || weekOver,
+        line: over
+          ? t("{named} {value}{where} against at most {bound}", {
+              named,
+              value: q(had),
+              where,
+              bound: q(b.max ?? 0),
+            })
+          : t("{named} {value}{where} of {bound}", {
+              named,
+              value: q(had),
+              where,
+              bound: q(b.min ?? 0),
+            }),
+      })
+    })
+  }
+  return out
+}
 
 /** What every violation on a period adds up to — today's `freezeCost`. */
 export const violationsCost = (list: Violation[]): number =>
@@ -1872,6 +2248,12 @@ export function freezeCost(
   day: Day | undefined,
   dayKey: DayKey,
 ): number {
+  /* **A week stays one, and that is not a leftover.** This prices only the
+     *legacy* shape — a bare rule id, meaning "this rule, entirely" — and every
+     one of those was bought back when a week did cost exactly one.
+     `weekViolationsOn` prices what is bought from now on. Making this follow
+     it would retroactively charge old purchases under a rule they were not
+     made under, which is the one thing a stamped price exists to prevent. */
   if (rule.scope === "week") return 1
   return Math.max(1, totalDeficit(readDay(rule, ctx, day, dayKey)))
 }
@@ -2081,7 +2463,7 @@ export function freezeOffers(
   if (freezeSpendOn(rule, ctx, day, key) > 0 && !paid.size) return []
 
   const owed = week
-    ? [weekViolation(ruleSentence(rule, ctx))]
+    ? weekViolationsOn(rule, ctx, project.days, weekStart, todayKey)
     : violationsOn(rule, ctx, project.days[dayKey], dayKey, minutesLeft)
 
   return owed
@@ -2123,7 +2505,7 @@ export function clauseSentence(
   const named = targetsLabel(targets, ctx)
   const when =
     scope === "day" && clause.weekdays?.length
-      ? ` on ${listDays(clause.weekdays)}`
+      ? t("frag: on {days}", { days: listDays(clause.weekdays) })
       : ""
 
   /* A set of checks against accepted answers reads as an assertion about
@@ -2138,26 +2520,42 @@ export function clauseSentence(
     const parts = CHECK_CHOICES.flatMap((answer) => {
       const b = clause.states?.[answer]
       if (!b || (b.min === undefined && b.max === undefined)) return []
-      const label = CHECK_LABELS[answer].toLowerCase()
+      const label = t(`answer:${CHECK_LABELS[answer].toLowerCase()}`)
       if (b.min !== undefined && b.max !== undefined)
-        return [`${q(`${b.min}–${b.max}`)} ${label}`]
+        return [
+          t("{range} {answer}", {
+            range: q(`${b.min}–${b.max}`),
+            answer: label,
+          }),
+        ]
       return [
         b.max !== undefined
-          ? `at most ${q(b.max)} ${label}`
-          : `at least ${q(b.min ?? 0)} ${label}`,
+          ? t("at most {n} {answer}", { n: q(b.max), answer: label })
+          : t("at least {n} {answer}", { n: q(b.min ?? 0), answer: label }),
       ]
     })
     return parts.length
-      ? `${targetsLabel(targets, ctx, "and")}: ${parts.join(", ")} a week`
-      : `${targetsLabel(targets, ctx, "and")} — nothing asked`
+      ? t("{named}: {parts} a week", {
+          named: targetsLabel(targets, ctx, "and"),
+          parts: parts.join(", "),
+        })
+      : t("{named} — nothing asked", {
+          named: targetsLabel(targets, ctx, "and"),
+        })
   }
 
   if (info.check && clause.allow && targets.length > 1) {
     const answers = clause.allow[clauseWeekdays(clause)[0]] ?? []
     const said = answers.length
-      ? answers.map((a) => q(CHECK_LABELS[a].toLowerCase())).join(" or ")
-      : "nothing"
-    return `${targetsLabel(targets, ctx, "and")} must each be ${said}${when}`
+      ? answers
+          .map((a) => q(t(`answer:${CHECK_LABELS[a].toLowerCase()}`)))
+          .join(t(" or "))
+      : t("nothing")
+    return t("{named} must each be {said}{when}", {
+      named: targetsLabel(targets, ctx, "and"),
+      said,
+      when,
+    })
   }
 
   // Only a lone check reads as an answer; several of them are a count, which
@@ -2170,18 +2568,26 @@ export function clauseSentence(
       const parts = CHECK_CHOICES.flatMap((answer) => {
         const b = clause.states?.[answer]
         if (!b || (b.min === undefined && b.max === undefined)) return []
-        const label = CHECK_LABELS[answer].toLowerCase()
+        const label = t(`answer:${CHECK_LABELS[answer].toLowerCase()}`)
         if (b.min !== undefined && b.max !== undefined)
-          return [`${q(`${b.min}–${b.max}`)} ${label}`]
+          return [
+            t("{range} {answer}", {
+              range: q(`${b.min}–${b.max}`),
+              answer: label,
+            }),
+          ]
         return [
           b.max !== undefined
-            ? `at most ${q(b.max)} ${label}`
-            : `at least ${q(b.min ?? 0)} ${label}`,
+            ? t("at most {n} {answer}", { n: q(b.max), answer: label })
+            : t("at least {n} {answer}", { n: q(b.min ?? 0), answer: label }),
         ]
       })
       return parts.length
-        ? `${q(info.qualified)}: ${parts.join(", ")} a week`
-        : `${q(info.qualified)} — nothing asked`
+        ? t("{named}: {parts} a week", {
+            named: q(info.qualified),
+            parts: parts.join(", "),
+          })
+        : t("{named} — nothing asked", { named: q(info.qualified) })
     }
 
     /* Judged by the day, with each weekday naming the answers it takes.
@@ -2200,42 +2606,67 @@ export function clauseSentence(
       })
       const said = (answers: CheckState[]) =>
         answers.length
-          ? answers.map((a) => q(CHECK_LABELS[a].toLowerCase())).join(" or ")
-          : "nothing"
+          ? answers
+              .map((a) => q(t(`answer:${CHECK_LABELS[a].toLowerCase()}`)))
+              .join(t(" or "))
+          : t("nothing")
       if (groups.length === 1)
-        return `${q(info.qualified)} must be ${said(groups[0].answers)}${when}`
-      return `${q(info.qualified)} must be ${groups
-        .map((g) => `${said(g.answers)} on ${listDays(g.days)}`)
-        .join(", ")}`
+        return t("{named} must be {said}{when}", {
+          named: q(info.qualified),
+          said: said(groups[0].answers),
+          when,
+        })
+      return t("{named} must be {parts}", {
+        named: q(info.qualified),
+        parts: groups
+          .map((g) =>
+            t("{said} on {days}", {
+              said: said(g.answers),
+              days: listDays(g.days),
+            }),
+          )
+          .join(", "),
+      })
     }
 
-    return `${q(info.qualified)} must be ${q(
-      clauseBounds(clause, ctx, describingKey()).min !== undefined
-        ? "yes"
-        : "no",
-    )}${when}`
+    return t("{named} must be {said}{when}", {
+      named: q(info.qualified),
+      said: q(
+        t(
+          clauseBounds(clause, ctx, describingKey()).min !== undefined
+            ? "answer:yes"
+            : "answer:no",
+        ),
+      ),
+      when,
+    })
   }
 
   const slotName = (id: string) =>
-    q(ctx.slots.find((s) => s.id === id)?.label || "a removed slot")
+    q(ctx.slots.find((s) => s.id === id)?.label || t("a removed slot"))
   const whereOf = (ids: string[] | undefined) =>
-    ids?.length ? ` in ${ids.map(slotName).join(", ")}` : ""
+    ids?.length
+      ? t("frag: in {slots}", { slots: ids.map(slotName).join(", ") })
+      : ""
   // Minutes are printed as hours and minutes, like every other duration in
   // the app: "at least 2h 30m", never "at least 150".
   const amount = (n: number) =>
     info.measure === "time"
       ? q(fmtHours(n))
-      : `${q(n)} ${n === 1 ? "time" : "times"}`
+      : t("{n} {times}", {
+          n: q(n),
+          times: nTimes(n),
+        })
 
   // Both bounds read as a range, because "at least 2h and at most 4h" is one
   // requirement said twice and nobody talks that way.
   const said = (b: ClauseBounds) =>
     b.min !== undefined && b.max !== undefined
-      ? `between ${amount(b.min)} and ${amount(b.max)}`
+      ? t("between {a} and {b}", { a: amount(b.min), b: amount(b.max) })
       : b.max !== undefined
-        ? `at most ${amount(b.max)}`
+        ? t("at most {a}", { a: amount(b.max) })
         : b.min !== undefined
-          ? `at least ${amount(b.min)}`
+          ? t("at least {a}", { a: amount(b.min) })
           : ""
 
   /* Per-day numbers are grouped by what they ask for, so "3h on Mon, Tue,
@@ -2254,9 +2685,16 @@ export function clauseSentence(
     return {
       any: rules.length > 0,
       text: rules.length
-        ? `, of which ${rules
-            .map(([slotId, b]) => `${said(b)} in ${slotName(slotId)}`)
-            .join(" and ")}`
+        ? t("frag:, of which {list}", {
+            list: rules
+              .map(([slotId, b]) =>
+                t("{said} in {slot}", {
+                  said: said(b),
+                  slot: slotName(slotId),
+                }),
+              )
+              .join(t(" and ")),
+          })
         : "",
     }
   }
@@ -2312,8 +2750,11 @@ export function clauseSentence(
   )
   if (!anyDayBound)
     return slotRules
-      ? `${named}${where}${rider.replace(/^, of which /, " ")}${when}`
-      : `${named}${where} — nothing asked, so this condition judges nothing`
+      ? `${named}${where}${rider.replace(t("frag:, of which {list}", { list: "" }), " ")}${when}`
+      : t("{named}{where} — nothing asked, so this condition judges nothing", {
+          named,
+          where,
+        })
 
   // One group is the ordinary case and keeps the ordinary sentence, with the
   // weekday suffix `when` already carries. Several always name their own days,
@@ -2325,11 +2766,13 @@ export function clauseSentence(
      `where` and `rider`; whatever they do not, each group says for itself,
      because that is the only thing separating them. */
   return `${named}${where} ${groups
-    .map(
-      (g) =>
-        `${said(g.bounds)}${oneWhere ? "" : g.where}${
-          oneRider ? "" : g.rider
-        } on ${listDays(g.days)}`,
+    .map((g) =>
+      t("{said}{where}{rider} on {days}", {
+        said: said(g.bounds),
+        where: oneWhere ? "" : g.where,
+        rider: oneRider ? "" : g.rider,
+        days: listDays(g.days),
+      }),
     )
     .join(", ")}${rider}`
 }
@@ -2372,18 +2815,31 @@ export function clauseReadoutParts(
       clause.allow?.[fromKey(dayKey).getDay()] ??
       (legacy.min !== undefined && legacy.min >= 1 ? ["yes"] : ["no"])
     const said = (state: CheckState | null) =>
-      state === null
-        ? `is ${q("not answered")}`
-        : `is ${q(CHECK_LABELS[state].toLowerCase())}`
-    // Named one by one, because each is asserted one by one — a set of checks
-    // has no combined figure to report and never had.
+      t("is {answer}", {
+        answer: q(
+          state === null
+            ? t("not answered")
+            : t(`answer:${CHECK_LABELS[state].toLowerCase()}`),
+        ),
+      })
+    /* Named one by one, because each is asserted one by one — a set of checks
+       has no combined figure to report and never had.
+
+       **The loop variable was `t`.** Harmless until this file gained a
+       translator by that name, at which point the parameter would shadow it
+       inside its own body. Renamed rather than worked around. */
     return targets
-      .filter((t) => {
+      .filter((target) => {
         if (mode === "all") return true
-        const state = checkState(day, t.id || "")
+        const state = checkState(day, target.id || "")
         return !state || !allowed.includes(state)
       })
-      .map((t) => `${q(targetInfo(t, ctx).label)} ${said(checkState(day, t.id || ""))}`)
+      .map(
+        (target) =>
+          `${q(targetInfo(target, ctx).label)} ${said(
+            checkState(day, target.id || ""),
+          )}`,
+      )
   }
 
   /* Everything else is a figure, and the figure is the whole set's — the
@@ -2402,7 +2858,11 @@ export function clauseReadoutParts(
   if (mode === "all")
     return [
       max !== undefined
-        ? `${named} ${q(fmt(reading.value))} of ${q(fmt(max))}`
+        ? t("{named} {value} of {max}", {
+            named,
+            value: q(fmt(reading.value)),
+            max: q(fmt(max)),
+          })
         : `${named} ${q(fmt(reading.value))}`,
     ]
 
@@ -2421,9 +2881,19 @@ export function clauseReadoutParts(
    */
   const said = (v: number, b: ClauseBounds, where: string): string | null => {
     if (b.max !== undefined && v > b.max)
-      return `${named} ${q(fmt(v))}${where} against at most ${q(fmt(b.max))}`
+      return t("{named} {value}{where} against at most {bound}", {
+        named,
+        value: q(fmt(v)),
+        where,
+        bound: q(fmt(b.max)),
+      })
     if (b.min !== undefined && v < b.min)
-      return `${named} ${q(fmt(v))}${where} against at least ${q(fmt(b.min))}`
+      return t("{named} {value}{where} against at least {bound}", {
+        named,
+        value: q(fmt(v)),
+        where,
+        bound: q(fmt(b.min)),
+      })
     return null
   }
 
@@ -2437,7 +2907,7 @@ export function clauseReadoutParts(
       const line = said(
         measuredOn(clause, ctx, day, [slotId]),
         bounds,
-        ` in ${q(label || "a removed slot")}`,
+        t("frag: in {slot}", { slot: q(label || t("a removed slot")) }),
       )
       if (line) parts.push(line)
     },
@@ -2486,8 +2956,8 @@ export function clauseWeekReadoutParts(
   if (clause.states) {
     const tally: Record<string, number> = { yes: 0, no: 0, skip: 0 }
     covered.forEach((k) =>
-      targets.forEach((t) => {
-        const state = checkState(days[k], t.id || "")
+      targets.forEach((target) => {
+        const state = checkState(days[k], target.id || "")
         if (state) tally[state] += 1
       }),
     )
@@ -2496,14 +2966,35 @@ export function clauseWeekReadoutParts(
       const bound = clause.states?.[answer]
       if (!bound) return []
       const had = tally[answer]
-      const word = CHECK_LABELS[answer].toLowerCase()
+      const word = q(t(`answer:${CHECK_LABELS[answer].toLowerCase()}`))
       if (bound.max !== undefined && had > bound.max)
-        return [`${named} ${q(word)} ${q(had)} against at most ${q(bound.max)}`]
+        return [
+          t("{named} {word} {value} against at most {bound}", {
+            named,
+            word,
+            value: q(had),
+            bound: q(bound.max),
+          }),
+        ]
       if (bound.min !== undefined && had < bound.min)
-        return [`${named} ${q(word)} ${q(had)} against at least ${q(bound.min)}`]
+        return [
+          t("{named} {word} {value} against at least {bound}", {
+            named,
+            word,
+            value: q(had),
+            bound: q(bound.min),
+          }),
+        ]
       return mode === "failing"
         ? []
-        : [`${named} ${q(word)} ${q(had)} of ${q(bound.min ?? bound.max ?? 0)}`]
+        : [
+            t("{named} {word} {value} of {bound}", {
+              named,
+              word,
+              value: q(had),
+              bound: q(bound.min ?? bound.max ?? 0),
+            }),
+          ]
     })
   }
 
@@ -2511,16 +3002,29 @@ export function clauseWeekReadoutParts(
      says: every day of the week must be one of them. Reported as the number of
      days that were not, per check — the week has no single figure for it. */
   if (clause.allow) {
-    return targets.flatMap((t) => {
+    return targets.flatMap((target) => {
       const bad = covered.filter((k) => {
         const allowed = clause.allow?.[fromKey(k).getDay()] ?? []
-        const state = checkState(days[k], t.id || "")
+        const state = checkState(days[k], target.id || "")
         return !state || !allowed.includes(state)
       }).length
-      const label = q(targetInfo(t, ctx).label)
+      const label = q(targetInfo(target, ctx).label)
       if (bad > 0)
-        return [`${label} unanswered or refused on ${q(bad)} of ${q(covered.length)} days`]
-      return mode === "failing" ? [] : [`${label} kept on all ${q(covered.length)} days`]
+        return [
+          t("{label} unanswered or refused on {bad} of {all} days", {
+            label,
+            bad: q(bad),
+            all: q(covered.length),
+          }),
+        ]
+      return mode === "failing"
+        ? []
+        : [
+            t("{label} kept on all {all} days", {
+              label,
+              all: q(covered.length),
+            }),
+          ]
     })
   }
 
@@ -2530,23 +3034,38 @@ export function clauseWeekReadoutParts(
 
   if (mode === "all")
     return [
-      bounds.max !== undefined
-        ? `${named} ${q(fmt(reading.value))} of ${q(fmt(bounds.max))} this week`
-        : bounds.min !== undefined
-          ? `${named} ${q(fmt(reading.value))} of ${q(fmt(bounds.min))} this week`
-          : `${named} ${q(fmt(reading.value))} this week`,
+      bounds.max !== undefined || bounds.min !== undefined
+        ? t("{named} {value} of {bound} this week", {
+            named,
+            value: q(fmt(reading.value)),
+            bound: q(fmt((bounds.max ?? bounds.min) as number)),
+          })
+        : t("{named} {value} this week", {
+            named,
+            value: q(fmt(reading.value)),
+          }),
     ]
 
   const said = (v: number, b: ClauseBounds, where: string): string | null => {
     if (b.max !== undefined && v > b.max)
-      return `${named} ${q(fmt(v))}${where} against at most ${q(fmt(b.max))}`
+      return t("{named} {value}{where} against at most {bound}", {
+        named,
+        value: q(fmt(v)),
+        where,
+        bound: q(fmt(b.max)),
+      })
     if (b.min !== undefined && v < b.min)
-      return `${named} ${q(fmt(v))}${where} against at least ${q(fmt(b.min))}`
+      return t("{named} {value}{where} against at least {bound}", {
+        named,
+        value: q(fmt(v)),
+        where,
+        bound: q(fmt(b.min)),
+      })
     return null
   }
 
   const parts: string[] = []
-  const own = said(reading.value, bounds, " this week")
+  const own = said(reading.value, bounds, t("frag: this week"))
   if (own) parts.push(own)
 
   // Measured across the whole week, which is the half that was wrong: the day
@@ -2557,11 +3076,22 @@ export function clauseWeekReadoutParts(
       (sum, k) => sum + measuredOn(clause, ctx, days[k], [slotId]),
       0,
     )
-    const line = said(inSlot, b, ` in ${q(label || "a removed slot")} this week`)
+    const line = said(
+      inSlot,
+      b,
+      t("frag: in {slot} this week", { slot: q(label || t("a removed slot")) }),
+    )
     if (line) parts.push(line)
   })
 
-  return parts.length ? parts : [`${named} ${q(fmt(reading.value))} this week`]
+  return parts.length
+    ? parts
+    : [
+        t("{named} {value} this week", {
+          named,
+          value: q(fmt(reading.value)),
+        }),
+      ]
 }
 
 /**

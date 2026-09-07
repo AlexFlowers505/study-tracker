@@ -34,6 +34,7 @@ import { clauseSentence, lockFrom, ruleClauses } from "./customStreaks"
 import type { StreakContext } from "./customStreaks"
 import { toKey } from "./date"
 import { makeId } from "./id"
+import { t } from "./i18n"
 
 /** Whether this project's loosenings need a second yes. */
 export const hasSupervisor = (project: Project): boolean =>
@@ -58,7 +59,7 @@ export const refusedProposals = (project: Project): Proposal[] =>
 
 /** The whole rule in words, the same sentence the panel and the tab read. */
 export const ruleText = (rule: StreakRule, ctx: StreakContext): string => {
-  const when = rule.scope === "week" ? "Every week" : "Every day"
+  const when = t(rule.scope === "week" ? "Every week" : "Every day")
   const parts = ruleClauses(rule).map((clause) =>
     clauseSentence(clause, ctx, rule.scope),
   )

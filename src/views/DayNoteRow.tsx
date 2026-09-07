@@ -17,6 +17,7 @@
 
 import { useEffect, useRef } from "react"
 import { Ban, Check, Trash2 } from "lucide-react"
+import { useT } from "../lib/i18n"
 import { btnBase, cardSmall } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { Tip } from "../ui/Tip"
@@ -47,6 +48,7 @@ export function DayNoteRow({
   roomy?: boolean
 }) {
   const c = usePalette()
+  const t = useT()
   const ref = useRef<HTMLDivElement>(null)
 
   // Escape cancels rather than closes, same as an entry: reaching for it
@@ -89,13 +91,13 @@ export function DayNoteRow({
             autoFocus
             value={comment}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Note for the day"
+            placeholder={t("Note for the day")}
             rows={1}
             maxHeight={200}
             className={`w-full bg-transparent border-0 p-0 ${cardSmall(roomy)} font-mono text-ink/70 placeholder:text-ink/30 focus:outline-none`}
           />
           <div className="flex items-center justify-between gap-1.5">
-            <Tip text="Delete this note">
+            <Tip text={t("Delete this note")}>
               <button
                 onClick={onDelete}
                 className={`${iconBtn} hover:bg-card/70`}
@@ -105,7 +107,7 @@ export function DayNoteRow({
               </button>
             </Tip>
             <div className="flex items-center gap-0.5 shrink-0">
-              <Tip text="Cancel changes">
+              <Tip text={t("Cancel changes")}>
                 <button
                   onClick={onCancel}
                   className={`${iconBtn} text-ink/40 hover:text-ink hover:bg-card/70`}
@@ -113,7 +115,7 @@ export function DayNoteRow({
                   <Ban size={13} />
                 </button>
               </Tip>
-              <Tip text="Done">
+              <Tip text={t("Done")}>
                 <button
                   onClick={onClose}
                   className={`${iconBtn} hover:bg-card/70`}

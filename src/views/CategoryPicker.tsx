@@ -11,16 +11,18 @@
 
 import { ChevronDown } from "lucide-react"
 import type { Category } from "../types/model"
+import { t, useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { PopoverMenu } from "../ui/PopoverMenu"
 import { Tip } from "../ui/Tip"
 
-const HELP =
-  "The category this counter belongs to — one at most, unlike a tag." +
-  String.fromCharCode(10, 10) +
-  "Categories are how the Counters tab can lay everything out under headings " +
-  "with each thing appearing exactly once. Define them in the Categories tab."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const help = () =>
+  [
+    t("The category this counter belongs to — one at most, unlike a tag."),
+    t("Categories are how the Counters tab can lay everything out under headings with each thing appearing exactly once. Define them in the Categories tab."),
+  ].join(String.fromCharCode(10, 10))
 
 export function CategoryPicker({
   categories,
@@ -34,12 +36,13 @@ export function CategoryPicker({
   /** The "Category" caption. Off in a view that already groups by it. */
   labelled?: boolean
 }) {
+  const t = useT()
   const current = categories.find((x) => x.id === categoryId)
 
   if (!categories.length)
     return labelled ? (
       <div className="flex items-center gap-1.5">
-        <Tip multiline text={HELP}>
+        <Tip multiline text={help()}>
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
             Category
           </span>
@@ -58,7 +61,7 @@ export function CategoryPicker({
           {current.label}
         </>
       ) : (
-        "No category"
+        t("No category")
       )}
       <ChevronDown size={10} className="opacity-60" />
     </>
@@ -67,7 +70,7 @@ export function CategoryPicker({
   return (
     <div className="flex items-center gap-1.5">
       {labelled && (
-        <Tip multiline text={HELP}>
+        <Tip multiline text={help()}>
           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
             Category
           </span>
@@ -75,7 +78,7 @@ export function CategoryPicker({
       )}
       <PopoverMenu
         width={200}
-        label="Choose a category"
+        label={t("Choose a category")}
         triggerClassName={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono ${
           current ? "font-bold" : "bg-ink/[0.06] text-ink/50 hover:text-ink"
         }`}

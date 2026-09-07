@@ -36,6 +36,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { useT } from "../lib/i18n"
 import { chartTooltip } from "../lib/theme"
 import type { Palette } from "../lib/theme"
 import { usePalette } from "../ui/useTheme"
@@ -96,6 +97,7 @@ export function StreakChart({
   formatter?: (n: number) => string
 }) {
   const c = usePalette()
+  const t = useT()
   // One point and a limit line is a perfectly readable answer to "how did
   // today go"; only nothing at all is worth withholding. A day-long period, or
   // a rule written this morning, would otherwise show an empty gap.
@@ -222,7 +224,7 @@ export function StreakChart({
               <Line
                 type="stepAfter"
                 dataKey="limit2"
-                name={limit2Name || "Other bound"}
+                name={limit2Name || t("Other bound")}
                 stroke={c.ink}
                 strokeWidth={1.5}
                 strokeDasharray="5 3"

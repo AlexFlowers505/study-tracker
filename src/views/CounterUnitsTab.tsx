@@ -39,6 +39,7 @@ import type {
   CounterUnit,
   Tag,
 } from "../types/model"
+import { t, useT } from "../lib/i18n"
 import { counterKind } from "../lib/checks"
 import { CategoryPicker } from "./CategoryPicker"
 import { RenderIcon as Icon } from "../ui/icons"
@@ -58,24 +59,25 @@ import { Tip } from "../ui/Tip"
  * instruction to reach it. "How many there are in all" is neutral, which is
  * what a counter that might be negative needs.
  */
-const TOTAL_HELP =
-  "How many there are in all, when that is known — 218 lessons in a course.\n\n" +
-  "Off for anything open-ended: pages read, cigarettes smoked, days at the " +
-  "gym. Not a goal — a negative unit has a total too, and reaching it is not " +
-  "the idea."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const totalHelp = () =>
+  [
+    t("How many there are in all, when that is known — 218 lessons in a course.\n\nOff for anything open-ended: pages read, cigarettes smoked, days at the gym. Not a goal — a negative unit has a total too, and reaching it is not the idea."),
+  ].join(String.fromCharCode(10, 10))
 
-const MOVE_HELP =
-  "Change which question this counter answers." + String.fromCharCode(10, 10) +
-  "Nothing recorded is thrown away. A tally of one reads as a check that " +
-  "happened; a check that happened reads as a tally of one. A tally carrying " +
-  "larger numbers keeps them, and the check reads every one of those days as " +
-  "yes."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const moveHelp = () =>
+  [
+    t("Change which question this counter answers."),
+    t("Nothing recorded is thrown away. A tally of one reads as a check that happened; a check that happened reads as a tally of one. A tally carrying larger numbers keeps them, and the check reads every one of those days as yes."),
+  ].join(String.fromCharCode(10, 10))
 
-const TAG_HELP =
-  "Tags for this counter. A unit can carry several — they are not competing " +
-  "answers to one question." + String.fromCharCode(10, 10) +
-  "Their use today is the filter: hiding a tag hides every counter wearing " +
-  "it, everywhere on the page at once. Define them in the Tags tab."
+/** Paragraph by paragraph — see `lib/locales/ru.ts` for why. */
+const tagHelp = () =>
+  [
+    t("Tags for this counter. A unit can carry several — they are not competing answers to one question."),
+    t("Their use today is the filter: hiding a tag hides every counter wearing it, everywhere on the page at once. Define them in the Tags tab."),
+  ].join(String.fromCharCode(10, 10))
 
 /**
  * The total, with an empty box allowed while you retype it.
@@ -143,7 +145,7 @@ function TagRow({
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <Tip multiline text={TAG_HELP}>
+      <Tip multiline text={tagHelp()}>
         <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
           Tags
         </span>
@@ -183,7 +185,7 @@ function TagRow({
           {off.length > 0 && (
             <PopoverMenu
               width={200}
-              label="Add a tag"
+              label={t("Add a tag")}
               triggerClassName={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-mono bg-ink/[0.06] text-ink/55 hover:text-ink hover:bg-ink/[0.10]`}
               trigger={
                 <>
@@ -260,24 +262,27 @@ type TabId = CounterKind | "activity"
 const TABS: { id: TabId; label: string; caption: string }[] = [
   {
     id: "activity",
-    label: "Activities",
+    label: t("kinds:Activities"),
     caption:
-      "Time — what a logged entry went on. Lessons, revision, a lecture. " +
-      "Every hour the app reports is filed under one of these.",
+      t(
+        "Time — what a logged entry went on. Lessons, revision, a lecture. Every hour the app reports is filed under one of these.",
+      ),
   },
   {
     id: "tally",
-    label: "Tallies",
+    label: t("kinds:Tallies"),
     caption:
-      "How many — lessons finished, pages read, cigarettes smoked. A number " +
-      "per slot, and a running total when there is one to run against.",
+      t(
+        "How many — lessons finished, pages read, cigarettes smoked. A number per slot, and a running total when there is one to run against.",
+      ),
   },
   {
     id: "check",
-    label: "Checks",
+    label: t("kinds:Checks"),
     caption:
-      "Whether or not — overslept, went to bed on time, took a rest day. One " +
-      "answer a day: yes, no or skipped, and unknown until the day is over.",
+      t(
+        "Whether or not — overslept, went to bed on time, took a rest day. One answer a day: yes, no or skipped, and unknown until the day is over.",
+      ),
   },
 ]
 
@@ -333,6 +338,7 @@ export function CounterUnitsTab({
   onChangeActivities: (next: Activity[]) => void
 }) {
   const c = usePalette()
+  const t = useT()
   const [group, setGroup] = useState<"kind" | "category">("kind")
   const [tab, setTab] = useState<TabId>("activity")
   const isCheckTab = tab === "check"
@@ -426,8 +432,10 @@ export function CounterUnitsTab({
             does. A rule with nothing after it would be a promise of a control
             that is not there. */}
         <div className="inline-flex flex-wrap items-center gap-1 rounded-full bg-ink/[0.07] p-1">
-          {pill(group === "kind", "By kind", () => setGroup("kind"))}
-          {pill(group === "category", "By category", () => setGroup("category"))}
+          {pill(group === "kind", t("By kind"), () => setGroup("kind"))}
+          {pill(group === "category", t("By category"), () =>
+            setGroup("category"),
+          )}
           {group === "kind" && (
             <>
               <span className="self-stretch w-px my-1 mx-1 bg-ink/20" />
@@ -568,7 +576,7 @@ export function CounterUnitsTab({
                         ruled out. */}
                     {!isCheckTab && (
                       <div className="flex items-center gap-1.5">
-                        <Tip multiline text={TOTAL_HELP}>
+                        <Tip multiline text={totalHelp()}>
                           <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45 cursor-help underline decoration-dotted underline-offset-2">
                             Known total
                           </span>
@@ -586,7 +594,7 @@ export function CounterUnitsTab({
                                 : undefined,
                             })
                           }
-                          label="This unit has a known total"
+                          label={t("This unit has a known total")}
                         />
                         {unit.total != null && (
                           <TotalField
@@ -628,7 +636,7 @@ export function CounterUnitsTab({
                         which throws away everything recorded against it — a
                         steep price for having clicked one tab rather than the
                         other. */}
-                    <Tip multiline text={MOVE_HELP}>
+                    <Tip multiline text={moveHelp()}>
                       <button
                         type="button"
                         onClick={() =>
@@ -643,7 +651,7 @@ export function CounterUnitsTab({
                         className={`${btnBase} flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-mono uppercase tracking-widest text-ink/40 hover:text-ink hover:bg-ink/5`}
                       >
                         <ArrowLeftRight size={10} />
-                        {isCheckTab ? "Make a tally" : "Make a check"}
+                        {t(isCheckTab ? "Make a tally" : "Make a check")}
                       </button>
                     </Tip>
                   </div>

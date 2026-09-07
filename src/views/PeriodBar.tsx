@@ -34,6 +34,7 @@ import {
   rangeLabel,
   stepCursor,
 } from "../lib/period"
+import { useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { DateRangeField } from "../ui/DateField"
 import { Tip } from "../ui/Tip"
@@ -64,6 +65,7 @@ function PeriodPills({
   setPeriod: (id: PeriodId) => void
 }) {
   const c = usePalette()
+  const t = useT()
   return (
     <div className="inline-flex items-center gap-1 rounded-full bg-card p-1 shadow-sm">
       {PERIODS.map((p) => {
@@ -81,11 +83,82 @@ function PeriodPills({
               active ? { backgroundColor: c.accent, color: c.onFill } : undefined
             }
           >
-            {p.label}
+            {t(p.label)}
           </button>
         )
       })}
     </div>
+  )
+}
+
+/**
+ * Where a badge sits on a toggle.
+ *
+ * **Three down the right edge, and one across on the other corner.** Each is
+ * a fixed slot rather than a queue, so a badge does not move when the one
+ * above it drops to nothing, and every level is in the same place on every
+ * visit. They were four hand-written spans with the offsets typed out four
+ * times, which is how two of them ended up at `-right-0.5` and `-right-1` and
+ * read as marks dropped on the button rather than as one thing said three
+ * times.
+ *
+ * The right edge is one column and shares one `x`, so its three stack in
+ * order of sharpness — the one you must not miss is the one that must not be
+ * covered. `topLeft` is the odd corner and overlaps none of them; it is drawn
+ * last anyway, because a thing already lost is the one reading that must
+ * never end up underneath something.
+ */
+type BadgeSlot = "top" | "mid" | "bottom" | "topLeft"
+
+const SLOT: Record<BadgeSlot, string> = {
+  top: "-top-1 -right-1 z-10",
+  mid: "top-1/2 -translate-y-1/2 -right-1 z-20",
+  bottom: "-bottom-1 -right-1 z-30",
+  topLeft: "-top-1 -left-1 z-40",
+}
+
+function ToggleBadge({
+  slot,
+  value,
+  label,
+  color,
+  outline,
+  icon: Icon,
+}: {
+  slot: BadgeSlot
+  value?: number | null
+  label?: string
+  color?: string
+  /**
+   * **Outlined rather than filled** — for a badge that counts everything.
+   *
+   * A filled badge borrows the meaning of its colour, so `7` on red read as
+   * *seven dangers* when it was seven notices of which one was a danger. A
+   * total has no level and must not wear one.
+   */
+  outline?: boolean
+  icon?: LucideIcon
+}) {
+  const c = usePalette()
+  if (value == null) return null
+  return (
+    <span
+      className={`absolute ${SLOT[slot]} min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ${
+        outline ? "" : "ring-2 ring-page"
+      }`}
+      style={
+        outline
+          ? {
+              backgroundColor: c.card,
+              color: `${c.ink}A0`,
+              boxShadow: `0 0 0 1px ${c.ink}30, 0 0 0 3px ${c.page}`,
+            }
+          : { backgroundColor: color, color: c.onFill }
+      }
+    >
+      {Icon && <Icon size={7} strokeWidth={3} />}
+      {label ?? value}
+    </span>
   )
 }
 
@@ -141,23 +214,20 @@ function PanelToggle({
    * Each level owns a fixed slot — `mid` and `sub` — rather than being packed
    * in as they appear, so a badge does not move when the one above it drops to
    * nothing. They overlap on a button this size, and that is what the stacking
-   * order is for: the sharpest reading sits on top, because the one you must
-   * not miss is the one that must not be covered.
+   * order in `SLOT` is for: the sharpest reading sits on top, because the one
+   * you must not miss is the one that must not be covered.
    */
   mid?: number | null
   midColor?: string
   /**
-   * The bottom-centre slot, and the top of the stack.
+   * A fourth figure, for the one toggle that has one — and the only one not
+   * on the right edge.
    *
-   * Off the right edge entirely, because it is the one reading that is **not**
-   * a call to act — a thing already lost sits apart from the counts of things
-   * to do rather than joining the queue of them, and being last drawn is what
-   * guarantees nothing covers it.
-   *
-   * **Same `bottom` as `sub`, not a hair lower.** It sat at `-bottom-1.5` for
-   * the sake of clearing its neighbour and read as a badge that had slipped;
-   * two marks on one edge want one baseline, and the offset in `x` is what
-   * separates them.
+   * The top-left corner, which is empty on every other toggle in the row and
+   * on this one nearly every day. That is what it is for: `gone` is rare, and
+   * a mark that is usually not there is read the moment it is. A fourth badge
+   * added to the column would have been the one nothing can be done about,
+   * arriving in the middle of the queue of things to do.
    */
   deep?: number | null
   deepColor?: string
@@ -183,55 +253,17 @@ function PanelToggle({
             style={{ backgroundColor: c.filter }}
           />
         )}
-        {/* **Two corners, one right edge.** They were `-right-0.5` and
-            `-right-1`, so a top badge and a bottom badge sat half a pixel out
-            of line with each other and the pair read as two marks dropped on
-            the button rather than as one thing said twice. Same offset, same
-            minimum width: whatever is in them, they stack squarely. */}
-        {count != null && (
-          <span
-            className={`absolute -top-1 -right-1 z-10 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ${
-              countOutline ? "" : "ring-2 ring-page"
-            }`}
-            style={
-              countOutline
-                ? {
-                    backgroundColor: c.card,
-                    color: `${c.ink}A0`,
-                    boxShadow: `0 0 0 1px ${c.ink}30, 0 0 0 3px ${c.page}`,
-                  }
-                : { backgroundColor: countColor, color: c.onFill }
-            }
-          >
-            {CountIcon && <CountIcon size={7} strokeWidth={3} />}
-            {countLabel ?? count}
-          </span>
-        )}
-        {mid != null && (
-          <span
-            className="absolute top-1/2 -translate-y-1/2 -right-1 z-20 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
-            style={{ backgroundColor: midColor, color: c.onFill }}
-          >
-            {mid}
-          </span>
-        )}
-        {deep != null && (
-          <span
-            className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-40 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
-            style={{ backgroundColor: deepColor, color: c.onFill }}
-          >
-            {deep}
-          </span>
-        )}
-        {sub != null && (
-          <span
-            className="absolute -bottom-1 -right-1 z-30 min-w-[15px] h-[15px] px-[3px] rounded-full flex items-center gap-[1px] justify-center text-[9px] font-mono font-bold leading-none ring-2 ring-page"
-            style={{ backgroundColor: subColor, color: c.onFill }}
-          >
-            {SubIcon && <SubIcon size={7} strokeWidth={3} />}
-            {sub}
-          </span>
-        )}
+        <ToggleBadge
+          slot="top"
+          value={count}
+          label={countLabel}
+          color={countColor}
+          outline={countOutline}
+          icon={CountIcon}
+        />
+        <ToggleBadge slot="mid" value={mid} color={midColor} />
+        <ToggleBadge slot="bottom" value={sub} color={subColor} icon={SubIcon} />
+        <ToggleBadge slot="topLeft" value={deep} color={deepColor} />
       </button>
     </Tip>
   )
@@ -326,6 +358,7 @@ export function PeriodBar({
   shop: { affordable: number; total: number } | null
 }) {
   const c = usePalette()
+  const t = useT()
   const navigable = NAVIGABLE_PERIODS.has(period)
   const navBtn = `${btnBase} rounded-full bg-card shadow-sm hover:bg-ink/5 disabled:opacity-35 disabled:hover:bg-card disabled:cursor-not-allowed`
   const visible = useRevealOnScrollUp()
@@ -387,10 +420,8 @@ export function PeriodBar({
             badge={filteredOutCount > 0}
             tip={
               filteredOutCount
-                ? `${filteredOutCount} left out of every total`
-                : showFilter
-                  ? "Hide the filter"
-                  : "Filter what counts"
+                ? t("{n} left out of every total", { n: filteredOutCount })
+                : t(showFilter ? "Hide the filter" : "Filter what counts")
             }
           />
           {/* Absent rather than disabled when sleep tracking is off: there is
@@ -400,7 +431,7 @@ export function PeriodBar({
               icon={Moon}
               active={showSleep}
               onClick={onToggleSleep}
-              tip={showSleep ? "Hide sleep" : "Show sleep"}
+              tip={t(showSleep ? "Hide sleep" : "Show sleep")}
             />
           )}
           {/* **The board's badge is what survives of "it comes and finds
@@ -412,13 +443,24 @@ export function PeriodBar({
               icon={Bell}
               active={showNotices}
               onClick={onToggleNotices}
-              /* **Two figures, and only one of them is an alarm.** The total
-                 used to be drawn filled in the worst level's colour, so `7`
-                 on red read as seven dangers when it was seven notices with
-                 one danger among them. The total is outlined and neutral now;
-                 the danger count keeps the red and the opposite corner,
-                 because it is the thing worth knowing while the board is
-                 shut. */
+              /* **One right edge and one far corner.** The total at the
+                 top, `warning` in the middle, `danger` at the bottom: a
+                 column read top to bottom, quietest first, so the eye lands
+                 on the sharpest reading at the end of the sweep it was
+                 already making.
+
+                 The total used to be drawn filled in the worst level's
+                 colour, so `7` on red read as seven dangers when it was seven
+                 notices with one danger among them. It is outlined and
+                 neutral, because a total has no level and must not wear one.
+
+                 `gone` is the exception and takes the **top-left** corner,
+                 which nothing else in this row uses. It is the one reading
+                 that is not a call to act — a freeze cannot reach it and
+                 there is nothing to do — so it does not belong in the column
+                 of things you can still do something about; and it is rare,
+                 so a corner that is empty nearly every day makes it
+                 unmissable on the days it is not. */
               count={noticeCount}
               countOutline
               mid={warningCount || null}
@@ -436,13 +478,13 @@ export function PeriodBar({
                  badge is a call, and there is no call to make about none. */
               multilineTip
               tip={[
-                showNotices ? "Hide the notices" : "Show the notices",
+                t(showNotices ? "Hide the notices" : "Show the notices"),
                 "",
-                `${goneCount} gone — no freeze reaches them`,
-                `${dangerCount} lost unless a freeze is spent`,
-                `${warningCount} running out of room`,
-                `${noticeOwed} still owed, with time`,
-                `${allClearCount} all clear`,
+                t("{n} gone — no freeze reaches them", { n: goneCount }),
+                t("{n} lost unless a freeze is spent", { n: dangerCount }),
+                t("{n} running out of room", { n: warningCount }),
+                t("{n} still owed, with time", { n: noticeOwed }),
+                t("{n} all clear", { n: allClearCount }),
               ].join(String.fromCharCode(10))}
             />
           )}
@@ -462,7 +504,7 @@ export function PeriodBar({
                  the run you are guarding are the two things this row must not
                  let you confuse. */
               countColor={c.project}
-              tip={keptOpen ? "Hide the composite" : "Days kept in a row"}
+              tip={t(keptOpen ? "Hide the composite" : "Days kept in a row")}
             />
           )}
           {/* A gift is what you buy; coins are what you pay with. */}
@@ -481,7 +523,11 @@ export function PeriodBar({
                  board is the one thing here that shouts, and a second
                  alarming badge beside it means neither means anything. */
               countColor={c.project}
-              tip={showAccount ? "Hide the account" : `${points} points, and where they came from`}
+              tip={
+                showAccount
+                  ? t("Hide the account")
+                  : t("{n} points, and where they came from", { n: points ?? 0 })
+              }
             />
           )}
           {/* **`x of y`, on the same dark disc the notice total wears.** A
@@ -499,10 +545,13 @@ export function PeriodBar({
             countOutline
             tip={
               showShop
-                ? "Hide the rewards"
+                ? t("Hide the rewards")
                 : shop
-                  ? `${shop.affordable} of ${shop.total} within reach`
-                  : "What your points will buy"
+                  ? t("{a} of {b} within reach", {
+                      a: shop.affordable,
+                      b: shop.total,
+                    })
+                  : t("What your points will buy")
             }
           />
           <PanelToggle
@@ -514,17 +563,20 @@ export function PeriodBar({
             countOutline
             tip={
               showHistory
-                ? "Hide what you have reached"
+                ? t("Hide what you have reached")
                 : badges
-                  ? `${badges.earned} of ${badges.total} reached`
-                  : "What you have reached"
+                  ? t("{a} of {b} reached", {
+                      a: badges.earned,
+                      b: badges.total,
+                    })
+                  : t("What you have reached")
             }
           />
           <PanelToggle
             icon={History}
             active={showLog}
             onClick={onToggleLog}
-            tip={showLog ? "Hide the change log" : "Show the change log"}
+            tip={t(showLog ? "Hide the change log" : "Show the change log")}
           />
           {/* **Closing them one at a time is the cost of leaving them open.**
               A page with six panels on it takes six presses to clear, and this
@@ -541,8 +593,8 @@ export function PeriodBar({
               onClick={onHideAll}
               tip={
                 openCount === 1
-                  ? "Hide the open section"
-                  : `Hide all ${openCount} open sections`
+                  ? t("Hide the open section")
+                  : t("Hide all {n} open sections", { n: openCount })
               }
             />
           )}
@@ -551,7 +603,7 @@ export function PeriodBar({
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip
             text={
-              navigable ? "Jump to the current period" : "Jump to this week"
+              t(navigable ? "Jump to the current period" : "Jump to this week")
             }
           >
             <button
@@ -569,7 +621,7 @@ export function PeriodBar({
           {/* Never scrolls and never shrinks: knowing where you are and being
               able to step off it is the one thing the bar must always offer. */}
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <Tip text={navigable ? undefined : "This period sets its own dates"}>
+            <Tip text={navigable ? undefined : t("This period sets its own dates")}>
               <button
                 disabled={!navigable}
                 onClick={() => setCursor(stepCursor(cursor, period, -1))}
@@ -588,7 +640,7 @@ export function PeriodBar({
                 {rangeLabel(period, cursor, range)}
               </span>
             </span>
-            <Tip text={navigable ? undefined : "This period sets its own dates"}>
+            <Tip text={navigable ? undefined : t("This period sets its own dates")}>
               <button
                 disabled={!navigable}
                 onClick={() => setCursor(stepCursor(cursor, period, 1))}

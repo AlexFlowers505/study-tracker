@@ -101,6 +101,19 @@ anything that tells you something is wrong.
   nine notices, which is the bound that stops the board being a dashboard.
   Four sources beyond the rules: the composite, the freeze allowance, unsealed
   weeks, achievements in reach.
+- **A violation you have paid for stops speaking.** `ruleNotices` could only
+  see a freeze at the level of the whole rule — `state === "frozen"`, which is
+  `isFrozenFor`, which means *every* site covered. `notices.ts` predates
+  `spec 017`, so a rule asserting two checks with one of them bought went on
+  shouting `danger` about the one you had just paid for: the board
+  contradicting the receipt, with the receipt right. `Item` carries the
+  `violationKey` it is about now — a check per target, a count per bound and
+  per slot rider, a **time condition all on one key**, because
+  `violationsOn` prices it as one site however many of its parts broke — and
+  `ruleNotices` drops the ones already in `frozenKeys`. A weekly rule's
+  receipts live on its Monday; a daily rule's on the day, and yesterday's on
+  yesterday. Three cases in `npm run sweep` (`paid:`), one of which fails
+  against the old code.
 - **`NoticeBoard` is the only place.** `StreakAlarms` and the chevron's
   "what today asks" list are deleted; `StreakBar` takes a `troubled` count and
   draws no alarms. The board sits where the alarms did — first under the period
@@ -113,6 +126,29 @@ anything that tells you something is wrong.
   failure the board exists to fix arriving by the other door. What holds the
   dashboard off is the one-per-rule-per-level bound, not making half of them
   quieter.
+- **A rule notice and a fixed one no longer look alike.** The board holds two
+  kinds of thing — a promise you wrote, and the four sources that are
+  bookkeeping *about* those promises — and drawing them identically meant a
+  level holding both read as one striped run with `Today` sitting in it like a
+  rule nobody could remember writing. The level still owns the **colour**,
+  because that is what the eye is scanning for and burying a red one under a
+  second heading costs more than it buys; what says which kind it is now is the
+  **surface** — a rule raised with its wash and ring, a fixed source recessed
+  into `bg-ink/[0.04]` with no outline, keeping the level in its icon and
+  title. Within a level they are two `<ul>`s, promises first, so the gap says
+  it again and a screen reader is told "3 items" then "2 items". No
+  sub-heading: a fifth word per level is the dashboard arriving by the door
+  the one-per-rule bound is holding shut.
+- **The level filter takes away rather than picks out**, and carries one bulk
+  button. It was a whitelist — `held`, empty meaning everything — so a click
+  isolated one level: one click for the rare question, four for the common one
+  (*stop showing me the green ones*), and `hide all` with nothing left to mean.
+  It is now `hidden`, which is what every other legend in the app is
+  (`ToggleChips` strikes its chips out), and the single **Hide all / Show all**
+  shows whichever half applies, exactly as `bulkToggleFor` does for the charts.
+  The stored `held` is translated into the levels it left out rather than
+  reused — the same array meaning "everything" one day and "nothing" the next
+  is the silent breakage this codebase refuses.
 - **Three toggles**: `Bell`, `Flame` (the composite's days) and `Coins`
   (points, `4.1k` past a thousand) which opens the **account panel** — the total, signed earning
   bars off `dayLedger`, and rewards and purchases as a list. The shop keeps the
@@ -145,9 +181,38 @@ anything about freezes.
   others on the same period are still unfrozen, because a day can now be partly
   paid for and still break.
 - **`isFrozenFor` takes the rule and the context** and means *every violation
-  covered*; only that turns a colour. **`freezeSpendOn` sums stored costs**, so
-  a week that spent three has spent three forever.
-- Weekly rules stay **flat**: one violation, cost one, on the Monday.
+  covered, at no less than what it now costs*. **`freezeSpendOn` sums stored
+  costs**, so a week that spent three has spent three forever.
+- **A week itemises exactly as a day does** — `weekViolationsOn`, and this
+  reverses *this spec's own part 5*. A week was one flat violation costing one
+  freeze, on the argument that itemising would raise a compound weekly rule
+  from one freeze to several. What that missed is that the week was already
+  **the cheap period**: a day rule pays what it fell short by, so four slips
+  cost four, while the identical promise written weekly cost one however far
+  past the line you went — *at most three Pinterest a week* broken by
+  seventeen was a single freeze. A price that does not move with the failure
+  is not a price. So a **count** costs its shortfall, **time** costs one
+  however many of its parts broke, and a **check** splits per accepted answer
+  (where the week counts them) or per named check (where it asserts them, one
+  site priced by how many days were not accepted — not one site per day:
+  `violationKey` has three segments and no room for a date, and giving it one
+  would orphan every freeze already bought). The items add back up to
+  `totalDeficit(readWeek())`, so the streak is untouched and only the buying
+  changed. The receipts still live on the week's Monday.
+- **Coverage compares prices, it does not look up keys.** A violation can grow
+  after it has been paid for: a ceiling is settled the moment it is crossed —
+  there is no doing less of something already done — but nothing stops you
+  doing *more* before the period closes. On a day that is one afternoon of
+  exposure; on a **week** it is six further days, and it would have made
+  "freeze the Monday, then binge until Sunday" a free week. The stamped price
+  still stands and is never repriced; a violation that has since grown past
+  what was paid is simply not the one that was bought.
+- **`freezeCost` still answers one for a week**, and that is not a leftover: it
+  prices only the *legacy* shape — a bare rule id meaning "this rule,
+  entirely" — and every one of those was bought when a week did cost one.
+- A weekly rule broken badly can now be **unaffordable**, and `notices.ts` will
+  call that `gone`. Correct, and new: under the flat price almost nothing
+  weekly ever reached that level.
 
 **`specs/019-three-additions.md` is built** — three unrelated small things:
 
@@ -303,7 +368,14 @@ which are Node config and get their own lint block.
     when they would collide, so the grid stays fine-grained on a phone even
     where the numbers cannot all fit.
   - `theme.ts` — the two palettes, the `CARD`/`FIELD_*` class strings,
-    `cellSurface`, `dayStateSurface` and `chartTooltip`. See **Theming** below;
+    `cellSurface`, `dayStateSurface` and `chartTooltip` — plus
+    `chartTooltipItem`, because `contentStyle` cannot reach the tooltip's
+    **rows**: Recharts colours each one after its series (`entry.color ||
+    "#000"`), so a chart whose colour lives on its `<Cell>`s hands it nothing
+    and gets that literal black, which on the dark card is text you cannot see.
+    That is what the account's earnings chart did. Only for a chart in that
+    position — where a series does have a colour, the row wearing it is the
+    legend. See **Theming** below;
     the short version is that surfaces are Tailwind tokens and the accents are
     a `Palette` object you get from `usePalette()`.
     - `benchmark.ts` — which rule supplies the day's goal. One rule is
@@ -400,6 +472,22 @@ which are Node config and get their own lint block.
     end when you meant the start is otherwise silent — you get a valid time in
     the wrong field. The line sits *above* the dial, not below with the
     duration, because it says what the next click will do.
+    **Everything that acts on one half sits in that half**: a clear cross on
+    the left of each input and `now` on its right, with one `Done` under the
+    dial. There used to be a row of three down there — `Now`, `Clear start/end`
+    and `Done` — where the first two acted on whichever field the dial happened
+    to be driving. So the same control meant two different things a minute
+    apart, *start now, end now* was two trips through the mode, and the panel's
+    one hard problem — saying which half you are editing — was being asked
+    again of two buttons that had no business asking it. In the input, each
+    action names its subject by where it is. Both also make their field the one
+    the dial drives: one rule rather than two, and the accent moving to the
+    half you pressed is what confirms you hit the one you meant. The cross is
+    absent with nothing to clear but its padding is not, so the figure never
+    shuffles sideways; `now` keeps its **word** rather than becoming a second
+    glyph, since there is no drawing of *the current time* that is not just
+    another clock. The panel is `260px`, which is `DATE_PANEL_MAX_WIDTH` —
+    the figure the popover's viewport clamp was already written against.
   - `datePopover.ts` — `useDatePopover` plus the react-day-picker styling,
     which has to sit on the calendar's own root to win.
   - `icons.tsx` — `RenderIcon`; the list itself is data in `iconLibrary.ts`,
@@ -1219,10 +1307,53 @@ enough that a loose word costs a conversation.
 | **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
 | **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
 | **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
-| **a violation** | one named site of a rule that broke on one day — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn` |
+| **a violation** | one named site of a rule that broke on one period — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn`, `weekViolationsOn` |
 | **a freeze** | a purchase against one violation, at a price stamped when it was made. Never automatic, never refunded, never repriced | `RuleFreeze`, `freezeOffers` |
 | **settled** | a violation nothing can undo before midnight, and therefore the only kind that may be frozen | `Violation.settled` |
-| **fully frozen** | every violation of a rule on a period covered. The only state that turns a colour | `isFrozenFor` |
+| **fully frozen** | every violation of a rule on a period covered, at no less than what it now costs. The only state that turns a colour; a partly paid period keeps its own and wears a corner snowflake | `isFrozenFor` |
+
+**An achievement is not earned on the day it is written, and once earned its
+terms stop moving.** Both halves are one bug reported from ordinary use:
+pressing *+ Achievement* minted a hundred points and an indelible record before
+the form had been looked at.
+
+- **The grace day reaches the sealer**, not just the lock. `achievementEdit`
+  has always had `settingUp` — *the day it is written is yours to get it right
+  on* — and `dueAchievements` never honoured it, which made the grace day a
+  promise about one half of the same thing. The rules can afford that gap
+  because a rule seals no week on the day it is written; an achievement seals
+  the moment its figure is met, so this is where the promise had to be kept.
+  What it cost: `newAchievement` hands you thirty days in a row, which any
+  project with a streak already has. One `.filter` in `dueAchievements`.
+- **Reached is reached, and its terms are then closed** (`achievementEdit`
+  takes `earned`). The ledger recorded what it was worth *at the moment it was
+  reached* and the account has already been paid, so a definition edited
+  afterwards leaves the badge and the sentence describing it disagreeing, with
+  the points behind whichever you happen not to be reading — and raising the
+  bar cannot un-earn it, because the row is written once and never revisited.
+  Two states that contradict each other are worse than either. The name, the
+  colour and the icon are not terms and stay open, the same line the rules
+  draw. The tab shows the reason in place of the Edit button rather than
+  disabling it: a control that refuses when pressed and one that is absent say
+  the same thing, and only the absent one says it before you reach for it.
+- **Deleting takes the record and the points with it** — `opDeleteEarned`, the
+  one deletion in a ledger otherwise written once. That is not a contradiction:
+  everything else is append-only so that *history* cannot be rewritten, and a
+  badge whose achievement no longer exists is not history but litter — it pays
+  into the balance for something you can no longer see, name or check, and
+  deleting it is the only moment anybody can tidy it. Same op key as
+  `opEarned`, so reaching something and deleting it inside one debounce window
+  collapses to one write rather than racing. `AchievementsTab` works out what
+  left the list and hands it to **one** `onSave(achievements, forget)`, because
+  the edit touches two of the project's fields and two `updateProject` calls in
+  a tick both close over the same `project`.
+- **Records orphaned before that rule existed get a block of their own**, in
+  the tab, naming how many and what they are worth, with a button. Not a sweep
+  on load: the points are real and spendable, and a balance that quietly drops
+  on a Tuesday is indistinguishable from a bug.
+
+`npm run sweep` covers all of it (`seals:` and `frozen:`); two of the six fail
+against the old code.
 
 **`specs/015-the-economy.md` is the whole economy in one place** — the three
 numbers, where points come from, which way each lock points, and what is not
@@ -1262,13 +1393,19 @@ lies about its colour.** A filled badge borrows the meaning of its fill, so
 the notice total drawn in the worst level's colour read as *seven dangers*
 when it was seven notices with one danger among them. So:
 
-- the **bell** carries three, down one right edge in fixed slots — the total
-  outlined and neutral at the top, `warning` amber in the middle, `danger`
-  red at the bottom. Each level owns its slot, so a badge does not move when
-  the one above it drops away; a level with nothing in it draws nothing
-  rather than a nought; and they stack `danger` over `warning` over the
-  total, because the one you must not miss is the one that must not be
-  covered.
+- the **bell** carries four, in named slots (`BadgeSlot` / `SLOT` in
+  `PeriodBar`): the total outlined and neutral at the top right, `warning`
+  amber in the middle, `danger` red at the bottom — a column read top to
+  bottom, quietest first — and **`gone` on its own in the top-left corner**,
+  which nothing else in the row uses. Each owns its slot, so a badge does not
+  move when the one above it drops away; a level with nothing in it draws
+  nothing rather than a nought; and the column stacks `danger` over `warning`
+  over the total, because the one you must not miss is the one that must not
+  be covered. `gone` is off the column because it is the one reading that is
+  **not** a call to act — no freeze reaches it and there is nothing to do — so
+  it does not belong in the queue of things you still can; and because it is
+  rare, a corner that is empty nearly every day is what makes it unmissable on
+  the days it is not.
 - the **streak** and the **account** both wear `project`'s marigold. It is
   the one place two things share an accent on purpose — this palette's
   *worth something* colour, where a separate gold for money was tried and
@@ -1277,8 +1414,8 @@ when it was seven notices with one danger among them. So:
   notice total wears. Both fractions are chosen so they cannot pass their own
   denominator: the shop counts what you can **afford** rather than what you
   have taken, since a reward can be taken twice, and achievements count only
-  the ones whose definition still exists, since the ledger deliberately keeps
-  rows for deleted ones.
+  the ones whose definition still exists — a defensive filter now rather than
+  a design one, since deleting an achievement takes its record with it.
 - **hide all** (`ChevronsDownUp`) shuts every panel in one press. Six open
   panels take six presses to clear one at a time, and this row is the only
   place that knows how many there are — so it counts, and its tooltip says
@@ -1430,6 +1567,20 @@ Every reader goes through the helper — `readClauseDay`, `violationsOn`,
 `benchmarkMinutes`, `clauseImpossible` and the lock — because reading the
 shared list on a day that overrode it measures Saturday against Monday's
 restriction, silently and in the direction that breaks a day you kept.
+
+**A week reads that map through `figuresPerDay` and `slotFiguresPerDay`, never
+through its mere presence.** `weekBounds` guarded on `!clause.days` and so
+summed the week's own figure over its days the moment a weekly rule was told
+which weekdays it judged or which slots counted: *at most 3 Pinterest a week,
+none in the evening* allowed **twenty-one**, which is a ceiling no week of
+ordinary living can break, wearing the face of a rule that is watching. The
+flat branch then asked weekday `0` what the condition was held to — fine while
+`!clause.days` guaranteed there was no map, and outright fatal once there was
+one: a rule judged Mon–Fri got `{}` back and lost its ceiling altogether. It
+asks a weekday the condition actually judges. `weekSlotBounds` had the same
+fault and hid behind the commonest rider there is, since seven noughts add up
+to a nought. All five shapes are in `npm run sweep`; three of them fail on the
+old code.
 
 **`clause.days` therefore stopped meaning "figures per day"**, and
 `boundsOnWeekday` had to learn the difference: the map now carries three
@@ -1661,7 +1812,14 @@ business of a block whose subject is *how many days held*.
 
 - **`StreakStrip`** is the period as a seven-column calendar grid: met green,
   frozen blue, missed red, and the days outside the period left blank so the
-  weekday columns stay true. A rule that only judges Mondays then reads down a
+  weekday columns stay true. **A cell that is partly paid for wears a corner
+  snowflake** and keeps its own colour: only a fully covered period turns blue,
+  because half a freeze saves nothing — but a period can now be partly bought,
+  and until that mark the only way to find out was to open the popover on every
+  red cell in the row. The colour answers *is this saved*; the corner answers
+  *is anything here bought*. Which ones, by name, are in the tooltip and in the
+  popover — `2 of 3 frozen` told you there was something to find out and not
+  what it was. A rule that only judges Mondays then reads down a
   column. One row of cells would have worked for a week and for nothing else.
 - **`StreakChart`** is the same period as **a filled area against a dashed
   limit line**, so breaking the rule is literally crossing it. It is the shape
@@ -1906,6 +2064,77 @@ Daily goals are the exception to write-through editing: they sit behind an
 explicit Edit, with Cancel and Confirm, and lowering the weekly total asks a
 second time and names what it costs. Seven numbers that decide what counts as a
 kept day should not move because a scroll wheel passed over them.
+
+## Language
+
+English and Russian, chosen in Setup's **App** tab beside the theme — the two
+device preferences, drawn by one component because they are the same question.
+
+`src/lib/locales/ru.ts` is ~570 entries and covers the interface, the generated
+sentences and the dates. **What is deliberately never translated is the user's
+own words** — activities, counters, rules, slots, tags, notes. They are data,
+and recolouring somebody's words to suit an interface is the same failure as
+recolouring their activities to suit a background.
+
+- **`lib/i18n.ts` is a store, not a context**, for the same two reasons
+  `useTheme` is one. `t()` has to be readable from `lib/` — `clauseSentence`,
+  `notices`, `violationsOn` and the readouts all build user-facing prose in
+  pure functions no hook can reach — so there is state outside the tree
+  whatever we do; and `t` is wanted in sixty unrelated components a provider
+  would have to be threaded through for nothing.
+- **The key is the English string**, not an invented `notices.hideAll`. A
+  thousand short keys is a thousand chances to name one thing twice, the source
+  stops being readable at the call site, and a missing translation becomes a
+  bare token on screen instead of the English it fell back from. Here the
+  fallback *is* the original sentence. Where one English word needs two Russian
+  ones the key carries a context prefix (`board:Today`, `level:gone`).
+  **`bare()` strips only a real prefix** — a bare lowercase identifier — and
+  the first version cut at the first colon wherever it fell, which ate the
+  front of every key that merely *contains* one: `"{named}: {parts} a week"`
+  fell back to `" {parts} a week"`, so a weekly check rule read back with no
+  counter name. English is the fallback, so that was a bug in the default.
+- **Whole sentences, never fragments.** `{name}` placeholders rather than
+  concatenation: the moment a sentence is assembled out of pieces it stops
+  being translatable, because the pieces go in a different order in a different
+  language. The long help tooltips are **a paragraph per key** for the same
+  reason from the other end — one key for a four-way string concatenation would
+  have to match byte for byte, and stops matching the day somebody rewraps a
+  line.
+- **The app tree is keyed on the locale** (`key={locale}` in `App`), so
+  changing it remounts. `t()` is a plain function, so a component rendering a
+  translated string without subscribing would keep the old one until something
+  else re-rendered it, and half a page in each language is worse than either.
+  Remounting costs the open panels and the scroll position, which is the right
+  price for a control you touch once. **A module-level table is a bug here**:
+  built once at import, it says `Mon` forever — hence `weekdayLabels()`,
+  `chartModes()`, `levelWord()`, `windowLabel()` and the rest being getters,
+  and `WEEKDAY_LABELS` surviving only as a lazy proxy over one.
+- **`plural` takes three forms.** Russian picks by the last two digits — 1, 21,
+  31 take the first; 2–4 and 22–24 the second; 11–14 and the rest the third —
+  and getting it wrong is the loudest possible tell that a page was machine
+  translated. `pluralOf` is the same where the English word is irregular too,
+  since `freezes` is not `freeze + s` in any useful sense.
+- **Dates and durations follow the app, not the browser.** Every
+  `toLocaleDateString` took `undefined`, which means *this machine's* language,
+  so a Russian interface printed `Aug 17` on an English laptop; they take
+  `dateLocale()` now. `fmtHours` translates its unit letters — `2ч 30м` — and
+  never the shape: it appears inside generated sentences and chart tooltips,
+  where it has to stay one short token.
+- **`t` is a name the codebase already used** for loop variables — Setup's tab
+  row, `clauseReadoutParts`, `clauseWeekReadoutParts` all had `.map((t) => …)`.
+  Those are renamed rather than worked around; a parameter shadowing the
+  translator inside its own body is the kind of bug that compiles.
+- **`CHECK_LABELS` stays English and stays a constant.** It is a key as much as
+  a label — lowercased into `answer:yes` by every sentence builder — so
+  `checkLabel()` is the one that reaches a reader.
+- **A new project is seeded in the reader's language** (`defaultSlots()`,
+  `defaultActivities()`). Those labels become the user's own data the moment
+  the project exists and nothing revisits them; the ids never change. Being
+  handed five English slot names to rename before you can start is exactly the
+  half-translated feel this pass is about.
+- **`npm run sweep` runs on the English locale** (no `navigator` in Node), and
+  its readout cases assert exact English strings — which is what proves the
+  fallback path still works after the sentence builders were restructured.
 
 ## Theming
 

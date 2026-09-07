@@ -53,6 +53,7 @@ import {
 import type { IsIgnored } from "../types/model"
 import { toKey } from "./date"
 import { WEEKDAY_ORDER } from "./date"
+import { t } from "./i18n"
 
 /** Why a rule cannot be the benchmark, in the words the form should use. */
 export type BenchmarkBar = string | null
@@ -73,24 +74,26 @@ export function benchmarkBar(
   ctx: StreakContext,
 ): BenchmarkBar {
   if (rule.scope === "week")
-    return "A weekly rule has no figure for a single day."
+    return t("A weekly rule has no figure for a single day.")
 
   const clauses = ruleClauses(rule)
 
   for (const clause of clauses) {
     if (targetMeasure(clauseTarget(clause), ctx) !== "time")
-      return "Only a rule that counts time; this one counts occurrences."
+      return t("Only a rule that counts time; this one counts occurrences.")
     // Every weekday it judges has to name a floor. A day with only a ceiling
     // has nothing to aim at, and a goal line with a hole in it is worse than
     // no goal line.
     const judged = clauseWeekdays(clause)
     if (judged.some((wd) => boundsOnWeekday(clause, ctx, wd).min === undefined))
-      return "Only floors — a ceiling is not something to aim at."
+      return t("Only floors — a ceiling is not something to aim at.")
   }
 
   for (const weekday of WEEKDAY_ORDER) {
     if (clauses.filter((clause) => covers(clause, weekday)).length > 1)
-      return "Two of its conditions land on the same weekday, so there is no single figure for that day."
+      return t(
+      "Two of its conditions land on the same weekday, so there is no single figure for that day.",
+    )
   }
 
   return null
