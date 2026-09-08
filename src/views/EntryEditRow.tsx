@@ -20,7 +20,7 @@
 --------------------------------------------------------------- */
 
 import { useEffect, useRef } from "react"
-import { Ban, Check, Trash2 } from "lucide-react"
+import { Ban, Check, Pause, Play, Trash2 } from "lucide-react"
 import type {
   Activity,
   SleepEntry,
@@ -30,15 +30,22 @@ import type {
 } from "../types/model"
 import { useT } from "../lib/i18n"
 import { getById } from "../lib/id"
-import { fmtHours } from "../lib/time"
+import { STEP_MINUTES, fmtHours } from "../lib/time"
 import { FIELD_BARE, btnBase } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
+import { EntryTime } from "../ui/EntryTime"
 import { RenderIcon } from "../ui/icons"
 import { TimeRangeField } from "../ui/TimeRangeField"
 import { Tip } from "../ui/Tip"
 
 import { usePalette } from "../ui/useTheme"
-import { entryActivity } from "../lib/entries"
+import {
+  entryActivity,
+  isPaused,
+  pausePatch,
+  pausedMinutes,
+  resumePatch,
+} from "../lib/entries"
 const iconBtn = `${btnBase} p-1 rounded shrink-0`
 
 export function EntryEditRow({
@@ -71,6 +78,17 @@ export function EntryEditRow({
   const ref = useRef<HTMLDivElement>(null)
   const timed = !!(entry.start && entry.end)
   const isStudy = !!slots && !!activities && !!slotId
+  const paused = pausedMinutes(entry)
+  const pausing = isPaused(entry)
+  /** A beginning and no end yet — the only state in which a pause can start. */
+  const running = !!entry.start && !entry.end
+  /* The line is offered wherever it can mean something: on a timed entry the
+     figure is what the duration was reduced by, on a running one there is a
+     pause to start or end, and on anything already carrying a pause it is the
+     only way to take a wrong figure back off. An untimed entry with none of
+     those has its minutes typed directly, so a second number that changed
+     nothing would be a control that lies. */
+  const showPause = timed || running || paused > 0 || pausing
   const cat =
     isStudy && activities
       ? getById(activities, entryActivity(entry as StudyEntry))
@@ -118,7 +136,12 @@ export function EntryEditRow({
           onClear={() => onChange({ start: undefined, end: undefined })}
         />
         {timed ? (
-          <span className="text-ink/45">({fmtHours(entry.minutes)})</span>
+          <EntryTime
+            className="text-ink/45"
+            duration={fmtHours(entry.minutes)}
+            paused={paused}
+            running={pausing}
+          />
         ) : (
           <span className="flex items-center gap-1">
             <input
@@ -132,6 +155,56 @@ export function EntryEditRow({
           </span>
         )}
       </div>
+
+      {/* **The pause, as one number.** However many times you stopped, it is
+          stored and edited as a single duration — see `TimeEntry.paused` —
+          because what you go back to correct is "that was ten minutes, not
+          fifteen", never which of the three stops it belonged to.
+
+          A running pause shows the button rather than the box: a total that
+          is still growing is not a number anybody can usefully type over, and
+          this is the one place you can end one from inside the form you opened
+          to look at it. */}
+      {showPause && (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink/50">
+          <Pause size={10} style={{ color: c.warn }} />
+          <input
+            type="number"
+            min={0}
+            step={STEP_MINUTES}
+            value={paused}
+            onChange={(e) =>
+              onChange({ paused: Math.max(0, Number(e.target.value) || 0) })
+            }
+            className={`${FIELD_BARE} w-10 text-[10px] text-ink/70`}
+          />
+          <span>{t("min paused")}</span>
+          {/* Exactly one of the two, and only while the session is still
+              running: pausing something that already has an end time is
+              asking for a stop inside a stretch that is over. */}
+          {pausing ? (
+            <Tip text={t("Resume this session")}>
+              <button
+                onClick={() => onChange(resumePatch(entry))}
+                className={`${iconBtn} hover:bg-card/70`}
+                style={{ color: c.accent }}
+              >
+                <Play size={12} fill="currentColor" />
+              </button>
+            </Tip>
+          ) : running ? (
+            <Tip text={t("Pause this session")}>
+              <button
+                onClick={() => onChange(pausePatch())}
+                className={`${iconBtn} hover:bg-card/70`}
+                style={{ color: c.warn }}
+              >
+                <Pause size={12} fill="currentColor" />
+              </button>
+            </Tip>
+          ) : null}
+        </div>
+      )}
 
       {/* The slot, then the activity, each on its own line. The slot heading
           outside a form is bold; this one deliberately is not, so the two are

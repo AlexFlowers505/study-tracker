@@ -60,10 +60,13 @@ export function AchievementsSection({
   project,
   today,
   onClose,
+  onSettings,
 }: {
   project: Project
   today: Date
   onClose?: () => void
+  /** Opens Setup's Achievements tab — where these are defined. */
+  onSettings?: () => void
 }) {
   const c = usePalette()
   const t = useT()
@@ -112,6 +115,7 @@ export function AchievementsSection({
       }
       closeLabel={t("Hide the achievements")}
       onClose={onClose}
+      onSettings={onSettings}
     >
       {total > 0 && (
         <div className={`grid gap-2 ${GRID}`}>

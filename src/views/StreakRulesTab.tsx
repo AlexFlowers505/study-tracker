@@ -74,6 +74,7 @@ import type {
   StreakRule,
   StreakTarget,
   Tag,
+  TimeWindow,
 } from "../types/model"
 import { t, useT } from "../lib/i18n"
 import {
@@ -87,6 +88,7 @@ import type {
 } from "../lib/customStreaks"
 import type { Proposal } from "../types/model"
 import { benchmarkBar } from "../lib/benchmark"
+import { TimeRangeField } from "../ui/TimeRangeField"
 import {
   boundsOnWeekday,
   clauseBounds,
@@ -95,6 +97,9 @@ import {
   clauseWeekdays,
   clauseTarget,
   figuresPerDay,
+  hasWindow,
+  windowsOnWeekday,
+  windowsPerDay,
   slotIdsOnWeekday,
   clauseTargets,
   lockFrom,
@@ -411,7 +416,6 @@ function ClauseForm({
   const target = clauseTarget(clause)
   const info = targetInfo(target, ctx)
   const timed = info.measure === "time"
-  const sleepTarget = clauseTargets(clause).some((t) => t.kind === "sleep")
   // Resolved, never the stored fields: a condition written before the pair
   // existed still carries an operator and one number, and only this knows it.
   const bounds = clauseBounds(clause, ctx, toKey(new Date()))
@@ -604,16 +608,24 @@ function ClauseForm({
           judge, and that is what its grid says in the row it leaves empty. */}
       {!byWeek && !info.check && (
         <Fold title={t("Days")} summary={daysSummary(clause)}>
-          <WeekdayRow clause={clause} ctx={ctx} timed={timed} onChange={onChange} />
+          <WeekdayRow
+            clause={clause}
+            ctx={ctx}
+            timed={timed}
+            /* **Only a target with a clock behind it** — `spec 023`. A
+               tally is a number of occurrences and has no beginning to
+               constrain. Absent rather than disabled, the rule this form
+               follows everywhere. */
+            windows={timed}
+            onChange={onChange}
+          />
         </Fold>
       )}
 
-      {/* **Sleep has no slots, so the fold is absent rather than empty** —
-          `spec 019`. A sleep entry carries no slot at all, so there is nothing
-          for a rider to measure; that is a fact about the data rather than a
-          policy, and a control offering figures that could never be read is
-          worse than one that is not there. */}
-      {!info.check && !sleepTarget && ctx.slots.length > 0 && (
+      {/* A project with no slots has nothing for a rider to measure, so the
+          fold is absent rather than empty — a control offering figures that
+          could never be read is worse than one that is not there. */}
+      {!info.check && ctx.slots.length > 0 && (
         <Fold title={t("Slots")} summary={slotsSummary(clause, ctx)}>
           <SlotsFields
             clause={clause}
@@ -1353,11 +1365,14 @@ function WeekdayRow({
   clause,
   ctx,
   timed,
+  windows,
   onChange,
 }: {
   clause: StreakClause
   ctx: StreakContext
   timed: boolean
+  /** Whether this condition's target has a clock — see the call site. */
+  windows: boolean
   onChange: (patch: Partial<StreakClause>) => void
 }) {
   const c = usePalette()
@@ -1470,6 +1485,113 @@ function WeekdayRow({
   }
 
   const perDayGrid = counting && perDay
+
+  /* ---- when the day had to begin and end — `spec 023` ------------------
+
+     The same three questions the figure asks, in the same order and with the
+     same controls, because they are the same shape of question: is there one
+     at all, is it one window or seven, and then the times. Anything else
+     would be a second idiom for a thing the reader has already learned. */
+  const perDayWindows = windowsPerDay(clause)
+  const sharedWindow = windowsOnWeekday(clause, judged[0] ?? 0)
+  const anyWindow =
+    hasWindow(sharedWindow.start) || hasWindow(sharedWindow.end) || perDayWindows
+  const [windowing, setWindowing] = useState(anyWindow)
+
+  /** Strip every window, shared and per-day, leaving the rest of the map. */
+  const clearWindows = (): Partial<StreakClause> => {
+    const days: Record<number, DayRequirement> = {}
+    let anything = false
+    WEEKDAY_ORDER.forEach((wd) => {
+      const entry = clause.days?.[wd]
+      if (!entry) return
+      const rest = { ...entry }
+      delete rest.startWindow
+      delete rest.endWindow
+      days[wd] = rest
+      if (Object.keys(rest).length) anything = true
+    })
+    return {
+      startWindow: undefined,
+      endWindow: undefined,
+      days: clause.days ? (anything ? days : undefined) : undefined,
+    }
+  }
+
+  const setWindowed = (on: boolean) => {
+    setWindowing(on)
+    if (!on) onChange(clearWindows())
+  }
+
+  /**
+   * One window for every day, or one per weekday.
+   *
+   * Turning it on hands every judged day the shared window to start from,
+   * exactly as the figures do — nothing about what the rule asks changes until
+   * you change a time. Turning it off keeps the first judged day's window as
+   * the shared one, so the answer you can still see is the one that survives.
+   */
+  const setWindowPerDay = (on: boolean) => {
+    if (on) {
+      const days = { ...clause.days }
+      judged.forEach((wd) => {
+        days[wd] = {
+          ...days[wd],
+          startWindow: sharedWindow.start,
+          endWindow: sharedWindow.end,
+        }
+      })
+      onChange({ days, startWindow: undefined, endWindow: undefined })
+      return
+    }
+    const first = windowsOnWeekday(clause, judged[0] ?? 0)
+    onChange({
+      ...clearWindows(),
+      startWindow: hasWindow(first.start) ? first.start : undefined,
+      endWindow: hasWindow(first.end) ? first.end : undefined,
+    })
+  }
+
+  /** A window is two times and either may be cleared on its own. */
+  const asWindow = (from?: string, to?: string): TimeWindow | undefined =>
+    from || to ? { ...(from ? { from } : {}), ...(to ? { to } : {}) } : undefined
+
+  const setDayWindow = (
+    wd: number,
+    side: "startWindow" | "endWindow",
+    window: TimeWindow | undefined,
+  ) =>
+    onChange({
+      days: { ...clause.days, [wd]: { ...clause.days?.[wd], [side]: window } },
+    })
+
+  /** This day's windows onto every day the condition judges — see
+   *  `copyToEveryDay`, which makes the same argument about the figures. */
+  const copyWindowToEveryDay = (wd: number) => {
+    const from = clause.days?.[wd] ?? {}
+    const days = { ...clause.days }
+    judged.forEach((d) => {
+      days[d] = {
+        ...days[d],
+        startWindow: from.startWindow,
+        endWindow: from.endWindow,
+      }
+    })
+    onChange({ days })
+  }
+
+  /** The two rows a shared window draws, and one cell of the per-day grid. */
+  const windowPair = (
+    window: TimeWindow,
+    onSet: (next: TimeWindow | undefined) => void,
+  ) => (
+    <TimeRangeField
+      start={window.from}
+      end={window.to}
+      onChange={(from, to) => onSet(asWindow(from, to))}
+      onClear={() => onSet(undefined)}
+    />
+  )
 
   return (
     <div className="space-y-2 w-full">
@@ -1649,6 +1771,121 @@ function WeekdayRow({
             )
           })}
         </div>
+        </div>
+      )}
+
+      {/* **And when it happened** — `spec 023`. Everything above this line is
+          *how much*; this is *when*, and the two are independent: a condition
+          may ask for two hours, or for a start before ten, or for both, and
+          each of the three is a rule people write. It sits after the figure
+          because a window qualifies the work rather than replacing it — the
+          same order the sentence reads them in. */}
+      {windows && (
+        <Row label={t("Clock")}>
+          <TwoWay<"off" | "on">
+            value={windowing ? "on" : "off"}
+            onChange={(v) => setWindowed(v === "on")}
+            options={[
+              {
+                id: "off",
+                label: t("Any time"),
+                tip: t("Nothing is asked about when the work happened"),
+              },
+              {
+                id: "on",
+                label: t("Within hours"),
+                tip: t(
+                  "The day's first start and last finish have to fall inside the hours you set",
+                ),
+              },
+            ]}
+          />
+        </Row>
+      )}
+
+      {windows && windowing && (
+        <Row label={t("Hours")}>
+          <TwoWay<"same" | "each">
+            value={perDayWindows ? "each" : "same"}
+            onChange={(v) => setWindowPerDay(v === "each")}
+            options={[
+              {
+                id: "same",
+                label: t("The same every day"),
+                tip: t("One pair of hours, on every day this condition judges"),
+              },
+              {
+                id: "each",
+                label: t("One per weekday"),
+                tip: t("Set the hours separately for each chosen day"),
+              },
+            ]}
+          />
+        </Row>
+      )}
+
+      {/* **Two rows, not one.** Beginning and finishing are two different
+          promises — *start by ten* and *stop by six* are each useful on their
+          own — and a single control for both would make you set two times you
+          did not mean in order to say one you did. Each is a range because
+          each has two walls: no earlier than, no later than. */}
+      {windows && windowing && !perDayWindows && (
+        <>
+          <Row label={t("Begin")}>
+            {windowPair(sharedWindow.start, (next) =>
+              onChange({ startWindow: next }),
+            )}
+          </Row>
+          <Row label={t("Finish")}>
+            {windowPair(sharedWindow.end, (next) =>
+              onChange({ endWindow: next }),
+            )}
+          </Row>
+        </>
+      )}
+
+      {windows && windowing && perDayWindows && (
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="grid grid-cols-[2rem_auto_auto_auto] items-center gap-x-2 gap-y-1 w-max max-w-full">
+            <span />
+            <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+              {t("Begin")}
+            </span>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-ink/35">
+              {t("Finish")}
+            </span>
+            <span />
+            {judged.map((wd) => {
+              const own = clause.days?.[wd] ?? {}
+              return (
+                <Fragment key={wd}>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
+                    {WEEKDAY_LABELS[wd]}
+                  </span>
+                  {windowPair(own.startWindow ?? {}, (next) =>
+                    setDayWindow(wd, "startWindow", next),
+                  )}
+                  {windowPair(own.endWindow ?? {}, (next) =>
+                    setDayWindow(wd, "endWindow", next),
+                  )}
+                  {judged.length > 1 ? (
+                    <Tip text={`Give every judged day ${WEEKDAY_LABELS[wd]}'s hours`}>
+                      <button
+                        type="button"
+                        onClick={() => copyWindowToEveryDay(wd)}
+                        aria-label={`Give every judged day ${WEEKDAY_LABELS[wd]}'s hours`}
+                        className={`${btnBase} p-1 rounded-md text-ink/25 hover:text-ink hover:bg-ink/5`}
+                      >
+                        <Copy size={11} />
+                      </button>
+                    </Tip>
+                  ) : (
+                    <span />
+                  )}
+                </Fragment>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

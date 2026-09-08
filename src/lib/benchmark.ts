@@ -38,7 +38,13 @@
    is claimed twice, because two figures on one Tuesday is not a goal.
 --------------------------------------------------------------- */
 
-import type { Project, StreakClause, StreakRule } from "../types/model"
+import type {
+  Day,
+  DayKey,
+  Project,
+  StreakClause,
+  StreakRule,
+} from "../types/model"
 import type { StreakContext } from "./customStreaks"
 import {
   boundsOnWeekday,
@@ -51,7 +57,7 @@ import {
   targetMeasure,
 } from "./customStreaks"
 import type { IsIgnored } from "../types/model"
-import { toKey } from "./date"
+import { fromKey, toKey } from "./date"
 import { WEEKDAY_ORDER } from "./date"
 import { t } from "./i18n"
 
@@ -181,9 +187,8 @@ export function benchmarkMinutes(
   isIgnored: IsIgnored = () => false,
   ctx: StreakContext = streakContext(project),
 ): number | null {
-  const rule = benchmarkRule(project, ctx)
-  if (!rule) return null
-  const clauses = ruleClauses(rule)
+  const meter = benchmarkMeter(project, ctx)
+  if (!meter) return null
 
   let total = 0
   for (const date of dates) {
@@ -191,13 +196,44 @@ export function benchmarkMinutes(
     const day = project.days[key]
     // An ignored day contributes nothing, exactly as it contributes no goal.
     if (!day || isIgnored(key, day)) continue
-    const clause = clauses.find((x) => covers(x, date.getDay()))
-    if (!clause) continue
-    // The weekday's own slots, like every other reader — a condition can
-            // restrict where the figure comes from differently on each day.
-            total += measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, date.getDay()))
+    total += meter(key, day)
   }
   return total
+}
+
+/**
+ * **One day, measured through the benchmark** — the same reading
+ * `benchmarkMinutes` sums, handed out one day at a time.
+ *
+ * A factory rather than a plain function because the rule and its conditions
+ * are found once and then asked about three hundred days: `benchmarkMinutes`
+ * over a year was resolving the nominated rule three hundred times to get the
+ * same answer.
+ *
+ * **Null when nothing is nominated**, which is the caller's cue to go on
+ * totalling everything — there is no promise to measure through, so there is
+ * nothing better to show. Every other reading in this file keeps the same
+ * silence for the same reason.
+ */
+export function benchmarkMeter(
+  project: Project,
+  ctx: StreakContext = streakContext(project),
+): ((dayKey: DayKey, day: Day | undefined) => number) | null {
+  const rule = benchmarkRule(project, ctx)
+  if (!rule) return null
+  const clauses = ruleClauses(rule)
+  return (dayKey, day) => {
+    if (!day) return 0
+    const weekday = fromKey(dayKey).getDay()
+    // **Per day through the condition that covers that weekday**, not through
+    // the first one: *three hours most days, ninety minutes on Thursday* is
+    // two conditions, and they may name different activities.
+    const clause = clauses.find((x) => covers(x, weekday))
+    if (!clause) return 0
+    // The weekday's own slots, like every other reader — a condition can
+    // restrict where the figure comes from differently on each day.
+    return measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, weekday))
+  }
 }
 
 /**

@@ -7,7 +7,6 @@ import {
   Flame,
   Hash,
   LayoutGrid,
-  Moon,
   Palette,
   Plus,
   Shapes,
@@ -41,7 +40,6 @@ import { Field } from '../ui/Field'
 import { IconGrid } from '../ui/IconGrid'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import { RenderIcon } from '../ui/icons'
-import { SwitchToggle } from '../ui/toggles'
 import { Tip } from '../ui/Tip'
 import { useModalDismiss } from '../ui/useModalDismiss'
 import { edgeFade, useScrollEdges } from '../ui/useScrollEdges'
@@ -57,6 +55,7 @@ import { DataTransfer } from './DataTransfer'
 
 import { usePalette } from "../ui/useTheme"
 export function SetupModal({
+  initialTab,
   settings,
   slots,
   activities,
@@ -86,6 +85,9 @@ export function SetupModal({
   onImport,
   isAdmin,
 }: {
+  /** Which tab to open on. Absent means Project, the way the button in
+   *  the top bar has always behaved. */
+  initialTab?: string
   settings: Settings
   slots: Slot[]
   activities: Activity[]
@@ -127,7 +129,12 @@ export function SetupModal({
 }) {
   const c = usePalette()
   const t = useT()
-  const [tab, setTab] = useState("details")
+  /* **Opened on a tab, when something asked for one.** The panels on the page
+     each know which tab configures them and hand it in, so the gear on the
+     shop's panel lands on Rewards rather than on Project. Read once, at mount,
+     which is all that is needed: `Leaving` unmounts this when it closes, so
+     every open is a fresh one and the next `initialTab` is read then. */
+  const [tab, setTab] = useState(initialTab || "details")
   const onBackdropClick = useModalDismiss(onClose)
   const panelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -633,10 +640,6 @@ function ProjectDetailsTab({
   const [projectIcon, setProjectIcon] = useState(
     settings.projectIcon ?? "Train",
   )
-  // Opt-in, so an existing project without the key stays as it was.
-  const [sleepEnabled, setSleepEnabled] = useState(
-    settings.sleepEnabled === true,
-  )
   const [startDate, setStartDate] = useState(
     settings.startDate || toKey(new Date()),
   )
@@ -658,7 +661,6 @@ function ProjectDetailsTab({
           ...settings,
           projectName,
           projectIcon,
-          sleepEnabled,
           startDate,
           endDate: endDate || null,
         }),
@@ -666,7 +668,7 @@ function ProjectDetailsTab({
     )
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName, projectIcon, sleepEnabled, startDate, endDate])
+  }, [projectName, projectIcon, startDate, endDate])
 
   return (
     <div className="space-y-5 font-mono text-sm">
@@ -723,25 +725,6 @@ function ProjectDetailsTab({
           what "enabled" means, and its target is where a total lives — so
           this tab no longer has anything to say about either. See the
           Counters tab and `spec 008`. */}
-      {/* No count to go with it, so it stands alone rather than heading an
-          input the way lessons and exams do. */}
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-ink/50">
-          <Moon size={12} /> Enable sleep tracking
-        </span>
-        <Tip
-          text={t(
-            "Log sleep on its own tab in the day editor, kept out of study totals",
-          )}
-        >
-          <SwitchToggle
-            checked={sleepEnabled}
-            onChange={setSleepEnabled}
-            label={t("Enable sleep tracking")}
-          />
-        </Tip>
-      </div>
-
       <Field label={t("Project start date")}>
         <DateField
           value={startDate}

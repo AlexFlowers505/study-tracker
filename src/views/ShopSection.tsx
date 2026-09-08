@@ -56,6 +56,7 @@ export function ShopSection({
   onBuy,
   onOpenAccount,
   onClose,
+  onSettings,
 }: {
   project: Project
   balance: Balance | null
@@ -64,6 +65,8 @@ export function ShopSection({
   /** Back to the account, which is where the arithmetic lives now. */
   onOpenAccount?: () => void
   onClose?: () => void
+  /** Opens Setup's Rewards tab — where the shelf is written. */
+  onSettings?: () => void
 }) {
   const c = usePalette()
   const t = useT()
@@ -91,6 +94,7 @@ export function ShopSection({
       }
       closeLabel={t("Hide the rewards")}
       onClose={onClose}
+      onSettings={onSettings}
     >
       {/* **One line, not four** — `spec 016`, part 4. The comment this block
           used to carry defended the *moment*: you look at an account when you

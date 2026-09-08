@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import type { MouseEvent as ReactMouseEvent } from "react"
 
 /**
@@ -8,8 +8,33 @@ import type { MouseEvent as ReactMouseEvent } from "react"
  */
 let openCount = 0
 
+/* Anything that has to get out of a modal's way subscribes here. A store
+   rather than a prop threaded down from `App`: the count already lives in
+   this module because every modal calls `useModalDismiss`, and the
+   alternative is `App` keeping a parallel boolean in step with six dialogs by
+   hand — which is a thing that goes wrong quietly, on the seventh. */
+const watchers = new Set<() => void>()
+const announce = () => watchers.forEach((fn) => fn())
+
+/**
+ * Is any modal open? For the few fixed things that float over the page and
+ * would otherwise float over a dialog as well.
+ */
+export const useModalOpen = (): boolean =>
+  useSyncExternalStore(
+    (fn) => {
+      watchers.add(fn)
+      return () => {
+        watchers.delete(fn)
+      }
+    },
+    () => openCount > 0,
+    () => false,
+  )
+
 const lock = () => {
   openCount += 1
+  announce()
   if (openCount > 1) return
   const { body } = document
   // The scrollbar vanishes with the overflow, and the page jumps sideways by
@@ -23,6 +48,7 @@ const lock = () => {
 
 const unlock = () => {
   openCount = Math.max(0, openCount - 1)
+  announce()
   if (openCount > 0) return
   const { body } = document
   body.style.overflow = body.dataset.prevOverflow || ""

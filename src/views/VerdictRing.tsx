@@ -33,9 +33,17 @@
    **Today is drawn as provisional, never as kept.** A rule like *no YouTube
    after six* is satisfied at nine in the morning by having done nothing yet,
    and drawing that as a closed green ring congratulates you for a day you have
-   not lived. So while the day is still running, a held arc is the kept colour
-   turned down and the centre figure stays neutral: the ring says *so far*,
-   which is the only thing anybody can honestly say before midnight.
+   not lived. So while the day is still running, a held arc is **dashed** and
+   the centre figure stays neutral: the ring says *so far*, which is the only
+   thing anybody can honestly say before midnight.
+
+   **The dashes need butt caps and a pattern read off the stroke**, and for a
+   while they had neither, so today's ring was drawn solid — indistinguishable
+   from a day already kept, which is the one thing the provisional state must
+   never look like. Both halves are in the note beside `dash` below; the short
+   version is that a round cap adds half a stroke to each end of every dash,
+   which at these weights ate the gaps whole, and that a dash shorter than the
+   stroke is thick reads as a chunk rather than as a broken line.
 
    It is a **drawing** and nothing else — the verdict, the streak and the
    balance are untouched. Making today genuinely unjudged would drop the
@@ -237,8 +245,29 @@ export function VerdictRing({
                Only what is *held* is provisional: a miss cannot be un-missed
                by the afternoon, and a freeze is already spent. */
             const notYet = provisional && reading.state === "met"
+            /* **Butt caps, and that is the whole of the bug this had.**
+               `strokeLinecap: round` adds a half-circle of radius `stroke / 2`
+               to *each* end of every dash, so it lengthens each dash by a full
+               stroke and shortens each gap by the same. At these weights the
+               gap went negative — 2.25px of gap less 3px of cap — and the caps
+               of neighbouring dashes overlapped into a continuous line. The
+               attribute said dashed and the ring drew solid, which is the one
+               failure a provisional state cannot afford: it looked exactly
+               like a day that was already kept.
+
+               It is also why the pattern cannot simply be widened while the
+               caps stay round. To end up with a dash longer than it is thick
+               you would need a negative dash length; round caps at this weight
+               can only ever give you *dots*. Butt caps are what let a dash be
+               a dash. */
+            /* **A dash has to be longer than the stroke is thick**, or it is
+               a chunk rather than a dash — which was the other half of the
+               complaint, and it is why the pattern is a multiple of the
+               stroke rather than a pair of constants. At 1.2 against 0.9 a
+               22px ring gets two dashes and a clear gap on a third of its
+               circumference, and a whole circle gets eight. */
             const dash = notYet
-              ? `${Math.max(stroke * 0.55, 1.5)} ${Math.max(stroke * 0.75, 2)}`
+              ? `${Math.max(stroke * 1.2, 3.5)} ${Math.max(stroke * 0.9, 2.5)}`
               : undefined
 
             return (
@@ -257,7 +286,6 @@ export function VerdictRing({
                     d={arcPath(size / 2, size / 2, r, mid, paced ? done : to)}
                     stroke={colourFor(reading.state)}
                     strokeDasharray={dash}
-                    strokeLinecap={notYet ? "round" : "butt"}
                   />
                 )}
               </g>

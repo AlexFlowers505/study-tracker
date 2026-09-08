@@ -12,12 +12,15 @@
    apart and told apart only by their glyph. Now the "+" opens this and the
    choice is a tab, where there is room to name it.
 
-   The tabs say **Activity, Tally, Check, Sleep** — the app's own list of the
-   things it records, three kinds of counter and the separate axis. They said
-   "Entry" and "Counter" for a while, from before an activity was a counter at
-   all, and by the end that row was drawing a distinction the rest of the app
-   had stopped making: an entry *is* an activity, and "counter" was two
-   different questions wearing one name.
+   The tabs say **Activity, Tally, Check** — the app's own list of the three
+   kinds of counter. They said "Entry" and "Counter" for a while, from before
+   an activity was a counter at all, and by the end that row was drawing a
+   distinction the rest of the app had stopped making: an entry *is* an
+   activity, and "counter" was two different questions wearing one name.
+
+   There was a fourth, Sleep, and it went with the axis (`spec 024`): a night
+   is an ordinary activity now, added through the first tab like anything
+   else.
 
    Answering a check from here is the odd one out and it still earns its
    place. There is no amount and no slot — you are answering it rather than
@@ -27,7 +30,15 @@
 --------------------------------------------------------------- */
 
 import { useCallback, useState } from "react"
-import { Clock, Hash, ListChecks, Moon, Play, Square, X } from "lucide-react"
+import {
+  Clock,
+  Hash,
+  ListChecks,
+  Pause,
+  Play,
+  Square,
+  X,
+} from "lucide-react"
 import type {
   Activity,
   CheckMark,
@@ -51,28 +62,28 @@ import {
 import {
   dateLocale, fromKey } from "../lib/date"
 import { makeId } from "../lib/id"
-import { fmtHours, nowTime, spanMinutes } from "../lib/time"
+import { fmtHours, minutesSince, nowTime, spanMinutes } from "../lib/time"
 import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from "../lib/theme"
 import { AutoTextarea, SegmentedControl } from "../ui/controls"
+import { EntryTime } from "../ui/EntryTime"
 import { RenderIcon } from "../ui/icons"
+import { Tip } from "../ui/Tip"
 import { TimeRangeField } from "../ui/TimeRangeField"
 import { useModalDismiss } from "../ui/useModalDismiss"
 
 import { usePalette } from "../ui/useTheme"
 
-/** The four things a day can hold — three kinds of counter, and sleep. */
-type AddKind = "activity" | "tally" | "check" | "sleep"
+/** The three kinds of counter a day can hold. */
+type AddKind = "activity" | "tally" | "check"
 
 export function QuickAddEntryModal({
   dateKey,
   slots,
   activities,
   units = [],
-  sleepEnabled,
   counters = {},
   checks = {},
   initialSlotId,
-  variant = "study",
   onCancel,
   onAdd,
   onAddCounter,
@@ -86,23 +97,13 @@ export function QuickAddEntryModal({
    * by the caller: which tabs exist is a question about this dialog.
    */
   units?: CounterUnit[]
-  /** Whether sleep is tracked at all. Off, the option is absent rather
-   *  than disabled — there is nothing behind it. */
-  sleepEnabled?: boolean
   counters?: DayCounters
   /** The day's stored check marks, so the tab can say what it is changing. */
   checks?: Record<string, CheckMark>
   /** Set when the dialog was opened from a particular slot's own "+". */
   initialSlotId?: string
-  /**
-   * Sleep is the same dialog with the top row removed: it is a flat list on
-   * the day with no slot and no activity. Sharing the component rather than
-   * copying it is what keeps the two ways of adding a time the same shape.
-   */
-  variant?: "study" | "sleep"
   onCancel: () => void
-  /** `slotId` is null for a sleep entry, which belongs to no slot. */
-  onAdd: (dateKey: DayKey, slotId: string | null, entry: StudyEntry) => void
+  onAdd: (dateKey: DayKey, slotId: string, entry: StudyEntry) => void
   onAddCounter?: (
     dateKey: DayKey,
     unitId: string,
@@ -122,10 +123,7 @@ export function QuickAddEntryModal({
   const { tallies, checks: checkUnits } = splitByKind(units)
   const canCount = tallies.length > 0 && !!onAddCounter
   const canCheck = checkUnits.length > 0 && !!onSetCheck
-  const [kind, setKind] = useState<AddKind>(
-    variant === "sleep" && sleepEnabled ? "sleep" : "activity",
-  )
-  const isSleep = kind === "sleep"
+  const [kind, setKind] = useState<AddKind>("activity")
   const counting = canCount && kind === "tally"
   const checking = canCheck && kind === "check"
   /* One tab per kind of thing a day holds. Absent, not disabled, for anything
@@ -135,7 +133,6 @@ export function QuickAddEntryModal({
     { id: "activity" as const, label: t("kind:Activity"), icon: Clock, on: true },
     { id: "tally" as const, label: t("kind:Tally"), icon: Hash, on: canCount },
     { id: "check" as const, label: t("kind:Check"), icon: ListChecks, on: canCheck },
-    { id: "sleep" as const, label: t("kind:Sleep"), icon: Moon, on: !!sleepEnabled },
   ].filter((k) => k.on)
   const [slotId, setSlotId] = useState(initialSlotId || slots[0]?.id)
   const [unitId, setUnitId] = useState(tallies[0]?.id)
@@ -149,24 +146,58 @@ export function QuickAddEntryModal({
   const [end, setEnd] = useState<TimeOfDay | undefined>(undefined)
   const [comment, setComment] = useState("")
   const [confirming, setConfirming] = useState(false)
+  /* **The pause is two pieces of state, and one of them is an instant.** The
+     minutes are what gets stored; `pauseFrom` is only ever the moment the
+     current stop began, and it is a moment rather than a time of day because
+     what the two clicks measure is the gap between them, not where either fell
+     on any clock. That is what makes pausing work while you fill in
+     yesterday: nothing here consults `start`. */
+  const [paused, setPaused] = useState(0)
+  const [pauseFrom, setPauseFrom] = useState<string | null>(null)
 
   const timed = !!(start && end)
+  const running = !!start && !end
   // A start with no end is a real, useful state — you logged the beginning and
   // will come back for the rest — so it saves as zero minutes rather than
   // being refused. Filling the end in later on the card recomputes it.
-  const total = timed ? spanMinutes(start, end) : 0
+  const total = timed ? Math.max(0, spanMinutes(start, end) - paused) : 0
+
+  /* Ending a running pause folds it into the total. Nothing else in the dialog
+     reads the clock for this, so the arithmetic happens in one place. */
+  const closePause = () => {
+    if (!pauseFrom) return
+    setPaused((n) => n + minutesSince(pauseFrom))
+    setPauseFrom(null)
+  }
 
   const requestCancel = useCallback(() => setConfirming(true), [])
   const onBackdropClick = useModalDismiss(requestCancel)
 
   const submit = () => {
-    onAdd(dateKey, isSleep ? null : slotId, {
-      id: makeId(isSleep ? "sleep" : "entry"),
-      ...(isSleep ? {} : { activity }),
-      minutes: total,
+    /* **A pause running at Add goes on running.** You pressed it because you
+       had stopped, and filing the entry is not coming back to it — the break
+       is still happening, and the card's own Resume is what ends it. Closing
+       it here would count the rest of that break as work, which is the exact
+       arithmetic this feature exists to stop doing by hand.
+
+       Unless the session is over, in which case there is nothing left for a
+       pause to sit inside and it is folded in — the same thing `stopNowPatch`
+       does when End is pressed on a paused entry. */
+    const finished = !!(start && end)
+    const heldFor =
+      pauseFrom && finished ? paused + minutesSince(pauseFrom) : paused
+    const minutes = finished
+      ? Math.max(0, spanMinutes(start, end) - heldFor)
+      : 0
+    onAdd(dateKey, slotId, {
+      id: makeId("entry"),
+      activity,
+      minutes,
       comment,
       ...(start ? { start } : {}),
       ...(end ? { end } : {}),
+      ...(heldFor > 0 ? { paused: heldFor } : {}),
+      ...(pauseFrom && !finished ? { pauseFrom } : {}),
     })
   }
 
@@ -185,13 +216,11 @@ export function QuickAddEntryModal({
           <div>
             <h2 className="font-sans font-extrabold uppercase tracking-tight text-sm">
               {t(
-                isSleep
-                  ? "New sleep"
-                  : counting
-                    ? "Add to a tally"
-                    : checking
-                      ? "Answer a check"
-                      : "New entry",
+                counting
+                  ? "Add to a tally"
+                  : checking
+                    ? "Answer a check"
+                    : "New entry",
               )}
             </h2>
             <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50">
@@ -241,7 +270,6 @@ export function QuickAddEntryModal({
             </div>
           )}
 
-          {/* Sleep has neither, so the row is absent rather than disabled. */}
           {checking ? (
             <CheckFields
               units={checkUnits}
@@ -266,7 +294,7 @@ export function QuickAddEntryModal({
             />
           ) : (
           <>
-          <div className={`grid grid-cols-2 gap-3 ${isSleep ? "hidden" : ""}`}>
+          <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="block text-[9px] font-mono uppercase tracking-widest text-ink/50 mb-1">
                 {t("Slot")}
@@ -321,24 +349,96 @@ export function QuickAddEntryModal({
                 setEnd(undefined)
               }}
             />
+            {/* **Glyphs with tooltips, not words.** There are three of these
+                once a session can be held — start, pause, stop — and three
+                labelled pills is a row wider than the dialog on a phone. The
+                shapes are the ones every player in the world uses, which is
+                the one vocabulary nobody has to be taught; the tooltip is
+                there for whoever wants it spelled out.
+
+                **The hold is drawn solid.** Resume is a play triangle and so
+                is Start now, and two identical outlines side by side is the
+                one thing a tooltip cannot fix — you would have to hover to
+                find out which. Circling the hold was the first answer and it
+                cost the glyph a third of its pixels to the ring, which at
+                twelve is exactly what you cannot spare.
+
+                **Every one of them is solid, and Start now steps aside.**
+                Drawing that one outlined was the second answer to the same
+                collision and it was the wrong half to sacrifice: an outlined
+                glyph beside two filled ones does not read as *a different kind
+                of control*, it reads as the one that is disabled — and it was
+                the button you press first. So they are all filled, and the
+                collision is solved where it actually lives: **Start now is
+                absent once there is a session running.** Its whole job is to
+                fill in a start, and with one set the time field's own `now`
+                is there to correct it. No state ever draws two triangles. */}
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setStart(nowTime())}
-                className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
-              >
-                <Play size={9} /> Start now
-              </button>
-              <button
-                type="button"
-                onClick={() => setEnd(nowTime())}
-                className={`${btnBase} ${BTN_SOFT} flex items-center gap-1 py-1.5`}
-              >
-                <Square size={9} /> {t("End now")}
-              </button>
+              {!running && (
+                <Tip text={t("Start this session now")}>
+                  <button
+                    type="button"
+                    onClick={() => setStart(nowTime())}
+                    className={`${btnBase} ${BTN_SOFT} flex items-center justify-center p-1.5`}
+                  >
+                    <Play size={12} fill="currentColor" />
+                  </button>
+                </Tip>
+              )}
+              {/* Only while there is a session to hold: a stretch that already
+                  has both ends is not one you can stop in the middle of. One
+                  button, and which one it is says which state you are in. */}
+              {running &&
+                (pauseFrom ? (
+                  <Tip text={t("Resume this session")}>
+                    <button
+                      type="button"
+                      onClick={closePause}
+                      className={`${btnBase} flex items-center justify-center p-1.5 rounded-lg`}
+                      style={{
+                        color: c.accent,
+                        backgroundColor: `${c.accent}1F`,
+                      }}
+                    >
+                      <Play size={12} fill="currentColor" />
+                    </button>
+                  </Tip>
+                ) : (
+                  <Tip text={t("Pause this session")}>
+                    <button
+                      type="button"
+                      onClick={() => setPauseFrom(new Date().toISOString())}
+                      className={`${btnBase} flex items-center justify-center p-1.5 rounded-lg`}
+                      style={{ color: c.warn, backgroundColor: `${c.warn}1F` }}
+                    >
+                      <Pause size={12} fill="currentColor" />
+                    </button>
+                  </Tip>
+                ))}
+              <Tip text={t("End now")}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closePause()
+                    setEnd(nowTime())
+                  }}
+                  className={`${btnBase} ${BTN_SOFT} flex items-center justify-center p-1.5`}
+                >
+                  <Square size={12} fill="currentColor" />
+                </button>
+              </Tip>
             </div>
             <span className="text-[10px] font-mono text-ink/45 whitespace-nowrap">
-              {timed ? fmtHours(total) : t(start ? "running" : "no time set")}
+              {timed ? (
+                <EntryTime
+                  bare
+                  duration={fmtHours(total)}
+                  paused={paused}
+                  running={!!pauseFrom}
+                />
+              ) : (
+                t(pauseFrom ? "on pause" : start ? "running" : "no time set")
+              )}
             </span>
           </div>
 
@@ -394,7 +494,7 @@ export function QuickAddEntryModal({
           <div className={`${CARD} w-full max-w-[300px] p-5`}>
             <p className="text-xs font-mono text-ink/80 mb-4">
               Discard this new{" "}
-              {isSleep ? "sleep entry" : checking ? "answer" : "entry"}?
+              {checking ? "answer" : "entry"}?
             </p>
             <div className="flex justify-end gap-2">
               <button

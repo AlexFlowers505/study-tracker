@@ -50,6 +50,10 @@ export function diffEntry(
   field("start", before.start, after.start)
   field("end", before.end, after.end)
   field("minutes", before.minutes, after.minutes)
+  // Worth a line of its own even though it always moves `minutes` with it:
+  // "45 → 30" and "paused 0 → 15" are the same edit told two ways, and only
+  // the second one says why.
+  field("paused", before.paused, after.paused)
   if (entryActivity(before) !== entryActivity(after)) {
     field(
       "activity",
@@ -99,23 +103,6 @@ export function diffDay(
       if (!b.has(id))
         details.push(`− ${slot.label}: ${entryLabel(entry, activities)}`)
     })
-  })
-
-  const beforeSleep = indexById(before?.sleep)
-  const afterSleep = indexById(after?.sleep)
-  afterSleep.forEach((entry, id) => {
-    const prev = beforeSleep.get(id)
-    if (!prev) {
-      details.push(`+ Sleep: ${entryLabel(entry, activities)}`)
-      return
-    }
-    diffEntry(prev, entry, activities).forEach((line) =>
-      details.push(`~ Sleep: ${line}`),
-    )
-  })
-  beforeSleep.forEach((entry, id) => {
-    if (!afterSleep.has(id))
-      details.push(`− Sleep: ${entryLabel(entry, activities)}`)
   })
 
   // Walks the unit list rather than naming two fields. Missing this is how a

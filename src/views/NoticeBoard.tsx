@@ -32,7 +32,7 @@
    spent and still owed, and *still owed* about last Tuesday is not a sentence.
 --------------------------------------------------------------- */
 
-import { Bell } from "lucide-react"
+import { ArrowDownRight, Bell } from "lucide-react"
 import type { Notice, NoticeLevel } from "../lib/notices"
 import { LEVELS, countByLevel, levelColour } from "../lib/notices"
 import { t, useT } from "../lib/i18n"
@@ -87,19 +87,35 @@ const levelTip = (level: NoticeLevel): string =>
  * its title, so nothing about urgency is lost.
  *
  * One device, no extra words, and it happens to say the true thing twice
- * over: a rule block is a button into that rule's panel and wears an edge
+ * over: a rule block leads to that rule's panel and wears an edge
  * accordingly, and a fixed one has nowhere to go. The four bells repeating
  * down the recessed run are not a shortage of glyphs either — they are the
  * board speaking about itself, which is exactly what those four are.
+ *
+ * **The way through is one small button, not the whole block.** The block was
+ * the button, which was cheap and had two faults. It opened the rule's panel
+ * and left you where you were, so on a page with the board, the filter and
+ * the shop open, the thing you had just asked for was two screens below the
+ * fold and gave no sign it had happened at all. And a block that is a button
+ * has nowhere to put a second one, which is what the fix needs.
+ *
+ * So the block is a block, and the corner carries an arrow that opens the
+ * rule **and takes you to it**. Quiet on purpose — the neutral disc the panel
+ * chrome wears, not the level's colour: there can be five to nine notices on
+ * this board, and nine bright buttons would out-shout the very colours the
+ * board exists to make you look at. The arrow points down and to the right
+ * because that is where it goes: the composite's panel is always below the
+ * board.
  */
 function NoticeBlock({
   notice,
   active,
-  onClick,
+  onGo,
 }: {
   notice: Notice
   active: boolean
-  onClick?: () => void
+  /** Opens the rule's panel and scrolls to it. Absent on the fixed sources. */
+  onGo?: () => void
 }) {
   const c = usePalette()
   const tint = levelColour(notice.level, c)
@@ -115,11 +131,27 @@ function NoticeBlock({
           )}
         </span>
         <span
-          className="text-[11px] font-mono font-bold uppercase tracking-wide truncate"
+          className="text-[11px] font-mono font-bold uppercase tracking-wide truncate flex-1 min-w-0"
           style={{ color: tint }}
         >
           {notice.title}
         </span>
+        {onGo && (
+          <Tip text={t("Open this rule and go to it")}>
+            <button
+              type="button"
+              onClick={onGo}
+              aria-pressed={active}
+              className={`${btnBase} shrink-0 -mr-1 p-1 rounded-full ${
+                active
+                  ? "text-ink/70 bg-ink/[0.12]"
+                  : "text-ink/35 bg-ink/[0.05] hover:text-ink hover:bg-ink/[0.12]"
+              }`}
+            >
+              <ArrowDownRight size={13} />
+            </button>
+          </Tip>
+        )}
       </div>
       {/* A line each, not a dot between them: two conditions are two things to
           look at, and running them together behind a separator made the reader
@@ -145,22 +177,10 @@ function NoticeBlock({
         backgroundColor: `${tint}14`,
         boxShadow: `inset 0 0 0 1px ${tint}${active ? "AA" : "55"}`,
       }
-  if (!onClick)
-    return (
-      <div className="w-full rounded-2xl px-3.5 py-2.5" style={style}>
-        {inner}
-      </div>
-    )
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      style={style}
-      className={`${btnBase} w-full text-left rounded-2xl px-3.5 py-2.5 hover:brightness-105`}
-    >
+    <div className="w-full rounded-2xl px-3.5 py-2.5" style={style}>
       {inner}
-    </button>
+    </div>
   )
 }
 
@@ -348,7 +368,7 @@ export function NoticeBoard({
                             active={
                               !!notice.ruleId && activeRule === notice.ruleId
                             }
-                            onClick={
+                            onGo={
                               notice.ruleId
                                 ? () => onOpenRule(notice.ruleId as string)
                                 : undefined

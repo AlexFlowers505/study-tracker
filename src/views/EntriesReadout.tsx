@@ -4,11 +4,16 @@
 
 import { useState } from "react"
 import type { CSSProperties, ReactNode } from "react"
-import { MessageSquare, Moon, Plus, Square } from "lucide-react"
+import {
+  MessageSquare,
+  Pause,
+  Play,
+  Plus,
+  Square,
+} from "lucide-react"
 import type {
   Activity,
   CounterUnit,
-  SleepEntry,
   Slot,
   StudyEntry,
 } from "../types/model"
@@ -17,13 +22,25 @@ import type { DayCounters } from "../lib/counters"
 import { getById } from "../lib/id"
 import { fmtHours, nowTime, startedPreviousDay } from "../lib/time"
 import { btnBase, cardSmall, cardTiny } from "../lib/theme"
+import { EntryTime } from "../ui/EntryTime"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { EntryEditRow } from "./EntryEditRow"
 import { SlotCounterRows } from "./SlotCounters"
 
 import { usePalette } from "../ui/useTheme"
-import { entryActivity } from "../lib/entries"
+import {
+  entryActivity,
+  isPaused,
+  pausePatch,
+  pausedMinutes,
+  resumePatch,
+  stopNowPatch,
+} from "../lib/entries"
+/** The three controls on a running session, all the same shape. */
+const runBtn = (roomy?: boolean) =>
+  `${btnBase} shrink-0 flex items-center justify-center p-1 rounded-full ${cardTiny(roomy)}`
+
 /**
  * A timed entry says both things at once: when it happened and how long it
  * lasted. Reading one off the other in your head is the sort of arithmetic
@@ -33,12 +50,34 @@ import { entryActivity } from "../lib/entries"
  * missing end rather than collapsed to the duration. A session you have
  * started but not finished used to read as a bare "0m", which threw away the
  * one fact it did know.
+ *
+ * Where a pause sits between the two the sum stops working on its face, so
+ * `EntryTime` marks it — see there for why the mark is a star and the figure
+ * is a tooltip.
  */
-const entryTimeLabel = (e: StudyEntry | SleepEntry) => {
-  const duration = e.start && e.end ? fmtHours(e.minutes) : `${e.minutes}m`
-  if (!e.start && !e.end) return duration
+function EntryTimeLabel({
+  e,
+  className,
+}: {
+  e: StudyEntry
+  className?: string
+}) {
+  const timed = !!(e.start && e.end)
+  const shared = {
+    paused: pausedMinutes(e),
+    running: isPaused(e),
+    className,
+  }
+  if (!e.start && !e.end)
+    return <EntryTime bare duration={`${e.minutes}m`} {...shared} />
   const prefix = startedPreviousDay(e) ? "−1d " : ""
-  return `${prefix}${e.start ?? "…"}–${e.end ?? "…"} (${duration})`
+  return (
+    <EntryTime
+      range={`${prefix}${e.start ?? "…"}–${e.end ?? "…"}`}
+      duration={timed ? fmtHours(e.minutes) : `${e.minutes}m`}
+      {...shared}
+    />
+  )
 }
 
 /**
@@ -54,7 +93,7 @@ const entryTimeLabel = (e: StudyEntry | SleepEntry) => {
  * comment never reaches that strip.
  */
 function ReadoutEntry({
-  timeLabel,
+  entry,
   icon,
   label,
   comment,
@@ -64,9 +103,12 @@ function ReadoutEntry({
   defaultOpen,
   onEdit,
   onEndNow,
+  onPause,
+  onResume,
   roomy,
 }: {
-  timeLabel: string
+  /** The line's own entry — it draws its time, and the pause mark on it. */
+  entry: StudyEntry
   icon?: ReactNode
   label?: string
   comment?: string
@@ -84,6 +126,15 @@ function ReadoutEntry({
    * meaning to.
    */
   onEndNow?: () => void
+  /**
+   * The same argument one step further in. Stopping for ten minutes in the
+   * middle of a session used to be recorded by splitting the entry in two, or
+   * by writing yourself a note to subtract it later — both of which are the
+   * app making you do its arithmetic. Exactly one of these two is ever
+   * present, and which one says which state the session is in.
+   */
+  onPause?: () => void
+  onResume?: () => void
   roomy?: boolean
 }) {
   const c = usePalette()
@@ -123,7 +174,52 @@ function ReadoutEntry({
         style={{ ...rail, ...(sticky ? surface : {}) }}
       >
         <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-ink/70`}>
-          <span className="text-ink/45 shrink-0">{timeLabel}</span>
+          <EntryTimeLabel e={entry} className="text-ink/45 shrink-0" />
+          {/* **Glyphs, not words, and a tooltip each.** There are three of
+              them now — pause, resume, stop — and three little pills of
+              uppercase type is a sentence to read on a line that already
+              carries a time, an activity and sometimes a comment button. The
+              icons are the ones every player in the world uses, so nobody has
+              to be taught them; the tooltip is there for the one person who
+              does.
+
+              **The hold is drawn solid, not circled.** The circled pair was
+              the first answer to a real problem — a bare play triangle
+              already means *start now* in the add dialog, and a second one
+              beside it has to be hovered to be told apart — and it solved it
+              at the cost of the thing itself: a glyph inscribed in a ring is
+              the same nine pixels with a third of them spent on the ring, and
+              at this size the two pause bars all but disappeared. Filling
+              says *this one is the state you are in* far louder than a circle
+              did, and it costs the drawing nothing. */}
+          {onPause && (
+            <Tip text={t("Pause this session")}>
+              <button
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onPause()
+                }}
+                className={runBtn(roomy)}
+                style={{ color: c.warn, backgroundColor: `${c.warn}1F` }}
+              >
+                <Pause size={10} fill="currentColor" />
+              </button>
+            </Tip>
+          )}
+          {onResume && (
+            <Tip text={t("Resume this session")}>
+              <button
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onResume()
+                }}
+                className={runBtn(roomy)}
+                style={{ color: c.accent, backgroundColor: `${c.accent}1F` }}
+              >
+                <Play size={10} fill="currentColor" />
+              </button>
+            </Tip>
+          )}
           {onEndNow && (
             <Tip text={t("End this session now")}>
               <button
@@ -131,10 +227,10 @@ function ReadoutEntry({
                   ev.stopPropagation()
                   onEndNow()
                 }}
-                className={`${btnBase} shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full ${cardTiny(roomy)} font-mono uppercase tracking-wide`}
+                className={runBtn(roomy)}
                 style={{ color: c.goalMet, backgroundColor: `${c.goalMet}1F` }}
               >
-                <Square size={7} /> End now
+                <Square size={9} fill="currentColor" />
               </button>
             </Tip>
           )}
@@ -184,9 +280,8 @@ function ReadoutEntry({
  * half-edited state as if it were the original.
  */
 export interface EntrySnapshot {
-  /** Absent for a sleep entry. */
   slotId?: string
-  entry: StudyEntry | SleepEntry
+  entry: StudyEntry
 }
 
 /**
@@ -220,16 +315,12 @@ export interface ReadoutEditing {
   ) => void
   onMoveSlot: (fromSlot: string, entryId: string, toSlot: string) => void
   onDeleteStudy: (slotId: string, entryId: string) => void
-  onChangeSleep: (entryId: string, patch: Partial<SleepEntry>) => void
-  onDeleteSleep: (entryId: string) => void
 }
 
 export function EntriesReadout({
   slots,
   activities,
   cells,
-  sleep = [],
-  sleepEnabled = false,
   scrollable = false,
   surface,
   commentsOpen = true,
@@ -241,8 +332,6 @@ export function EntriesReadout({
   slots: Slot[]
   activities: Activity[]
   cells: Record<string, StudyEntry[]>
-  sleep?: SleepEntry[]
-  sleepEnabled?: boolean
   scrollable?: boolean
   surface?: CSSProperties
   commentsOpen?: boolean
@@ -257,22 +346,14 @@ export function EntriesReadout({
   /** Full-width card — see `cardTiny` / `cardSmall`. */
   roomy?: boolean
 }) {
-  const c = usePalette()
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
-  // Its own group, never folded into a slot: sleep is a separate axis and must
-  // not read as study time.
-  const sleepEntries = sleepEnabled ? sleep : []
-  const sleepMinutes = sleepEntries.reduce(
-    (a, e) => a + (Number(e.minutes) || 0),
-    0,
-  )
   // A slot can hold counters and no sessions — three lessons logged in the
   // morning without a timed entry. The list has to appear for those too, or
   // the count would be invisible outside the day dialog.
   const hasCounters = Object.values(slotCounters?.counters || {}).some((bySlot) =>
     Object.values(bySlot).some((n) => n > 0),
   )
-  if (!hasAny && !sleepEntries.length && !hasCounters) return null
+  if (!hasAny && !hasCounters) return null
   // The height cap comes off while a form is open. A week card gives the list
   // 16rem, which is plenty for reading and not enough to edit inside without
   // the comment box and the buttons under it disappearing below the fold.
@@ -289,70 +370,6 @@ export function EntriesReadout({
       // used to get was dropped rather than made responsive.
       className={`space-y-2.5 ${capped ? "max-h-64 overflow-y-auto pr-1" : ""}`}
     >
-      {/* First, not last. The night belongs to the morning of this day, so it
-          comes before the studying that followed it — listed underneath, it
-          read as "and then I went to sleep", which is the wrong way round. */}
-      {sleepEntries.length > 0 && (
-        <div>
-          <div
-            className={`flex items-center gap-1.5 ${
-              capped ? "sticky top-0 z-[2] h-6 pb-1 box-border" : "mb-1"
-            }`}
-            style={stickyStyle}
-          >
-            <span
-              className={`${cardTiny(roomy)} font-mono font-bold`}
-              style={{ color: c.sleep }}
-            >
-              {fmtHours(sleepMinutes)}
-            </span>
-            <Moon size={10} style={{ color: c.sleep }} />
-            <span
-              className={`${cardTiny(roomy)} uppercase tracking-widest font-mono font-bold truncate`}
-              style={{ color: c.sleep }}
-            >
-              Slept into this day
-            </span>
-          </div>
-          <div>
-            {sleepEntries.map((e) =>
-              editing?.entryId === e.id ? (
-                <EntryEditRow
-                  key={e.id}
-                  entry={e}
-                  accent={c.sleep}
-                  onChange={(patch) => editing.onChangeSleep(e.id, patch)}
-                  onDelete={() => {
-                    editing.onDeleteSleep(e.id)
-                    editing.onClose()
-                  }}
-                  onCancel={editing.onCancel}
-                  onClose={editing.onClose}
-                />
-              ) : (
-                <ReadoutEntry
-                  key={e.id}
-                  timeLabel={entryTimeLabel(e)}
-                  comment={e.comment}
-                  borderColor={`${c.sleep}30`}
-                  onEndNow={
-                    editing && e.start && !e.end
-                      ? () => editing.onChangeSleep(e.id, { end: nowTime() })
-                      : undefined
-                  }
-                  sticky={capped}
-                  surface={stickyStyle}
-                  defaultOpen={commentsOpen}
-                  roomy={roomy}
-                  onEdit={
-                    editing ? () => editing.onOpen(e.id, { entry: e }) : undefined
-                  }
-                />
-              ),
-            )}
-          </div>
-        </div>
-      )}
       {slots.map((slot) => {
         const entries = cells[slot.id] || []
         const slotHasCounters = Object.values(slotCounters?.counters || {}).some(
@@ -463,10 +480,13 @@ export function EntriesReadout({
                   )
                 }
                 const cat = getById(activities, entryActivity(e))
+                // A session with a beginning and no end yet — the only state
+                // in which stopping, pausing and resuming mean anything.
+                const running = !!e.start && !e.end
                 return (
                   <ReadoutEntry
                     key={e.id}
-                    timeLabel={entryTimeLabel(e)}
+                    entry={e}
                     icon={
                       <RenderIcon
                         name={cat.iconName}
@@ -478,11 +498,32 @@ export function EntriesReadout({
                     comment={e.comment}
                     borderColor={`${slot.color}30`}
                     onEndNow={
-                      editing && e.start && !e.end
+                      editing && running
                         ? () =>
-                            editing.onChangeStudy(slot.id, e.id, {
-                              end: nowTime(),
-                            })
+                            editing.onChangeStudy(
+                              slot.id,
+                              e.id,
+                              stopNowPatch(e, nowTime()),
+                            )
+                        : undefined
+                    }
+                    /* Only one of the two is ever handed down, so the line
+                       shows the act that is available rather than a pair
+                       where one refuses when pressed. */
+                    onPause={
+                      editing && running && !isPaused(e)
+                        ? () =>
+                            editing.onChangeStudy(slot.id, e.id, pausePatch())
+                        : undefined
+                    }
+                    onResume={
+                      editing && running && isPaused(e)
+                        ? () =>
+                            editing.onChangeStudy(
+                              slot.id,
+                              e.id,
+                              resumePatch(e),
+                            )
                         : undefined
                     }
                     sticky={capped}

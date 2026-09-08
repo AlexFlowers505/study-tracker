@@ -192,7 +192,7 @@ export type TimeOfDay = string
 export type DayKey = string
 
 /**
- * Study time and sleep share a shape. `minutes` stays the authoritative
+ * Every logged stretch has this shape. `minutes` stays the authoritative
  * number even when both times are set — `spanMinutes` derives it, but what
  * was stored is what counts.
  */
@@ -202,9 +202,37 @@ export interface TimeEntry {
   comment?: string
   start?: TimeOfDay
   end?: TimeOfDay
+  /**
+   * **How long the session was paused for**, in minutes — `spec 020`.
+   *
+   * One number however many times you stopped. Three breaks of five minutes
+   * are stored as fifteen, because what the entry is for is how long the work
+   * took, and *when* inside the session you stopped is a fact nobody has ever
+   * gone back to look at. Keeping a list of intervals would also make the
+   * pause a second axis of time to draw, edit and reconcile with the first.
+   *
+   * It is a **duration and never a pair of times**, which is what lets it work
+   * on an entry logged after the fact: pausing while filling in yesterday
+   * measures the gap between the two clicks and nothing else, so the figure
+   * means the same thing whatever `start` says.
+   *
+   * `minutes` is the span **less** this, floored at nought — see
+   * `withDerivedMinutes`. On the five-minute grid, like every other time the
+   * app fills in for you.
+   */
+  paused?: number
+  /**
+   * The instant the pause running right now began, as an ISO string. Present
+   * only while one is running, so it is also the answer to *is this paused*.
+   *
+   * A moment rather than a time of day: a pause can cross midnight, and this
+   * has to survive a reload, which a `"HH:MM"` could not do without inventing
+   * the date it belonged to.
+   */
+  pauseFrom?: string
 }
 
-/** Study time carries an activity; sleep has neither slot nor activity. */
+/** A logged stretch of time, filed under an activity. */
 export interface StudyEntry extends TimeEntry {
   /**
    * What the time went on — an id from `Project.activities`.
@@ -230,11 +258,21 @@ export type SleepEntry = TimeEntry
 
 /**
  * A day holds two independent lists. `cells` is study time, keyed by slot,
- * and every figure in the app comes from it. `sleep` is a separate axis and
- * must never reach a breakdown, a range stat or a goal.
+ * and every figure in the app comes from it. `sleep` is the column nights
+ * used to live in, and is empty everywhere `migrations/021` has run.
  */
 export interface Day {
   cells?: Record<string, StudyEntry[]>
+  /**
+   * **Nights, before `spec 024` moved them into `cells`.**
+   *
+   * @deprecated Sleep is an ordinary activity now. `sleepMove.ts` folds
+   * anything still here into the day's cells as it loads, so the deploy and
+   * `migrations/021` could happen in either order; once that migration has run
+   * everywhere this is empty on every row and the fold is a no-op. Left in the
+   * type, and the column left in the table, because an upgrade throws nothing
+   * away — the same treatment `lessons` and `exam` got.
+   */
   sleep?: SleepEntry[]
   /**
    * `unitId -> slotId -> value`. Three lessons can be two in the morning and
@@ -342,24 +380,12 @@ export type StreakOp = "atLeast" | "atMost"
  *   no id, and the one that makes the project's own daily goal expressible as
  *   a streak of your own.
  */
-/**
- * What a condition can point at.
- *
- * `sleep` is the second kind with no id — there is only one of it, like
- * `time` — and it is what lets a promise be made about sleep **without**
- * sleep becoming an ordinary activity (`spec 019`). Making it one would have
- * bought a streak for free and cost every total in the app about eight hours
- * a day, plus ten separate readers each needing their own answer to *do I
- * want sleep here*. One branch in `minutesOn` is the cheaper side of that
- * trade by a wide margin.
- */
 export type StreakTargetKind =
   | "unit"
   | "activity"
   | "category"
   | "tag"
   | "time"
-  | "sleep"
 
 export interface StreakTarget {
   kind: StreakTargetKind
@@ -396,6 +422,33 @@ export interface StreakTarget {
  * the "different slots on different days" case, which is rare enough that
  * nothing has to carry it unless it is used.
  */
+/**
+ * **When something had to happen** — `spec 023`.
+ *
+ * A pair of walls on one moment. `from` is *no earlier than*, `to` is *no
+ * later than*, and either may be absent, which is that side unwalled. A
+ * condition carries two of these: one for when the day's work **began**, one
+ * for when it **finished**.
+ *
+ * Times, not durations, and that is the whole point of it. Everything a rule
+ * could say until now was about *how much* — two hours of lessons, at most
+ * three Pinterest. None of it could say *by ten in the morning*, which is
+ * half of what a routine is.
+ *
+ * **It constrains when the work happened, not whether it happened.** A day
+ * with nothing counted on it has no beginning to be too late, so it breaks
+ * nothing here — asserting a failure from missing data is what this app
+ * refuses everywhere else, and it is why an unanswered check is not a failed
+ * check. Pair a window with a floor when you want both; that is one condition
+ * and it is what the form draws.
+ */
+export interface TimeWindow {
+  /** No earlier than. Absent leaves that side open. */
+  from?: TimeOfDay
+  /** No later than. Absent leaves that side open. */
+  to?: TimeOfDay
+}
+
 export interface DayRequirement {
   min?: number
   max?: number
@@ -414,6 +467,18 @@ export interface DayRequirement {
    * case and stays a single list rather than seven copies of one.
    */
   slotIds?: string[]
+  /**
+   * When this weekday's work had to begin and end — `spec 023`.
+   *
+   * The per-day sibling of `StreakClause.startWindow` / `endWindow`, and a
+   * *fourth* independent answer this map now carries. Every one of them has to
+   * be asked about separately (`windowsPerDay`, beside `figuresPerDay` and
+   * `slotFiguresPerDay`) or one silently speaks for another — a map that says
+   * which slots Tuesday counts must not blank Tuesday's window any more than
+   * it may blank Tuesday's figure.
+   */
+  startWindow?: TimeWindow
+  endWindow?: TimeWindow
 }
 
 /**
@@ -455,6 +520,26 @@ export interface StreakClause {
   min?: number
   /** The ceiling: how much there may be at most. Absent means no ceiling. */
   max?: number
+  /**
+   * **When the day's work had to begin** — `spec 023`. See `TimeWindow`.
+   *
+   * Read against the **earliest start** among the entries this condition
+   * counts, which is the sentence a person means: *begin by ten* is about
+   * when you sat down, not about every time you sat down. Its sibling
+   * `endWindow` is read against the **latest end** for the same reason.
+   *
+   * Time targets only. A tally has no clock on it, and a **sleep** target is
+   * measured on the rotated 18:00 clock where "earlier" means something else
+   * entirely — a window there needs its own thinking, and until it has some it
+   * is not offered and not read.
+   *
+   * Overridden per weekday by `DayRequirement.startWindow`, exactly as the
+   * figure is — through `windowsOnWeekday`, never by reading either field
+   * directly.
+   */
+  startWindow?: TimeWindow
+  /** **When it had to finish.** The sibling of `startWindow`; see there. */
+  endWindow?: TimeWindow
   /** @deprecated One bound at a time. Read through `clauseBounds()`. */
   op?: StreakOp
   /** @deprecated The number `op` pointed at. Read through `clauseBounds()`. */
@@ -1018,7 +1103,6 @@ export interface Settings {
   /** @deprecated see `totalLessons` */
   examsEnabled?: boolean
   goalsEnabled: boolean
-  sleepEnabled: boolean
   startDate: DayKey | null
   endDate: DayKey | null
   projectName: string

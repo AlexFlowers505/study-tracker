@@ -28,13 +28,25 @@ export function computeOverviewStats(
   slots: Slot[],
   startDate: Date,
   endDateCutoff: Date,
+  /**
+   * How much of a day counts towards the headline hours. Absent means every
+   * minute logged; the callers hand in the benchmark rule's own reading when
+   * one is nominated, so the figure answers *how did the period go* rather
+   * than *how thorough is the log* — see `benchmarkMeter`.
+   *
+   * **Only the hours.** `activeDays` and the empty days it implies stay on the
+   * raw breakdown: a day you wrote something on is not an empty day, whatever
+   * the benchmark thinks of what you wrote, and "empty" has always meant
+   * nothing recorded.
+   */
+  measure?: (key: DayKey, day: Day | undefined) => number,
 ): OverviewTotals {
   let totalMinutes = 0
   let activeDays = 0
   keys.forEach((k) => {
     const { total } = dayBreakdown(days[k], slots)
     if (total > 0) activeDays += 1
-    totalMinutes += total
+    totalMinutes += measure ? measure(k, days[k]) : total
   })
 
   const daysSinceStart = Math.max(daysBetween(startDate, endDateCutoff) + 1, 1)

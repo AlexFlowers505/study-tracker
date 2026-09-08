@@ -32,6 +32,7 @@ import type { LucideIcon } from "lucide-react"
 import { useT } from "../lib/i18n"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
+import { useModalOpen } from "../ui/useModalDismiss"
 import { usePalette } from "../ui/useTheme"
 
 export interface NavEntry {
@@ -50,6 +51,14 @@ export function PageNav({ entries }: { entries: NavEntry[] }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement | null>(null)
+  /* **Absent while a dialog is up.** It is fixed to the corner of the
+     viewport, so it sat on top of the quick-add form — on a phone, directly
+     over the buttons at the foot of it — offering to take you to a section of
+     a page you cannot see and cannot scroll. Nothing it does is any use
+     while a modal is open: every entry points at the page underneath.
+     Absent rather than merely behind, because a button you can see through a
+     backdrop and cannot press is worse than one that is not there. */
+  const modalOpen = useModalOpen()
 
   /* Escape and a click outside, the two ways anything here closes. No scroll
      lock: `useModalDismiss` takes one, and this is not a modal — the whole
@@ -91,6 +100,8 @@ export function PageNav({ entries }: { entries: NavEntry[] }) {
     })
     setOpen(false)
   }
+
+  if (modalOpen) return null
 
   return createPortal(
     <div

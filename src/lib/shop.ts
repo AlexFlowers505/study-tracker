@@ -67,6 +67,23 @@ export const purchaseHistory = (project: Project): Purchase[] =>
     b.boughtAt.localeCompare(a.boughtAt),
   )
 
+/**
+ * **Which of the shelf's rewards have ever been taken.**
+ *
+ * Distinct shelf items, not purchases: a reward can be taken again and again,
+ * so counting purchases would climb past the size of the shelf and give the
+ * badge a fraction bigger than one. Filtered to what is *on* the shelf now for
+ * the same reason — a purchase of something since deleted is real history and
+ * belongs in the ledger, but it is not one of the things there are to take.
+ */
+export const takenItemIds = (project: Project): Set<string> => {
+  const shelf = new Set((project.settings.shop || []).map((i) => i.id))
+  const out = new Set<string>()
+  for (const p of Object.values(project.purchases || {}))
+    if (shelf.has(p.itemId)) out.add(p.itemId)
+  return out
+}
+
 /** The local day something was bought on. See `earnedOn` for why. */
 export const boughtOn = (boughtAt: string): string => toKey(new Date(boughtAt))
 

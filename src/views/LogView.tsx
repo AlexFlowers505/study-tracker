@@ -4,9 +4,8 @@
 --------------------------------------------------------------- */
 
 import { useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 import { EyeOff, MessageSquare } from 'lucide-react'
-import type { DateRange, Day, PeriodId, Project } from '../types/model'
+import type { DateRange, Day, DayKey, PeriodId, Project } from '../types/model'
 import {
   addDays,
   datesInRange,
@@ -54,7 +53,7 @@ export function LogView({
   onUpdateDay,
   verdictOf,
   benchmarkOf,
-  sleepSection,
+  benchmarkDayOf,
 }: {
   data: Project
   period: PeriodId
@@ -82,9 +81,19 @@ export function LogView({
   verdictOf: (key: string) => DayReport
   /** A stretch of days as the benchmark rule counted it — `spec 019`. */
   benchmarkOf: (dates: Date[]) => number | null
+  /**
+   * **One day, measured through the benchmark rule** — the figure a card
+   * prints beside its own goal. Null when nothing is nominated, and then the
+   * card totals everything, which is the only answer there is.
+   *
+   * The same argument `benchmarkOf` makes for the period, and it became
+   * load-bearing when `spec 024` moved sleep into the log: a card totalling
+   * every minute against a goal one rule supplied reads `goal 3h (+3h 25m)` on
+   * a day whose only entry was a night's sleep.
+   */
+  benchmarkDayOf: (dayKey: DayKey, day: Day | undefined) => number | null
   /** The sleep panel, rendered by the shell so it can read the unfiltered
    *  project — sleep has no slots or activities for the filter to act on. */
-  sleepSection?: ReactNode
 }) {
   const c = usePalette()
   const t = useT()
@@ -142,13 +151,32 @@ export function LogView({
     [weekIgnore, monthIgnore],
   )
 
+  /**
+   * **The period's own line, measured through the benchmark rule.**
+   *
+   * `rangeStats` totals *every minute logged, whatever it went on*, and that
+   * is the wrong numerator to print beside a goal the benchmark supplied —
+   * `spec 019` made exactly this argument and then applied it only to the
+   * month grid's week strip, leaving the line above the log comparing a figure
+   * one rule promised against a figure nobody promised anything about.
+   *
+   * It is also the wrong number on its own. A total over every entry says how
+   * *thorough* the log is, not how the period went: file the day's errands,
+   * its commute and its washing-up and the figure climbs without anything
+   * having been achieved. Measured through the rule, `of` means something and
+   * so does the figure before it.
+   *
+   * **Absent only in the sense that there is nothing to measure through**: with
+   * no benchmark nominated there is no promise to read it against, the goal is
+   * already hidden, and everything logged is the only answer left.
+   */
   const headerStats = useMemo(() => {
-    if (granularity === "week")
-      return rangeStats(weekDates(cursor), days, slots, settings, isIgnored)
-    if (granularity === "month")
-      return rangeStats(monthDates(cursor), days, slots, settings, isIgnored)
-    return null
-  }, [granularity, cursor, days, slots, settings, isIgnored])
+    if (granularity !== "week" && granularity !== "month") return null
+    const dates = granularity === "week" ? weekDates(cursor) : monthDates(cursor)
+    const stats = rangeStats(dates, days, slots, settings, isIgnored)
+    const measured = benchmarkOf(dates)
+    return measured == null ? stats : { ...stats, total: measured }
+  }, [granularity, cursor, days, slots, settings, isIgnored, benchmarkOf])
 
   // Every period, not just week and month: the day view and the wide ranges
   // report their counters too, because "how many" is as much a fact about a
@@ -264,7 +292,7 @@ export function LogView({
           )}
           {headerStats && (
             <span className="text-xs font-mono text-ink/50">
-              {t("{hours} studied", {
+              {t("{hours} logged", {
                 hours:
                   headerStats.total > 0 ? fmtHours(headerStats.total) : "0h",
               })}
@@ -342,7 +370,6 @@ export function LogView({
         />
       )}
 
-      {sleepSection}
 
       {/* **`Days` is one section, and the counters are its first block.**
 
@@ -414,6 +441,7 @@ export function LogView({
           todayKey={todayKey}
           verdictOf={verdictOf}
           benchmarkOf={benchmarkOf}
+          benchmarkDayOf={benchmarkDayOf}
           onEditDay={onEditDay}
           weekIgnore={weekIgnore}
           monthIgnore={monthIgnore}
@@ -443,6 +471,7 @@ export function LogView({
           onFreezeDay={onFreezeDay}
           onUpdateDay={onUpdateDay}
           verdictOf={verdictOf}
+          benchmarkDayOf={benchmarkDayOf}
         />
       )}
       {/* Anything longer than a month — including all-time and custom — is

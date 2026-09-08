@@ -1,19 +1,35 @@
 /* ---------------------------------------------------------------
-   Sleep, reduced to numbers.
+   One activity's sessions, read on the 18:00-rotated clock.
 
-   Everything here works on the 18:00-rotated clock from `time.ts`. A night
-   runs from one evening into the next morning, so on a plain 0–23 axis every
-   night is split in two and thrown to opposite ends of the chart. Rotating
-   the frame makes one night one contiguous block — and the same rotation is
-   what makes the averages come out right: the naive mean of 23:30 and 00:30
-   is midday, the exact opposite of the answer.
+   A stretch that runs from one evening into the next morning is split in two
+   on a plain 0–23 axis and thrown to opposite ends of the chart, where its
+   shape is unreadable. Rotating the frame makes one stretch one contiguous
+   block — and the same rotation is what makes the averages come out right:
+   the naive mean of 23:30 and 00:30 is midday, the exact opposite of the
+   answer.
 
-   Sleep is a separate axis from study time. Nothing here feeds a breakdown,
-   a range stat or a goal.
+   **This was `sleep.ts`, and it read `day.sleep`** — `spec 024`. Sleep is an
+   ordinary activity now, so the question it answers ("when does this usually
+   start, when does it end, how long does it run") is one you can ask about
+   anything you log with times on it. What changed is one argument: the caller
+   says which entries to read. What did not change is a line of the
+   arithmetic.
+
+   It still feeds nothing. No breakdown, no range stat, no goal reads any of
+   it — this is a drawing, and `stats.ts` remains the only place a reported
+   number comes from.
 --------------------------------------------------------------- */
 
-import type { Day, DayKey, DateRange, IsIgnored, TimeOfDay } from "../types/model"
+import type {
+  Day,
+  DayKey,
+  DateRange,
+  IsIgnored,
+  StudyEntry,
+  TimeOfDay,
+} from "../types/model"
 import { datesInRange, fromKey, pad, startOfWeek, toKey } from "./date"
+import { entryActivity } from "./entries"
 import {
   DAY_START_HOUR,
   fromRotated,
@@ -23,8 +39,8 @@ import {
   toRotated,
 } from "./time"
 
-/** One timed sleep entry placed on the rotated clock. */
-export interface Night {
+/** One timed entry placed on the rotated clock. */
+export interface Session {
   key: DayKey
   /** Minutes into the rotated day at which sleep began. */
   start: number
@@ -33,17 +49,36 @@ export interface Night {
   to: TimeOfDay
 }
 
-export function collectNights(
+/**
+ * Which entries a day contributes.
+ *
+ * An argument rather than a hard-coded list because the one thing that made
+ * this file about sleep was the list it read. `entriesOfActivity` is the only
+ * caller today; the shape is here so the next question — *one slot's
+ * sessions*, say — needs no change to any of the arithmetic below.
+ */
+export type PickEntries = (day: Day) => StudyEntry[]
+
+/** Every entry filed under one activity, in whatever slot it sits. */
+export const entriesOfActivity =
+  (activityId: string): PickEntries =>
+  (day) =>
+    Object.values(day.cells || {})
+      .flat()
+      .filter((entry) => entryActivity(entry) === activityId)
+
+export function collectSessions(
   days: Record<DayKey, Day>,
   dates: Date[],
   isIgnored: IsIgnored,
-): Night[] {
-  const nights: Night[] = []
+  pick: PickEntries,
+): Session[] {
+  const nights: Session[] = []
   dates.forEach((date) => {
     const key = toKey(date)
     const day = days[key]
     if (!day || isIgnored(key, day)) return
-    ;(day.sleep || []).forEach((e) => {
+    pick(day).forEach((e) => {
       if (!e.start || !e.end) return
       const duration = spanMinutes(e.start, e.end)
       if (duration <= 0) return
@@ -62,15 +97,15 @@ export function collectNights(
 export interface HourShare {
   hour: number
   label: string
-  /** Percentage of logged nights spent asleep during this hour. */
+  /** Percentage of the days that logged anything covered by this hour. */
   pct: number
 }
 
-export interface NightRow {
+export interface SessionRow {
   label: string
   labelLong: string
-  /** Monday of the week this night belongs to — what the row chart rules
-   *  between, so a run of nights reads as weeks rather than as a list. */
+  /** Monday of the week this session belongs to — what the row chart rules
+   *  between, so a run of them reads as weeks rather than as a list. */
   weekKey: string
   offset: number
   span: number
@@ -80,34 +115,36 @@ export interface NightRow {
   end: TimeOfDay
 }
 
-export interface SleepStats {
+export interface ClockStats {
   data: HourShare[]
-  perNight: NightRow[]
-  nights: number
-  daysWithSleep: number
-  bedtime: TimeOfDay
-  wake: TimeOfDay
+  perNight: SessionRow[]
+  sessions: number
+  daysCovered: number
+  from: TimeOfDay
+  to: TimeOfDay
   duration: number
 }
 
 const avg = (list: number[]) => list.reduce((a, b) => a + b, 0) / list.length
 
 /** Null when the period holds no night with both a start and an end. */
-export function sleepStats(
+export function clockStats(
   days: Record<DayKey, Day>,
   range: DateRange,
   isIgnored: IsIgnored,
-): SleepStats | null {
-  const nights = collectNights(
+  pick: PickEntries,
+): ClockStats | null {
+  const nights = collectSessions(
     days,
     datesInRange(range.start, range.end),
     isIgnored,
+    pick,
   )
   if (!nights.length) return null
 
   // A day with nothing logged is an unknown, not a zero — counting it as a
   // zero would flatten the curve for every stretch where logging was patchy.
-  const daysWithSleep = new Set(nights.map((n) => n.key)).size
+  const daysCovered = new Set(nights.map((n) => n.key)).size
   const covered = Array.from({ length: 24 }, () => new Set<DayKey>())
   nights.forEach((n) => {
     for (let m = n.start; m < n.start + n.duration; m += 1) {
@@ -118,7 +155,7 @@ export function sleepStats(
   const data = covered.map((set, i) => ({
     hour: (DAY_START_HOUR + i) % 24,
     label: pad((DAY_START_HOUR + i) % 24),
-    pct: Math.round((set.size / daysWithSleep) * 1000) / 10,
+    pct: Math.round((set.size / daysCovered) * 1000) / 10,
   }))
 
   const perNight = nights
@@ -148,10 +185,10 @@ export function sleepStats(
   return {
     data,
     perNight,
-    nights: nights.length,
-    daysWithSleep,
-    bedtime: minutesToTime(fromRotated(avg(nights.map((n) => n.start)))),
-    wake: minutesToTime(
+    sessions: nights.length,
+    daysCovered,
+    from: minutesToTime(fromRotated(avg(nights.map((n) => n.start)))),
+    to: minutesToTime(
       fromRotated(avg(nights.map((n) => n.start + n.duration))),
     ),
     duration: avg(nights.map((n) => n.duration)),

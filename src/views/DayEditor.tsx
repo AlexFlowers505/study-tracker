@@ -34,6 +34,7 @@ export interface DayDialogProps {
   dateKey: DayKey
   /** How the day came out — see `lib/dayVerdict`. */
   verdictOf: (key: DayKey) => DayReport
+  benchmarkDayOf: (dayKey: DayKey, day: Day | undefined) => number | null
   dayEntry?: Day
   slots: Slot[]
   activities: Activity[]
@@ -46,6 +47,7 @@ export interface DayDialogProps {
 export function DayQuickviewModal({
   dateKey,
   verdictOf,
+  benchmarkDayOf,
   dayEntry,
   slots,
   activities,
@@ -83,6 +85,7 @@ export function DayQuickviewModal({
         <div className="p-4 overflow-y-auto flex-1">
             <FullCardGrid
               verdictOf={verdictOf}
+              benchmarkDayOf={benchmarkDayOf}
               dates={[d]}
               days={{ [dateKey]: dayEntry || {} }}
               slots={slots}

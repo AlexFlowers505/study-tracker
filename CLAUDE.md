@@ -223,13 +223,12 @@ anything about freezes.
   twenty hours of work. **Absent entirely when nothing is nominated**, the same
   silence the goal line already keeps. `MonthGrid` takes a `benchmarkOf`
   callback, like `verdictOf`: it sees days and slots, not the project.
-- **`StreakTargetKind` gains `sleep`** — the second kind with no id, since
-  there is only one of it. `minutesOn` reads `day.sleep` for it and nothing
-  else changes, so **sleep stays its own axis**: the alternative was making it
-  an ordinary activity, which buys the streak free and costs every total in the
-  app about eight hours a day. A sleep condition carries **no slot bounds** and
-  the form does not offer them — a sleep entry has no slot, so there is nothing
-  for a rider to measure.
+- **`StreakTargetKind` gained `sleep`** — the second kind with no id, since
+  there was only one of it. **`spec 024` has since removed it**, and the
+  reasoning recorded here is the reason it could go: the axis existed because
+  making sleep an activity "costs every total in the app about eight hours a
+  day", and `spec 022` made the totals answer to the benchmark rule instead. A
+  rule about sleep names the Sleep activity now, like any other.
 - **`tagIds` on `Activity`.** An activity is one of the three kinds of counter
   and a condition can already name a tag, so *40h of anything tagged “deep
   work”* was a sentence the app could nearly say. The consequence is that a tag
@@ -238,10 +237,220 @@ anything about freezes.
   filing one more counter under it must never change what an existing rule is
   measuring. `keepsActivity` gains the branch its sibling already had.
 
-**Not built from `019`:** the rotated sleep charts offered to any activity. It
-reads as a drawing change and is not one — `collectNights` walks `day.sleep`,
-and generalising it means teaching the one file that must never reach
-`stats.ts` to read what `stats.ts` is built on. Its own spec, when it is wanted.
+**Deferred from `019` and built in `024`:** the rotated sleep charts offered to
+any activity. It read as a drawing change and was not one — `collectNights`
+walked `day.sleep`, and generalising it meant teaching the one file that must
+never reach `stats.ts` to read what `stats.ts` is built on. It got its own
+spec, as it asked for, and the file still never reaches `stats.ts`.
+
+**`specs/020-pausing-an-entry.md` is built.** Read it before touching an
+entry's times or its duration.
+
+- **A pause is a duration, and there is one of it per entry.** `TimeEntry`
+  gains `paused` (minutes, all of them however many stops that was) and
+  `pauseFrom` (an ISO instant, present only while one is running). `minutes`
+  becomes the span **less** the pause, floored at nought, which is the whole
+  of the integration: everything downstream already reads `minutes`, so the
+  totals, the goals, the streak engine and the charts follow untouched. No
+  migration — both ride in the existing `days.cells` jsonb.
+- **It is measured between two clicks and never off the clock.** Nothing in
+  the pause path reads `start`, which is what makes pausing work on an entry
+  you are filling in for yesterday: the two clicks happen now, and the only
+  thing taken from them is how far apart they were. Each stop is rounded to
+  `STEP_MINUTES` **as it ends** rather than the total being rounded once, so
+  what the app adds is what it showed you it was adding — and a stop shorter
+  than half a step stores nothing rather than `paused: 0`.
+- **The outlined pair sets a time, the solid pair holds the clock.** `Play`
+  and `Square` outlined are Start now and End now; `Pause` and `Play` **filled**
+  are the hold. Resume is a play triangle and so is Start now, and two
+  identical outlines side by side is the one ambiguity a tooltip cannot fix.
+  Circling the hold was the first answer and it lost: a glyph inside a ring
+  spends a third of its pixels on the ring, and at twelve that is exactly what
+  it cannot spare. `Square` fills too, so the three transport controls read as
+  one set. Exactly one of pause and resume is ever drawn, only while a
+  session is running, and **ending a paused one resumes it first**
+  (`stopNowPatch`) — otherwise the pause you were in the middle of is discarded
+  by the click that stopped the clock. **Add does not end a running pause**,
+  though: filing the entry is not coming back from the break, so `pauseFrom` is
+  carried into the saved entry and the card's Resume ends it.
+- **The star is the mark that the line does not add up on its face.**
+  `22:00–22:30 (15м*)`, in `c.warn` because amber is already this palette's
+  *held, not lost*; the tooltip carries the figure and sits on the **label**,
+  since a fact you can only reach by hitting six pixels is a fact nobody
+  reads. `ui/EntryTime.tsx` is the one place it is drawn, so the readout, the
+  edit row and the add dialog cannot drift.
+- **`patchEntry`'s explicit-`undefined`-deletes-the-field rule is now every
+  key in the patch**, not the two named cases it was written for.
+- **Sleep is left alone.** The field is on the shared `TimeEntry` so the
+  arithmetic is one function, but the controls are offered on study entries
+  only, and that distinction went with `spec 024` — a night is an ordinary
+  entry now, so pausing one is offered like anything else.
+
+**`specs/021-a-filled-half-of-the-library.md` is built.** Read it before
+touching `iconLibrary.ts`.
+
+- **lucide ships no filled set**, so a filled icon is the same component drawn
+  with `fill="currentColor"`, and its stored name is the outlined one plus
+  `.filled`. `RenderIcon` is the only place that knows the suffix exists, which
+  is why nothing that stores an icon name had to change and there is no
+  migration.
+- **217 of the 321 get one, and the list was chosen by looking at all of
+  them.** Three things rule an icon out and all are visual rather than
+  structural: filling destroys interior detail (`Skull` loses its eyes,
+  `Cookie` its chips, every face its expression); filling can **collapse an
+  icon into one the library already has** — filled `Target`, `Disc` and
+  `Compass` are all a plain circle, which is filled `Circle`, and
+  `HeartPulse` is filled `Heart`; or **nothing is enclosed**, so the fill only
+  thickens the stroke (`Plus`, `Hash`, `Activity`), which is a *bold* variant
+  and not what the toggle says. **No structural test survives this**, and the
+  first attempt at one is the reason there were 32 for a day: it asked whether
+  every subpath closes, which is the wrong question twice over — SVG fills an
+  open subpath by joining its ends, so `Heart` is one unclosed path that fills
+  perfectly, and the test also threw out every icon whose detail is drawn
+  *outside* the shape being filled (`Sun`'s rays, `Bell`, `Map`, `Anchor`).
+- **A second icon library was tried and rejected**, and the note is in
+  `iconLibrary.ts` so nobody has to try it twice. Phosphor ships a real
+  hand-drawn `fill` weight for 1512 icons, and its per-icon module carries all
+  six weights at ~6.4 KB — five sixths waste, with no per-weight entry point —
+  while two icon families in one grid read as a rendering fault. Extracting
+  its fill paths at build time answers the first objection and not the second.
+- **The picker gains a shape toggle** — All / Outlined / Filled — a recessed
+  track under the search box. It is a *narrowing*, not a search: the two are
+  the same picture, so the question is only ever "solid or not", and asking it
+  in the search box would mean retyping it after every other query. `.filled`
+  is split as a word for search too, so `heart filled` finds exactly one.
+- **The empty state says which of the two emptied the grid.** `IconGrid`
+  filters in two steps for that reason alone — a query that matches only
+  outlined icons while Filled is held is not "nothing matches", and saying so
+  sends you to correct the one thing that was not wrong.
+
+**`specs/022-ten-things-in-the-way.md` is built** — ten small reports from
+ordinary use, two of them bugs wearing the face of a decision:
+
+- **`Tip` is `z-[120]`, above the floating panels.** It was `z-[100]` while
+  `PopoverMenu` and the date panels are `z-[110]`, so **every tooltip on a
+  control inside one of those was painted underneath it and never appeared** —
+  including the icon picker's names, where the tooltip is the whole feature.
+- **The shop badge counts what you have taken**, not what you can afford —
+  `takenItemIds`, distinct shelf items so it cannot pass its own denominator.
+  Every other badge in that row answers *how much of this is done*, and
+  affordability also moved on its own every time a day was logged.
+- **`PanelSection` and `NestedPanel` take `onSettings`**, a quiet gear beside
+  the close X that opens the Setup tab which configures that panel.
+  `SetupModal` takes `initialTab`, read once at mount — `Leaving` unmounts it,
+  so every open is fresh. `App` has one `openSetup(tab?)`: the top bar's button
+  passes nothing and must not inherit the last tab a gear jumped to. Six
+  panels have one; the account, the change log and the board do not, because a
+  gear that opens the first tab it can think of is worse than no gear.
+- **`PageNav` is absent while a modal is open.** It is fixed to the corner, so
+  on a phone it sat over the foot of the quick-add form. The flag is
+  `useModalOpen()` in `useModalDismiss`, which already counts open modals for
+  the scroll lock — one place that knows, rather than `App` keeping a parallel
+  boolean in step with six dialogs by hand.
+- **A notice takes you to its rule.** The block was a button that opened the
+  panel and left you where you were, two screens above it. The block is a
+  block now and the corner carries one quiet arrow that opens **and scrolls**
+  (`goToRule`, which looks for `kept-rule-<id>` across a few frames rather than
+  guessing a delay). It opens and arrives, never toggles.
+- **The provisional ring was drawn solid.** `strokeLinecap: round` adds a
+  half-circle of radius `stroke / 2` to *each* end of every dash, which at
+  these weights ate the gaps whole — see the `VerdictRing` note above.
+- **A cleared end left its duration behind.** `patchEntry` now zeroes a
+  derived `minutes` when an entry that had both times loses one — see the
+  `entries.ts` note above.
+- **The headline total is measured through the benchmark rule.** The period
+  header's `учтено` and Overview's `Hours logged` came from `rangeStats` —
+  every minute logged — while the goal beside them came from the nominated
+  rule, so the two were measured through different things. `spec 019` made
+  this argument and applied it only to the month grid. A total over every
+  entry also says how *thorough* the log is rather than how the period went.
+  `benchmarkMeter` is `benchmarkMinutes` one day at a time;
+  `computeOverviewStats` takes an optional `measure`, and **only the hours go
+  through it** — a day you wrote something on is not an empty day whatever the
+  benchmark thinks of it. Null when nothing is nominated, and then everything
+  logged is the only answer there is. Eight `benchmark:` cases in the sweep.
+- **The interface stopped being about studying.** *Hours studied* becomes
+  *Hours logged*, *Daily study time* becomes *Time logged per day*, *All study
+  time* becomes *All logged time*. `logged` rather than "tracked" or
+  "dedicated" because it is already this app's own word — a **logbook**, *days
+  logged*, `LogView`. In Russian **учтённое время**. The code's own vocabulary
+  is unchanged: `StreakTarget` still has `kind: "time"`.
+
+**`specs/023-when-it-happened.md` is built.** Read it before touching what a
+condition can assert.
+
+- **A condition can say *when*, not only *how much*.** `StreakClause` gains
+  `startWindow` and `endWindow` — a `TimeWindow` is `from` (no earlier than)
+  and `to` (no later than), either side optional. No migration: they ride in
+  the `settings` jsonb, and a condition without them means what it always did.
+- **Read against the day's edges, not every entry.** `startWindow` judges the
+  **earliest start** among the entries the condition counts and `endWindow`
+  the **latest end** — *begin by ten* is about when you sat down, not about
+  every time you sat down. `edgesOn` walks exactly what `minutesOn` adds up.
+  `last` may run past 1440 and has to: 23:00–00:30 finished at 1470, or
+  *finish by six* becomes a promise a midnight session keeps.
+- **A window says when, never whether.** A day with no counted work has no
+  beginning to be late, so it breaks nothing — asserting a failure from
+  missing data is what this app refuses everywhere. Pair a window with a floor
+  when you want both; that is one condition.
+- **It costs nothing new.** A time condition has always cost one freeze
+  however many parts broke, and a window folds into that same violation —
+  which `violationsOn` must count too, or a day whose window broke while its
+  figure held would be missed with nothing on offer to freeze. Only *finish no
+  earlier than* is still open once broken; the other three are spent at once.
+- **Not for counts and not for a weekly rule.** A tally has no clock; a week
+  is not a thing that begins at ten. **Windows do not wrap**
+  either — `from 22:00 to 02:00` is refused rather than read across midnight,
+  since "the earliest start" has no meaning across that boundary.
+- **`clause.days` now carries a *fourth* independent per-day answer**, so
+  `windowsPerDay` joins `figuresPerDay` and `slotFiguresPerDay`. Each must be
+  asked separately or a map written for one blanks another — the bug this file
+  has shipped once and been written against twice.
+- The lock treats a wall like a bound, with **absent as a wall at nowhere**:
+  raising a `from` or lowering a `to` narrows, and adding a window never waits.
+  `clauseAsksNothing` learns a window asks something; `clauseImpossible` gains
+  crossed walls and *must begin after it has to have finished*.
+- Thirty-one cases in `npm run sweep`, including six `reads back:` ones that
+  assert the sentence to the character — one of them that a rule *without* a
+  window is unchanged, which is what caught a doubled comma in a `frag:` key.
+
+**`specs/024-sleep-is-an-activity.md` is built, and `migrations/021` has NOT
+been run** — apply it by hand to dev and then to production. The app works
+either way until then; that is what `sleepMove.ts` is for.
+
+- **Sleep stopped being its own axis.** A night was always a list of timed
+  entries with a start, an end and a duration — an activity. What it had
+  instead of a slot and an activity was six pieces of machinery, and the one
+  thing they bought died in `spec 022`: the figure a period reports is measured
+  through the **benchmark rule**, so what counts is what you promised rather
+  than everything you wrote down.
+- **That argument had to be finished at day scope first.** `benchmarkDayOf` is
+  `benchmarkMeter` one day at a time, threaded to the day card and the month
+  cell — a card totalling every minute against a goal one rule supplied reads
+  `goal 3h (+3h 25m)` on a day whose only entry was a night's sleep. And
+  **`logged` parted company with `total`**: *is there anything here* is asked
+  of the raw breakdown, *what does this count for* of the rule, because a day
+  holding only a night is not an empty day.
+- **`sleepMove.ts` folds any night still in `days.sleep` into the day's cells
+  as it loads**, and invents `slot-sleep` / `activity-sleep` until the
+  migration makes them. The `entryActivity()` pattern from `spec 013`, for the
+  same reason: a rename that needs the deploy and the migration in a particular
+  order will one day get the other one. **It never writes.** The column is
+  cleared by the migration or by `dayUpsertRow` on a day you edit, and the fold
+  skips any id already in the slot, so nothing can land twice. Six `fold:`
+  cases in the sweep, because this is the one part that can lose data.
+- **The migration also rewrites any `kind: "sleep"` condition** to name the new
+  activity. The rule means exactly what it meant; a target that stops resolving
+  is a rule that quietly judges nothing.
+- **The rotated-clock charts are a Trends tab now, for any activity.**
+  `lib/sleep.ts` becomes `lib/rotatedClock.ts`, `collectNights` takes a
+  `PickEntries` selector, and **not a line of the arithmetic changed**.
+  `ClockCharts` opens on the first activity with a timed session, so the tab
+  never opens empty on a project that has an answer. It still feeds nothing —
+  no breakdown, no range stat, no goal.
+- **Sleep is in the donuts and the Trends charts now**, which is what *where
+  the time went* honestly means. The count filter reaches it like anything
+  else.
 
 Everything else through `019` is built.
 
@@ -257,8 +466,8 @@ Everything else through `019` is built.
   never refunded, never repriced. **Needs `016` first**, because what may be
   frozen is defined as *what stands at `danger`*.
 - **`019-three-additions.md`** — the month grid's week hours measured through
-  the benchmark rule rather than through everything; a `sleep` streak target,
-  which keeps sleep its own axis; `tagIds` on `Activity`. Independent of each
+  the benchmark rule rather than through everything; a `sleep` streak target
+  (removed again by `spec 024`); `tagIds` on `Activity`. Independent of each
   other as well.
 
 `016` rewrote `npm run sweep` in its own commit, as it said it must: `safe`
@@ -353,7 +562,7 @@ which are Node config and get their own lint block.
   - `date.ts` — local-time date keys and arithmetic, `datesInRange`,
     `weekDates`, `monthDates`, weekday order and labels.
   - `time.ts` — `"HH:MM"` arithmetic, duration formatting, and the
-    18:00-rotated clock the sleep view runs on. **Every duration in the app
+    18:00-rotated clock the Trends clock tab runs on. **Every duration in the app
     goes through `fmtHours`, and it prints hours *and* minutes — `2h 30m`,
     never `2.5h`.** Decimal hours read fine as a magnitude and badly as a plan:
     "0.4h left" has to be multiplied by 60 before it means anything you can
@@ -361,8 +570,12 @@ which are Node config and get their own lint block.
     stored, so the printed figure is exact rather than rounded to a tenth of an
     hour. `fmtHoursChart` is the same format for the charts, which carry hours;
     `fmtAxisHours` stays whole numbers, because an axis label is a scale mark
-    and not a duration. `HOUR_TICKS` marks **every** hour of the rotated clock,
-    and the sleep charts step by one hour on both axes: the grid line is the
+    and not a duration. **`STEP_MINUTES` is the five-minute grid, with a name
+    at last** — `nowTime` snaps to it, the dial steps by it, and
+    `minutesSince` rounds a pause to it, because a figure the app fills in
+    should always be one you could have picked by hand.
+    `HOUR_TICKS` marks **every** hour of the rotated clock,
+    and the clock charts step by one hour on both axes: the grid line is the
     ruler you read a night's start and end against, and three-hour spacing left
     you estimating inside a block two hours wide. Recharts thins the labels
     when they would collide, so the grid stays fine-grained on a phone even
@@ -378,11 +591,14 @@ which are Node config and get their own lint block.
     legend. See **Theming** below;
     the short version is that surfaces are Tailwind tokens and the accents are
     a `Palette` object you get from `usePalette()`.
-    - `benchmark.ts` — which rule supplies the day's goal. One rule is
-    nominated (`settings.benchmarkRuleId`) and its figures stand in for
-    `settings.dailyGoals`, so `goal 3h` on a card is a promise somebody made
-    rather than a number nobody answers for. **Display only, and therefore
-    outside the lock** — it changes no verdict. Eligibility falls out of the
+    - `benchmark.ts` — which rule supplies the day's goal **and the period's
+    own total**. One rule is nominated (`settings.benchmarkRuleId`) and its
+    figures stand in for `settings.dailyGoals`, so `goal 3h` on a card is a
+    promise somebody made rather than a number nobody answers for — and since
+    `spec 022` the figure printed beside it is measured through the same rule,
+    because a total over every entry says how thorough the log is rather than
+    how the period went. `benchmarkMeter` is that reading one day at a time.
+    **Display only, and therefore outside the lock** — it changes no verdict. Eligibility falls out of the
     readers: `goalForDate` is minutes, so the rule must measure time; a ceiling
     is not something to aim at, so its conditions must be floors; and no two
     may land on the same weekday, or that day has two goals. Several
@@ -391,7 +607,7 @@ which are Node config and get their own lint block.
     filter, so the ten callers of `goalForDate` need no change.
 - `stats.ts` — `dayBreakdown`, `rangeStats`, `periodBreakdown`,
     `elapsedDayCount`, `goalForDate`, `makeIsIgnored`. **Every number the app
-    reports comes from here, and none of it ever reads `day.sleep`.**
+    reports comes from here.**
   - `period.ts` — `PERIODS`, `periodRange`, `stepCursor`, `rangeLabel`.
   - `analytics.ts` — `computeOverviewStats` and `computeOverallAllTime`. One
     function serves both scopes: "Overall stats" hands it every logged day,
@@ -419,17 +635,36 @@ which are Node config and get their own lint block.
     recomputation**: each finished week gets one verdict, written once, so
     re-breaking and re-fixing a past week can never mint a second freeze.
     `spec 007` is the full design.
-  - `sleep.ts` — `collectNights` and `sleepStats`, the whole sleep panel's
-    arithmetic on the rotated clock. Its own file because sleep is a separate
-    axis: none of it may ever reach `stats.ts`. A rule **can** promise
-    something about it — `StreakTargetKind` has a `sleep` member since
-    `spec 019` — and that is one branch in `minutesOn` rather than sleep
-    becoming an activity, which is what keeps the axis separate.
+  - `rotatedClock.ts` — `collectSessions` and `clockStats`, the arithmetic
+    behind the Trends **clock** tab. It was `sleep.ts` and read `day.sleep`;
+    since `spec 024` the caller passes a `PickEntries` selector and the same
+    arithmetic answers *when does this usually start, when does it end, how
+    long does it run* about any activity. Still its own file, and still
+    forbidden to reach `stats.ts`: it is a drawing, and no breakdown, range
+    stat or goal may read a line of it.
+  - `sleepMove.ts` — the bridge that folds a night still sitting in the old
+    `days.sleep` column into the day's cells as it loads. In memory only, a
+    no-op once `migrations/021` has run everywhere, and deletable after that.
   - `entries.ts` — `patchEntry` and the cell operations (update, remove, move
     between slots). Shared by the day editor and the in-place editor on the
     day cards, so the rule that keeps `minutes` in step with the times has one
-    home. An explicit `undefined` start/end *deletes* the field: "no start
-    time" and "a start time of undefined" are different rows in jsonb.
+    home — and since `spec 020` that rule is the span **less what the session
+    was paused for**. An explicit `undefined` *deletes* the field: "no start
+    time" and "a start time of undefined" are different rows in jsonb. That
+    goes for every key in the patch rather than the two it was written for,
+    since `pauseFrom` needed it next and a list would only have gone on
+    growing. `pausePatch` / `resumePatch` / `stopNowPatch` are the three
+    things a running session can be told.
+    **A derived figure dies with the pair it was derived from.** Clearing the
+    end of a finished entry used to leave its duration behind — `20:20–…`
+    still followed by the four hours the end time had produced, and that
+    figure went on counting in every total on the page. `withDerivedMinutes`
+    cannot catch it: it only speaks when *both* times are set, and its silence
+    otherwise is right, because an untimed entry's minutes are typed by hand.
+    The distinction it was missing is not *is this timed now* but *was this
+    figure the times' doing*, so `patchEntry` handles the one case that
+    crosses — had both, has not now — and zeroes it unless the same patch is
+    setting `minutes` itself.
   - `defaults.ts`, `id.ts`, `changelog.ts`, `streaks.ts`.
 - `src/data/` — the only place that knows the server shape is four tables and
   not one document:
@@ -492,7 +727,8 @@ which are Node config and get their own lint block.
     which has to sit on the calendar's own root to win.
   - `icons.tsx` — `RenderIcon`; the list itself is data in `iconLibrary.ts`,
     and `buttonStyles.ts` holds `segBtn` / `segBtnStyle`.
-  - `IconGrid.tsx` — **the one icon picker**, with the search box. There were
+  - `IconGrid.tsx` — **the one icon picker**, with the search box and the
+    All / Outlined / Filled toggle (`spec 021`). There were
     two copies of the grid, from when the library was a hundred long and
     scanning it was plausible; it is 321 in 15 groups now, and past about a
     hundred a grid stops being a picker and becomes a haystack — the icon you
@@ -511,6 +747,11 @@ which are Node config and get their own lint block.
     **The `name` strings are stored data** — add and regroup freely, never
     rename or remove. The file is generated and asserts both halves of that:
     every name a real lucide export, and nothing already stored dropped.
+    **A third of the entries are generated from the rest**: lucide has no
+    filled icons to import, so `Heart.filled` is `Heart` drawn with
+    `fill="currentColor"`, and `FILLABLE` in that file lists the 32 where the
+    solid drawing is still recognisably the thing — see `spec 021` for the two
+    reasons an icon is left out.
     **Each icon costs about 350 bytes of bundle** — going from 115 to 321 added
     71 KB uncompressed, some 7%. Worth it once, to make the picker usable; a
     reason not to answer "add more icons" by pasting in the other 1700.
@@ -539,7 +780,9 @@ which are Node config and get their own lint block.
   - `PanelSection.tsx` — the shell every panel a toggle opens is built from:
     a round icon badge, a title, an optional subtitle, an `action` slot and a
     close X. **Use it rather than hand-rolling another copy** — the panels read
-    as siblings because they are one component.
+    as siblings because they are one component. It also takes `onSettings`,
+    the gear that opens the Setup tab configuring that panel; pass it wherever
+    there is exactly one such tab and leave it off where there is not.
     **The tint is a rail, not a wash.** It used to be the whole surface — the
     colour at 8% behind everything, with a 2px border of it round the outside —
     and that was right while two panels could be open at once. It stopped being
@@ -639,6 +882,16 @@ which are Node config and get their own lint block.
     itself drawn by `strokeDasharray` there was one attribute doing two jobs,
     so the provisional state could only be an opacity — and an opacity reads as
     *the same arc, fainter*, where the difference is in kind.
+    **The dashes take butt caps, and the pattern is a multiple of the stroke.**
+    They had round caps and a sub-stroke dash length, which meant the feature
+    never worked: a round cap adds a half-circle of radius `stroke / 2` to
+    *each* end of every dash, lengthening it by a whole stroke and shortening
+    every gap by the same — at 3px the gap went negative, neighbouring caps
+    overlapped, and today's ring drew solid, which is exactly what a
+    provisional ring must never look like. Round caps at this weight can only
+    ever give you *dots*; a dash needs butt caps. And it needs to be **longer
+    than the stroke is thick** (1.2 against 0.9 of it), or it reads as a chunk
+    rather than as a broken line.
     It sits **beside the date, not in the card's corner** — Today, Frozen, the
     freeze, the "+" and the close X already live in that corner, and a ring
     among them reads as a sixth button.
@@ -1005,14 +1258,12 @@ One page, not tabs. A single period drives everything:
     trigger the opening lines — the ones that say what a streak is — ran off
     the top of the viewport.
   - `CustomStreakSection` — one per rule, project-wide as well.
-  - `SleepSection` — only when `settings.sleepEnabled`; its toggle is absent,
-    not disabled, when the feature is off. Unlike the other two it *is*
-    period-scoped, and it reads `project.days` rather than `visibleProject`,
-    since sleep has neither slots nor activities for the filter to act on.
-    Its clock runs 18:00 → 17:00: a night spans midnight, so on a 0–23 axis
-    every night is split across both ends of the chart. The same rotation is
-    what makes its averages correct — the plain mean of 23:30 and 00:30 is
-    midday, not midnight.
+  - `SleepSection` is **gone** (`spec 024`). Its three charts are the Trends
+    **clock** tab now, `views/ClockCharts.tsx`, drawn for any activity you
+    pick. The clock still runs 18:00 → 17:00: a session that spans midnight is
+    split across both ends of a 0–23 axis, and the same rotation is what makes
+    the averages correct — the plain mean of 23:30 and 00:30 is midday, not
+    midnight.
 
 ## Tags
 
@@ -1301,12 +1552,15 @@ enough that a loose word costs a conversation.
 | **points** | the account a day pays into, and the only figure you can spend | `lib/balance.ts`, the shop |
 | **watching** | a rule in force on a period it can neither win nor lose — a weekly rule's partial first week. Drawn, never tallied | `RuleState`, `RuleReading.counts` |
 | **pace** | how much of a weekly **floor** is done as of one day. A drawing; the verdict still waits for Sunday | `weekFloorPace`, the ring's partial arc |
+| **a pause** | minutes an entry was held for, all of them as one figure, subtracted from its duration. Measured between two clicks, never read off the clock | `TimeEntry.paused`, `pausePatch`, `EntryTime` |
+| **logged** | the word for what the app records, in every user-facing string. Not "studied" — this is one user's case, not the app's — and not "tracked", which would be a second word for a thing that already has one | `Hours logged`, `All logged time`, `spec 022` |
 | **headroom** | what is left of a **ceiling**. Never drawn as pace — not having spent it is not having done it | why `weekFloorPace` returns null for a ceiling |
 | **spent** | a deficit nothing can undo before midnight — a breached ceiling, a check answered outside its accepted set | `danger` in `lib/notices.ts` |
 | **owed** | a deficit the rest of the day can still clear — a floor short of its figure, a check with no answer | `notice` / `warning` in `lib/notices.ts` |
 | **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
 | **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
 | **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
+| **a window** | when a condition's work had to begin or end. Two walls on one moment, read against the day's **earliest start** and **latest end**. Says when, never whether | `TimeWindow`, `edgesOn`, `windowsOnWeekday` |
 | **a violation** | one named site of a rule that broke on one period — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn`, `weekViolationsOn` |
 | **a freeze** | a purchase against one violation, at a price stamped when it was made. Never automatic, never refunded, never repriced | `RuleFreeze`, `freezeOffers` |
 | **settled** | a violation nothing can undo before midnight, and therefore the only kind that may be frozen | `Violation.settled` |
@@ -1478,7 +1732,8 @@ all of it; `settings.streakRules` holds the rules, riding in the same jsonb
 `tags` does.
 
 A rule is **a sentence**: *judge every [day / week], keeping [this] in [these
-slots] [at least / at most] [n] on [these weekdays], with [k] freezes a week.*
+slots] [at least / at most] [n] on [these weekdays] [starting by [time]], with
+[k] freezes a week.*
 One shape covers never-oversleep, always-in-bed-on-time, no-youtube-in-the-
 evening, three-gym-trips-a-week, gym-on-Mon-Wed-Fri and two-hours-of-lessons-a-
 day. If a further kind of rule will not fit it, the shape is wrong rather than
@@ -1915,13 +2170,12 @@ receives this and nothing else:
 `days` is keyed by `'YYYY-MM-DD'` (via `toKey`), week keys are the Monday of the
 week, month keys are `'YYYY-MM'`.
 
-A day holds two independent lists. `cells` is study time, keyed by slot, and
-every figure in the app comes from it via `dayBreakdown`. `sleep` is a flat
-list with no slot and no activity, present only when sleep tracking is on
-(`settings.sleepEnabled`), and **nothing in `dayBreakdown`, `rangeStats` or the
-goals may ever see it** — sleep is a separate axis, not study time.
+`cells` is every logged entry, keyed by slot, and every figure in the app comes
+from it via `dayBreakdown`. **`sleep` is the flat list nights used to live in**
+and is deprecated (`spec 024`): `sleepMove.ts` folds anything still there into
+`cells` as the app loads, and `migrations/021` empties the column for good.
 
-Study entries and sleep entries share a shape: optional `start`/`end` as
+Entries share one shape: optional `start`/`end` as
 `"HH:MM"` strings, with `minutes` staying the stored authoritative number.
 `spanMinutes` derives it when both times are set (an end before the start means
 the session crossed midnight), and a sleep entry belongs to the date it
@@ -2051,6 +2305,17 @@ disagreeing. Times are the only input; the duration underneath is the answer.
 `Start now` and `End now` are what make that practical — begin one when you sit
 down, end it when you stop — and a start with no end saves as zero minutes
 rather than being refused, because "I have started" is a real thing to record.
+
+**And a session can be held while it runs** — `spec 020`. Getting up for ten
+minutes used to be recorded either as a note to yourself to subtract them
+later, which leaves every total on every page wrong until you remember, or by
+splitting one session into three entries, which is a lie about the shape of the
+day that no later reader can undo. Both are the app making you do its
+arithmetic. The buttons are glyphs with tooltips rather than labelled pills,
+and **bare glyphs set a time while circled ones hold the clock**: `Play` and
+`Square` for the two ends, `CirclePause` / `CirclePlay` for the hold. They are
+on the add dialog and on a running entry's own line in the readout, since the
+whole point is that you press them when they happen.
 
 ## Editing the past
 

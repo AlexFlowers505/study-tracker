@@ -49,6 +49,42 @@ export const nowTime = (): TimeOfDay => {
   return `${pad(hour)}:${pad(snapped % 60)}`
 }
 
+/* ---- Pauses --------------------------------------------------------------
+
+   A pause is measured between two clicks and stored as a duration, never as a
+   pair of times — see `TimeEntry.paused`. That is what makes it work on an
+   entry being filled in for yesterday: the two clicks happen now, and the only
+   thing taken from them is how far apart they were.
+-------------------------------------------------------------------------- */
+
+/**
+ * The grid every time in this app sits on. `nowTime` snaps to it, the dial
+ * steps by it, and a pause is rounded to it for the same reason: a figure the
+ * app fills in should always be one you could have picked by hand.
+ */
+export const STEP_MINUTES = 5
+
+export const roundToStep = (minutes: number): number =>
+  Math.round(minutes / STEP_MINUTES) * STEP_MINUTES
+
+/**
+ * Minutes from an ISO instant until now, on the five-minute grid.
+ *
+ * Each pause is rounded as it ends rather than the total being rounded once,
+ * so what the app adds is always what it showed you it was adding. A pause
+ * under two and a half minutes therefore adds nothing, which is the same
+ * bargain `nowTime` already makes with the clock.
+ *
+ * An unparseable instant yields nought rather than `NaN`: a stray value in
+ * jsonb must not turn one entry's duration into a hole that spreads through
+ * every total on the page.
+ */
+export const minutesSince = (iso: string, now: number = Date.now()): number => {
+  const then = Date.parse(iso)
+  if (!Number.isFinite(then)) return 0
+  return Math.max(0, roundToStep((now - then) / 60000))
+}
+
 /* ---- Minutes as hours ---- */
 
 /**

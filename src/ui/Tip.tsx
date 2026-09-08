@@ -131,7 +131,14 @@ function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
       ref={ref}
       role="tooltip"
       style={{ position: "fixed", ...corrected }}
-      className="pointer-events-none z-[100]"
+      /* **Above the floating panels, not level with them.** This was `z-[100]`
+         while `PopoverMenu` and the date panels are `z-[110]`, so every
+         tooltip on a control *inside* one of those was painted underneath the
+         panel it belonged to and simply never appeared — which is what had
+         happened to the icon picker's name labels, the one place in the app
+         where the tooltip is the whole feature. A tooltip is by definition
+         about something else on the screen, so it is the last thing drawn. */
+      className="pointer-events-none z-[120]"
     >
       <span
         style={{ transformOrigin: origin }}

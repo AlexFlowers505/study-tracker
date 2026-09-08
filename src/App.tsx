@@ -60,11 +60,15 @@ import {
   streakContext,
 } from "./lib/customStreaks"
 import { dayReport, keptDays, keptWeeks } from "./lib/dayVerdict"
-import { benchmarkMinutes, withBenchmarkGoals } from "./lib/benchmark"
+import {
+  benchmarkMeter,
+  benchmarkMinutes,
+  withBenchmarkGoals,
+} from "./lib/benchmark"
 import { makeIsIgnored } from "./lib/stats"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
-import { canBuy, purchaseOf } from "./lib/shop"
+import { purchaseOf, takenItemIds } from "./lib/shop"
 import {
   applyProposal,
   hasSupervisor,
@@ -117,7 +121,6 @@ import { ChangeLogSection } from "./views/ChangeLogSection"
 import { AchievementsSection } from "./views/AchievementsSection"
 import { ShopSection } from "./views/ShopSection"
 import { SupervisorSection } from "./views/SupervisorSection"
-import { SleepSection } from "./views/SleepSection"
 import { PeriodBar } from "./views/PeriodBar"
 import { LogView } from "./views/LogView"
 import { SetupModal } from "./views/SetupModal"
@@ -175,6 +178,17 @@ export default function StudyTrackerApp() {
   } | null>(null)
   const locale = useLocale()
   const [showSetup, setShowSetup] = useState(false)
+  /* **Which tab Setup opens on**, when a panel's gear asked for one. Half the
+     panels on the page are a reading of something written in Setup — the
+     shelf, the rules, the achievements — and getting from the reading to the
+     writing was Setup, then the right tab out of nine. Each panel knows its
+     own tab, so it says so. Reset by the top bar's own button, which has no
+     tab in mind and must not inherit the last one somebody jumped to. */
+  const [setupTab, setSetupTab] = useState<string | undefined>(undefined)
+  const openSetup = (tab?: string) => {
+    setSetupTab(tab)
+    setShowSetup(true)
+  }
   // Set when the initial read threw. While true the app is read-only: it holds
   // placeholder state that must never be written back over the real row.
   const [loadFailed, setLoadFailed] = useState(false)
@@ -185,7 +199,6 @@ export default function StudyTrackerApp() {
   // logbook private; see migrations/006_admins.sql.
   const [isAdmin, setIsAdmin] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
-  const [showSleep, setShowSleep] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showShop, setShowShop] = useState(false)
@@ -244,6 +257,35 @@ export default function StudyTrackerApp() {
       block: "start",
     })
     setJustOpened(null)
+  }
+
+  /**
+   * **Open a rule from the board, and go and look at it.**
+   *
+   * Opening it was never the hard part; arriving was. On a page with the
+   * board, the filter and the shop open, the rule you just asked for is two
+   * screens below the fold, and a panel that appears where you cannot see it
+   * is indistinguishable from a button that did nothing.
+   *
+   * The target does not exist yet on the tick the state changes — the panel
+   * has to mount and the composite's breakdown has to draw the row it hangs
+   * under — so this looks for it across a few frames rather than guessing a
+   * delay. It gives up after a handful: a scroll that lands somewhere
+   * unrelated a second later is worse than one that never happens.
+   */
+  const goToRule = (ruleId: string) => {
+    setOpenStreak(ruleId)
+    let tries = 0
+    const look = () => {
+      const el = document.getElementById(`kept-rule-${ruleId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+        setJustOpened(null)
+        return
+      }
+      if (++tries < 10) requestAnimationFrame(look)
+    }
+    requestAnimationFrame(look)
   }
   /**
    * Which streak's panel is open: `"main"`, a rule id, or nothing.
@@ -631,6 +673,11 @@ export default function StudyTrackerApp() {
    * must not be able to move a figure a rule is answerable for. Null when
    * nothing is nominated, and then the month grid draws no hours at all.
    */
+  const dayMeter = useMemo(
+    () => benchmarkMeter(project, verdictCtx),
+    [project, verdictCtx],
+  )
+
   const benchmarkOf = useCallback(
     (dates: Date[]) =>
       benchmarkMinutes(
@@ -640,6 +687,25 @@ export default function StudyTrackerApp() {
         verdictCtx,
       ),
     [project, verdictCtx],
+  )
+
+  /**
+   * **The same reading, one day at a time** — for the figure a card prints
+   * beside its own goal.
+   *
+   * `spec 022` made the period's total answer to the nominated rule and left
+   * the day cards totalling everything, which was survivable while sleep sat
+   * on an axis of its own. `spec 024` moved it into the log, so a card
+   * comparing *every minute logged* against a goal the rule supplied now reads
+   * `goal 3h (+3h 25m)` on a day whose only entry was a night's sleep — the
+   * drawing congratulating you for having gone to bed.
+   *
+   * Null when nothing is nominated, and then the card totals everything, which
+   * is the only answer there is.
+   */
+  const benchmarkDayOf = useCallback(
+    (dayKey: DayKey, day: Day | undefined) => dayMeter?.(dayKey, day) ?? null,
+    [dayMeter],
   )
 
   const kept = useMemo(() => keptDays(soloProject), [soloProject])
@@ -698,7 +764,6 @@ export default function StudyTrackerApp() {
   const openPanels = [
     noticePrefs.open && noticeList.length > 0,
     showFilter,
-    showSleep,
     showAccount,
     showShop,
     showHistory,
@@ -710,7 +775,6 @@ export default function StudyTrackerApp() {
   const hideAll = () => {
     setNoticesOpen(false)
     setShowFilter(false)
-    setShowSleep(false)
     setShowAccount(false)
     setShowShop(false)
     setShowHistory(false)
@@ -1417,7 +1481,9 @@ export default function StudyTrackerApp() {
   return (
     <div key={locale} className="min-h-screen bg-page text-ink">
       <TopBar
-        onOpenSetup={() => setShowSetup(true)}
+        /* No tab in mind, and it must not inherit the last one a
+           panel's gear jumped to. */
+        onOpenSetup={() => openSetup()}
         projectName={project.settings.projectName || "Time Tracker"}
         projectIcon={project.settings.projectIcon || "Train"}
         startDate={project.settings.startDate}
@@ -1454,9 +1520,6 @@ export default function StudyTrackerApp() {
             hiddenTags.size +
             hiddenCategories.size
           }
-          sleepEnabled={project.settings.sleepEnabled === true}
-          showSleep={showSleep}
-          onToggleSleep={() => setShowSleep((v) => !v)}
           showLog={showLog}
           onToggleLog={(e) => {
             opening(showLog, "sec-changelog", e)
@@ -1515,12 +1578,17 @@ export default function StudyTrackerApp() {
           shop={
             (project.settings.shop || []).length
               ? {
-                  /* What you can **afford**, not what you have taken: a
-                     reward can be taken more than once, so taken-of-total
-                     would climb past its own denominator. */
-                  affordable: (project.settings.shop || []).filter((item) =>
-                    canBuy(item, balance.total),
-                  ).length,
+                  /* **What you have taken**, counted as distinct rewards.
+                     It was what you could *afford*, which is a different
+                     question and the wrong one for a badge: affordability
+                     moves every time a day is logged, so the figure drifted
+                     up and down without anything having happened, and it
+                     answered "what could I do" where every other badge in
+                     this row answers "how much of this is done". Distinct
+                     rewards rather than purchases is what keeps it from
+                     climbing past its own denominator, since a reward can be
+                     taken again and again. */
+                  taken: takenItemIds(project).size,
                   total: (project.settings.shop || []).length,
                 }
               : null
@@ -1552,7 +1620,11 @@ export default function StudyTrackerApp() {
             onToggleLevel={toggleNoticeLevel}
             onBulkLevels={setNoticeLevelsHidden}
             activeRule={openStreak}
-            onOpenRule={(id) => setOpenStreak(openStreak === id ? null : id)}
+            /* Open and arrive, never toggle. The button says "go there", and
+               a control that sometimes goes and sometimes closes is a control
+               you have to remember the state of; the panel has its own way
+               shut. Pressing it again simply takes you back. */
+            onOpenRule={goToRule}
             onClose={() => setNoticesOpen(false)}
           />
           </section>
@@ -1593,6 +1665,7 @@ export default function StudyTrackerApp() {
         <Leaving open={showFilter}>
           <section id="sec-filter" className="scroll-mt-28">
           <CountFilter
+            onSettings={() => openSetup("units")}
             slots={project.slots}
             activities={project.activities}
             counters={project.counterUnits || []}
@@ -1640,6 +1713,7 @@ export default function StudyTrackerApp() {
         {kept && keptWeekly && (
           <section id="sec-kept" className="scroll-mt-28">
           <KeptSection
+            onSettings={() => openSetup("streaks")}
             onOpenRule={(id) =>
               setOpenStreak(openStreak === id ? KEPT_PANEL : id)
             }
@@ -1650,6 +1724,7 @@ export default function StudyTrackerApp() {
               return (
                 <CustomStreakSection
                   nested
+                  onSettings={() => openSetup("streaks")}
                   status={s2}
                   /* The worst the board has on this rule, so it opens on the
                      state before it opens on the drawings. The board keeps the
@@ -1736,6 +1811,7 @@ export default function StudyTrackerApp() {
         <Leaving open={showShop}>
           <section id="sec-shop" className="scroll-mt-28">
           <ShopSection
+            onSettings={() => openSetup("shop")}
             project={project}
             balance={project.settings.balanceStart ? balance : null}
             onBuy={buyReward}
@@ -1755,6 +1831,7 @@ export default function StudyTrackerApp() {
         <Leaving open={showHistory}>
           <section id="sec-achievements" className="scroll-mt-28">
           <AchievementsSection
+            onSettings={() => openSetup("achievements")}
             project={project}
             today={new Date()}
             onClose={() => setShowHistory(false)}
@@ -1776,6 +1853,7 @@ export default function StudyTrackerApp() {
           data={shownProject}
           verdictOf={verdictOf}
           benchmarkOf={benchmarkOf}
+          benchmarkDayOf={benchmarkDayOf}
           period={period}
           range={range}
           cursor={logCursor}
@@ -1796,20 +1874,6 @@ export default function StudyTrackerApp() {
           // Entries are edited in the card itself. The day dialog is still
           // there for the day-level things — lessons, exam, ignore, the note.
           onUpdateDay={updateDay}
-          // Rendered inside the period section rather than above it: sleep is
-          // period-scoped, so it belongs under the heading that says everything
-          // below describes the chosen range.
-          sleepSection={
-            showSleep && project.settings.sleepEnabled === true ? (
-              <SleepSection
-                days={project.days}
-                range={range}
-                weekIgnore={project.weekIgnore}
-                monthIgnore={project.monthIgnore}
-                onClose={() => setShowSleep(false)}
-              />
-            ) : null
-          }
         />
         </section>
 
@@ -1873,7 +1937,6 @@ export default function StudyTrackerApp() {
           slots={project.slots}
           activities={project.activities}
           units={project.counterUnits || []}
-          sleepEnabled={project.settings.sleepEnabled === true}
           counters={project.days[quickAdd.key]?.counters || {}}
           checks={project.days[quickAdd.key]?.checks || {}}
           onCancel={() => setQuickAdd(null)}
@@ -1898,16 +1961,10 @@ export default function StudyTrackerApp() {
           }}
           onAdd={(dateKey, slotId, entry) => {
             const day = project.days[dateKey] || {}
-            // A null slot means sleep — the day's other list, which no study
-            // figure may ever read.
-            if (slotId === null) {
-              updateDay(dateKey, { sleep: [...(day.sleep || []), entry] })
-            } else {
-              const cells = day.cells || {}
-              updateDay(dateKey, {
-                cells: { ...cells, [slotId]: [...(cells[slotId] || []), entry] },
-              })
-            }
+            const cells = day.cells || {}
+            updateDay(dateKey, {
+              cells: { ...cells, [slotId]: [...(cells[slotId] || []), entry] },
+            })
             setQuickAdd(null)
           }}
         />
@@ -1917,6 +1974,7 @@ export default function StudyTrackerApp() {
         <DayQuickviewModal
           dateKey={editingKey}
           verdictOf={verdictOf}
+          benchmarkDayOf={benchmarkDayOf}
           dayEntry={project.days[editingKey]}
           slots={project.slots}
           activities={project.activities}
@@ -1947,6 +2005,7 @@ export default function StudyTrackerApp() {
           one wrapper for everything that goes away. */}
       <Leaving open={showSetup}>
         <SetupModal
+          initialTab={setupTab}
           settings={project.settings}
           slots={project.slots}
           activities={project.activities}

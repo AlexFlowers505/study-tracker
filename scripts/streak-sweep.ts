@@ -54,7 +54,10 @@ import {
   freezeSpendOn,
 } from "../src/lib/customStreaks"
 import { dayReport } from "../src/lib/dayVerdict"
-import { toKey, weekDates } from "../src/lib/date"
+import { fromKey, toKey, weekDates } from "../src/lib/date"
+import { benchmarkMeter, benchmarkMinutes } from "../src/lib/benchmark"
+import { computeOverviewStats } from "../src/lib/analytics"
+import { foldDay, foldSleep } from "../src/lib/sleepMove"
 import type {
   Achievement,
   Activity,
@@ -78,10 +81,14 @@ const UNITS: CounterUnit[] = [
 const ACTIVITIES = [
   // Tagged since `spec 019`: an activity carries tags like any other counter.
   { id: "a-les", label: "Lessons", color: "#888", iconName: "Circle", tagIds: ["t-deep"] },
+  // An ordinary activity since `spec 024`, and named here so a rule can point
+  // at it exactly as it would at any other.
+  { id: "a-sleep", label: "Sleep", color: "#888", iconName: "Moon" },
 ] as Activity[]
 const SLOTS = [
   { id: "s-am", label: "Morning", color: "#888", iconName: "Circle" },
   { id: "s-pm", label: "Evening", color: "#888", iconName: "Circle" },
+  { id: "slot-sleep", label: "Sleep", color: "#888", iconName: "Moon" },
 ] as Slot[]
 
 /** Monday 17 Aug 2026, a week that is wholly in the past. */
@@ -97,6 +104,24 @@ const counted = (unitId: string, slotId: string, n: number): Day =>
 const studied = (minutes: number, slotId = "s-am"): Day =>
   ({
     cells: { [slotId]: [{ id: "e", activity: "a-les", minutes }] },
+  }) as unknown as Day
+
+/** A day of sessions with clocks on them — `spec 023`. */
+const sat = (
+  sessions: [start: string, end: string][],
+  slotId = "s-am",
+  activity = "a-les",
+): Day =>
+  ({
+    cells: {
+      [slotId]: sessions.map(([start, end], i) => ({
+        id: `e${i}`,
+        activity,
+        start,
+        end,
+        minutes: 60,
+      })),
+    },
   }) as unknown as Day
 
 const answered = (marks: Record<string, "yes" | "no" | "skip">): Day => {
@@ -126,6 +151,114 @@ const project = (rule: StreakRule, days: Record<DayKey, Day>): Project =>
     weekIgnore: {},
     monthIgnore: {},
   }) as unknown as Project
+
+/* ---- the benchmark's own reading ---------------------------------------
+
+   `spec 022`: the figure the period prints beside its goal is measured
+   through the nominated rule, not through every minute logged. These pin the
+   distinction, because the failure is silent — a regression to "everything"
+   still prints a plausible number, just one that answers a different
+   question. Expectations written out, like everything else here.
+-------------------------------------------------------------------------- */
+
+/** A day holding time under two activities, only one of which is promised. */
+const mixedDay = (): Day =>
+  ({
+    cells: {
+      "s-am": [
+        { id: "e1", activity: "a-les", minutes: 120 },
+        { id: "e2", activity: "a-idle", minutes: 300 },
+      ],
+    },
+  }) as unknown as Day
+
+const benchProject = (nominated: boolean): Project => {
+  const rule = ruleOf(
+    { id: "c", targets: [{ kind: "activity", id: "a-les" }], min: 60 },
+    "day",
+  )
+  const base = project(rule, { [MON]: mixedDay() })
+  return {
+    ...base,
+    activities: [
+      ...ACTIVITIES,
+      { id: "a-idle", label: "Did nothing", color: "#888", iconName: "Circle" },
+    ],
+    settings: {
+      ...base.settings,
+      ...(nominated ? { benchmarkRuleId: "r" } : {}),
+    },
+  } as unknown as Project
+}
+
+const BENCHMARKS: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "counts only what the nominated rule names",
+    got: () => benchmarkMinutes(benchProject(true), [fromKey(MON)]),
+    want: 120,
+  },
+  {
+    name: "nothing nominated reads null, so the caller falls back",
+    got: () => benchmarkMinutes(benchProject(false), [fromKey(MON)]),
+    want: null,
+  },
+  {
+    name: "a day the rule does not cover contributes nothing",
+    got: () => benchmarkMinutes(benchProject(true), [fromKey(TODAY)]),
+    want: 0,
+  },
+  {
+    name: "the per-day meter agrees with the sum",
+    got: () => benchmarkMeter(benchProject(true))?.(MON, benchProject(true).days[MON]),
+    want: 120,
+  },
+  {
+    name: "no meter at all when nothing is nominated",
+    got: () => benchmarkMeter(benchProject(false)),
+    want: null,
+  },
+  {
+    name: "the overview totals what the meter counted, not what was logged",
+    got: () => {
+      const proj = benchProject(true)
+      const meter = benchmarkMeter(proj)
+      return computeOverviewStats(
+        [MON],
+        proj.days,
+        proj.slots,
+        fromKey(MON),
+        fromKey(MON),
+        meter ?? undefined,
+      ).totalMinutes
+    },
+    want: 120,
+  },
+  {
+    name: "and totals everything when handed no meter",
+    got: () => {
+      const proj = benchProject(true)
+      return computeOverviewStats([MON], proj.days, proj.slots, fromKey(MON), fromKey(MON))
+        .totalMinutes
+    },
+    want: 420,
+  },
+  {
+    name: "a day with something on it is never an empty day",
+    got: () => {
+      const proj = benchProject(true)
+      const meter = benchmarkMeter(proj)
+      return computeOverviewStats(
+        [MON],
+        proj.days,
+        proj.slots,
+        fromKey(MON),
+        fromKey(MON),
+        meter ?? undefined,
+      ).activeDays
+    },
+    want: 1,
+  },
+]
 
 const ruleOf = (clause: StreakClause, scope: "day" | "week"): StreakRule =>
   ({
@@ -181,6 +314,107 @@ const everyDayBlank = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, {}
 const weekdaysBlank = Object.fromEntries([1, 2, 3, 4, 5].map((d) => [d, {}]))
 
 const CASES: Case[] = [
+  /* ---- when the day had to start and finish — `spec 023` ---------------
+
+     A window is read against the day's **earliest start** and **latest end**,
+     not against every entry: *begin by ten* is about when you sat down, not
+     about every time you sat down. Both directions of both walls are here,
+     because they are four different sentences and the pair reads in opposite
+     directions. ---------------------------------------------------------- */
+  c("window · begin by 10:00 · sat down at 09:30", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } },
+    { [MON]: sat([["09:30", "11:00"]]) }, "met"),
+  c("window · begin by 10:00 · sat down at 10:30", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } },
+    { [MON]: sat([["10:30", "11:00"]]) }, "missed"),
+  /* The earliest start is what answers, so a late second session cannot
+     un-keep a morning that began on time. */
+  c("window · begin by 10:00 · began at 09:00 and again at 14:00", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } },
+    { [MON]: sat([["09:00", "10:00"], ["14:00", "15:00"]]) }, "met"),
+  c("window · no earlier than 09:00 · started at 07:00", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { from: "09:00" } },
+    { [MON]: sat([["07:00", "11:00"]]) }, "missed"),
+  c("window · between 09:00 and 10:00 · started inside it", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { from: "09:00", to: "10:00" } },
+    { [MON]: sat([["09:40", "11:00"]]) }, "met"),
+  c("window · finish by 18:00 · finished at 17:30", "day",
+    { id: "c", ...target("activity", "a-les"), endWindow: { to: "18:00" } },
+    { [MON]: sat([["16:00", "17:30"]]) }, "met"),
+  c("window · finish by 18:00 · finished at 19:00", "day",
+    { id: "c", ...target("activity", "a-les"), endWindow: { to: "18:00" } },
+    { [MON]: sat([["16:00", "19:00"]]) }, "missed"),
+  /* **The one that reads backwards without care.** A session ending at 00:30
+     finished *after* midnight, not first thing in the morning, so a plain
+     clock comparison would have it keeping *finish by six*. */
+  c("window · finish by 18:00 · ran past midnight", "day",
+    { id: "c", ...target("activity", "a-les"), endWindow: { to: "18:00" } },
+    { [MON]: sat([["23:00", "00:30"]]) }, "missed"),
+  c("window · finish no earlier than 17:00 · stopped at 16:00", "day",
+    { id: "c", ...target("activity", "a-les"), endWindow: { from: "17:00" } },
+    { [MON]: sat([["12:00", "16:00"]]) }, "missed"),
+  /* **A window says when, never whether.** An empty day has no beginning to
+     be late, and a rule that made every untouched day fail is not the rule
+     anybody wrote — the floor is what makes you turn up. */
+  c("window · begin by 10:00 · nothing logged at all", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } },
+    {}, "met"),
+  c("window · begin by 10:00 · time logged with no clock on it", "day",
+    { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } },
+    { [MON]: studied(120) }, "met"),
+  /* Only the counted entries answer: the window follows the slots and the
+     targets the condition already restricts itself to. */
+  c("window · counts the morning only · the late session is in the evening", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      slotIds: ["s-am"],
+      startWindow: { to: "10:00" },
+    },
+    { [MON]: { cells: {
+      "s-am": [{ id: "a", activity: "a-les", start: "09:00", end: "10:00", minutes: 60 }],
+      "s-pm": [{ id: "b", activity: "a-les", start: "20:00", end: "21:00", minutes: 60 }],
+    } } as unknown as Day },
+    "met"),
+  /* A window and a figure are one promise, and either breaking breaks it. */
+  c("window · two hours and begin by 10:00 · began late with the hours in", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      startWindow: { to: "10:00" },
+    },
+    { [MON]: sat([["11:00", "13:00"]]) }, "missed"),
+  /* Per weekday, like every other thing this map carries. */
+  c("window · per weekday · Monday's own window, kept", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      days: { 1: { startWindow: { to: "10:00" } }, 2: { startWindow: { to: "07:00" } } },
+    },
+    { [MON]: sat([["09:00", "10:00"]]) }, "met"),
+  c("window · per weekday · Monday's own window, broken", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      days: { 1: { startWindow: { to: "08:00" } }, 2: { startWindow: { to: "22:00" } } },
+    },
+    { [MON]: sat([["09:00", "10:00"]]) }, "missed"),
+  /* A per-day map that states windows must not blank the shared figure —
+     the fault `figuresPerDay` was written for, one dimension along. */
+  c("window · per-day windows leave the shared figure standing", "day",
+    {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 120,
+      days: { 1: { startWindow: { to: "10:00" } } },
+    },
+    { [MON]: sat([["09:00", "10:00"]]) }, "missed"),
+  /* A tally has no clock, so a window stored on one is not read. */
+  c("window · a count target ignores it", "day",
+    { id: "c", ...target("unit", "u-pin"), max: 1, startWindow: { to: "06:00" } },
+    { [MON]: counted("u-pin", "s-am", 1) }, "met"),
+
   /* ---- slots chosen per weekday ---- */
   c("per-day slots · Monday counts only the morning · logged in the morning", "day",
     {
@@ -684,6 +918,39 @@ const lock = (
 ): LockCase => ({ name, before, after, lands })
 
 const LOCKS: LockCase[] = [
+  /* **Windows are walls, and absent is a wall at nowhere** — `spec 023`. No
+     `from` is *however early you like*, so moving one later can only cost
+     you; no `to` is *however late you like*, so moving one earlier can only
+     cost you. The pair therefore reads in opposite directions, exactly as a
+     floor and a ceiling do. */
+  lock("window · add one where there was none",
+    { id: "c", ...target("activity", "a-les"), min: 60 },
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "10:00" } },
+    true),
+  lock("window · drop one",
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "10:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60 },
+    false),
+  lock("window · begin by an earlier hour — harder",
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "10:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "09:00" } },
+    true),
+  lock("window · begin by a later hour — easier",
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "09:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "10:00" } },
+    false),
+  lock("window · no earlier than a later hour — harder",
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { from: "08:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { from: "09:00" } },
+    true),
+  lock("window · no earlier than an earlier hour — easier",
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { from: "09:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { from: "08:00" } },
+    false),
+  lock("window · finish by an earlier hour — harder",
+    { id: "c", ...target("activity", "a-les"), min: 60, endWindow: { to: "20:00" } },
+    { id: "c", ...target("activity", "a-les"), min: 60, endWindow: { to: "18:00" } },
+    true),
   lock("assertion · swap the second check",
     { id: "c", ...checks("u-wake", "u-bed"), allow: everyDayYes },
     { id: "c", ...checks("u-wake", "u-gym"), allow: everyDayYes }, false),
@@ -988,6 +1255,147 @@ const REFUSED: { name: string; clause: object }[] = [
   { name: "a floor of nought in time", clause: { id: "c", ...target("activity", "a-les"), min: 0 } },
   { name: "no accepted answer on any day", clause: { id: "c", ...checks("u-wake"), allow: {} } },
   { name: "a per-weekday map with nothing in it", clause: { id: "c", ...target("activity", "a-les"), days: {} } },
+  /* A window with neither wall is the same nothing said in times. */
+  { name: "a window with no wall on either side", clause: { id: "c", ...target("activity", "a-les"), startWindow: {} } },
+]
+
+/**
+ * **Nights, folded out of the old column** — `spec 024`.
+ *
+ * The fold is the one piece of this change that can lose data, so it is the
+ * one worth pinning: it runs on every load until `migrations/021` has been
+ * everywhere, and a day it gets wrong is a night that is either invisible or
+ * counted twice.
+ */
+const FOLDS: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "a night moves into the sleep slot, keeping its id and its times",
+    got: () => {
+      const day = foldDay({
+        sleep: [{ id: "n1", minutes: 400, start: "23:00", end: "07:00" }],
+      } as unknown as Day)
+      const moved = (day.cells?.["slot-sleep"] ?? [])[0]
+      return `${moved?.id}/${moved?.activity}/${moved?.start}/${moved?.minutes}`
+    },
+    want: "n1/activity-sleep/23:00/400",
+  },
+  {
+    name: "and the old column is emptied, so nothing reads it twice",
+    got: () =>
+      foldDay({ sleep: [{ id: "n1", minutes: 400 }] } as unknown as Day).sleep,
+    want: undefined,
+  },
+  {
+    name: "work already in the sleep slot is kept",
+    got: () => {
+      const day = foldDay({
+        cells: { "slot-sleep": [{ id: "a", activity: "activity-sleep", minutes: 60 }] },
+        sleep: [{ id: "n1", minutes: 400 }],
+      } as unknown as Day)
+      return (day.cells?.["slot-sleep"] ?? []).map((e) => e.id).join(",")
+    },
+    want: "a,n1",
+  },
+  {
+    /* The case that matters: the app folded a day and wrote it, and then a
+       stale read hands the same night back. It must not land twice. */
+    name: "a night already folded is not folded again",
+    got: () => {
+      const day = foldDay({
+        cells: { "slot-sleep": [{ id: "n1", activity: "activity-sleep", minutes: 400 }] },
+        sleep: [{ id: "n1", minutes: 400 }],
+      } as unknown as Day)
+      return (day.cells?.["slot-sleep"] ?? []).length
+    },
+    want: 1,
+  },
+  {
+    name: "a day with no night is returned untouched",
+    got: () => {
+      const day = { cells: { "s-am": [] } } as unknown as Day
+      return foldDay(day) === day
+    },
+    want: true,
+  },
+  {
+    name: "the slot and the activity are invented until the migration makes them",
+    got: () => {
+      const rule = ruleOf(
+        { id: "c", ...target("activity", "a-les"), min: 60 } as StreakClause,
+        "day",
+      )
+      const proj = project(rule, {
+        [MON]: { sleep: [{ id: "n1", minutes: 400 }] } as unknown as Day,
+      })
+      const folded = foldSleep({ ...proj, slots: SLOTS, activities: ACTIVITIES })
+      return [
+        folded.slots.some((x) => x.id === "slot-sleep"),
+        folded.activities.some((x) => x.id === "activity-sleep"),
+      ].join(",")
+    },
+    want: "true,true",
+  },
+]
+
+/**
+ * **What the rule reads back as** — `spec 023`.
+ *
+ * The readback is the only way to check that what you built is what you meant,
+ * so it is the one drawing worth asserting to the character. It also proves
+ * the `frag:` fallbacks still work, which is what caught the doubled comma the
+ * windows shipped with for an hour: the key's fallback *is* the English, so a
+ * caller that adds punctuation of its own doubles whatever the fragment had.
+ */
+const SENTENCES: { name: string; clause: object; want: string }[] = [
+  {
+    name: "a window and a figure",
+    clause: { id: "c", ...target("activity", "a-les"), min: 120, startWindow: { to: "10:00" } },
+    want: "“Lessons” at least “2h”, starting by “10:00”",
+  },
+  {
+    name: "both walls read as a stretch of clock",
+    clause: { id: "c", ...target("activity", "a-les"), min: 120, startWindow: { from: "09:00", to: "10:00" } },
+    want: "“Lessons” at least “2h”, starting between “09:00” and “10:00”",
+  },
+  {
+    name: "a window carrying the whole condition",
+    clause: { id: "c", ...target("activity", "a-les"), endWindow: { to: "18:00" } },
+    want: "“Lessons” finishing by “18:00”",
+  },
+  {
+    name: "both windows",
+    clause: { id: "c", ...target("activity", "a-les"), min: 60, startWindow: { to: "10:00" }, endWindow: { from: "17:00" } },
+    want: "“Lessons” at least “1h”, starting by “10:00”, finishing no earlier than “17:00”",
+  },
+  {
+    /* The one that matters most: a rule with no window says exactly what it
+       always said, to the character. */
+    name: "no window at all, unchanged",
+    clause: { id: "c", ...target("activity", "a-les"), min: 120 },
+    want: "“Lessons” at least “2h”",
+  },
+  {
+    name: "per weekday, grouped by the window as well as the figure",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      min: 60,
+      days: { 1: { min: 60, startWindow: { to: "09:00" } }, 2: { min: 60, startWindow: { to: "11:00" } } },
+    },
+    want: "“Lessons” at least “1h”, starting by “09:00” on Mon, at least “1h”, starting by “11:00” on Tue",
+  },
+]
+
+/**
+ * **A window on its own is a promise**, and the gate has to know it.
+ *
+ * *Begin by ten* asks something real with no figure beside it, and without
+ * this the form would refuse to save one — the failure would be a control
+ * that draws a rule and then will not let you keep it.
+ */
+const ACCEPTED: { name: string; clause: object }[] = [
+  { name: "a window and no figure at all", clause: { id: "c", ...target("activity", "a-les"), startWindow: { to: "10:00" } } },
+  { name: "a finishing window and no figure", clause: { id: "c", ...target("activity", "a-les"), endWindow: { from: "17:00" } } },
 ]
 
 /**
@@ -1000,6 +1408,24 @@ const REFUSED: { name: string; clause: object }[] = [
  * amounts of room.
  */
 const IMPOSSIBLE: { name: string; clause: object; byWeek?: boolean }[] = [
+  /* Two more ways in, both a scroll wheel apart — `spec 023`. */
+  {
+    name: "a window whose walls have crossed",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      startWindow: { from: "11:00", to: "09:00" },
+    },
+  },
+  {
+    name: "must begin after it has to have finished",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      startWindow: { from: "18:00" },
+      endWindow: { to: "09:00" },
+    },
+  },
   {
     name: "a floor above its own ceiling",
     clause: { id: "c", ...target("activity", "a-les"), min: 180, max: 60 },
@@ -1056,6 +1482,15 @@ const IMPOSSIBLE: { name: string; clause: object; byWeek?: boolean }[] = [
  * over-reaches is worse than none: it stops you writing a rule you meant.
  */
 const POSSIBLE: { name: string; clause: object; byWeek?: boolean }[] = [
+  {
+    name: "a window that opens before it shuts",
+    clause: {
+      id: "c",
+      ...target("activity", "a-les"),
+      startWindow: { from: "09:00", to: "11:00" },
+      endWindow: { to: "19:00" },
+    },
+  },
   {
     name: "slot floors that fit inside the day's ceiling",
     clause: {
@@ -2142,7 +2577,14 @@ for (const test of LEDGERS) {
    what it says. That is silent, so it is pinned here. */
 
 const SLEPT = (minutes: number): Day =>
-  ({ sleep: [{ id: "s", minutes }] }) as unknown as Day
+  ({
+    cells: {
+      "s-am": [{ id: "e", activity: "a-les", minutes: 120 }],
+      "slot-sleep": [
+        { id: "s", activity: "a-sleep", start: "23:00", end: "07:00", minutes },
+      ],
+    },
+  }) as unknown as Day
 
 interface AddCase {
   name: string
@@ -2154,18 +2596,23 @@ interface AddCase {
 
 const ADDITIONS: AddCase[] = [
   {
-    /* Sleep is its own axis and stays one: a `sleep` target reads `day.sleep`
-       rather than `day.cells`, so nothing in the study totals moves. */
-    name: "a sleep target counts the night, in minutes",
-    clause: { id: "c", targets: [{ kind: "sleep" }], min: 420 },
-    day: { ...SLEPT(400), ...studied(120) } as Day,
+    /* **Sleep stopped being an axis** — `spec 024`. A night is an ordinary
+       activity in an ordinary slot, so a rule about it names that activity and
+       is read by the same arithmetic as everything else. There is no `sleep`
+       target kind left to test. */
+    name: "a rule pointed at the sleep activity counts the nights",
+    clause: { id: "c", ...target("activity", "a-sleep"), min: 420 },
+    day: SLEPT(400),
     want: 400,
   },
   {
-    name: "and study time on the same day is untouched by it",
+    /* And it lands in the totals now, because it is time like any other. What
+       keeps it out of the figure a period reports is the benchmark rule not
+       naming it — see `spec 022`. */
+    name: "all logged time now includes the night",
     clause: { id: "c", ...target("time", ""), min: 60 },
-    day: { ...SLEPT(400), ...studied(120) } as Day,
-    want: 120,
+    day: SLEPT(400),
+    want: 520,
   },
   {
     /* A tag reached counters only until `spec 019`; with activities tagged it
@@ -2235,10 +2682,61 @@ for (const { name, clause } of REFUSED) {
 }
 
 console.log("")
+for (const test of FOLDS) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  fold: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  fold: ${test.name}`)
+    console.log(`      got ${got}, want ${test.want}`)
+  }
+}
+
+console.log("")
+for (const { name, clause, want } of SENTENCES) {
+  const rule = ruleOf(clause as StreakClause, "day")
+  const ctx = streakContext(project(rule, {}))
+  const got = clauseSentence(clause as StreakClause, ctx, "day")
+  if (got === want) {
+    console.log(`${GREEN}  ok${OFF}  reads back: ${name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  reads back: ${name}`)
+    console.log(`      got  ${got}`)
+    console.log(`      want ${want}`)
+  }
+}
+
+console.log("")
+for (const { name, clause } of ACCEPTED) {
+  const rule = ruleOf(clause as StreakClause, "day")
+  const ctx = streakContext(project(rule, {}))
+  if (!clauseAsksNothing(clause as StreakClause, ctx)) {
+    console.log(`${GREEN}  ok${OFF}  accepted: ${name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  accepted: ${name} — refused, and it does ask something`)
+  }
+}
+
+console.log("")
+for (const test of BENCHMARKS) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  benchmark: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  benchmark: ${test.name}`)
+    console.log(`      got ${got}, want ${test.want}`)
+  }
+}
+
+console.log("")
 if (failed) {
   console.log(`${RED}${failed} failing${OFF}${deferred ? `, ${deferred} deferred` : ""}`)
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length + BENCHMARKS.length + ACCEPTED.length + SENTENCES.length + FOLDS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

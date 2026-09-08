@@ -58,6 +58,7 @@ import type {
   StreakRule,
   StreakTarget,
   Tag,
+  TimeWindow,
 } from "../types/model"
 import {
   WEEKDAY_LABELS,
@@ -79,7 +80,7 @@ import { dayCounters, slotUnitValue, unitDayTotal } from "./counters"
 import { entryActivity } from "./entries"
 import { makeId } from "./id"
 import { pluralOf, t } from "./i18n"
-import { fmtHours } from "./time"
+import { fmtHours, minutesToTime, timeToMinutes } from "./time"
 import { EDIT_HORIZON_DAYS, isEditableDay, isSealable } from "./freezes"
 
 /** How long a loosening waits. A week, so a bad Tuesday cannot rewrite Tuesday. */
@@ -167,6 +168,46 @@ export const slotFiguresPerDay = (clause: StreakClause): boolean =>
     const own = clause.days?.[wd]?.slots
     return !!own && Object.keys(own).length > 0
   })
+
+/**
+ * The same question about the **windows** — `spec 023`.
+ *
+ * A fourth independent per-day answer, and the third time this note has had to
+ * be written: `days` is one map carrying unrelated things, and each of them
+ * must be asked about on its own or a map written for one blanks another. A
+ * map saying which slots Tuesday counts says nothing about when Tuesday had to
+ * start.
+ */
+export const windowsPerDay = (clause: StreakClause): boolean =>
+  !!clause.days &&
+  WEEKDAY_ORDER.some((wd) => {
+    const own = clause.days?.[wd]
+    return !!own && (hasWindow(own.startWindow) || hasWindow(own.endWindow))
+  })
+
+/** Does this window wall anything in at all? */
+export const hasWindow = (w: TimeWindow | undefined): boolean =>
+  !!w && (w.from !== undefined || w.to !== undefined)
+
+/**
+ * When this condition's work had to begin and end on a given weekday.
+ *
+ * Shaped exactly like `boundsOnWeekday`, and for the same reasons: the
+ * per-day map wins when some day in it states a window, and otherwise the
+ * shared pair stands. A weekday the map does not mention at all is a weekday
+ * the condition does not judge, so it asks nothing.
+ */
+export const windowsOnWeekday = (
+  clause: StreakClause,
+  weekday: number,
+): { start: TimeWindow; end: TimeWindow } => {
+  if (clause.days && windowsPerDay(clause)) {
+    const own = clause.days[weekday]
+    return { start: own?.startWindow ?? {}, end: own?.endWindow ?? {} }
+  }
+  if (clause.days && !clause.days[weekday]) return { start: {}, end: {} }
+  return { start: clause.startWindow ?? {}, end: clause.endWindow ?? {} }
+}
 
 export const boundsOnWeekday = (
   clause: StreakClause,
@@ -387,7 +428,6 @@ export function targetMeasure(
   ctx: StreakContext,
 ): StreakMeasure {
   if (target.kind === "time" || target.kind === "activity") return "time"
-  if (target.kind === "sleep") return "time"
   if (target.kind !== "category" && target.kind !== "tag") return "count"
   if (target.measure) return target.measure
   /* **A tag reads like a category now, and for the same reason** — `spec 019`.
@@ -443,9 +483,7 @@ export function targetInfo(
     check: false,
   })
 
-  if (target.kind === "time") return plain(t("Study time"))
-
-  if (target.kind === "sleep") return plain(t("target:Sleep"))
+  if (target.kind === "time") return plain(t("Logged time"))
 
   if (target.kind === "activity") {
     const activity = byId(ctx.activities, target.id)
@@ -640,23 +678,7 @@ const minutesOn = (
   slots: Slot[],
   slotIds: string[] | undefined,
   keep: (activityId: string) => boolean,
-  /**
-   * **Sleep is read off its own list** — `spec 019`.
-   *
-   * `day.sleep` is flat: no slot, no activity, and nothing in `dayBreakdown`
-   * or the goals may ever see it, because sleep is a separate axis rather than
-   * study time. A condition about it therefore carries no slot bounds — there
-   * is nothing for a slot rider to measure — and the nights counted are the
-   * ones that *started* on this day, the same ownership rule `collectNights`
-   * uses and the reason most of them carry a `+1d` mark.
-   */
-  sleep = false,
 ): number => {
-  if (sleep)
-    return (day?.sleep || []).reduce(
-      (sum, entry) => sum + (Number(entry.minutes) || 0),
-      0,
-    )
   const cells = day?.cells
   if (!cells) return 0
   const ids = slotIds?.length ? slotIds : slots.map((slot) => slot.id)
@@ -668,6 +690,141 @@ const minutesOn = (
     })
   })
   return total
+}
+
+/**
+ * **The two ends of a day's work**, over the same entries `minutesOn` adds up.
+ *
+ * `first` is the earliest start among them and `last` the latest end, both in
+ * minutes from this day's midnight. Only entries that carry the time in
+ * question contribute: one with no start says nothing about when the day
+ * began, and guessing from its neighbours would be inventing data.
+ *
+ * **`last` may run past 1440, and has to.** An entry whose end is before its
+ * own start ran into the next day, so 23:30–00:30 finished at 1470 rather
+ * than at 30 — and read the other way it would be the *earliest* finish on the
+ * day, which turns *finish by six* into a promise a midnight session keeps.
+ *
+ * Sleep is deliberately absent: it is measured on the rotated 18:00 clock,
+ * where "earlier" is a different word, and a window on that frame is its own
+ * piece of thinking. Callers gate on the target rather than this returning
+ * something misleading.
+ */
+export interface DayEdges {
+  first?: number
+  last?: number
+}
+
+const edgesIn = (
+  day: Day | undefined,
+  slots: Slot[],
+  slotIds: string[] | undefined,
+  keep: (activityId: string) => boolean,
+): DayEdges => {
+  const cells = day?.cells
+  if (!cells) return {}
+  const ids = slotIds?.length ? slotIds : slots.map((slot) => slot.id)
+  let first: number | undefined
+  let last: number | undefined
+  ids.forEach((slotId) => {
+    ;(cells[slotId] || []).forEach((entry) => {
+      if (!keep(String(entryActivity(entry)))) return
+      if (entry.start) {
+        const at = timeToMinutes(entry.start)
+        if (first === undefined || at < first) first = at
+      }
+      if (entry.end) {
+        const raw = timeToMinutes(entry.end)
+        // Past midnight: the session belongs to this day and finished after it.
+        const at =
+          entry.start && raw < timeToMinutes(entry.start) ? raw + 1440 : raw
+        if (last === undefined || at > last) last = at
+      }
+    })
+  })
+  return { first, last }
+}
+
+/**
+ * The day's edges as this condition sees them — the entries it counts, in the
+ * slots that weekday collects from.
+ *
+ * Nothing for a target with no clock behind it: a tally is a number of
+ * occurrences and sleep is on another frame. Both simply have no beginning
+ * this can read, and returning `{}` is what makes every caller's window hold
+ * rather than break.
+ */
+export const edgesOn = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  day: Day | undefined,
+  slotIds: string[] | undefined,
+): DayEdges => {
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+  if (info.measure !== "time") return {}
+  return edgesIn(day, ctx.slots, slotIds, keepsAnyActivity(targets, ctx))
+}
+
+/**
+ * Is a moment outside its window?
+ *
+ * **A moment that never happened is outside nothing.** A day with no counted
+ * work has no beginning to be late, and calling that a break would make every
+ * empty day fail a rule about when to start — which is not what the rule says
+ * and not what anybody means by it. The floor is what makes you turn up; this
+ * only says when.
+ */
+/**
+ * A moment from `DayEdges` as a clock face.
+ *
+ * `last` can run past midnight, so 1470 has to read as `00:30` and say which
+ * day it is on — otherwise a session that finished at half past midnight
+ * reports a time nobody's clock has ever shown.
+ */
+export const atClock = (minutes: number): string =>
+  minutes >= 1440
+    ? `${minutesToTime(minutes - 1440)}${t("frag:+1d")}`
+    : minutesToTime(minutes)
+
+export const outsideWindow = (
+  at: number | undefined,
+  window: TimeWindow,
+): boolean => {
+  if (at === undefined) return false
+  if (window.from !== undefined && at < timeToMinutes(window.from)) return true
+  if (window.to !== undefined && at > timeToMinutes(window.to)) return true
+  return false
+}
+
+/**
+ * What a condition's windows say about one day: which of the two broke, and
+ * whether the break is already spent.
+ *
+ * **Only a missed *finish no earlier than* is still open.** Starting too early
+ * cannot be unstarted, starting too late cannot be made earlier, and finishing
+ * too late is done — all three are spent the moment they happen, the same way
+ * a breached ceiling is. Being asked to work until five is the one that the
+ * rest of the day can still put right, so it settles when the day does.
+ */
+export const windowBreaks = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  day: Day | undefined,
+  weekday: number,
+  slotIds: string[] | undefined,
+): { start: boolean; end: boolean; spent: boolean } => {
+  const windows = windowsOnWeekday(clause, weekday)
+  if (!hasWindow(windows.start) && !hasWindow(windows.end))
+    return { start: false, end: false, spent: false }
+  const edges = edgesOn(clause, ctx, day, slotIds)
+  const start = outsideWindow(edges.first, windows.start)
+  const end = outsideWindow(edges.last, windows.end)
+  const owedEnd =
+    end &&
+    windows.end.from !== undefined &&
+    (edges.last ?? 0) < timeToMinutes(windows.end.from)
+  return { start, end, spent: (start || end) && !owedEnd }
 }
 
 /** Counts on a day, added across every unit the target reaches. */
@@ -804,13 +961,7 @@ export const measuredOn = (
   const targets = clauseTargets(clause)
   const info = targetInfo(targets[0], ctx)
   return info.measure === "time"
-    ? minutesOn(
-        day,
-        ctx.slots,
-        slotIds,
-        keepsAnyActivity(targets, ctx),
-        targets.some((t) => t.kind === "sleep"),
-      )
+    ? minutesOn(day, ctx.slots, slotIds, keepsAnyActivity(targets, ctx))
     : countOn(
         dayCounters(day || {}),
         clauseUnits(clause, ctx).map((u) => u.id),
@@ -976,6 +1127,22 @@ export function readClauseDay(
   Object.entries(slotRules).forEach(([slotId, bounds]) => {
     short += shortOf(measured([slotId]), bounds)
   })
+
+  /* **And when it happened** — `spec 023`. A window is not a shortfall in any
+     unit, so it contributes a flat one and lets the flattening below do the
+     rest: a time condition still costs exactly one however many of its parts
+     broke, which is what keeps a rule that gained a window from silently
+     getting dearer to freeze. `edgesOn` returns nothing for a target with no
+     clock, so a count condition is untouched whatever it happens to store. */
+  const broke = windowBreaks(
+    clause,
+    ctx,
+    day,
+    weekday,
+    slotIdsOnWeekday(clause, weekday),
+  )
+  if (broke.start) short += 1
+  if (broke.end) short += 1
 
   return {
     ...base,
@@ -1917,7 +2084,8 @@ export function violationsOn(
       continue
     }
 
-    const value = measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, weekday))
+    const counted = slotIdsOnWeekday(clause, weekday)
+    const value = measuredOn(clause, ctx, day, counted)
     const bounds = boundsOnWeekday(clause, ctx, weekday)
     const slotRules = slotBoundsOnWeekday(clause, weekday)
 
@@ -1930,26 +2098,64 @@ export function violationsOn(
       Object.entries(slotRules).forEach(([slotId, b]) => {
         short += shortBy(measuredOn(clause, ctx, day, [slotId]), b.min, b.max)
       })
+      /* **A broken window is part of the same violation** — `spec 023`. It has
+         to be counted here as well as in `readClauseDay`, and for a harder
+         reason than tidiness: the items priced here must add back up to
+         `totalDeficit`, or a day can be missed with nothing on offer to freeze
+         it. A window that broke while the figure held is exactly that day, and
+         it would have been unfreezable. */
+      const broke = windowBreaks(clause, ctx, day, weekday, counted)
+      if (broke.start) short += 1
+      if (broke.end) short += 1
       if (short <= 0) continue
       const over = bounds.max !== undefined && value > bounds.max
       const need = bounds.min === undefined ? 0 : bounds.min - value
+      const windows = windowsOnWeekday(clause, weekday)
+      const edges = edgesOn(clause, ctx, day, counted)
+      const said = (
+        at: number | undefined,
+        window: TimeWindow,
+        early: string,
+        late: string,
+      ) =>
+        at !== undefined && window.from !== undefined && at < timeToMinutes(window.from)
+          ? t(early, { named, at: q(atClock(at)), bound: q(window.from) })
+          : t(late, { named, at: q(atClock(at ?? 0)), bound: q(window.to ?? "") })
       out.push({
         clauseId: clause.id,
         cost: 1,
-        // A ceiling is spent at any hour; a floor only once the clock has
-        // ruled it out.
-        settled: over || need > minutesLeft,
-        line: over
-          ? t("{named} {value} against at most {bound}", {
-              named,
-              value: q(fmt(value)),
-              bound: q(fmt(bounds.max ?? 0)),
-            })
-          : t("{named} {value} of {bound}", {
-              named,
-              value: q(fmt(value)),
-              bound: q(fmt(bounds.min ?? 0)),
-            }),
+        /* A ceiling is spent at any hour; a floor only once the clock has
+           ruled it out. A window is spent the moment it breaks except for the
+           one that asks you to carry on working — see `windowBreaks`. */
+        settled: over || broke.spent || need > minutesLeft,
+        /* The window is what the line says when the window is what broke:
+           `“Lessons” 2h of 2h` on a day whose only fault was starting at seven
+           is a sentence that reads as a bug. */
+        line: broke.start
+          ? said(
+              edges.first,
+              windows.start,
+              "{named} began at {at}, no earlier than {bound}",
+              "{named} began at {at}, no later than {bound}",
+            )
+          : broke.end
+            ? said(
+                edges.last,
+                windows.end,
+                "{named} finished at {at}, no earlier than {bound}",
+                "{named} finished at {at}, no later than {bound}",
+              )
+            : over
+              ? t("{named} {value} against at most {bound}", {
+                  named,
+                  value: q(fmt(value)),
+                  bound: q(fmt(bounds.max ?? 0)),
+                })
+              : t("{named} {value} of {bound}", {
+                  named,
+                  value: q(fmt(value)),
+                  bound: q(fmt(bounds.min ?? 0)),
+                }),
       })
       continue
     }
@@ -2699,31 +2905,71 @@ export function clauseSentence(
     }
   }
 
+  /* **The windows read as clauses of their own**, after the figure and after
+     any slot rider — *“Lessons” at least “2h”, of which “1h” in “Morning”,
+     starting between “09:00” and “10:00”*. Last because they qualify the
+     whole of it, and in words rather than as a range of numbers because a
+     time of day is not a quantity: `between “09:00” and “10:00”` is a
+     stretch of clock, and `at least “09:00”` is not a sentence. */
+  const windowText = (weekday: number) => {
+    const { start, end } = windowsOnWeekday(clause, weekday)
+    const said = (w: TimeWindow, both: string, early: string, late: string) =>
+      w.from !== undefined && w.to !== undefined
+        ? t(both, { a: q(w.from), b: q(w.to) })
+        : w.from !== undefined
+          ? t(early, { a: q(w.from) })
+          : w.to !== undefined
+            ? t(late, { a: q(w.to) })
+            : ""
+    /* Each fragment carries its own comma, the way every other `frag:` in
+       this file does — the key's fallback *is* the English, so a caller that
+       adds punctuation of its own doubles whatever the fragment already had.
+       That is exactly what happened here: `“Lessons” at least “2h”,
+       starting by “10:00”` came out with two spaces after the comma. */
+    return [
+      said(
+        start,
+        "frag:, starting between {a} and {b}",
+        "frag:, starting no earlier than {a}",
+        "frag:, starting by {a}",
+      ),
+      said(
+        end,
+        "frag:, finishing between {a} and {b}",
+        "frag:, finishing no earlier than {a}",
+        "frag:, finishing by {a}",
+      ),
+    ].join("")
+  }
+
   /* **Grouped by everything a weekday asks, not only by its figure.** Where
-     the figure is collected and what any named slot owes are per-weekday too
-     now, so a group keyed on the bounds alone would print Monday's slots over
-     Saturday's numbers — the readback quietly describing a rule nobody
-     wrote. */
+     the figure is collected, what any named slot owes and when the day had to
+     start are all per-weekday now, so a group keyed on the bounds alone would
+     print Monday's slots over Saturday's numbers — the readback quietly
+     describing a rule nobody wrote. */
   const judged = clauseWeekdays(clause)
   const groups: {
     bounds: ClauseBounds
     where: string
     rider: string
+    window: string
     days: number[]
   }[] = []
   judged.forEach((weekday) => {
     const bounds = boundsOnWeekday(clause, ctx, weekday)
     const where = whereOf(slotIdsOnWeekday(clause, weekday))
     const rider = riderOf(weekday).text
+    const window = windowText(weekday)
     const found = groups.find(
       (g) =>
         g.bounds.min === bounds.min &&
         g.bounds.max === bounds.max &&
         g.where === where &&
-        g.rider === rider,
+        g.rider === rider &&
+        g.window === window,
     )
     if (found) found.days.push(weekday)
-    else groups.push({ bounds, where, rider, days: [weekday] })
+    else groups.push({ bounds, where, rider, window, days: [weekday] })
   })
 
   /* When every day says the same thing about slots — which is every rule that
@@ -2732,8 +2978,10 @@ export function clauseSentence(
      is unchanged to the character. */
   const oneWhere = groups.every((g) => g.where === groups[0]?.where)
   const oneRider = groups.every((g) => g.rider === groups[0]?.rider)
+  const oneWindow = groups.every((g) => g.window === groups[0]?.window)
   const where = oneWhere ? (groups[0]?.where ?? whereOf(clause.slotIds)) : ""
   const rider = oneRider ? (groups[0]?.rider ?? "") : ""
+  const window = oneWindow ? (groups[0]?.window ?? "") : ""
   const slotRules = judged.length ? riderOf(judged[0]).any : false
 
   // One group is the ordinary case and keeps the ordinary sentence, with the
@@ -2748,6 +2996,11 @@ export function clauseSentence(
   const anyDayBound = groups.some(
     (g) => g.bounds.min !== undefined || g.bounds.max !== undefined,
   )
+  /* A condition may carry **nothing but a window** — *begin by ten*, with no
+     figure at all — and that is a promise, so it gets a sentence rather than
+     the warning. `clauseAsksNothing` knows the same thing one gate earlier. */
+  if (!anyDayBound && window)
+    return `${named}${where}${window.replace(/^, /, " ")}${when}`
   if (!anyDayBound)
     return slotRules
       ? `${named}${where}${rider.replace(t("frag:, of which {list}", { list: "" }), " ")}${when}`
@@ -2760,21 +3013,22 @@ export function clauseSentence(
   // weekday suffix `when` already carries. Several always name their own days,
   // since that is the only thing separating them.
   if (groups.length === 1)
-    return `${named}${where} ${said(groups[0].bounds)}${rider}${when}`
+    return `${named}${where} ${said(groups[0].bounds)}${rider}${window}${when}`
 
   /* Several groups. Whatever they agree on has already been lifted out into
      `where` and `rider`; whatever they do not, each group says for itself,
      because that is the only thing separating them. */
   return `${named}${where} ${groups
     .map((g) =>
-      t("{said}{where}{rider} on {days}", {
+      t("{said}{where}{rider}{window} on {days}", {
         said: said(g.bounds),
         where: oneWhere ? "" : g.where,
         rider: oneRider ? "" : g.rider,
+        window: oneWindow ? "" : g.window,
         days: listDays(g.days),
       }),
     )
-    .join(", ")}${rider}`
+    .join(", ")}${rider}${window}`
 }
 
 
@@ -3259,6 +3513,23 @@ function clauseNarrows(
       if ((now.min ?? 0) < (was.min ?? 0)) return false
       if ((now.max ?? Infinity) > (was.max ?? Infinity)) return false
     }
+
+    /* **The windows, walls rather than figures, and the same argument.**
+       Absent is a wall at nowhere: no `from` is *any time you like, however
+       early*, so moving one later can only cost you and moving it earlier
+       cannot. The pair reads in opposite directions for the same reason a
+       floor and a ceiling do, and adding a window where there was none is one
+       more thing to keep, which never waits. */
+    const wasWin = windowsOnWeekday(prev, weekday)
+    const nowWin = windowsOnWeekday(next, weekday)
+    const at = (time: string | undefined, absent: number) =>
+      time === undefined ? absent : timeToMinutes(time)
+    for (const side of ["start", "end"] as const) {
+      const was = wasWin[side]
+      const now = nowWin[side]
+      if (at(now.from, -Infinity) < at(was.from, -Infinity)) return false
+      if (at(now.to, Infinity) > at(was.to, Infinity)) return false
+    }
   }
 
   /* A week counted per answer: each constrained state compared in its own
@@ -3421,11 +3692,20 @@ export const clauseAsksNothing = (
   const asks = (b: ClauseBounds) =>
     b.max !== undefined || (b.min !== undefined && b.min > 0)
 
-  return !days.some(
-    (weekday) =>
+  /* **A window asks something even with no figure beside it** — `spec 023`.
+     *Begin by ten* is a real promise and a condition may carry nothing else;
+     without this line the form would refuse to save one. A window with
+     neither wall is the nothing this gate is for, which is what `hasWindow`
+     answers. */
+  return !days.some((weekday) => {
+    const windows = windowsOnWeekday(clause, weekday)
+    return (
       asks(boundsOnWeekday(clause, ctx, weekday)) ||
-      Object.values(slotBoundsOnWeekday(clause, weekday)).some(asks),
-  )
+      Object.values(slotBoundsOnWeekday(clause, weekday)).some(asks) ||
+      hasWindow(windows.start) ||
+      hasWindow(windows.end)
+    )
+  })
 }
 
 /**
@@ -3502,6 +3782,44 @@ export const clauseImpossible = (
     return ids?.length ? new Set(ids) : null
   }
 
+  /* **Two more ways in, both a scroll wheel apart** — `spec 023`.
+     A window whose walls have crossed lets nothing through, and a rule that
+     must begin after it has finished is the same fault told across the pair.
+     Named with the figures, like every other message here: *impossible*
+     without the arithmetic is a form refusing to save and not saying why. */
+  const windowFault = (weekday: number, when: string): string | null => {
+    const { start, end } = windowsOnWeekday(clause, weekday)
+    for (const [window, what] of [
+      [start, t("begin")],
+      [end, t("finish")],
+    ] as const) {
+      if (
+        window.from !== undefined &&
+        window.to !== undefined &&
+        timeToMinutes(window.from) > timeToMinutes(window.to)
+      )
+        return t("{named} must {what} no earlier than {a} and no later than {b}{when}", {
+          named,
+          what,
+          a: q(window.from),
+          b: q(window.to),
+          when,
+        })
+    }
+    if (
+      start.from !== undefined &&
+      end.to !== undefined &&
+      timeToMinutes(start.from) >= timeToMinutes(end.to)
+    )
+      return t("{named} must begin no earlier than {a} and finish by {b}{when}", {
+        named,
+        a: q(start.from),
+        b: q(end.to),
+        when,
+      })
+    return null
+  }
+
   if (byWeek)
     return fault(
       boundsOnWeekday(clause, ctx, 0),
@@ -3511,12 +3829,14 @@ export const clauseImpossible = (
     )
 
   for (const weekday of clauseWeekdays(clause)) {
-    const bad = fault(
-      boundsOnWeekday(clause, ctx, weekday),
-      slotBoundsOnWeekday(clause, weekday),
-      countedOn(weekday),
-      ` on ${q(WEEKDAY_LABELS[weekday])}`,
-    )
+    const when = ` on ${q(WEEKDAY_LABELS[weekday])}`
+    const bad =
+      fault(
+        boundsOnWeekday(clause, ctx, weekday),
+        slotBoundsOnWeekday(clause, weekday),
+        countedOn(weekday),
+        when,
+      ) ?? windowFault(weekday, when)
     if (bad) return bad
   }
   return null

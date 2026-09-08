@@ -110,7 +110,6 @@ export const SAVE_RETRY_MS = 5000
 
 export const DEFAULT_SETTINGS: Settings = {
   goalsEnabled: true,
-  sleepEnabled: false,
   startDate: null,
   endDate: null,
   projectName: "Time tracker",

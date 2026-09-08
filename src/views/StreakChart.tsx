@@ -5,7 +5,7 @@
    that is the number the whole freeze economy runs on. "Missed" is a colour;
    "three when the limit was nought" is the thing you can do something about.
 
-   **The same shape as Daily study time**: a filled area for what happened and
+   **The same shape as Time logged per day**: a filled area for what happened and
    a dashed line for what was asked, so crossing the rule is literally crossing
    the line. It was a bar per period for a while, which said the same thing in
    a shape nothing else in the app uses — and the goal streak's panel plots

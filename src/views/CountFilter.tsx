@@ -59,6 +59,7 @@ export function CountFilter({
   onToggleCategory,
   onReset,
   onClose,
+  onSettings,
 }: {
   slots: Slot[]
   activities: Activity[]
@@ -77,6 +78,8 @@ export function CountFilter({
   onToggleCategory: (id: string) => void
   onReset: () => void
   onClose?: () => void
+  /** Opens Setup's Counters tab — where the things this filters are defined. */
+  onSettings?: () => void
 }) {
   const c = usePalette()
   const t = useT()
@@ -96,6 +99,7 @@ export function CountFilter({
       )}
       closeLabel={t("Hide the filter")}
       onClose={onClose}
+      onSettings={onSettings}
       action={
         hiddenCount > 0 ? (
           <button

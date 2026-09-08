@@ -18,6 +18,7 @@ import {
   defaultSlots,
 } from "../lib/defaults"
 import { CHANGE_LOG_LIMIT } from "../lib/changelog"
+import { foldSleep } from "../lib/sleepMove"
 import type { Proposal, ProposalAction, ProposalSubject } from "../types/model"
 import type { Client } from "./supabase"
 import { PAGE_SIZE } from "./supabase"
@@ -289,7 +290,11 @@ export async function loadFromTables(client: Client): Promise<AppData | null> {
     if (r.ignored) flags[r.key] = true
   })
 
-  const projects = [...byId.values()]
+  /* **Any night still in the old column, folded into the day it belongs to**
+     — `spec 024`. In memory only, and a no-op once `migrations/021` has run
+     everywhere; see `sleepMove.ts` for why the fold exists at all rather than
+     the app simply requiring the migration first. */
+  const projects = [...byId.values()].map(foldSleep)
   const activeId = prefs.data?.active_project_id
   return {
     activeProjectId: projects.some((p) => p.id === activeId)

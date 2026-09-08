@@ -44,8 +44,6 @@ export const RU: Record<string, string> = {
   "Hide the filter": "Скрыть фильтр",
   "Filter what counts": "Фильтр: что считается",
   "{n} left out of every total": "{n} исключено из всех итогов",
-  "Hide sleep": "Скрыть сон",
-  "Show sleep": "Показать сон",
   "Hide the notices": "Скрыть уведомления",
   "Show the notices": "Показать уведомления",
   "{n} gone — no freeze reaches them": "{n} упущено — заморозка не достанет",
@@ -58,7 +56,7 @@ export const RU: Record<string, string> = {
   "Hide the account": "Скрыть счёт",
   "{n} points, and where they came from": "{n} очков и откуда они",
   "Hide the rewards": "Скрыть награды",
-  "{a} of {b} within reach": "{a} из {b} по карману",
+  "{a} of {b} taken": "{a} из {b} взято",
   "What your points will buy": "Что можно купить за очки",
   "Hide what you have reached": "Скрыть достижения",
   "{a} of {b} reached": "{a} из {b} достигнуто",
@@ -200,7 +198,7 @@ export const RU: Record<string, string> = {
   "Weekly goal missed": "Недельная цель не выполнена",
   "Monthly goal met": "Месячная цель выполнена",
   "Monthly goal missed": "Месячная цель не выполнена",
-  "{hours} studied": "занятий на {hours}",
+  "{hours} logged": "учтено {hours}",
   "goal {hours}": "цель {hours}",
   "settings:day": "настройки дня",
   "settings:week": "настройки недели",
@@ -244,8 +242,6 @@ export const RU: Record<string, string> = {
   "kind:Activity": "Занятие",
   "kind:Tally": "Счёт",
   "kind:Check": "Отметка",
-  "kind:Sleep": "Сон",
-  "New sleep": "Новый сон",
   "Add to a tally": "Добавить к счёту",
   "Answer a check": "Ответить на отметку",
   "New entry": "Новая запись",
@@ -260,6 +256,13 @@ export const RU: Record<string, string> = {
   Save: "Сохранить",
   Add: "Добавить",
   "End this session now": "Закончить эту сессию сейчас",
+  "Start this session now": "Начать эту сессию сейчас",
+  "Pause this session": "Поставить сессию на паузу",
+  "Resume this session": "Продолжить сессию",
+  "on pause": "на паузе",
+  "min paused": "мин паузы",
+  "{time} of this was a pause": "из них {time} — пауза",
+  "On pause now — {time} so far": "Сейчас на паузе — пока {time}",
   "Show comment": "Показать комментарий",
   "Hide comment": "Скрыть комментарий",
 
@@ -367,22 +370,17 @@ export const RU: Record<string, string> = {
     "{kept} из {all} выполнено за период",
   "What it is made of": "Из чего это сложено",
 
-  /* ---- the sleep panel --------------------------------------------------- */
-  Sleep: "Сон",
-  "{nights} nights logged across {days} days in this period":
-    "Записано ночей: {nights} за {days} дней периода",
-  "For the chosen period": "За выбранный период",
-  "No sleep with a start and end time in this period yet.":
-    "В этом периоде ещё нет сна с началом и концом.",
-  "Average bedtime": "Средний отбой",
-  "Average wake-up": "Средний подъём",
-  "Average night": "Средняя ночь",
-  "Nights, one row each": "Ночи, по одной в строке",
-  "Same clock as below — every logged night on its own line":
-    "Те же часы, что ниже — каждая записанная ночь на своей строке",
-
   /* ---- the summary tabs -------------------------------------------------- */
-  "Hours studied": "Часов занятий",
+  "Hours logged": "Часов учтено",
+  "Hours logged per weekday": "Часов по дням недели",
+  "Hours logged per weekday, compared week over week":
+    "Часов по дням недели, неделя к неделе",
+  "Total hours logged per week": "Всего часов за неделю",
+  "Total hours logged, aggregated per week":
+    "Всего часов, с накоплением по неделям",
+  "Total hours logged per month": "Всего часов за месяц",
+  "Total hours logged, aggregated per month":
+    "Всего часов, с накоплением по месяцам",
   "Days since start": "Дней с начала",
   "Empty days": "Пустых дней",
   "Avg hours / day": "В среднем часов в день",
@@ -407,7 +405,25 @@ export const RU: Record<string, string> = {
   Weekday: "По дням недели",
   Weekly: "По неделям",
   Monthly: "По месяцам",
-  "Daily study time": "Время занятий по дням",
+  /* ---- the rotated clock, any activity, `spec 024` -------------------- */
+  "The clock": "Часы",
+  "Usual start": "Обычное начало",
+  "Usual finish": "Обычный конец",
+  "Average length": "Средняя длительность",
+  "One row each": "По одной строке на сессию",
+  "Same clock as below — every logged session on its own line":
+    "Те же часы, что ниже — каждая записанная сессия отдельной строкой",
+  "Length, session by session": "Длительность, сессия за сессией",
+  "One point per logged session": "Одна точка на записанную сессию",
+  "When it happens": "Когда это происходит",
+  "Share of logged days busy with it at each hour":
+    "Доля записанных дней, занятых этим в каждый час",
+  "{n}% of days": "{n}% дней",
+  "Nothing with both a start and an end time in this period yet.":
+    "За этот период нет записей с началом и концом.",
+  "This project has no activities to read a clock on yet.":
+    "В проекте пока нет занятий, по которым можно построить часы.",
+  "Time logged per day": "Учтённое время по дням",
   "Weekday totals": "Итоги по дням недели",
   "Weekly totals": "Итоги по неделям",
   "Monthly totals": "Итоги по месяцам",
@@ -436,7 +452,6 @@ export const RU: Record<string, string> = {
   "A day was missed with no freeze on it":
     "День пропущен, и заморозки на нём нет",
   "Streak freeze used": "Потрачена заморозка",
-  "Sleep logged": "Записан сон",
   "Time by slot": "Время по слотам",
   "Time by activity": "Время по занятиям",
   "No study logged in this period.": "За этот период ничего не записано.",
@@ -563,6 +578,13 @@ export const RU: Record<string, string> = {
   Done: "Готово",
   "field:start": "начало",
   "field:end": "конец",
+  "shape:All": "Все",
+  Outlined: "Контур",
+  Filled: "Заливка",
+  "Nothing matches “{query}”": "Ничего не найдено по «{query}»",
+  "Nothing matching “{query}” is drawn that way":
+    "По «{query}» нет иконок в таком виде",
+  "Nothing here is drawn that way": "Здесь нет иконок в таком виде",
   "Search icons": "Поиск значков",
   "Pick a date": "Выберите дату",
   Start: "Начало",
@@ -577,8 +599,7 @@ export const RU: Record<string, string> = {
      same in both languages, which is what makes it work without rewriting the
      builder: «Pinterest» в «Вечер» не более «3» раз, из них не более «0» в
      «Утро» по Пн, Вт. */
-  "Study time": "Всё время занятий",
-  "target:Sleep": "Сон",
+  "Logged time": "Учтённое время",
   "a removed activity": "удалённое занятие",
   "a removed category": "удалённая категория",
   "a removed tag": "удалённая метка",
@@ -675,6 +696,45 @@ export const RU: Record<string, string> = {
   "Chosen slots": "Выбранные слоты",
   "Only what falls in the slots you pick counts towards the figure":
     "В цифру идёт только то, что попало в выбранные слоты",
+  /* ---- when the day had to begin and end, `spec 023` ------------------ */
+  Clock: "Часы",
+  "Any time": "В любое время",
+  "Within hours": "В заданные часы",
+  "Nothing is asked about when the work happened":
+    "О времени начала и конца ничего не спрашивается",
+  "The day's first start and last finish have to fall inside the hours you set":
+    "Первое начало и последнее окончание за день должны попасть в заданные часы",
+  Hours: "Часы дня",
+  "One pair of hours, on every day this condition judges":
+    "Одни и те же часы на каждый судимый день",
+  "Set the hours separately for each chosen day":
+    "Задать часы отдельно для каждого выбранного дня",
+  Begin: "Начать",
+  Finish: "Закончить",
+  /* the readback */
+  "frag:, starting between {a} and {b}": ", начиная между {a} и {b}",
+  "frag:, starting no earlier than {a}": ", начиная не раньше {a}",
+  "frag:, starting by {a}": ", начиная не позже {a}",
+  "frag:, finishing between {a} and {b}": ", заканчивая между {a} и {b}",
+  "frag:, finishing no earlier than {a}": ", заканчивая не раньше {a}",
+  "frag:, finishing by {a}": ", заканчивая не позже {a}",
+  "frag:+1d": " след. дня",
+  /* what a broken window says on the board and in the freeze popover */
+  "{named} began at {at}, no earlier than {bound}":
+    "{named}: начало в {at}, а надо не раньше {bound}",
+  "{named} began at {at}, no later than {bound}":
+    "{named}: начало в {at}, а надо не позже {bound}",
+  "{named} finished at {at}, no earlier than {bound}":
+    "{named}: конец в {at}, а надо не раньше {bound}",
+  "{named} finished at {at}, no later than {bound}":
+    "{named}: конец в {at}, а надо не позже {bound}",
+  /* what the form refuses */
+  begin: "начинать",
+  finish: "заканчивать",
+  "{named} must {what} no earlier than {a} and no later than {b}{when}":
+    "{named} должно {what} не раньше {a} и не позже {b}{when}",
+  "{named} must begin no earlier than {a} and finish by {b}{when}":
+    "{named} должно начаться не раньше {a} и закончиться к {b}{when}",
   "Count by slot": "Считать по слотам",
   "No slot figures": "Без цифр по слотам",
   "The day's own figure is the whole requirement, wherever the time falls inside it":
@@ -903,8 +963,7 @@ export const RU: Record<string, string> = {
     "Сегодня и вчера ещё можно записать, поэтому они пока не учтены. Отметка дня пишется один раз, когда он выходит из этого окна, и больше не пересматривается: это единственная цифра здесь, которую можно тратить, так что правка вторника не должна двигать баланс, против которого уже что-то куплено.",
 
   /* ---- picking what a condition counts ----------------------------------- */
-  "pick:All study time": "Всё время занятий",
-  "pick:Sleep": "Сон",
+  "pick:All logged time": "Всё учтённое время",
   "pick:Activities": "Занятия",
   "pick:Tallies": "Счёты",
   "pick:Checks": "Отметки",
@@ -923,9 +982,6 @@ export const RU: Record<string, string> = {
   "Delete project": "Удалить проект",
   "Project icon": "Значок проекта",
   "Project name": "Название проекта",
-  "Log sleep on its own tab in the day editor, kept out of study totals":
-    "Записывать сон на отдельной вкладке в дне, не смешивая с итогами занятий",
-  "Enable sleep tracking": "Включить учёт сна",
   "Project start date": "Дата начала проекта",
   "Pick a start date": "Выберите дату начала",
   "Project end date (optional)": "Дата конца проекта (необязательно)",
@@ -971,10 +1027,6 @@ export const RU: Record<string, string> = {
 
   "Rules held": "Правил устояло",
   "Rules voting": "Правил голосует",
-  "One bar per logged night": "По одному столбику на записанную ночь",
-  "When you sleep": "Когда вы спите",
-  "Share of logged nights asleep at each hour":
-    "Доля записанных ночей, когда вы спали в этот час",
 
   "Time — what a logged entry went on. Lessons, revision, a lecture. Every hour the app reports is filed under one of these.":
     "Время — на что ушла запись. Уроки, повторение, лекция. Каждый час, который показывает приложение, отнесён к одному из них.",

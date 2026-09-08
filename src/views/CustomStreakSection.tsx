@@ -135,6 +135,7 @@ export function CustomStreakSection({
   solo,
   onSolo,
   onClose,
+  onSettings,
   nested = false,
 }: {
   status: RuleStatus
@@ -166,6 +167,8 @@ export function CustomStreakSection({
   solo?: boolean
   onSolo?: () => void
   onClose?: () => void
+  /** Opens Setup's Streaks tab — where this rule's own terms are written. */
+  onSettings?: () => void
   /**
    * Drawn inside the composite panel rather than as a panel of its own — the
    * breakdown row that names this rule is what opened it. Same body, lighter
@@ -457,6 +460,7 @@ export function CustomStreakSection({
       }
       closeLabel={`Hide ${rule.label}`}
       onClose={onClose}
+      onSettings={onSettings}
       action={
         <div className="flex items-center gap-1.5">
           {/* **One of two doors into solo** — `spec 016`, part 5. This is the

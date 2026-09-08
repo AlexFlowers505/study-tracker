@@ -33,7 +33,6 @@ export const WORD = "text-[11px] font-mono text-ink/55"
  */
 export type PickKind =
   | "time"
-  | "sleep"
   | "activity"
   | "tally"
   | "check"
@@ -42,7 +41,6 @@ export type PickKind =
 
 export const PICKS: PickKind[] = [
   "time",
-  "sleep",
   "activity",
   "tally",
   "check",
@@ -53,8 +51,7 @@ export const PICKS: PickKind[] = [
 /* Plural, because every one of them now takes several: a condition names the
    counters it watches, not the counter. */
 export const PICK_LABEL: Record<PickKind, string> = {
-  time: "pick:All study time",
-  sleep: "pick:Sleep",
+  time: "pick:All logged time",
   activity: "pick:Activities",
   tally: "pick:Tallies",
   check: "pick:Checks",
@@ -119,8 +116,6 @@ export function pickOf(target: StreakTarget, ctx: StreakContext): PickKind {
 /** What the second dropdown offers. Empty for study time, which names nothing. */
 export function choicesFor(pick: PickKind, ctx: StreakContext): Labeled[] {
   const { tallies, checks } = splitByKind(ctx.units)
-  // Sleep names nothing, exactly as study time does: there is one of it.
-  if (pick === "sleep") return []
   if (pick === "activity") return ctx.activities
   if (pick === "tally") return tallies
   if (pick === "check") return checks

@@ -80,6 +80,7 @@ export function KeptSection({
   expandedRule,
   renderExpanded,
   onClose,
+  onSettings,
 }: {
   project: Project
   weeks: KeptWeeks
@@ -108,6 +109,8 @@ export function KeptSection({
    */
   renderExpanded?: (ruleId: string) => ReactNode
   onClose: () => void
+  /** Opens Setup's Streaks tab — where the rules the composite counts live. */
+  onSettings?: () => void
 }) {
   const c = usePalette()
   const t = useT()
@@ -166,6 +169,7 @@ export function KeptSection({
       title={t("Kept")}
       closeLabel={t("Hide the composite")}
       onClose={onClose}
+      onSettings={onSettings}
       /* `PanelSection` puts this inside a `<p>`, so it may hold no block of
          its own — a `<div>` or a second `<p>` in here is invalid HTML that
          React unpicks at runtime. Spans and a break. */
@@ -393,6 +397,10 @@ export function KeptSection({
               {open && (
                 <div
                   id={`kept-rule-${row.rule.id}`}
+                  /* The board can send you straight here, and the period bar
+                     is sticky — without the margin the rule's own title lands
+                     underneath it. Same figure the page's sections use. */
+                  className="scroll-mt-28"
                   role="region"
                   aria-labelledby={`kept-rule-${row.rule.id}-btn`}
                 >

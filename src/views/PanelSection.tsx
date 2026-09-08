@@ -24,7 +24,8 @@
 --------------------------------------------------------------- */
 
 import type { ReactNode } from "react"
-import { ChevronUp, X } from "lucide-react"
+import { ChevronUp, Settings2, X } from "lucide-react"
+import { useT } from "../lib/i18n"
 import type { LucideIcon } from "lucide-react"
 import { PANEL_INSET, btnBase } from "../lib/theme"
 import { Tip } from "../ui/Tip"
@@ -54,6 +55,7 @@ export function NestedPanel({
   closeLabel,
   onClose,
   action,
+  onSettings,
   children,
 }: PanelProps) {
   return (
@@ -69,6 +71,7 @@ export function NestedPanel({
           {title}
         </h4>
         {action}
+        {onSettings && <SettingsButton onClick={onSettings} />}
         {onClose && (
           <Tip text={closeLabel}>
             <button
@@ -101,7 +104,42 @@ export interface PanelProps {
   onClose?: () => void
   /** Sits between the title and the close button. */
   action?: ReactNode
+  /**
+   * **Opens the Setup tab that configures this panel.**
+   *
+   * Half of these panels are a *reading* of something you wrote somewhere
+   * else — the shelf, the rules, the achievements — and getting from the
+   * reading to the writing was Setup, then the right tab out of nine, then
+   * finding the row. The panel already knows which tab that is, so it says
+   * so. Absent on the panels that configure nothing (the account, the change
+   * log), because a gear that opens the first tab it can think of is worse
+   * than no gear.
+   */
+  onSettings?: () => void
   children: ReactNode
+}
+
+/**
+ * The gear, drawn the same on both shells.
+ *
+ * Quiet: it rests on the same faint disc the close X does and carries no
+ * colour of its own. It is a way *out* of the panel to where the thing is
+ * defined, which is a rarer act than closing and a much rarer one than
+ * anything in the panel's body — so it sits with the chrome rather than
+ * competing with the content.
+ */
+function SettingsButton({ onClick }: { onClick: () => void }) {
+  const t = useT()
+  return (
+    <Tip text={t("Open these settings")}>
+      <button
+        onClick={onClick}
+        className={`${btnBase} p-1 rounded-full text-ink/45 bg-ink/[0.05] hover:text-ink hover:bg-ink/[0.1]`}
+      >
+        <Settings2 size={15} />
+      </button>
+    </Tip>
+  )
 }
 
 export function PanelSection({
@@ -112,6 +150,7 @@ export function PanelSection({
   closeLabel,
   onClose,
   action,
+  onSettings,
   children,
 }: PanelProps) {
   return (
@@ -142,6 +181,7 @@ export function PanelSection({
           {title}
         </h3>
         {action}
+        {onSettings && <SettingsButton onClick={onSettings} />}
         {onClose && (
           <Tip text={closeLabel}>
             {/* **The X has to carry what the wash used to say.** With the

@@ -21,7 +21,7 @@ export function OverviewStats({
   // The lessons and exams tiles left with `spec 008`; what remains is the
   // hours-and-days half, which never read either.
   const stats: { label: string; value: ReactNode; icon: LucideIcon }[] = [
-    { label: t("Hours studied"), value: hours, icon: Clock },
+    { label: t("Hours logged"), value: hours, icon: Clock },
     {
       label: t("Days since start"),
       value: fmtDaysWithMonths(period.daysSinceStart),

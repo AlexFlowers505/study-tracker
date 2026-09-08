@@ -21,6 +21,8 @@ import {
 import type { CounterUnit, Project, Slot, Tag } from '../types/model'
 import { t, useT } from '../lib/i18n'
 import { computeOverviewStats } from '../lib/analytics'
+import { benchmarkMeter } from '../lib/benchmark'
+import { ClockCharts } from './ClockCharts'
 import type {
   CounterGroupBy,
   CounterPick,
@@ -140,12 +142,17 @@ const trendTabs = () => [
   { id: "weekday", label: t("Weekday") },
   { id: "weekly", label: t("Weekly") },
   { id: "monthly", label: t("Monthly") },
+  /* **The rotated clock, for any activity** — `spec 024`. It was the sleep
+     panel, and nothing in it was ever about sleep except the list it read. */
+  { id: "clock", label: t("The clock") },
 ]
 
 const TRENDS_HELP =
   "The same period spread over time: hours per day, how the weekdays compare " +
   "with one another, and totals week by week and month by month. Each chart " +
-  "can be split by slot or by activity."
+  "can be split by slot or by activity. The clock is a different question — " +
+  "when one activity usually starts and finishes, on a day that runs 18:00 " +
+  "to 17:00 so a session crossing midnight stays in one piece."
 
 // Bounds come in from the shared period bar — analytics no longer owns a
 // range picker of its own.
@@ -431,11 +438,23 @@ export function AnalyticsView({
 
   // Everything else (Stats, Averages, Remarkable) is scoped to the chosen
   // analytics period, same as the charts below.
+  /* Measured through the benchmark rule when one is nominated — the same
+     argument the period's own header makes, and it has to be the same figure
+     or the page reports two different totals for one range. */
+  const meter = useMemo(() => benchmarkMeter(data), [data])
+
   const periodStats = useMemo(() => {
     const today = new Date()
     const cutoffEnd = rangeEnd < today ? rangeEnd : today
-    return computeOverviewStats(rangedKeys, days, slots, rangeStart, cutoffEnd)
-  }, [rangedKeys, days, slots, rangeStart, rangeEnd])
+    return computeOverviewStats(
+      rangedKeys,
+      days,
+      slots,
+      rangeStart,
+      cutoffEnd,
+      meter ?? undefined,
+    )
+  }, [rangedKeys, days, slots, rangeStart, rangeEnd, meter])
 
   // Best/worst day, week, and month — scoped to the chosen analytics period
   // (same as the charts). Only counts periods with at least some study logged
@@ -669,7 +688,7 @@ export function AnalyticsView({
   // Weekday effectiveness — compares the same weekday (Mon, Tue, …) across the
   // different weeks in range. In Slot/Activity mode we instead show the hours
   // breakdown per weekday, summed across the whole range (matching the toggle
-  // options on the Daily study time chart above).
+  // options on the Time logged per day chart above).
   const weekLabelsList = useMemo(
     () => weeklyBuckets.map(([wk]) => fmtShort(wk)),
     [weeklyBuckets],
@@ -782,9 +801,19 @@ export function AnalyticsView({
         activeId={trendTab}
         onChange={setTrendTab}
       >
+        {trendTab === "clock" && (
+          <ClockCharts
+            days={days}
+            range={{ start: rangeStart, end: rangeEnd }}
+            activities={activities}
+            weekIgnore={data.weekIgnore}
+            monthIgnore={data.monthIgnore}
+          />
+        )}
+
         {trendTab === "daily" && (
         <ChartCard
-          title={t("Daily study time")}
+          title={t("Time logged per day")}
           subtitle={
             dailyMode === "hours"
               ? "Total hours logged per day"
@@ -841,7 +870,7 @@ export function AnalyticsView({
                     fill={c.accent}
                     fillOpacity={0.25}
                     strokeWidth={2}
-                    name="Hours studied"
+                    name={t("Hours logged")}
                     dot={{ r: 3 }}
                   />,
                   ...(goalsEnabled
@@ -913,8 +942,8 @@ export function AnalyticsView({
           subtitle={
             weekdayMode === "hours"
               ? goalsEnabled
-                ? "Hours studied per weekday, compared week over week"
-                : "Hours studied per weekday"
+                ? t("Hours logged per weekday, compared week over week")
+                : t("Hours logged per weekday")
               : isCount(weekdayMode)
                 ? countSubtitle(weekdayMode, countGroupBy, countBySlot, "weekday")
                 : `Hours per weekday in this range, split by ${weekdayMode}`
@@ -1021,8 +1050,8 @@ export function AnalyticsView({
           subtitle={
             weeklyMode === "hours"
               ? goalsEnabled
-                ? "Total hours studied, aggregated per week"
-                : "Total hours studied per week"
+                ? t("Total hours logged, aggregated per week")
+                : t("Total hours logged per week")
               : isCount(weeklyMode)
                 ? countSubtitle(weeklyMode, countGroupBy, countBySlot, "week")
                 : `Hours per week, split by ${weeklyMode}`
@@ -1132,8 +1161,8 @@ export function AnalyticsView({
             subtitle={
               monthlyMode === "hours"
                 ? goalsEnabled
-                  ? "Total hours studied, aggregated per month"
-                  : "Total hours studied per month"
+                  ? t("Total hours logged, aggregated per month")
+                  : t("Total hours logged per month")
                 : isCount(monthlyMode)
                   ? countSubtitle(monthlyMode, countGroupBy, countBySlot, "month")
                   : `Hours per month, split by ${monthlyMode}`

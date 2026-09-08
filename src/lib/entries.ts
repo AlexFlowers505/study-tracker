@@ -8,8 +8,8 @@
    the times has to live in exactly one place.
 --------------------------------------------------------------- */
 
-import type { SleepEntry, StudyEntry } from "../types/model"
-import { spanMinutes } from "./time"
+import type { StudyEntry, TimeEntry } from "../types/model"
+import { minutesSince, spanMinutes } from "./time"
 
 export type Cells = Record<string, StudyEntry[]>
 
@@ -23,30 +23,117 @@ export type Cells = Record<string, StudyEntry[]>
 export const entryActivity = (entry: StudyEntry): string | undefined =>
   entry.activity ?? entry.category
 
+/* ---- Pausing --------------------------------------------------------------
+
+   A pause is a **duration**, accumulated onto the entry as one number, and it
+   is measured between the two clicks rather than read off the clock — see
+   `TimeEntry.paused`. Nothing here asks what `start` says, which is exactly
+   what makes pausing work on an entry you are filling in for yesterday.
+-------------------------------------------------------------------------- */
+
+/** The whole of it, in minutes. A pause running right now is not in here
+ *  yet — it is counted when it ends, and until then there is no figure to
+ *  count, only a moment it began at. */
+export const pausedMinutes = (entry: TimeEntry): number =>
+  Math.max(0, Number(entry.paused) || 0)
+
+export const isPaused = (entry: TimeEntry): boolean => !!entry.pauseFrom
+
+/** Starts one. Nothing to add yet, so nothing but the moment is written. */
+export const pausePatch = (): Partial<TimeEntry> => ({
+  pauseFrom: new Date().toISOString(),
+})
+
 /**
- * With both times set, the span is the truth and the stored number follows it.
- * With one or neither, whatever was typed stands — an untimed entry is a
- * perfectly good entry, and guessing a span for it would invent data.
+ * Ends the running pause and folds it into the total.
+ *
+ * Handed an entry that is not paused it clears the field and adds nothing, so
+ * a double click on Resume cannot mint minutes out of an instant that is no
+ * longer there.
  */
-const withDerivedMinutes = <T extends StudyEntry | SleepEntry>(entry: T): T =>
+export const resumePatch = (entry: TimeEntry): Partial<TimeEntry> => {
+  const total =
+    pausedMinutes(entry) + (entry.pauseFrom ? minutesSince(entry.pauseFrom) : 0)
+  return {
+    // A stop shorter than half a step rounds away to nothing, and nothing is
+    // what gets stored: `paused: 0` and no key at all mean the same thing to
+    // every reader, and only one of them puts a field on the row.
+    paused: total > 0 ? total : undefined,
+    pauseFrom: undefined,
+  }
+}
+
+/**
+ * Ending a session that is on pause resumes it first.
+ *
+ * Otherwise the pause you were in the middle of would be thrown away by the
+ * click that stopped the clock — the one moment it is certain to matter, since
+ * you came back to the app in order to press this.
+ */
+export const stopNowPatch = (
+  entry: TimeEntry,
+  end: string,
+): Partial<TimeEntry> => ({
+  ...(isPaused(entry) ? resumePatch(entry) : {}),
+  end,
+})
+
+/**
+ * With both times set, the span is the truth and the stored number follows it,
+ * **less whatever the session was paused for**. With one or neither, whatever
+ * was typed stands — an untimed entry is a perfectly good entry, and guessing
+ * a span for it would invent data.
+ *
+ * Floored at nought. A pause longer than the span it sits inside is somebody
+ * having typed a wrong number, and a negative duration would carry that
+ * mistake into every total on the page rather than leaving it on the one row
+ * where it can be seen and corrected.
+ */
+const withDerivedMinutes = <T extends StudyEntry>(entry: T): T =>
   entry.start && entry.end
-    ? { ...entry, minutes: spanMinutes(entry.start, entry.end) }
+    ? {
+        ...entry,
+        minutes: Math.max(
+          0,
+          spanMinutes(entry.start, entry.end) - pausedMinutes(entry),
+        ),
+      }
     : entry
 
 /**
  * Applies a patch and re-derives the minutes.
  *
- * An explicit `undefined` for `start` or `end` *removes* the field rather than
- * setting it to undefined: "no start time" and "a start time of undefined"
- * serialise differently into jsonb, and only the first one round-trips.
+ * An explicit `undefined` *removes* the field rather than setting it to
+ * undefined: "no start time" and "a start time of undefined" serialise
+ * differently into jsonb, and only the first one round-trips. The rule is
+ * every optional field rather than a list of them, since `pauseFrom` needed it
+ * next and the list would only have gone on growing.
+ *
+ * **A derived figure dies with the pair it was derived from.** Clearing the
+ * end of a finished entry used to leave its duration behind — `22:00–…`
+ * followed by the half hour the end time had produced, which is a number
+ * nobody typed and nothing on the row now supports. `withDerivedMinutes`
+ * cannot catch it: it only speaks when *both* times are set, and its silence
+ * everywhere else is deliberate and right, because an untimed entry's minutes
+ * are typed by hand and must not be touched. The distinction it was missing is
+ * not "is this timed now" but "was this figure the times' doing" — so the one
+ * case that has to be handled is the crossing: an entry that had both and now
+ * has not.
+ *
+ * Unless the same patch sets `minutes` itself, in which case it is being
+ * typed and that is exactly the value to keep.
  */
-export function patchEntry<T extends StudyEntry | SleepEntry>(
+export function patchEntry<T extends StudyEntry>(
   entry: T,
   patch: Partial<T>,
 ): T {
+  const wasTimed = !!(entry.start && entry.end)
   const next = { ...entry, ...patch }
-  if (patch.start === undefined && "start" in patch) delete next.start
-  if (patch.end === undefined && "end" in patch) delete next.end
+  for (const key of Object.keys(patch) as (keyof T)[]) {
+    if (patch[key] === undefined) delete next[key]
+  }
+  if (wasTimed && !(next.start && next.end) && !("minutes" in patch))
+    next.minutes = 0
   // Setting the activity retires the old spelling with it. Left behind, a
   // stale `category` would come back the moment the activity was cleared —
   // `entryActivity` falls through to it, and it would be a value nobody chose.
@@ -142,24 +229,3 @@ export function restoreEntry(
   }
 }
 
-export function restoreSleepEntry(
-  sleep: SleepEntry[],
-  original: SleepEntry,
-): SleepEntry[] {
-  return sleep.map((e) => (e.id === original.id ? original : e))
-}
-
-export function updateSleepEntry(
-  sleep: SleepEntry[],
-  entryId: string,
-  patch: Partial<SleepEntry>,
-): SleepEntry[] {
-  return sleep.map((e) => (e.id === entryId ? patchEntry(e, patch) : e))
-}
-
-export function removeSleepEntry(
-  sleep: SleepEntry[],
-  entryId: string,
-): SleepEntry[] {
-  return sleep.filter((e) => e.id !== entryId)
-}

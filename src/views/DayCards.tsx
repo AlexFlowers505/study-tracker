@@ -19,9 +19,7 @@ import type {
   Day,
   DayKey,
   Settings,
-  SleepEntry,
   Slot,
-  StudyEntry,
 } from "../types/model"
 import { useT } from "../lib/i18n"
 import {
@@ -37,11 +35,8 @@ import { setSlotCount } from "../lib/counters"
 import {
   moveEntryToSlot,
   removeEntryFromCells,
-  removeSleepEntry,
   restoreEntry,
-  restoreSleepEntry,
   updateEntryInCells,
-  updateSleepEntry,
 } from "../lib/entries"
 import { Tip } from "../ui/Tip"
 import { CounterBadges } from "./CounterInputs"
@@ -57,7 +52,6 @@ function FullDayCard({
   entry,
   slots,
   activities,
-  settings,
   counterUnits,
   goal,
   isToday,
@@ -67,6 +61,7 @@ function FullDayCard({
   isBeforeStart,
   ignored,
   verdict,
+  measured,
   canFreeze,
   onFreeze,
   onQuickAdd,
@@ -95,7 +90,6 @@ function FullDayCard({
   entry?: Day
   slots: Slot[]
   activities: Activity[]
-  settings: Settings
   counterUnits: CounterUnit[]
   goal: number
   isToday: boolean
@@ -116,6 +110,9 @@ function FullDayCard({
   ignored: boolean
   /** How the day came out, across every rule with a vote on it. */
   verdict: DayReport
+  /** The benchmark's own reading of this day, or null when nothing is
+   *  nominated and everything logged is the only answer. */
+  measured: number | null
   canFreeze?: boolean
   onFreeze?: () => void
   onQuickAdd?: () => void
@@ -177,13 +174,17 @@ function FullDayCard({
   }
 
   const { tallies: tallyUnits, checks: checkUnits } = splitByKind(counterUnits)
-  const { total } = dayBreakdown(entry, slots)
+  /* **What this day counts for**, measured through the benchmark rule when
+     one is nominated. `dayBreakdown` totals every minute logged, which stopped
+     being the right numerator to print beside a goal the moment `spec 022`
+     made the goal answer to a rule — and stopped being survivable when
+     `spec 024` moved sleep into the log. */
+  const logged = dayBreakdown(entry, slots).total
+  const total = measured ?? logged
   const metGoal = !ignored && goal > 0 && total >= goal
   // One function decides what a day is; this file only paints it.
   const goalOutcome = ignored ? null : asOutcome(verdict.state)
   const surface = dayStateSurface(c, goalOutcome, ignored)
-  const hasSleep =
-    settings?.sleepEnabled === true && (entry?.sleep || []).length > 0
   // Straight minute comparison. It used to compare the *formatted* strings,
   // because a surplus under three minutes rounded away to "0h" and printing
   // "(+0h)" said something about rounding rather than about the day. Hours and
@@ -194,7 +195,6 @@ function FullDayCard({
   // without both, the list stays read-only and clicking a line does nothing
   // special. That is how the day dialog's own copy of the readout behaves.
   const cells = entry?.cells || {}
-  const sleep = entry?.sleep || []
   const editing: ReadoutEditing | undefined =
     onUpdateDay && onOpenEntry && onCloseEntry
       ? {
@@ -205,21 +205,15 @@ function FullDayCard({
           // from the same `cells` and the second would discard the first.
           onCancel: () => {
             const snap = editingSnapshot
-            if (snap) {
-              if (snap.slotId) {
-                onUpdateDay({
-                  cells: restoreEntry(
-                    cells,
-                    snap.entry.id,
-                    snap.slotId,
-                    snap.entry as StudyEntry,
-                  ),
-                })
-              } else {
-                onUpdateDay({
-                  sleep: restoreSleepEntry(sleep, snap.entry as SleepEntry),
-                })
-              }
+            if (snap?.slotId) {
+              onUpdateDay({
+                cells: restoreEntry(
+                  cells,
+                  snap.entry.id,
+                  snap.slotId,
+                  snap.entry,
+                ),
+              })
             }
             onCloseEntry()
           },
@@ -233,10 +227,6 @@ function FullDayCard({
             }),
           onDeleteStudy: (slotId, entryId) =>
             onUpdateDay({ cells: removeEntryFromCells(cells, slotId, entryId) }),
-          onChangeSleep: (entryId, patch) =>
-            onUpdateDay({ sleep: updateSleepEntry(sleep, entryId, patch) }),
-          onDeleteSleep: (entryId) =>
-            onUpdateDay({ sleep: removeSleepEntry(sleep, entryId) }),
         }
       : undefined
 
@@ -608,9 +598,12 @@ function FullDayCard({
         />
       )}
 
-      {/* A day can have sleep and no study — the placeholder is only for a day
-          with neither, or the sleep sitting on it would be invisible. */}
-      {total === 0 && !hasSleep && (
+      {/* **Is there anything on this day**, not *did the benchmark count it*.
+          Those parted company when `spec 024` moved sleep into the log: a day
+          holding nothing but a night has a figure of nought against the rule
+          and is plainly not an empty day, and telling it to "tap to add" over
+          the top of its own entry is the drawing calling the data missing. */}
+      {logged === 0 && (
         <p
           className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
         >
@@ -640,8 +633,6 @@ function FullDayCard({
         slots={slots}
         activities={activities}
         cells={entry?.cells || {}}
-        sleep={entry?.sleep || []}
-        sleepEnabled={settings?.sleepEnabled === true}
         scrollable={!big}
         surface={surface}
         commentsOpen={commentsOpen}
@@ -708,6 +699,7 @@ export function FullCardGrid({
   onFreezeDay,
   onUpdateDay,
   verdictOf,
+  benchmarkDayOf,
 }: {
   dates: Date[]
   days: Record<DayKey, Day>
@@ -735,6 +727,17 @@ export function FullCardGrid({
   onUpdateDay?: (key: DayKey, patch: Partial<Day>) => void
   /** How each day came out — see `lib/dayVerdict`. Read, never computed here. */
   verdictOf: (key: DayKey) => DayReport
+  /**
+   * **One day, measured through the benchmark rule.** Null when nothing is
+   * nominated, and then the day totals everything — the only answer there is.
+   *
+   * The same argument `benchmarkOf` makes for a week, and it became
+   * load-bearing when `spec 024` moved sleep into the log: a card totalling
+   * every minute against a goal one rule supplied reads `goal 3h (+3h 25m)`
+   * on a day whose only entry was a night's sleep, which is the drawing
+   * congratulating you for having gone to bed.
+   */
+  benchmarkDayOf: (dayKey: DayKey, day: Day | undefined) => number | null
 }) {
   const startDate = settings.startDate ? fromKey(settings.startDate) : null
   // One open form across the whole row, not one per card. Two forms side by
@@ -800,7 +803,6 @@ export function FullCardGrid({
             entry={entry}
             slots={slots}
             activities={activities}
-            settings={settings}
             counterUnits={counterUnits}
             goal={goalForDate(settings, date)}
             isToday={toKey(date) === todayKey}
@@ -810,6 +812,7 @@ export function FullCardGrid({
             isBeforeStart={startDate ? date < startDate : false}
             ignored={ignored}
             verdict={verdictOf(key)}
+            measured={benchmarkDayOf(key, days[key])}
             canFreeze={!locked && canFreezeDay ? canFreezeDay(key) : false}
             onFreeze={
               !locked && onFreezeDay ? () => onFreezeDay(key) : undefined

@@ -18,6 +18,12 @@
    **The `name` strings are stored in saved data**, so entries can be added,
    regrouped and reworded freely, but never renamed and never removed.
 
+   **Half the entries are generated.** lucide ships no filled set — there is
+   no `HeartFilled` to import — so a filled icon is the same drawing rendered
+   with `fill="currentColor"`, and its name is the outlined one plus
+   `.filled`. Only the icons in `FILLABLE` get one, and what that list is for
+   is written above it.
+
    Generated — see `scratchpad/gen_icons.py` in the session that wrote it. The
    check that matters is not the generation but the two assertions it makes:
    every name is a real lucide export, and nothing already stored is dropped.
@@ -355,9 +361,11 @@ export interface IconEntry {
   group: string
   /** What the picture is of, for search. Not shown. */
   keywords: string
+  /** Drawn solid. Set only on the generated twins — see `FILLABLE`. */
+  filled?: boolean
 }
 
-export const ICON_LIBRARY: IconEntry[] = [
+const OUTLINED: IconEntry[] = [
   // Getting there
   { name: "Train", icon: Train, group: "Getting there", keywords: "rail metro subway" },
   { name: "Bus", icon: Bus, group: "Getting there", keywords: "coach" },
@@ -710,6 +718,298 @@ export const ICON_LIBRARY: IconEntry[] = [
   { name: "QrCode", icon: QrCode, group: "Warnings and limits", keywords: "scan code" },
 ]
 
+/* ---- The filled half -----------------------------------------------------
+
+   lucide has no filled icons to import, so a filled one is the same drawing
+   with `fill="currentColor"` — which closes every subpath and paints the
+   inside. `RenderIcon` does that when it sees the suffix; nothing else in the
+   app has to know, and it costs not one byte of new SVG.
+
+   **The list was chosen by looking at all 321, twice.** No structural test
+   survives contact with this problem, and the first attempt at one is worth
+   recording because it was wrong in the instructive direction: it asked
+   whether every subpath *closes*, on the theory that an open path fills as a
+   wedge. SVG fills an open subpath by joining its last point back to its
+   first, so `Heart` — one unclosed path whose ends happen to meet — fills
+   perfectly, while the test also threw out every icon whose detail is drawn
+   *outside* the shape being filled: `Sun`'s rays, `CloudRain`'s drops,
+   `AlarmClock`'s bells, `Bell`, `Map`, `Anchor`. It kept 32 of 321. Rendering
+   the other 268 filled and looking at them recovered nearly two hundred.
+
+   Three things rule an icon out, all of them visual:
+
+   - **The fill destroys the drawing.** Every child of the SVG gets it, so
+     `Skull` loses its eyes, `Cookie` its chips, `Cat` its face, `Drum` its
+     skin and every one of the six faces its expression. A solid lump is not a
+     filled version of a drawing, it is the loss of the drawing.
+   - **The fill collapses the icon into one already on the shelf.** Filled
+     `Target`, `Disc` and `Compass` are each a plain circle, which is filled
+     `Circle`; filled `Speaker` and `Banknote` are filled `Square`; filled
+     `HeartPulse` and `HeartHandshake` are filled `Heart`. A second name for a
+     picture the library already has is worse than no variant at all, because
+     the picker then offers the same choice twice over.
+   - **Nothing is enclosed, so the fill only thickens the stroke.** `Plus`,
+     `Minus`, `Equal`, `Hash`, `Activity`, `TrendingUp` have no interior to
+     paint; filling them yields a *bold* variant, which may be a fine thing
+     but is not the thing the toggle above the grid says it is.
+
+   What is left is the set where the solid drawing is still recognisably the
+   same thing: a filled heart, a filled star, a solid wrench, a black bell.
+
+   **A note for whoever extends this.** Phosphor was tried as the alternative
+   — it is the obvious one, since it ships a real hand-drawn `fill` weight for
+   1512 icons. It was rejected on two counts: its per-icon module carries all
+   six weights (~6.4 KB each), so importing the one we would draw wastes five
+   sixths of it; and a second icon family in one grid means the picker draws
+   two different visual languages side by side, which is a worse outcome than
+   a shorter list.
+-------------------------------------------------------------------------- */
+
+/** The suffix that makes a name mean "the same icon, solid". */
+export const FILLED_SUFFIX = ".filled"
+
+export const isFilledName = (name: string): boolean =>
+  name.endsWith(FILLED_SUFFIX)
+
+/** The outlined name behind either spelling. */
+export const baseIconName = (name: string): string =>
+  isFilledName(name) ? name.slice(0, -FILLED_SUFFIX.length) : name
+
+const FILLABLE = new Set([
+  "Car",
+  "Bike",
+  "Ship",
+  "Sailboat",
+  "Plane",
+  "Truck",
+  "Fuel",
+  "Footprints",
+  "MapPin",
+  "Map",
+  "Route",
+  "Navigation",
+  "Signpost",
+  "Milestone",
+  "Anchor",
+  "Tent",
+  "Binoculars",
+  "Sunrise",
+  "Sun",
+  "SunMedium",
+  "Sunset",
+  "Moon",
+  "MoonStar",
+  "Cloud",
+  "CloudRain",
+  "CloudSnow",
+  "CloudLightning",
+  "Wind",
+  "Umbrella",
+  "Snowflake",
+  "Droplet",
+  "Flame",
+  "Telescope",
+  "AlarmClock",
+  "Hourglass",
+  "Bell",
+  "Repeat",
+  "Repeat2",
+  "Undo2",
+  "Redo2",
+  "Play",
+  "Pause",
+  "Square",
+  "Circle",
+  "BookOpen",
+  "Library",
+  "School",
+  "GraduationCap",
+  "ScrollText",
+  "Files",
+  "Archive",
+  "Inbox",
+  "Presentation",
+  "Languages",
+  "PenLine",
+  "Pencil",
+  "Highlighter",
+  "Ruler",
+  "Brain",
+  "Lightbulb",
+  "Puzzle",
+  "Search",
+  "Microscope",
+  "FlaskConical",
+  "Pi",
+  "Variable",
+  "Divide",
+  "Percent",
+  "Code",
+  "Terminal",
+  "GitBranch",
+  "Bug",
+  "Binary",
+  "Cpu",
+  "Monitor",
+  "Wrench",
+  "Hammer",
+  "Axe",
+  "Shovel",
+  "Pickaxe",
+  "Scissors",
+  "PenTool",
+  "Paintbrush",
+  "PaintBucket",
+  "Stamp",
+  "Origami",
+  "Blocks",
+  "Boxes",
+  "Layers",
+  "Folder",
+  "Flag",
+  "Bookmark",
+  "Tag",
+  "Scale",
+  "Weight",
+  "Trophy",
+  "Award",
+  "Crown",
+  "Star",
+  "Sparkles",
+  "Sparkle",
+  "WandSparkles",
+  "Gem",
+  "Diamond",
+  "Zap",
+  "Rocket",
+  "Gift",
+  "ShoppingBag",
+  "ShoppingCart",
+  "Ticket",
+  "Coins",
+  "PiggyBank",
+  "Receipt",
+  "Tags",
+  "Coffee",
+  "CupSoda",
+  "Beer",
+  "Wine",
+  "Martini",
+  "Cake",
+  "Croissant",
+  "IceCreamCone",
+  "Pizza",
+  "Sandwich",
+  "Popcorn",
+  "Salad",
+  "Soup",
+  "Fish",
+  "Egg",
+  "Carrot",
+  "Cherry",
+  "Grape",
+  "Citrus",
+  "Banana",
+  "Apple",
+  "Utensils",
+  "Music",
+  "Headphones",
+  "Volume2",
+  "ListMusic",
+  "Guitar",
+  "Mic",
+  "MicSignal",
+  "Radio",
+  "Tv",
+  "Video",
+  "Clapperboard",
+  "Joystick",
+  "Dices",
+  "Swords",
+  "Sword",
+  "Castle",
+  "Dumbbell",
+  "Heart",
+  "PersonStanding",
+  "Accessibility",
+  "Bed",
+  "BedDouble",
+  "Bath",
+  "ShowerHead",
+  "Stethoscope",
+  "Pill",
+  "Syringe",
+  "Thermometer",
+  "Cross",
+  "Ambulance",
+  "Sofa",
+  "Armchair",
+  "Lamp",
+  "LampDesk",
+  "DoorOpen",
+  "Toilet",
+  "BrushCleaning",
+  "Trash2",
+  "Recycle",
+  "Fence",
+  "Leaf",
+  "Sprout",
+  "Flower",
+  "Flower2",
+  "TreePine",
+  "Trees",
+  "TentTree",
+  "Mountain",
+  "MountainSnow",
+  "Feather",
+  "Bird",
+  "Dog",
+  "Rabbit",
+  "Squirrel",
+  "Turtle",
+  "PawPrint",
+  "Bone",
+  "Store",
+  "Landmark",
+  "Factory",
+  "Warehouse",
+  "Briefcase",
+  "Users",
+  "UserCheck",
+  "UserPlus",
+  "Handshake",
+  "MessageSquare",
+  "Phone",
+  "Wallet",
+  "Cigarette",
+  "CigaretteOff",
+  "Shield",
+  "EyeOff",
+  "Glasses",
+  "Lock",
+  "LockOpen",
+  "Key",
+  "KeyRound",
+  "ScanFace",
+  "FingerprintPattern",
+  "QrCode",
+])
+
+/**
+ * Outlined and filled interleaved, so a variant sits beside the icon it is a
+ * variant of. Listing all the filled ones after all the outlined ones would
+ * make the picker's second half a shelf of things you have already scrolled
+ * past once.
+ *
+ * The twin inherits the group and the keywords: it is the same picture, so it
+ * answers the same searches, and `filled` is what the picker filters on.
+ */
+export const ICON_LIBRARY: IconEntry[] = OUTLINED.flatMap((entry) =>
+  FILLABLE.has(entry.name)
+    ? [entry, { ...entry, name: entry.name + FILLED_SUFFIX, filled: true }]
+    : [entry],
+)
+
 export const ICON_MAP: Record<string, LucideIcon> = Object.fromEntries(
   ICON_LIBRARY.map((o) => [o.name, o.icon]),
 )
@@ -751,8 +1051,11 @@ export function iconMatches(entry: IconEntry, query: string): boolean {
   // shelf is worse than one that answers with nothing. The headings already
   // do that job, and they do it while you are browsing, which is when it is
   // wanted. A word worth finding a group by belongs in its entries' keywords.
-  const haystack = `${entry.name.replace(/([a-z])([A-Z0-9])/g, "$1 $2")} ${
-    entry.keywords
-  }`.toLowerCase()
+  // The `.filled` suffix is split off as a word of its own, so typing
+  // "filled" narrows the grid the same way the toggle above it does — and
+  // "heart filled" finds exactly one icon.
+  const haystack = `${entry.name
+    .replace(/\./g, " ")
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")} ${entry.keywords}`.toLowerCase()
   return q.split(/\s+/).every((word) => haystack.includes(word))
 }

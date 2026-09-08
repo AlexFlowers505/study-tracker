@@ -22,7 +22,6 @@ import {
   Flame,
   Gift,
   History,
-  Moon,
   Trophy,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -282,9 +281,6 @@ export function PeriodBar({
   showFilter,
   onToggleFilter,
   filteredOutCount,
-  sleepEnabled,
-  showSleep,
-  onToggleSleep,
   showLog,
   onToggleLog,
   showHistory,
@@ -322,9 +318,6 @@ export function PeriodBar({
   showFilter: boolean
   onToggleFilter: Toggle
   filteredOutCount: number
-  sleepEnabled: boolean
-  showSleep: boolean
-  onToggleSleep: Toggle
   showLog: boolean
   onToggleLog: Toggle
   showHistory: boolean
@@ -354,8 +347,8 @@ export function PeriodBar({
   onHideAll: () => void
   /** Rosettes reached against rosettes written. Null when none are written. */
   badges: { earned: number; total: number } | null
-  /** Rewards you can afford against rewards on the shelf. */
-  shop: { affordable: number; total: number } | null
+  /** Rewards taken at least once, against rewards on the shelf. */
+  shop: { taken: number; total: number } | null
 }) {
   const c = usePalette()
   const t = useT()
@@ -424,16 +417,6 @@ export function PeriodBar({
                 : t(showFilter ? "Hide the filter" : "Filter what counts")
             }
           />
-          {/* Absent rather than disabled when sleep tracking is off: there is
-              nothing behind it to show. */}
-          {sleepEnabled && (
-            <PanelToggle
-              icon={Moon}
-              active={showSleep}
-              onClick={onToggleSleep}
-              tip={t(showSleep ? "Hide sleep" : "Show sleep")}
-            />
-          )}
           {/* **The board's badge is what survives of "it comes and finds
               you."** The alarms are gone, so a closed board with a red figure
               on its bell is the only thing left that reaches you — and it
@@ -532,23 +515,27 @@ export function PeriodBar({
           )}
           {/* **`x of y`, on the same dark disc the notice total wears.** A
               shelf and a wall of rosettes are both *how much of this is
-              done*, and a bare figure would not say which half it was. The
-              shop's own fraction is what you can **afford** rather than what
-              you have taken, because a reward can be taken more than once —
-              taken-of-total would climb past its own denominator. */}
+              done*, and a bare figure would not say which half it was — so
+              the shop counts what you have **taken**, exactly as the rosettes
+              count what you have reached. It used to count what you could
+              *afford*, which is a different question and the wrong one here:
+              affordability moves with the balance, so the badge drifted up
+              and down on days when nothing about the shelf had changed.
+              Distinct rewards rather than purchases is what stops it climbing
+              past its own denominator, since a reward can be taken twice. */}
           <PanelToggle
             icon={Gift}
             active={showShop}
             onClick={onToggleShop}
             count={shop ? shop.total : null}
-            countLabel={shop ? `${shop.affordable}/${shop.total}` : undefined}
+            countLabel={shop ? `${shop.taken}/${shop.total}` : undefined}
             countOutline
             tip={
               showShop
                 ? t("Hide the rewards")
                 : shop
-                  ? t("{a} of {b} within reach", {
-                      a: shop.affordable,
+                  ? t("{a} of {b} taken", {
+                      a: shop.taken,
                       b: shop.total,
                     })
                   : t("What your points will buy")

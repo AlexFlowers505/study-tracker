@@ -3,7 +3,7 @@
    below a summary strip.
 --------------------------------------------------------------- */
 
-import { EyeOff, Moon, Snowflake } from "lucide-react"
+import { EyeOff, Snowflake } from "lucide-react"
 import type {
   Activity,
   Category,
@@ -157,7 +157,6 @@ function CompactDayCell({
   entry,
   slots,
   activities,
-  settings,
   goal,
   isToday,
   isFuture,
@@ -165,13 +164,13 @@ function CompactDayCell({
   ignored,
   counterUnits,
   verdict,
+  measured,
   onEdit,
 }: {
   date: Date
   entry?: Day
   slots: Slot[]
   activities: Activity[]
-  settings: Settings
   counterUnits: CounterUnit[]
   goal: number
   isToday: boolean
@@ -180,6 +179,9 @@ function CompactDayCell({
   ignored: boolean
   /** How the day came out, across every rule with a vote on it. */
   verdict: DayReport
+  /** The benchmark's own reading of this day, or null when nothing is
+   *  nominated — see `benchmarkDayOf`. */
+  measured: number | null
   /** Absent for a day that has not happened — nothing to open, so the cell
    *  is inert rather than opening an editor for a day you cannot log. */
   onEdit?: () => void
@@ -198,7 +200,10 @@ function CompactDayCell({
     )
   }
 
-  const { bySlot, total } = dayBreakdown(entry, slots)
+  /* The slot split is always everything — it answers *where did the time go*.
+     The headline figure is the benchmark's, for the reason `DayCard` gives. */
+  const { bySlot, total: logged } = dayBreakdown(entry, slots)
+  const total = measured ?? logged
   const tooltip = ignored
     ? `${buildTooltip(entry, slots, activities, counterUnits)}\n\nIgnored in statistics`
     : buildTooltip(entry, slots, activities, counterUnits)
@@ -245,12 +250,6 @@ function CompactDayCell({
                 <Snowflake size={11} style={{ color: c.freeze }} />
               </Tip>
             )}
-            {settings?.sleepEnabled === true &&
-              (entry?.sleep || []).length > 0 && (
-                <Tip text={t("Sleep logged")}>
-                  <Moon size={11} style={{ color: c.sleep }} />
-                </Tip>
-              )}
             {/* A dot per unit the day touched, in the unit's own colour. A
                 month cell has no room for numbers, so the count is in the
                 tooltip and the presence is the signal.
@@ -316,7 +315,9 @@ function CompactDayCell({
               </span>
             ) : null,
           )}
-          {total === 0 && (
+          {/* The dash means *nothing on this day*, which is `logged` — the
+              benchmark's own figure can be nought on a day that is full. */}
+          {logged === 0 && (
             <span className="text-[8px] font-mono text-ink/25">—</span>
           )}
         </div>
@@ -357,6 +358,7 @@ export function MonthGrid({
   hiddenGroups,
   categories,
   verdictOf,
+  benchmarkDayOf,
   benchmarkOf,
 }: {
   cursor: Date
@@ -372,6 +374,17 @@ export function MonthGrid({
   todayKey: DayKey
   /** How each day came out — see `lib/dayVerdict`. Read, never computed here. */
   verdictOf: (key: DayKey) => DayReport
+  /**
+   * **One day, measured through the benchmark rule.** Null when nothing is
+   * nominated, and then the day totals everything — the only answer there is.
+   *
+   * The same argument `benchmarkOf` makes for a week, and it became
+   * load-bearing when `spec 024` moved sleep into the log: a card totalling
+   * every minute against a goal one rule supplied reads `goal 3h (+3h 25m)`
+   * on a day whose only entry was a night's sleep, which is the drawing
+   * congratulating you for having gone to bed.
+   */
+  benchmarkDayOf: (dayKey: DayKey, day: Day | undefined) => number | null
   /**
    * A stretch of days as the **benchmark rule** counted it — `spec 019`.
    *
@@ -499,7 +512,6 @@ export function MonthGrid({
                     entry={entry}
                     slots={slots}
                     activities={activities}
-                    settings={settings}
                     counterUnits={counterUnits}
                     goal={goalForDate(settings, date)}
                     isToday={toKey(date) === todayKey}
@@ -507,6 +519,7 @@ export function MonthGrid({
                     isBeforeStart={startDate ? date < startDate : false}
                     ignored={dayIgnored}
                     verdict={verdictOf(toKey(date))}
+                    measured={benchmarkDayOf(toKey(date), entry)}
                     // Withheld for a day that has not happened: there is
                     // nothing to record about it, so the grid does not offer a
                     // way in. Same rule the week cards follow.
