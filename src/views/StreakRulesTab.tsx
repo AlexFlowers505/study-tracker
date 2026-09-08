@@ -94,6 +94,8 @@ import {
   clauseBounds,
   slotBoundsOnWeekday,
   clauseSentence,
+  clauseScope,
+  isMixed,
   clauseWeekdays,
   clauseTarget,
   figuresPerDay,
@@ -405,6 +407,7 @@ function ClauseForm({
 }: {
   clause: StreakClause
   ctx: StreakContext
+  /** This **condition's** period, which since `spec 025` is its own. */
   byWeek: boolean
   /** Which of several this is. Shown even when it is the only one. */
   ordinal: number
@@ -560,6 +563,35 @@ function ClauseForm({
             })
           }}
         />
+      </Row>
+
+      {/* **Which period this one condition is judged over** — `spec 025`.
+
+          The scale used to belong to the rule, so *three hours a day of the
+          course* and *at most four hours a week of one part of it* had to be
+          written as two rules — which is two streaks to keep and two
+          allowances to spend, for one promise. That is the argument this whole
+          form is built on, and the one axis it had not reached.
+
+          It sits here rather than beside `Judged on` because it decides what
+          the rows under it mean: a week has no weekdays to hang a figure on,
+          and a per-weekday grid under a weekly condition is a control for a
+          question that cannot be asked. The rule's own `Judged` above is
+          unchanged and is what a condition with no answer of its own takes. */}
+      <Row label={t("Judged")}>
+        <Pills<"day" | "week">
+          value={byWeek ? "week" : "day"}
+          onChange={(scope) => onChange({ scope })}
+          options={[
+            { id: "day", label: t("Every day") },
+            { id: "week", label: t("Every week") },
+          ]}
+        />
+        <span className="text-[10px] font-mono text-ink/40">
+          {byWeek
+            ? t("one figure for the whole week")
+            : t("each day judged on its own")}
+        </span>
       </Row>
 
       {/* **A week has no weekdays to hang its figure on**, so the pair stays
@@ -1553,8 +1585,18 @@ function WeekdayRow({
   }
 
   /** A window is two times and either may be cleared on its own. */
-  const asWindow = (from?: string, to?: string): TimeWindow | undefined =>
-    from || to ? { ...(from ? { from } : {}), ...(to ? { to } : {}) } : undefined
+  const asWindow = (
+    from?: string,
+    to?: string,
+    nextDay?: boolean,
+  ): TimeWindow | undefined =>
+    from || to
+      ? {
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
+          ...(nextDay ? { nextDay: true } : {}),
+        }
+      : undefined
 
   const setDayWindow = (
     wd: number,
@@ -1584,13 +1626,52 @@ function WeekdayRow({
   const windowPair = (
     window: TimeWindow,
     onSet: (next: TimeWindow | undefined) => void,
+    /**
+     * **Whether this pair may sit on the next morning** — the finishing one,
+     * and only it. A day's earliest start is inside that day by construction,
+     * so offering it there would be a switch with nothing to mean.
+     */
+    nextDayable = false,
   ) => (
-    <TimeRangeField
-      start={window.from}
-      end={window.to}
-      onChange={(from, to) => onSet(asWindow(from, to))}
-      onClear={() => onSet(undefined)}
-    />
+    <span className="flex items-center gap-1.5">
+      <TimeRangeField
+        start={window.from}
+        end={window.to}
+        onChange={(from, to) => onSet(asWindow(from, to, window.nextDay))}
+        onClear={() => onSet(undefined)}
+      />
+      {/* **`+1d`, the mark the readouts already use for a session that ran
+          past midnight.** Without it *get up between 04:00 and 05:00* asks
+          for four in the morning of the day the night *began*, which is a
+          rule nothing can keep — see `windowWalls`. Absent until there is a
+          time for it to qualify, since a lone switch on an empty pair says
+          nothing. */}
+      {nextDayable && hasWindow(window) && (
+        <Tip
+          text={t(
+            "The finish is the next morning — for a session that runs past midnight",
+          )}
+        >
+          <button
+            type="button"
+            aria-pressed={!!window.nextDay}
+            onClick={() =>
+              onSet(asWindow(window.from, window.to, !window.nextDay))
+            }
+            style={
+              window.nextDay
+                ? { backgroundColor: c.accent, color: c.onFill }
+                : undefined
+            }
+            className={`${btnBase} px-1.5 py-1 rounded-full text-[9px] font-mono ${
+              window.nextDay ? "" : "text-ink/35 hover:text-ink hover:bg-ink/5"
+            }`}
+          >
+            +1d
+          </button>
+        </Tip>
+      )}
+    </span>
   )
 
   return (
@@ -1837,8 +1918,10 @@ function WeekdayRow({
             )}
           </Row>
           <Row label={t("Finish")}>
-            {windowPair(sharedWindow.end, (next) =>
-              onChange({ endWindow: next }),
+            {windowPair(
+              sharedWindow.end,
+              (next) => onChange({ endWindow: next }),
+              true,
             )}
           </Row>
         </>
@@ -1865,8 +1948,10 @@ function WeekdayRow({
                   {windowPair(own.startWindow ?? {}, (next) =>
                     setDayWindow(wd, "startWindow", next),
                   )}
-                  {windowPair(own.endWindow ?? {}, (next) =>
-                    setDayWindow(wd, "endWindow", next),
+                  {windowPair(
+                    own.endWindow ?? {},
+                    (next) => setDayWindow(wd, "endWindow", next),
+                    true,
                   )}
                   {judged.length > 1 ? (
                     <Tip text={`Give every judged day ${WEEKDAY_LABELS[wd]}'s hours`}>
@@ -1919,13 +2004,17 @@ function RuleSummary({
       {/* The same sentence the panel reads back, from the same function. A
           summary written separately is a summary that can drift. */}
       <p className="text-[10px] font-mono uppercase tracking-widest text-ink/40">
-        {t(rule.scope === "week" ? "Every week" : "Every day")}
+        {isMixed(rule)
+          ? t("Every day and every week")
+          : t(rule.scope === "week" ? "Every week" : "Every day")}
       </p>
       <ul className="space-y-0.5">
         {clauses.map((clause) => (
           <li key={clause.id} className="text-[11px] font-mono text-ink/70">
             {clauses.length > 1 && <span className="text-ink/30">· </span>}
-            <Sentence text={clauseSentence(clause, ctx, rule.scope)} />
+            <Sentence
+              text={clauseSentence(clause, ctx, clauseScope(clause, rule))}
+            />
           </li>
         ))}
       </ul>
@@ -2093,7 +2182,6 @@ function RuleForm({
     )
 
   const clauses = ruleClauses(draft)
-  const byWeek = draft.scope === "week"
   const edit = ruleEdit(base, draft, ctx, today, reason, supervised)
   const patch = (next: Partial<StreakRule>) =>
     setDraft({ ...draft, ...next })
@@ -2119,9 +2207,11 @@ function RuleForm({
           ]}
         />
         <span className="text-[10px] font-mono text-ink/40">
-          {draft.scope === "week"
-            ? "one figure for the whole week"
-            : "each day judged on its own"}
+          {/* **What a condition takes when it says nothing.** Since
+              `spec 025` each condition carries its own period, so this row
+              stopped being the answer and became the default — and a control
+              that silently governs three others below it has to say so. */}
+          {t("What a condition below takes unless it says otherwise")}
         </span>
       </Row>
 
@@ -2232,7 +2322,7 @@ function RuleForm({
           <ClauseForm
             clause={clause}
             ctx={ctx}
-            byWeek={byWeek}
+            byWeek={clauseScope(clause, draft) === "week"}
             ordinal={i + 1}
             onChange={(next) => patchClause(clause.id, next)}
             onRemove={

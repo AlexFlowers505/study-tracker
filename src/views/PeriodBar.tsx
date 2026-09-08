@@ -296,6 +296,7 @@ export function PeriodBar({
   noticeOwed,
   allClearCount,
   keptDays,
+  keptFacing,
   keptOpen,
   onToggleKept,
   points,
@@ -336,6 +337,16 @@ export function PeriodBar({
   allClearCount: number
   /** The composite's run. No freezes: there is no shared pool any more. */
   keptDays: number | null
+  /**
+   * **What the run seals as if today and yesterday are left as they read** —
+   * `spec 025`. Null when that is simply the figure beside it.
+   *
+   * The badge above it then stops being the run and becomes what is *at
+   * stake*, which is the same swap `KeptFigure` makes two blocks below: a
+   * figure that reads `0` the moment a still-writable day breaks cannot be
+   * told from a run that ended in March.
+   */
+  keptFacing: number | null
   keptOpen: boolean
   onToggleKept: Toggle
   /** Points, abbreviated past a thousand. Null while the balance is off. */
@@ -472,22 +483,48 @@ export function PeriodBar({
             />
           )}
           {/* `Flame` is already the language of streaks everywhere in the app,
-              so this needs no label. It does **not** colour: we have exactly
+              so this needs no label. It does **not** go red: we have exactly
               one place to look when something is wrong, and a second red mark
-              two centimetres away means neither of them means anything. */}
+              two centimetres away means neither of them means anything.
+
+              **The sealed figure under it is the one exception, and it is not
+              a second alarm.** It is the second half of one number — the same
+              red `KeptFigure` gives the same figure two blocks below, so the
+              badge and the number it stands for stay one thing, which is the
+              whole reason the first half wears the streak's marigold.
+
+              Amber was the first answer, on the grounds that *behind but not
+              lost* is exactly this state. It lost to the palette: `warn` at
+              badge size, sitting directly under `project`, is two warm
+              yellows a centimetre apart, and telling a state apart by shade is
+              the failure `gone` was redrawn to avoid. It takes the `sub`
+              slot, so the pair reads down the edge as the board's counts do. */}
           {keptDays !== null && (
             <PanelToggle
               icon={Flame}
               active={keptOpen}
               onClick={onToggleKept}
               count={keptDays}
+              sub={keptFacing}
+              subColor={c.exam}
               /* The streak's own marigold — the colour `KeptFigure` gives the
                  same figure two blocks below, so the badge and the number it
                  stands for are one thing. Deliberately not `coin`: money and
                  the run you are guarding are the two things this row must not
                  let you confuse. */
               countColor={c.project}
-              tip={t(keptOpen ? "Hide the composite" : "Days kept in a row")}
+              multilineTip={keptFacing !== null}
+              tip={
+                keptFacing !== null
+                  ? [
+                      t("Sealed as it stands, the run goes from {was} to {now}.", {
+                        was: keptDays,
+                        now: keptFacing,
+                      }),
+                      t("Today and yesterday can still be written to."),
+                    ].join(String.fromCharCode(10))
+                  : t(keptOpen ? "Hide the composite" : "Days kept in a row")
+              }
             />
           )}
           {/* A gift is what you buy; coins are what you pay with. */}

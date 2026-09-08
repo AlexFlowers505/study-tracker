@@ -9,6 +9,96 @@ would leak into every other project on the machine.
 
 ## Work in progress
 
+**`specs/025-eight-things-from-use.md` is built** — eight reports from a week
+of ordinary use, two of them engine bugs wearing the face of a decision. **No
+migration:** every new field rides in existing jsonb and means, when absent,
+exactly what the data meant before.
+
+- **A receipt is not a verdict.** `spec 017` fixed *coverage* for a week — a
+  violation that has grown past what was paid is not the one that was bought —
+  and left the verdict alone, so a ceiling broken on the Monday and bought on
+  the Monday made the whole week read `frozen` with five days still to run.
+  The strip colours all seven of a weekly rule's cells by the week's state, so
+  **one freeze drew seven blue snowflake cells**. `ruleWeekShown` is the
+  drawing-only sibling of `ruleWeekState`: a week that has not ended keeps
+  `pending` and wears its corner snowflake instead. `ruleWeekState` itself is
+  untouched, so the streak, the ledger and what may be frozen read as they
+  did.
+- **A paid period is not a finished one, and the board treated it as both.**
+  `ruleNotices` returned nothing at all the moment `isFrozenFor` was true — a
+  guard written when a freeze covered a whole rule. So a rule went completely
+  silent (no `“Pinterest” 3 of 3 used — one more ends it`) and reappeared at
+  `danger` only once the violation had grown past the price, having never
+  warned. The guard is gone; the per-violation `paid` filter is the whole of
+  what a receipt buys. `RuleOpenWeek.carried` also stops "Still in play"
+  calling a week held up by a freeze *clean so far*.
+- **Every time figure on the analytics half goes through the benchmark rule**
+  (`benchmarkDays`). `spec 022` made that argument for the headline hours and
+  applied it nowhere else, so a period read `4h 25m` in its header and
+  `17h 5m` in the donut two lines below — three quarters of it **sleep**,
+  since `spec 024`. One filtered copy of `days`, so the donuts, the four
+  charts, the averages and the extremes cannot disagree. Only the entries and
+  only time: `counters` and `checks` are untouched, and `activeDays` stays on
+  the raw log because a day you wrote something on is not an empty day.
+  `MeasuredNote` names the rule on both sections, with a gear to the tab where
+  it is nominated; nothing nominated still counts everything and says so.
+- **`36 → 0`.** `current` is the run as things stand, and *as things stand* is
+  the one state it cannot describe — it reads `36` until the midnight it reads
+  `0`, and it reads `0` the moment a day you can **still write to** breaks,
+  which is indistinguishable from a run that ended in March. `KeptDays` carries
+  both ends instead: **`atStake`** (every editable day but today counted as
+  kept; today neither adds nor breaks unless it already holds) and **`facing`**
+  (sealed exactly as it reads, so `pending` is a miss). The pair is drawn while
+  they disagree — on `KeptFigure` as `36 → 0`, and on the streak badge in the
+  period bar as the figure with the sealed one under it in `sub`. That badge's
+  "it does not go red" rule takes its one exception here: this is not a second
+  alarm but the second half of one number, in the same red the figure below
+  uses. `atRisk` names the promises doing it.
+- **The strip of a weekly rule stops drawing days that have not happened.**
+  Every cell wore the week's running total, so on a Tuesday the row read
+  `1 · 7 · 7 · 7 · 7 · 7 · 7`. A future day takes `unjudged`. **And its
+  receipt goes on one cell** — the week's Monday, or the first day of that
+  week in range: `freezeOffers` answers with the week's list whatever day it
+  is asked about, so all seven drew the same ring, popover and snowflake.
+- **`Leaving`'s grid child needed `min-width: 0`.** It had `min-height: 0`;
+  a grid item defaults to `min-width: auto`, so one pasted URL in a reward's
+  description widened that item past the page, took `max-w-6xl` with it and
+  left every `truncate` inside with nothing to truncate against. The fourth
+  face of the `min-w-0` trap, fixed in the one place every panel goes out
+  through.
+- **The count filter takes `onBulk` per group.** Isolating one activity out of
+  forty took thirty-nine clicks; `ToggleChips` has had the button since the
+  chart legends needed it.
+- **`StreakClause.scope` — one rule, two scales.** *Three hours a day of the
+  category, and at most four a week of one activity in it* was two rules,
+  which is two streaks to keep and two allowances to spend for one promise.
+  Absent means the rule's own scope. `clauseScope` / `dayClauses` /
+  `weekClauses` / `isMixed` are the vocabulary; `ruleStateOn` folds a day's
+  two halves (missed over pending over frozen); `freezeOffers` returns both
+  lists because their receipts are filed in different places; `isFrozenFor`
+  takes the scale from its arguments; a mixed rule's streak is counted in
+  **days** and its panel drawn on the day. The benchmark reads the daily half
+  only. Changing a condition's scale is **incomparable**, therefore locked.
+  A weekly condition now names its period in its own sentence, which it never
+  had to while the period belonged to the rule.
+- **`TimeWindow.nextDay`.** `edgesOn` reports a session past midnight as
+  minutes past 1440 and has to; a window's walls are wall-clock times. So
+  *get up between 04:00 and 05:00* asked for 240–300 while every real night
+  reported 1680 — a rule nothing could keep, for the one subject the app most
+  obviously has one about. Stated rather than inferred, for the reason
+  `spec 023` refused to read a window across midnight at all. One flag for the
+  pair, offered on the **finishing** window only, and `windowWalls` is the one
+  place the shift is applied.
+- **A reward opens** (`ItemDetail`) — the icon at a size you can see, the
+  description in full, the price as a distance. The name and its icon open it;
+  the row does not. `Take it` still hands to `BuyConfirm`, which stays the only
+  ceremony.
+- **A reward can ask for achievements** (`ShopItem.requires`), and/or points —
+  never neither. `priceEdit` becomes `shopEdit` and takes requirements from the
+  same side of the one-sided test: adding one lands at once, dropping one
+  waits like a discount. An id matching no achievement is dropped, not
+  reported: deleting an achievement takes its record with it.
+
 **`specs/011-the-rule-form-rebuilt.md` is done, and `migrations/019` has now
 run on dev and on prod.** Read its Status block before touching rules,
 checks, the daily goal or the ring. Highlights: a condition names
@@ -498,8 +588,8 @@ There are no tests, with one deliberate exception. Lint and typecheck are the
 automated checks and **both are clean — expect zero from each and leave them at
 zero.**
 
-`npm run sweep` is the exception: `scripts/streak-sweep.ts`, a hundred and
-forty-four cases over the streak engine — every rule shape against a period that should
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, some two hundred
+and seventy cases over the streak engine — every rule shape against a period that should
 hold and one that should break it, the risk levels at both ends of the day,
 what today still asks, what a day is reported as, the lock, the conditions that
 must be refused rather than judged, and what an achievement reaches and what
@@ -598,6 +688,11 @@ which are Node config and get their own lint block.
     `spec 022` the figure printed beside it is measured through the same rule,
     because a total over every entry says how thorough the log is rather than
     how the period went. `benchmarkMeter` is that reading one day at a time.
+    Since `spec 025` **every time figure on the analytics half goes through
+    it too** — `benchmarkDays` is one filtered copy of `days` holding only the
+    entries the nominated rule counts, and the donuts, the four Trends charts,
+    the averages and the extremes all read it. Only the entries and only time;
+    `activeDays` stays on the raw log.
     **Display only, and therefore outside the lock** — it changes no verdict. Eligibility falls out of the
     readers: `goalForDate` is minutes, so the rule must measure time; a ceiling
     is not something to aim at, so its conditions must be floors; and no two
@@ -1246,7 +1341,9 @@ One page, not tabs. A single period drives everything:
   - `CountFilter` — which slots, activities, counters, tags and categories
     count. Not period-scoped; switching periods leaves it alone, so its toggle
     carries a dot while anything is struck out, or a live filter would silently
-    shrink every figure. **A hidden category takes everything filed under it,
+    shrink every figure. **Each group carries one bulk button** (`onBulk`, the
+    same one the chart legends have): isolating one activity out of forty was
+    thirty-nine clicks and is now two. **A hidden category takes everything filed under it,
     its activities as well as its counters** — that is what separates it from a
     tag: a tag says what a thing is like, a category says where it belongs,
     and hiding a shelf means hiding what is on it. (A tag reaches activities
@@ -1560,7 +1657,7 @@ enough that a loose word costs a conversation.
 | **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
 | **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
 | **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
-| **a window** | when a condition's work had to begin or end. Two walls on one moment, read against the day's **earliest start** and **latest end**. Says when, never whether | `TimeWindow`, `edgesOn`, `windowsOnWeekday` |
+| **a window** | when a condition's work had to begin or end. Two walls on one moment, read against the day's **earliest start** and **latest end**. Says when, never whether. A finishing pair may sit on the **next morning** (`nextDay`), which is what makes *get up between 04:00 and 05:00* writable | `TimeWindow`, `edgesOn`, `windowWalls` |
 | **a violation** | one named site of a rule that broke on one period — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn`, `weekViolationsOn` |
 | **a freeze** | a purchase against one violation, at a price stamped when it was made. Never automatic, never refunded, never repriced | `RuleFreeze`, `freezeOffers` |
 | **settled** | a violation nothing can undo before midnight, and therefore the only kind that may be frozen | `Violation.settled` |
@@ -1613,6 +1710,14 @@ against the old code.
 numbers, where points come from, which way each lock points, and what is not
 decided. Read it before touching the balance, the shop or an achievement's
 reward.
+
+**A reward's cost is points, achievements, or both** — `ShopItem.requires`,
+`spec 025`. Never neither: a reward that asks for nothing is not a reward, which
+is what `canBuy`'s old `price > 0` meant when a price was all there was. The
+lock reads them from the same side (`shopEdit`): adding a requirement lands at
+once, dropping one waits like a discount. A reward also **opens in a modal**,
+because a row is the wrong size for the thing it is describing and the
+mechanism only works if you want the thing.
 
 **Points and the composite are not the same number, and used to share a name.**
 The composite is a *run*: it resets to nought when you break it, and nothing
@@ -1767,6 +1872,14 @@ would cost forty-five freezes.
 categories and tags in one object, from `streakContext(project)`. One argument
 rather than five, since a condition can now name any of them and no caller
 should have to know which lists this particular rule happens to touch.
+
+**A condition carries its own period** since `spec 025` — `clause.scope`,
+absent meaning the rule's. *Three hours a day of the category, and at most four
+a week of one activity in it* is one promise, and writing it as two rules is
+two streaks to keep and two allowances to spend. `dayClauses` / `weekClauses`
+split the engine; `ruleStateOn` folds a day's two halves; a mixed rule is
+counted in **days** and drawn on the day, and the benchmark reads its daily
+half. Changing a condition's scale is incomparable, therefore locked.
 
 **A rule is one promise with as many conditions as it needs**, and all of them
 must hold — `StreakClause`, and `ruleClauses()` is the only thing that knows a

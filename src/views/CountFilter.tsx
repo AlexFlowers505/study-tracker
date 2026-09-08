@@ -30,6 +30,14 @@ function FilterGroup({
   )
 }
 
+/** Which of the panel's five rows a bulk press is about. */
+export type FilterKind =
+  | "slots"
+  | "activities"
+  | "counters"
+  | "tags"
+  | "categories"
+
 const chipTip = (it: { label: string }, isHidden: boolean) =>
   isHidden
     ? t('Count "{name}" again', { name: it.label })
@@ -57,6 +65,7 @@ export function CountFilter({
   onToggleCounter,
   onToggleTag,
   onToggleCategory,
+  onBulk,
   onReset,
   onClose,
   onSettings,
@@ -76,6 +85,23 @@ export function CountFilter({
   onToggleCounter: (id: string) => void
   onToggleTag: (id: string) => void
   onToggleCategory: (id: string) => void
+  /**
+   * **Strike out a whole group, or put it all back.**
+   *
+   * The filter is a *narrowing*, and the question people bring to it is
+   * nearly always "show me this one thing" — which under one chip at a time
+   * is one click per counter you do not want. `ToggleChips` has carried
+   * `onBulk` since the chart legends needed it; this is the same button doing
+   * the same job one panel down, and it shows whichever half applies exactly
+   * as `bulkToggleFor` does.
+   *
+   * Per group rather than one button for the panel: the groups strike out
+   * different kinds of thing — slots and activities take study time off the
+   * page, counters and tags take counters off it — and a single button would
+   * have to mean all five at once, which is what `Count all again` already
+   * says from the other side.
+   */
+  onBulk: (kind: FilterKind, showAll: boolean) => void
   onReset: () => void
   onClose?: () => void
   /** Opens Setup's Counters tab — where the things this filters are defined. */
@@ -121,6 +147,7 @@ export function CountFilter({
             items={slots}
             hidden={hiddenSlots}
             onToggle={onToggleSlot}
+            onBulk={(showAll) => onBulk("slots", showAll)}
             className=""
             tipFor={chipTip}
           />
@@ -130,6 +157,7 @@ export function CountFilter({
             items={activities}
             hidden={hiddenActivities}
             onToggle={onToggleActivity}
+            onBulk={(showAll) => onBulk("activities", showAll)}
             className=""
             tipFor={chipTip}
           />
@@ -149,6 +177,7 @@ export function CountFilter({
               items={categories}
               hidden={hiddenCategories}
               onToggle={onToggleCategory}
+              onBulk={(showAll) => onBulk("categories", showAll)}
               className=""
               tipFor={(it, isHidden) =>
                 isHidden
@@ -168,6 +197,7 @@ export function CountFilter({
               items={counters}
               hidden={hiddenCounters}
               onToggle={onToggleCounter}
+              onBulk={(showAll) => onBulk("counters", showAll)}
               className=""
               tipFor={(it, isHidden) =>
                 isHidden
@@ -183,6 +213,7 @@ export function CountFilter({
               items={tags}
               hidden={hiddenTags}
               onToggle={onToggleTag}
+              onBulk={(showAll) => onBulk("tags", showAll)}
               className=""
               tipFor={(it, isHidden) =>
                 isHidden

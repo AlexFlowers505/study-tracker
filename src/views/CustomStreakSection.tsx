@@ -46,9 +46,13 @@ import {
   judgesDay,
   readDay,
   readWeek,
+  clauseScope,
+  dayClauses,
   ruleClauses,
-  ruleDayState,
-  ruleWeekState,
+  weekClauses,
+  ruleStateOn,
+  ruleWeekShown,
+  weekIsOver,
   streakContext,
   weekBounds,
   weekPace,
@@ -180,7 +184,13 @@ export function CustomStreakSection({
   const t = useT()
   const { rule, freezes } = status
   const todayKey = toKey(today)
-  const byWeek = rule.scope === "week"
+  /* **The finer of the two scales, whenever the rule has one** — `spec 025`.
+     A rule may now be judged on both, and the strip and the chart have to be
+     drawn on one: days, because every mixed rule has a daily half by
+     construction and a weekly condition already has a per-day reading built
+     for the day's verdict. Only a rule that is *purely* weekly is drawn a week
+     at a time. */
+  const byWeek = !dayClauses(rule).length
   const ctx = streakContext(project)
   const clauses = ruleClauses(rule)
   // A rule with one condition reports that condition's own number, which is
@@ -203,10 +213,27 @@ export function CustomStreakSection({
 
   const dates = datesInRange(rangeStart, rangeEnd)
 
+  /* **The week's verdict, held back while the week is still running** —
+     `ruleWeekShown`. Every cell of a weekly rule's row wears the week's own
+     state, so a single freeze bought on a Monday painted all seven of them
+     blue and reported a week that is still in play as one already saved. The
+     receipts are still drawn: the corner snowflake, and the popover naming
+     each one. */
   const stateOf = (date: Date, key: string): RuleState =>
     byWeek
-      ? ruleWeekState(rule, ctx, project.days, startOfWeek(date), todayKey)
-      : ruleDayState(rule, ctx, project.days[key], key, todayKey)
+      ? /* **A day that has not happened is not a reading of the week.**
+           Every cell of a weekly rule's row wears the week's state, which is
+           right for the days that have been lived and a claim about the ones
+           that have not: on a Tuesday, Wednesday to Sunday were drawn
+           carrying the week's running total, so `1 · 7 · 7 · 7 · 7 · 7 · 7`
+           read as *the whole week is already logged*. `unjudged` is the same
+           silence a future day gets everywhere else in the app. */
+        key > todayKey
+        ? "unjudged"
+        : ruleWeekShown(rule, ctx, project.days, startOfWeek(date), todayKey)
+      : /* Both halves — a weekly condition inside a mixed rule loses its week
+           on one day, and that day is red on this strip like any other. */
+        ruleStateOn(rule, ctx, project.days, key, todayKey)
 
   /**
    * Every condition that had something to say, in the form "Youtube 2".
@@ -219,7 +246,12 @@ export function CustomStreakSection({
     readings
       .filter((r) => r.applies)
       .flatMap((r) =>
-        byWeek
+        /* **Per reading, not per rule.** A mixed rule's tooltip carries a
+           day's figures and a week's running totals side by side, and the two
+           are read by different functions — handing a week reading to the day
+           one prints the week's figure against the day's bounds, which is the
+           bug `spec 018` closed. */
+        clauseScope(r.clause, rule) === "week"
           ? clauseWeekReadoutParts(
               r,
               ctx,
@@ -238,17 +270,40 @@ export function CustomStreakSection({
   const figure = (readings: ClauseReading[]) =>
     compound ? totalDeficit(readings) : (readings[0]?.value ?? 0)
 
+  /* **A weekly rule's receipt belongs on one cell, not on seven.**
+
+     `freezeOffers` is asked per day and answers with the *week's* list, so
+     every day of the week drew the same buyable ring, the same popover and —
+     once anything was bought — the same corner snowflake. One freeze against
+     one week's ceiling therefore read as seven freezes, which is the reading
+     `ruleWeekShown` had just been written to stop the colour making.
+
+     It goes on the day the record actually goes on (`FreezeOffer.dayKey`, the
+     week's Monday), or on the first day of that week the period happens to
+     show — a range starting on a Wednesday must not lose the offer
+     altogether. */
+  const weekAnchor = new Map<string, DayKey>()
+  if (byWeek)
+    dates.forEach((date) => {
+      const week = toKey(startOfWeek(date))
+      if (!weekAnchor.has(week)) weekAnchor.set(week, toKey(date))
+    })
+
   const cells: StripCell[] = dates.map((date) => {
     const key = toKey(date)
     const state = stateOf(date, key)
-    const offers = freezeOffers(
-      rule,
-      project,
-      key,
-      todayKey,
-      status,
-      key === todayKey ? minutesLeftToday(today) : 0,
-    )
+    const anchors =
+      !byWeek || weekAnchor.get(toKey(startOfWeek(date))) === key
+    const offers = anchors
+      ? freezeOffers(
+          rule,
+          project,
+          key,
+          todayKey,
+          status,
+          key === todayKey ? minutesLeftToday(today) : 0,
+        )
+      : []
     const unpaid = offers.filter((o) => !o.frozen)
     /* **A weekly rule's cell is the running total to that day**, not that
        day's own figure — `spec 018`. This called `readDay` whatever the scope,
@@ -263,6 +318,15 @@ export function CustomStreakSection({
     const readings = byWeek
       ? readWeek(rule, ctx, project.days, startOfWeek(date), key)
       : readDay(rule, ctx, project.days[key], key)
+    /* The cell's **figure** is its own scale's; the tooltip says everything.
+       Adding the week's deficit to each of its seven days would report one
+       broken week seven times. */
+    const tipReadings = byWeek
+      ? readings
+      : [
+          ...readings,
+          ...readWeek(rule, ctx, project.days, startOfWeek(date), key),
+        ]
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses.
     const short = unpaid.length > 0 && !unpaid.some((o) => o.ok)
@@ -280,7 +344,7 @@ export function CustomStreakSection({
          so a bubble listing two checks reads as two checks. */
       tooltip: [
         `${fmtDateLong(key)} — ${stateWord(state)}`,
-        ...(state === "unjudged" ? [] : breakdown(readings, key)),
+        ...(state === "unjudged" ? [] : breakdown(tipReadings, key)),
         ...(state === "watching"
           ? [
               t(
@@ -308,6 +372,17 @@ export function CustomStreakSection({
               ...offers
                 .filter((o) => o.frozen)
                 .map((o) => `· ${o.violation.line}`),
+              /* What a receipt on a running week does **not** say. A freeze
+                 is priced against the violation as it stands, and a week that
+                 is not over can still grow past what was paid — which is
+                 exactly why the row is not blue yet. */
+              ...(byWeek && !weekIsOver(startOfWeek(date), todayKey)
+                ? [
+                    t(
+                      "The week is not over — this covers it as it stands, not whatever it becomes.",
+                    ),
+                  ]
+                : []),
             ]
           : []),
       ].join("\n"),
@@ -317,7 +392,16 @@ export function CustomStreakSection({
          one thing is the failure mode of every ledger drawn as a button. */
       freeze: offers.length
         ? {
-            label: fmtDateLong(key),
+            /* **A weekly rule's purchase is the week's, and the popover says
+               so.** It named the day you happened to be pointing at, which is
+               how one freeze against one week's ceiling read as a freeze
+               against that Tuesday — and then as six more of them, because
+               every other day of the week offers the same list. */
+            label: byWeek
+              ? t("Week of {date}", {
+                  date: fmtDateLong(toKey(startOfWeek(date))),
+                })
+              : fmtDateLong(key),
             items: offers.map((o) => ({
               key: o.key,
               line: o.violation.line,
@@ -388,7 +472,7 @@ export function CustomStreakSection({
     ? (() => {
         const out: StreakChartRow[] = []
         for (let w = startOfWeek(rangeStart); w <= rangeEnd; w = addDays(w, 7)) {
-          const state = ruleWeekState(rule, ctx, project.days, w, todayKey)
+          const state = ruleWeekShown(rule, ctx, project.days, w, todayKey)
           if (state === "unjudged") continue
           out.push(
             rowFor(
@@ -423,7 +507,9 @@ export function CustomStreakSection({
      to March does not offer advice about a week that ended five months ago. */
   const thisWeek = startOfWeek(new Date())
   const paceRows =
-    byWeek && toKey(thisWeek) >= toKey(rangeStart) && thisWeek <= rangeEnd
+    weekClauses(rule).length > 0 &&
+    toKey(thisWeek) >= toKey(rangeStart) &&
+    thisWeek <= rangeEnd
       ? weekPace(rule, ctx, project.days, thisWeek, todayKey)
       : []
 
@@ -448,7 +534,9 @@ export function CustomStreakSection({
           {clauses.map((clause) => (
             <span key={clause.id} className="block">
               {compound ? "· " : ""}
-              <Sentence text={clauseSentence(clause, ctx, rule.scope)} />
+              <Sentence
+                text={clauseSentence(clause, ctx, clauseScope(clause, rule))}
+              />
             </span>
           ))}
           {rule.description && (

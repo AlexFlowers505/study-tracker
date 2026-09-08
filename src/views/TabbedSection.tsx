@@ -35,6 +35,7 @@ export function TabbedSection({
   activeId,
   onChange,
   caption,
+  note,
   children,
 }: {
   title: string
@@ -45,6 +46,16 @@ export function TabbedSection({
   onChange: (id: string) => void
   /** Line under the tab row saying what the active tab covers. */
   caption?: ReactNode
+  /**
+   * **Where the section's figures come from**, under the heading and above
+   * the tabs.
+   *
+   * Not the caption: that says what the tab you are on covers, and changes
+   * with it. This says what every figure in the section is measured through,
+   * which is a property of the section and true on all of its tabs — and it
+   * belongs above the tab row for exactly that reason.
+   */
+  note?: ReactNode
   children: ReactNode
 }) {
   const c = usePalette()
@@ -64,6 +75,8 @@ export function TabbedSection({
           </button>
         </Tip>
       </div>
+
+      {note && <div className="mb-2">{note}</div>}
 
       {/* Scrolls rather than wraps on a phone. A flex row of tabs that cannot
           shrink below its content pushes the whole page sideways instead —

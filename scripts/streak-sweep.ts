@@ -39,11 +39,14 @@ import {
   clauseWeekReadoutParts,
   coveredDays,
   isNarrowing,
+  judgesDay,
+  ruleStateOn,
   readDay,
   readWeek,
   ruleDayState,
   ruleStatus,
   ruleWeekDayState,
+  ruleWeekShown,
   ruleWeekState,
   streakContext,
   totalDeficit,
@@ -53,9 +56,11 @@ import {
   freezeOffers,
   freezeSpendOn,
 } from "../src/lib/customStreaks"
-import { dayReport } from "../src/lib/dayVerdict"
-import { fromKey, toKey, weekDates } from "../src/lib/date"
+import { dayReport, keptDays } from "../src/lib/dayVerdict"
+import { addDays, fromKey, toKey, weekDates } from "../src/lib/date"
 import { benchmarkMeter, benchmarkMinutes } from "../src/lib/benchmark"
+import { canBuy } from "../src/lib/shop"
+import { benchmarkBar } from "../src/lib/benchmark"
 import { computeOverviewStats } from "../src/lib/analytics"
 import { foldDay, foldSleep } from "../src/lib/sleepMove"
 import type {
@@ -627,6 +632,34 @@ const CASES: Case[] = [
     Object.fromEntries(
       KEYS.map((k) => [k, answered({ "u-wake": k === WED ? "no" : "yes" })]),
     ), "missed"),
+  /* ---- a finish on the next morning — `spec 025` -----------------------
+
+     `edgesOn` reports a session that ran past midnight as minutes past 1440,
+     and a window's walls are wall-clock times. So *get up between 04:00 and
+     05:00* asked for 240–300 while every real night reported 1680, and the
+     one rule this app most obviously wants to hold — a bedtime and a
+     get-up — could not be written at all. `nextDay` puts the pair on the
+     same scale, and says so rather than guessing. */
+  c("window · +1d · finish between 04:00 and 05:00 · got up at 04:30", "day",
+    { id: "c", ...target("activity", "a-les"),
+      endWindow: { from: "04:00", to: "05:00", nextDay: true } },
+    { [MON]: sat([["22:00", "04:30"]]) }, "met"),
+  /* The same two times without the mark: this is the old reading, and it is
+     what made the rule unkeepable. It stays refused, because guessing which
+     side of midnight a wall meant is the thing `spec 023` ruled out. */
+  c("window · no +1d · the same night is a day and a quarter late", "day",
+    { id: "c", ...target("activity", "a-les"),
+      endWindow: { from: "04:00", to: "05:00" } },
+    { [MON]: sat([["22:00", "04:30"]]) }, "missed"),
+  c("window · +1d · slept until six", "day",
+    { id: "c", ...target("activity", "a-les"),
+      endWindow: { from: "04:00", to: "05:00", nextDay: true } },
+    { [MON]: sat([["22:00", "06:00"]]) }, "missed"),
+  c("window · +1d · up before it opens", "day",
+    { id: "c", ...target("activity", "a-les"),
+      endWindow: { from: "04:00", to: "05:00", nextDay: true } },
+    { [MON]: sat([["22:00", "03:00"]]) }, "missed"),
+
 ]
 
 /* ---- what the streaks row says about today ------------------------------
@@ -2720,6 +2753,364 @@ for (const { name, clause } of ACCEPTED) {
   }
 }
 
+/* ---- a running week wears a receipt, not a verdict — `spec 025` ---------
+
+   `spec 017` fixed *coverage* for a week — a violation that has grown past
+   what was paid is not the one that was bought — and left the **verdict**
+   alone. So a ceiling broken on the Monday and bought on the Monday made
+   `isFrozenFor` true for a week with five days still to run, the strip
+   coloured all seven of its cells by that state, and the board went silent
+   about the rule until the violation grew past the price, at which point it
+   reappeared at `danger` having never once warned. */
+
+const W_CLAUSE = {
+  id: "c",
+  ...target("unit", "u-yt"),
+  max: 3,
+  slots: { "s-pm": { max: 0 } },
+} as unknown as StreakClause
+
+const W_RULE = ruleOf(W_CLAUSE, "week")
+
+/** Three in the week, one of them in the evening the rule forbids. */
+const W_DAY = {
+  counters: { "u-yt": { "s-am": 2, "s-pm": 1 } },
+} as unknown as Day
+
+const W_PAID = {
+  ...W_DAY,
+  ruleFreezes: [
+    { ruleId: "r", clauseId: "c", slotId: "s-pm", cost: 1, boughtAt: "x" },
+  ],
+} as unknown as Day
+
+const W_DAYS = { [MON]: W_PAID }
+const W_PROJECT = project(W_RULE, W_DAYS)
+const W_CTX = streakContext(W_PROJECT)
+
+const RUNNING: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "the ledger still calls a bought week frozen",
+    got: () => ruleWeekState(W_RULE, W_CTX, W_DAYS, WEEK, TUE),
+    want: "frozen",
+  },
+  {
+    name: "but a week still running is drawn as still running",
+    got: () => ruleWeekShown(W_RULE, W_CTX, W_DAYS, WEEK, TUE),
+    want: "pending",
+  },
+  {
+    name: "and turns blue once nothing more can be added to it",
+    got: () => ruleWeekShown(W_RULE, W_CTX, W_DAYS, WEEK, TODAY),
+    want: "frozen",
+  },
+  {
+    name: "the board goes on warning about the bound that is still at its limit",
+    got: () =>
+      linesOf("r", W_PROJECT, new Date(`${TUE}T14:00:00`), "warning").join(" · "),
+    want: "“Youtube” “3” of “3” used this week — one more ends it",
+  },
+  {
+    name: "and says nothing more about the site that has been paid for",
+    got: () =>
+      linesOf("r", W_PROJECT, new Date(`${TUE}T14:00:00`), "danger").join(" · "),
+    want: "",
+  },
+]
+
+/* ---- one rule, two scales — `spec 025` ----------------------------------
+
+   The scale used to belong to the rule, so *three hours a day of the course*
+   and *at most one slip a week* were two rules: two streaks to keep, two
+   allowances to spend, and two things that break independently for one thing
+   you said. A condition now carries its own period, and the rule's own
+   `scope` is what a condition without one takes. */
+
+const M_DAY = {
+  id: "cd",
+  ...target("activity", "a-les"),
+  min: 60,
+} as unknown as StreakClause
+
+const M_WEEK = {
+  id: "cw",
+  scope: "week",
+  ...target("unit", "u-yt"),
+  max: 1,
+} as unknown as StreakClause
+
+const M_RULE: StreakRule = {
+  ...ruleOf(M_DAY, "day"),
+  clauses: [M_DAY, M_WEEK],
+}
+
+/** A day with an hour and a half of lessons and `n` slips on it. */
+const both = (minutes: number, slips: number): Day =>
+  ({
+    cells: { "s-am": [{ id: "e", activity: "a-les", minutes }] },
+    counters: { "u-yt": { "s-am": slips } },
+  }) as unknown as Day
+
+const mixedOn = (days: Record<DayKey, Day>, key: DayKey): string => {
+  const proj = project(M_RULE, days)
+  return ruleStateOn(M_RULE, streakContext(proj), days, key, TODAY)
+}
+
+const MIXED: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "both halves held",
+    got: () => mixedOn({ [MON]: both(90, 0) }, MON),
+    want: "met",
+  },
+  {
+    name: "the daily half falls short and the day goes with it",
+    got: () => mixedOn({ [MON]: both(30, 0) }, MON),
+    want: "missed",
+  },
+  {
+    name: "the weekly half breaks and takes the day it broke on",
+    got: () => mixedOn({ [MON]: both(90, 3) }, MON),
+    want: "missed",
+  },
+  {
+    name: "and leaves the days it did not break on alone",
+    got: () => mixedOn({ [MON]: both(90, 3), [WED]: both(90, 0) }, WED),
+    want: "met",
+  },
+  {
+    name: "a weekly condition judges no single day of its own",
+    got: () => judgesDay({ ...M_RULE, clauses: [M_WEEK] }, MON),
+    want: false,
+  },
+  {
+    /* A condition with no period of its own takes the rule's, which is what
+       makes this change need no migration — and it is also why *saying* day
+       is the only way to get one inside a weekly rule. */
+    name: "a condition with no period of its own takes the rule's",
+    got: () =>
+      judgesDay(
+        { ...M_RULE, scope: "week", clauses: [M_DAY] } as StreakRule,
+        MON,
+      ),
+    want: false,
+  },
+  {
+    name: "and a daily one that says so judges its days inside a weekly rule",
+    got: () =>
+      judgesDay(
+        {
+          ...M_RULE,
+          scope: "week",
+          clauses: [{ ...M_DAY, scope: "day" } as StreakClause, M_WEEK],
+        } as StreakRule,
+        MON,
+      ),
+    want: true,
+  },
+  {
+    name: "the day's figure is the daily half's, never the week's added on",
+    got: () =>
+      totalDeficit(
+        readDay(M_RULE, streakContext(project(M_RULE, {})), both(30, 9), MON),
+      ),
+    want: 1,
+  },
+  {
+    name: "a weekly condition beside daily ones still leaves the rule a benchmark",
+    got: () =>
+      benchmarkBar(M_RULE, streakContext(project(M_RULE, {}))) === null,
+    want: true,
+  },
+  {
+    /* With two scales in one rule, a line that does not name its own period
+       is a line you cannot read: `at most 1` is a different promise by the
+       day and by the week. */
+    name: "a weekly condition names its period in its own sentence",
+    got: () =>
+      clauseSentence(M_WEEK, streakContext(project(M_RULE, {})), "week"),
+    want: "“Youtube” at most “1” time a week",
+  },
+  {
+    name: "and a daily one is unchanged to the character",
+    got: () =>
+      clauseSentence(M_DAY, streakContext(project(M_RULE, {})), "day"),
+    want: "“Lessons” at least “1h”",
+  },
+  {
+    name: "moving a condition between the scales is a loosening until proved otherwise",
+    got: () => {
+      const ctx = streakContext(project(M_RULE, {}))
+      const next: StreakRule = {
+        ...M_RULE,
+        clauses: [M_DAY, { ...M_WEEK, scope: "day" } as StreakClause],
+      }
+      return isNarrowing(M_RULE, next, ctx)
+    },
+    want: false,
+  },
+]
+
+/* ---- what the run is worth, and what it seals as — `spec 025` -----------
+
+   `current` is the run as things stand, and as things stand is the one state
+   it cannot describe. It reads `36` until the midnight it reads `0`; and it
+   reads `0` the moment a day you can still write to breaks, which is
+   indistinguishable from a run that ended in March and is gone. `atStake` and
+   `facing` are the two ends of that, and the counter draws the pair only
+   while they disagree. */
+
+const S_TODAY: DayKey = "2026-08-31"          // a Monday
+const S_START: DayKey = "2026-08-27"
+const S_RULE: StreakRule = {
+  ...ruleOf(
+    { id: "c", ...target("activity", "a-les"), min: 60 } as unknown as StreakClause,
+    "day",
+  ),
+  startedOn: S_START,
+  inDayVerdict: true,
+}
+
+/** The five days, each either an hour and a half of lessons or nothing. */
+const runOf = (...minutes: number[]): string => {
+  const days: Record<DayKey, Day> = {}
+  minutes.forEach((m, i) => {
+    days[toKey(addDays(fromKey(S_START), i))] = studied(m)
+  })
+  const k = keptDays(project(S_RULE, days), new Date(`${S_TODAY}T14:00:00`))
+  return k ? `${k.atStake}→${k.facing} (${k.current})` : "none"
+}
+
+const STREAKS: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "today is not done yet — four to lose, nought if it seals like this",
+    got: () => runOf(90, 90, 90, 90, 0),
+    want: "4→0 (4)",
+  },
+  {
+    /* The case the pair was actually asked for: the run has **already** gone
+       to nought, and the day that took it is still inside the window. The
+       old figure said `0` and nothing else, which is what a run lost a month
+       ago says. */
+    name: "yesterday broke and can still be written to",
+    got: () => runOf(90, 90, 90, 0, 90),
+    want: "5→1 (1)",
+  },
+  {
+    name: "a break the horizon has passed is gone, and says so plainly",
+    got: () => runOf(90, 90, 0, 90, 90),
+    want: "2→2 (2)",
+  },
+  {
+    name: "a day finished is a day counted, and nothing is at stake",
+    got: () => runOf(90, 90, 90, 90, 90),
+    want: "5→5 (5)",
+  },
+]
+
+/* ---- a reward can ask for more than points — `spec 025` ----------------- */
+
+const REWARD = {
+  id: "sh",
+  label: "Record player",
+  color: "#888",
+  iconName: "Circle",
+  price: 100,
+  createdOn: MON,
+  lockedUntil: MON,
+}
+
+const ACH = [
+  { id: "a1", label: "A", color: "#888", iconName: "Circle" },
+] as unknown as Parameters<typeof canBuy>[2]
+
+const REWARDS: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "points alone still buy what asks for points alone",
+    got: () => canBuy(REWARD as never, 100),
+    want: true,
+  },
+  {
+    name: "an unearned requirement holds it back however rich you are",
+    got: () => canBuy({ ...REWARD, requires: ["a1"] } as never, 500, ACH, {}),
+    want: false,
+  },
+  {
+    name: "and lets go once it has been earned",
+    got: () =>
+      canBuy({ ...REWARD, requires: ["a1"] } as never, 500, ACH, {
+        a1: { achievementId: "a1", earnedAt: "x" },
+      } as never),
+    want: true,
+  },
+  {
+    name: "a requirement pointing at nothing is not a locked door",
+    got: () => canBuy({ ...REWARD, requires: ["gone"] } as never, 100, ACH, {}),
+    want: true,
+  },
+  {
+    name: "and a reward that asks for nothing at all is still not a reward",
+    got: () => canBuy({ ...REWARD, price: 0 } as never, 100, ACH, {}),
+    want: false,
+  },
+  {
+    name: "but one gated on an achievement may cost no points",
+    got: () =>
+      canBuy({ ...REWARD, price: 0, requires: ["a1"] } as never, 0, ACH, {
+        a1: { achievementId: "a1", earnedAt: "x" },
+      } as never),
+    want: true,
+  },
+]
+
+console.log("")
+for (const test of RUNNING) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  running week: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  running week: ${test.name}`)
+    console.log(`      got  ${JSON.stringify(got)}`)
+    console.log(`      want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of MIXED) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  two scales: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  two scales: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of STREAKS) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  at stake: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  at stake: ${test.name}`)
+    console.log(`      got ${got}, want ${test.want}`)
+  }
+}
+
+console.log("")
+for (const test of REWARDS) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  reward: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  reward: ${test.name}`)
+    console.log(`      got ${got}, want ${test.want}`)
+  }
+}
+
 console.log("")
 for (const test of BENCHMARKS) {
   const got = test.got()
@@ -2738,5 +3129,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length + BENCHMARKS.length + ACCEPTED.length + SENTENCES.length + FOLDS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length + BENCHMARKS.length + ACCEPTED.length + SENTENCES.length + FOLDS.length + RUNNING.length + REWARDS.length + MIXED.length + STREAKS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

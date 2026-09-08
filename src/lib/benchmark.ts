@@ -44,19 +44,22 @@ import type {
   Project,
   StreakClause,
   StreakRule,
+  StudyEntry,
 } from "../types/model"
 import type { StreakContext } from "./customStreaks"
 import {
   boundsOnWeekday,
   clauseTarget,
   clauseWeekdays,
+  dayClauses,
   measuredOn,
-  ruleClauses,
   slotIdsOnWeekday,
   streakContext,
   targetMeasure,
+  timeKeptBy,
 } from "./customStreaks"
 import type { IsIgnored } from "../types/model"
+import { entryActivity } from "./entries"
 import { fromKey, toKey } from "./date"
 import { WEEKDAY_ORDER } from "./date"
 import { t } from "./i18n"
@@ -79,10 +82,14 @@ export function benchmarkBar(
   rule: StreakRule,
   ctx: StreakContext,
 ): BenchmarkBar {
-  if (rule.scope === "week")
+  /* **Its day-scoped conditions**, since `spec 025`. A rule may hold a
+     weekly condition beside its daily ones — *three hours a day of the
+     course, and at most four a week of one part of it* — and that weekly half
+     has no figure for a single day and is not meant to have one. What would
+     disqualify the rule is having no daily half at all. */
+  const clauses = dayClauses(rule)
+  if (!clauses.length)
     return t("A weekly rule has no figure for a single day.")
-
-  const clauses = ruleClauses(rule)
 
   for (const clause of clauses) {
     if (targetMeasure(clauseTarget(clause), ctx) !== "time")
@@ -145,7 +152,7 @@ export function benchmarkGoals(
 ): Record<number, number> | null {
   const rule = benchmarkRule(project, ctx)
   if (!rule) return null
-  const clauses = ruleClauses(rule)
+  const clauses = dayClauses(rule)
 
   const goals: Record<number, number> = {}
   WEEKDAY_ORDER.forEach((weekday) => {
@@ -221,7 +228,7 @@ export function benchmarkMeter(
 ): ((dayKey: DayKey, day: Day | undefined) => number) | null {
   const rule = benchmarkRule(project, ctx)
   if (!rule) return null
-  const clauses = ruleClauses(rule)
+  const clauses = dayClauses(rule)
   return (dayKey, day) => {
     if (!day) return 0
     const weekday = fromKey(dayKey).getDay()
@@ -234,6 +241,59 @@ export function benchmarkMeter(
     // restrict where the figure comes from differently on each day.
     return measuredOn(clause, ctx, day, slotIdsOnWeekday(clause, weekday))
   }
+}
+
+/**
+ * **The days as the benchmark rule counted them** — every entry it does not
+ * count dropped.
+ *
+ * `spec 022` measured the headline hours through the benchmark and stopped
+ * there, on the argument that a total over every entry says how thorough the
+ * log is rather than how the period went. Everything else on the analytics
+ * half of the page still totalled the lot, so the same period reported `4h
+ * 25m` in its header and `17h 5m` in the donut directly beneath it — and once
+ * `spec 024` made a night an ordinary activity, three quarters of that donut
+ * was sleep, filed under *where the time went* as though it were work.
+ *
+ * The argument does not stop at one figure. So it is applied where every
+ * figure is read: one projection of `days`, filtered to the entries the
+ * nominated rule counts, and the two donuts, the four Trends charts, the
+ * averages and the extremes all follow without a line of their own — the same
+ * trick `withBenchmarkGoals` and the count filter use, for the same reason.
+ *
+ * **Only the entries, and only the time.** `counters` and `checks` are left
+ * exactly as they are: the benchmark is a promise about hours, and a tally is
+ * not measured through it any more than it is measured in minutes.
+ *
+ * Null when nothing is nominated — the caller then goes on totalling
+ * everything, which is the only answer there is, and says so.
+ */
+export function benchmarkDays(
+  project: Project,
+  ctx: StreakContext = streakContext(project),
+): Record<DayKey, Day> | null {
+  const rule = benchmarkRule(project, ctx)
+  if (!rule) return null
+  const clauses = dayClauses(rule)
+
+  const out: Record<DayKey, Day> = {}
+  for (const [key, day] of Object.entries(project.days)) {
+    const weekday = fromKey(key).getDay()
+    // A weekday the rule does not cover counts nothing, exactly as it asks
+    // for nothing — the same silence `benchmarkGoals` keeps there.
+    const clause = clauses.find((x) => covers(x, weekday))
+    const keep = clause ? timeKeptBy(clause, ctx, weekday) : null
+    const cells: Record<string, StudyEntry[]> = {}
+    if (keep && day.cells)
+      for (const [slotId, arr] of Object.entries(day.cells)) {
+        const kept = arr.filter((e) =>
+          keep(slotId, String(entryActivity(e) ?? "")),
+        )
+        if (kept.length) cells[slotId] = kept
+      }
+    out[key] = { ...day, cells }
+  }
+  return out
 }
 
 /**

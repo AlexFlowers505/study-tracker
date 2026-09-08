@@ -28,7 +28,13 @@
    something, and something you can undo costs nothing.
 --------------------------------------------------------------- */
 
-import type { Project, Purchase, ShopItem } from "../types/model"
+import type {
+  Achievement,
+  EarnedAchievement,
+  Project,
+  Purchase,
+  ShopItem,
+} from "../types/model"
 import { addDays, toKey } from "./date"
 import { makeId } from "./id"
 
@@ -41,6 +47,29 @@ export const newShopItem = (
   lockedUntil: toKey(today),
 })
 
+/* ---- What a reward costs, which is no longer only a number --------------- */
+
+/** The achievements a reward asks for. Empty is the ordinary case. */
+export const requiredBy = (item: ShopItem): string[] => item.requires || []
+
+/**
+ * **Which of them are still missing**, in the order the item names them.
+ *
+ * An id that matches no achievement is dropped rather than reported: deleting
+ * an achievement takes its record with it (`spec 014`), so a requirement
+ * pointing at nothing is not an unmet condition, it is a condition that no
+ * longer exists — and a reward permanently unbuyable for a reason you cannot
+ * see anywhere is the worse of the two failures.
+ */
+export const missingFor = (
+  item: ShopItem,
+  achievements: Achievement[],
+  earned: Record<string, EarnedAchievement> = {},
+): Achievement[] =>
+  requiredBy(item)
+    .map((id) => achievements.find((a) => a.id === id))
+    .filter((a): a is Achievement => !!a && !earned[a.id])
+
 /**
  * Whether this reward can be taken right now.
  *
@@ -48,9 +77,26 @@ export const newShopItem = (
  * go negative — that is what a bad month looks like — but only from days you
  * missed, never from something you chose to buy. Owing the app a debt you took
  * on deliberately is a different and much weaker idea.
+ *
+ * **And the account is no longer the only gate.** A reward may also ask that
+ * you have already earned something, and then both halves must hold: points
+ * are patience, an achievement is what you did with it, and a shelf that can
+ * only price the first can only ever sell patience.
+ *
+ * **A reward that asks for nothing is not a reward**, which is why a price of
+ * nought is still refused unless something else is being asked. That guard
+ * used to read `price > 0` and meant the same thing when a price was all
+ * there was.
  */
-export const canBuy = (item: ShopItem, available: number): boolean =>
-  item.price > 0 && available >= item.price
+export const canBuy = (
+  item: ShopItem,
+  available: number,
+  achievements: Achievement[] = [],
+  earned: Record<string, EarnedAchievement> = {},
+): boolean =>
+  (item.price > 0 || requiredBy(item).length > 0) &&
+  available >= item.price &&
+  missingFor(item, achievements, earned).length === 0
 
 /** The row that gets written. Its own id, because a reward can be taken twice. */
 export const purchaseOf = (item: ShopItem): Purchase => ({
@@ -91,7 +137,7 @@ export const boughtOn = (boughtAt: string): string => toKey(new Date(boughtAt))
 
 export interface PriceEdit {
   changed: boolean
-  /** Proved not to make the reward cheaper. */
+  /** Proved not to make the reward cheaper — in points or in what it asks. */
   narrowing: boolean
   settingUp: boolean
   /** The clock permits it; only the written reason is missing. */
@@ -101,12 +147,22 @@ export interface PriceEdit {
 }
 
 /**
- * What a price change is, and what it costs — the rules' one-sided test again.
+ * What a change to a reward's cost is, and what it costs — the rules'
+ * one-sided test again.
  *
- * Raising a price can only ever ask more of you, so it lands at once. Lowering
- * one is the edit this whole mechanism exists to slow down.
+ * Raising a price can only ever ask more of you, so it lands at once.
+ * Lowering one is the edit this whole mechanism exists to slow down.
+ *
+ * **An achievement it asks for is part of that cost**, so it takes the same
+ * test from the same side: adding one only ever asks more and lands at once,
+ * **dropping one waits** exactly as a discount does. Without that the lock
+ * had a door beside it — the record player could not get cheaper on the
+ * evening you wanted it, and could stop needing the thing you had put it
+ * behind.
+ *
+ * It was `priceEdit` while a price was the whole of what a reward asked.
  */
-export function priceEdit(
+export function shopEdit(
   prev: ShopItem,
   draft: ShopItem,
   lockDays: number,
@@ -114,8 +170,16 @@ export function priceEdit(
   reason = "",
 ): PriceEdit {
   const todayKey = toKey(today)
-  const changed = prev.price !== draft.price
-  const narrowing = draft.price >= prev.price
+  const was = requiredBy(prev)
+  const now = requiredBy(draft)
+  const changed =
+    prev.price !== draft.price ||
+    was.length !== now.length ||
+    was.some((id) => !now.includes(id))
+  // Every dimension must be no-easier, exactly as `isNarrowing` insists for a
+  // rule: they are not a currency you can trade one against the other.
+  const narrowing =
+    draft.price >= prev.price && was.every((id) => now.includes(id))
   const settingUp = todayKey === prev.createdOn
   const base = { changed, narrowing, settingUp, needsReason: false }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }

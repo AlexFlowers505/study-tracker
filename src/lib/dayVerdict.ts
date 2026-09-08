@@ -27,12 +27,12 @@ import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
 import {
   countsOn,
-  ruleDayState,
-  ruleWeekDayState,
+  ruleStateOn,
   streakContext,
   weekFloorPace,
 } from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey } from "./date"
+import { isEditableDay } from "./freezes"
 
 /** The day's own standing, drawn wherever a day is drawn. */
 export type DayVerdict = "kept" | "missed" | "frozen" | "pending" | "unjudged"
@@ -134,13 +134,13 @@ export function dayReport(
   const rules = votersFor(project.settings.streakRules || [], dayKey)
   if (!rules.length) return NOTHING
 
-  const day = project.days[dayKey]
   const readings: RuleReading[] = rules
     .map((rule) => {
-      const state =
-        rule.scope === "week"
-          ? ruleWeekDayState(rule, ctx, project.days, dayKey, todayKey)
-          : ruleDayState(rule, ctx, day, dayKey, todayKey)
+      /* **Both halves of the rule, folded** — `spec 025`. A rule can hold
+         conditions judged by the day and conditions judged by the week, and
+         the arc has to be one arc: `ruleStateOn` reads each half through the
+         function that has always read it and takes the worse. */
+      const state = ruleStateOn(rule, ctx, project.days, dayKey, todayKey)
       /* Paced only where the arc would otherwise be a claim: a weekly floor
          that is still winnable. A miss keeps its full length — drawn as
          partial fill it would merge *broken* with *in progress*, which are
@@ -225,6 +225,44 @@ export function verdictStart(project: Project): DayKey | null {
 export interface KeptDays {
   current: number
   best: number
+  /**
+   * **What the run is worth if the days you can still write to end well**,
+   * and what it seals as if they do not.
+   *
+   * `current` is the run as things stand, and as things stand is exactly the
+   * state it cannot describe: it reads `36` until the midnight it reads `0`,
+   * and it reads `0` the moment a still-editable day breaks — with no way to
+   * tell that one apart from a run that ended a month ago and is gone.
+   *
+   * Both are the same fact from opposite ends, so both get a number.
+   * `atStake` treats every editable day *but today* as kept, because those
+   * are the days you can still put right; today counts only if it already
+   * holds, since today is not a day you kept until it is over. `facing`
+   * seals everything exactly as it now reads, which for a `pending` day is a
+   * miss.
+   *
+   * The gap between them is the whole of what can still be done about it.
+   */
+  atStake: number
+  facing: number
+  /**
+   * **The rules that would take the run to nought when today seals**, by
+   * name — empty when nothing would.
+   *
+   * `pending` neither extends nor breaks the run, which is right and is only
+   * half a sentence: a day that is `pending` at eleven at night is a day that
+   * becomes `missed` at midnight, and the figure beside it went on reading
+   * `36` until the moment it read `0`. The one thing you could have done
+   * about it was possible for the whole of the stretch in which nothing said
+   * so.
+   *
+   * There is no third state here and there does not need to be: `pending`
+   * already means *some voting rule is short and the day is not over*, which
+   * is exactly *this is what the day seals as*. The names come with it because
+   * the figure cannot say them and *which promise* is the only actionable
+   * part.
+   */
+  atRisk: string[]
 }
 
 /**
@@ -246,21 +284,62 @@ export function keptDays(project: Project, today = new Date()): KeptDays | null 
   if (!from) return null
   const ctx = streakContext(project)
   const todayKey = toKey(today)
-  if (from > todayKey) return { current: 0, best: 0 }
+  if (from > todayKey)
+    return { current: 0, best: 0, atStake: 0, facing: 0, atRisk: [] }
 
   let best = 0
   let run = 0
+  let atStake = 0
+  let facing = 0
+  const atRisk: string[] = []
+
   for (let d = fromKey(from); toKey(d) <= todayKey; d = addDays(d, 1)) {
-    const { state } = dayReport(project, toKey(d), todayKey, ctx)
-    if (state === "unjudged" || state === "pending") continue
-    if (heldUp(state)) {
-      run += 1
-      if (run > best) best = run
-    } else {
-      run = 0
+    const key = toKey(d)
+    const report = dayReport(project, key, todayKey, ctx)
+    const state = report.state
+    if (state === "unjudged") continue
+    const holds = heldUp(state)
+    // Today and yesterday: the window in which a verdict is not yet a fact.
+    const editable = isEditableDay(key, todayKey)
+
+    // The run as displayed — `pending` neither extends nor breaks it.
+    if (state !== "pending") {
+      if (holds) {
+        run += 1
+        if (run > best) best = run
+      } else {
+        run = 0
+      }
     }
+
+    // Sealed as it stands: a day still short at midnight is a day missed.
+    facing = holds ? facing + 1 : 0
+
+    /* Put right: an editable day that broke is a day you can still write to,
+       so it counts as kept. **Today neither adds nor breaks** unless it
+       already holds — nothing is owed on a day that is not over, and a
+       running counter that reset on it would wipe the very figure this is
+       for: the thirty-six you still have. */
+    if (key === todayKey) {
+      if (holds) atStake += 1
+    } else {
+      atStake = holds || editable ? atStake + 1 : 0
+    }
+
+    /* **Which promises are doing it**, from the days that can still be
+       changed. The figure cannot say them and *which one* is the only part
+       of this anybody can act on. */
+    if (editable && !holds)
+      report.readings
+        .filter(
+          (r) => r.counts && (r.state === "pending" || r.state === "missed"),
+        )
+        .forEach((r) => {
+          if (!atRisk.includes(r.rule.label)) atRisk.push(r.rule.label)
+        })
   }
-  return { current: run, best }
+
+  return { current: run, best, atStake, facing, atRisk }
 }
 
 export interface WeekMark {

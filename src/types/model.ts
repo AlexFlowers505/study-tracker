@@ -447,6 +447,28 @@ export interface TimeWindow {
   from?: TimeOfDay
   /** No later than. Absent leaves that side open. */
   to?: TimeOfDay
+  /**
+   * **The wall clock times are the next morning's** — `spec 025`.
+   *
+   * `edgesOn` reports a finish past midnight as minutes past 1440, and has to:
+   * 23:00–00:30 finished at 1470, or *finish by six* becomes a promise a
+   * midnight session keeps. A window's walls are wall-clock times, so
+   * `04:00`–`05:00` is 240–300 and every night that ended at four in the
+   * morning broke it by a day and a quarter. **Get up between four and five**
+   * was simply not a sentence this could hold.
+   *
+   * The flag says which side of midnight the pair sits on rather than letting
+   * the app guess: `spec 023` refused to read `22:00`–`02:00` across midnight
+   * on the grounds that *the earliest start* has no meaning across that
+   * boundary, and guessing here would be the same mistake wearing a helpful
+   * face. One flag for the pair, not one per wall — the walls of a real
+   * window are on the same morning, and the case where they are not is the
+   * wrapping one that is still refused.
+   *
+   * Only meaningful on `endWindow`: a day's earliest start is by definition
+   * inside that day, so the form offers it on the finishing pair alone.
+   */
+  nextDay?: boolean
 }
 
 export interface DayRequirement {
@@ -494,6 +516,24 @@ export interface DayRequirement {
  */
 export interface StreakClause {
   id: string
+  /**
+   * **The period this one condition is judged over** — `spec 025`. Absent
+   * means the rule's own `scope`, which is what every condition written
+   * before this meant and is why there is no migration.
+   *
+   * The scale used to belong to the rule, so *three hours a day of the
+   * course* and *no more than four hours a week of one part of it* were two
+   * rules — which is two streaks to keep and two allowances to spend, for one
+   * promise. That is the same argument `StreakClause` itself was built on
+   * (`spec 009`: "a rule is one promise with as many conditions as it needs")
+   * with the one axis it had not been applied to.
+   *
+   * The rule's `scope` stays and stays load-bearing: it is what a condition
+   * written without one means, and it is the scale the panel's strip and
+   * chart are drawn on. What it stopped being is *the* answer for every
+   * condition in the rule.
+   */
+  scope?: "day" | "week"
   /**
    * What is being measured — **one or more things, added together**.
    *
@@ -778,6 +818,25 @@ export interface StreakRule extends Labeled {
 export interface ShopItem extends Labeled {
   /** In points. */
   price: number
+  /**
+   * **Achievements that must already be earned before this can be taken.**
+   *
+   * A price says *how much of the account*; this says *what you must have
+   * become*. They are not the same question and the shelf needed both: the
+   * only thing a price can express is patience, so every reward on it was
+   * priced patience and nothing else, and a thing worth wanting is usually
+   * worth wanting *for* something.
+   *
+   * And/or, deliberately: an item may carry a price, a list of achievements,
+   * or both. What it may not carry is neither — see `canBuy`, where a reward
+   * that costs nothing is not a reward.
+   *
+   * Ids, so an achievement renamed is the same requirement; one **deleted**
+   * simply stops being required, which is the same reading a `categoryId`
+   * pointing at nothing gets, and for the same reason: a requirement nobody
+   * can see, name or reach is worse than one that quietly lifts.
+   */
+  requires?: string[]
   /** The day it was written. Its own grace day, like a rule's `startedOn`. */
   createdOn: DayKey
   /** No **lowering** of the price before this date. */

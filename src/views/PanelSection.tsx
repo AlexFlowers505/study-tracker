@@ -128,7 +128,7 @@ export interface PanelProps {
  * anything in the panel's body — so it sits with the chrome rather than
  * competing with the content.
  */
-function SettingsButton({ onClick }: { onClick: () => void }) {
+export function SettingsButton({ onClick }: { onClick: () => void }) {
   const t = useT()
   return (
     <Tip text={t("Open these settings")}>

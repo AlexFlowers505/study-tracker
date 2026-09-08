@@ -84,7 +84,7 @@ export function KeptSection({
 }: {
   project: Project
   weeks: KeptWeeks
-  days: { current: number; best: number }
+  days: { current: number; best: number; atStake?: number; facing?: number; atRisk?: string[] }
   rangeStart: Date
   rangeEnd: Date
   today: Date

@@ -114,6 +114,11 @@ export const RU: Record<string, string> = {
   /* ---- the composite ----------------------------------------------- */
   "What the streak is made of — which rules broke which days":
     "Из чего сложен счёт — какие правила сломали какие дни",
+  "Sealed as it stands, the run goes from {was} to {now}.":
+    "Если запечатать как есть, счёт уйдёт с {was} на {now}.",
+  "Still short: {rules}": "Ещё не выполнено: {rules}",
+  "Today and yesterday can still be written to.":
+    "Сегодня и вчера ещё можно дописать.",
   "unit:days": "дней",
 
   /* ---- what a notice actually says ---------------------------------
@@ -186,6 +191,8 @@ export const RU: Record<string, string> = {
   "Still in play": "Ещё в игре",
   "{rule} — clean so far, pays out {date}":
     "{rule} — пока чисто, выплата {date}",
+  "{rule} — carried by a freeze, pays out {date}":
+    "{rule} — держится на заморозке, выплата {date}",
   "Within reach": "Близко",
   "{name} — {togo} to go, at {value} of {threshold}":
     "{name} — осталось {togo}, сейчас {value} из {threshold}",
@@ -268,6 +275,9 @@ export const RU: Record<string, string> = {
 
   /* ---- the strip, and buying a freeze --------------------------------- */
   "already frozen — {cost} spent": "уже заморожено — потрачено {cost}",
+  "Week of {date}": "Неделя с {date}",
+  "The week is not over — this covers it as it stands, not whatever it becomes.":
+    "Неделя ещё не закончилась — покрыто то, что уже случилось, а не то, чем она станет.",
   "freeze this — {cost} of {available} available":
     "заморозить — {cost} из {available} доступных",
   "needs {cost} and you have {available}":
@@ -319,6 +329,15 @@ export const RU: Record<string, string> = {
   "unit:points": "очков",
   "Where it came from": "Откуда они",
   "Take it": "Забрать",
+  "Needs": "Требует",
+  "The finish is the next morning — for a session that runs past midnight":
+    "Окончание — уже следующим утром, для сессии через полночь",
+  "Needs first": "Сначала нужно",
+  "Needs first: {names}": "Сначала нужно: {names}",
+  "No change to what it asks.": "Условия не изменились.",
+  "Taken {n} times · last {date}": "Забирали {n} раз · последний — {date}",
+  "{n} to go": "не хватает {n}",
+  "You have {n}": "у вас {n}",
   "Nothing written yet. Setup has the tab — put the thing you have been circling for months in it, at a price that would make having it feel earned.":
     "Пока ничего не записано. Вкладка есть в настройках — впишите туда то, вокруг чего вы ходите месяцами, по цене, при которой это будет ощущаться заслуженным.",
 
@@ -614,6 +633,7 @@ export const RU: Record<string, string> = {
 
   "frag: in {slots}": " в {slots}",
   "frag: on {days}": " по {days}",
+  "frag: a week": " за неделю",
   "frag:, of which {list}": ", из них {list}",
   " and ": " и ",
   " or ": " или ",
@@ -760,6 +780,11 @@ export const RU: Record<string, string> = {
   "Per day": "На день",
   "Every day": "Каждый день",
   "Every week": "Каждую неделю",
+  "Every day and every week": "Каждый день и каждую неделю",
+  "What a condition below takes unless it says otherwise":
+    "То, что берёт условие ниже, если не сказано иное",
+  "one figure for the whole week": "одна цифра на всю неделю",
+  "each day judged on its own": "каждый день судится сам по себе",
   "Counts towards the day's verdict": "Голосует за вердикт дня",
   "Keeps its own streak only": "Ведёт только свою серию",
   Judged: "Судится",
@@ -875,6 +900,10 @@ export const RU: Record<string, string> = {
   /* ---- the last of it ----------------------------------------------------- */
   "seed:Lessons": "Уроки",
   "seed:Exams": "Экзамены",
+  "Time measured through the rule {name}":
+    "Время учтено по правилу {name}",
+  "No benchmark rule chosen — everything logged is counted":
+    "Эталонное правило не выбрано — учтено всё записанное",
   "Select all": "Выбрать все",
   "Clear all": "Снять все",
 

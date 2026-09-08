@@ -30,7 +30,13 @@ import type {
   ProposalSubject,
   StreakRule,
 } from "../types/model"
-import { clauseSentence, lockFrom, ruleClauses } from "./customStreaks"
+import {
+  clauseScope,
+  clauseSentence,
+  isMixed,
+  lockFrom,
+  ruleClauses,
+} from "./customStreaks"
 import type { StreakContext } from "./customStreaks"
 import { toKey } from "./date"
 import { makeId } from "./id"
@@ -59,9 +65,11 @@ export const refusedProposals = (project: Project): Proposal[] =>
 
 /** The whole rule in words, the same sentence the panel and the tab read. */
 export const ruleText = (rule: StreakRule, ctx: StreakContext): string => {
-  const when = t(rule.scope === "week" ? "Every week" : "Every day")
+  const when = isMixed(rule)
+    ? t("Every day and every week")
+    : t(rule.scope === "week" ? "Every week" : "Every day")
   const parts = ruleClauses(rule).map((clause) =>
-    clauseSentence(clause, ctx, rule.scope),
+    clauseSentence(clause, ctx, clauseScope(clause, rule)),
   )
   return `${when}: ${parts.join("; ")}. ${rule.freezesPerWeek} freezes a week, banking up to ${rule.freezeCap}.`
 }

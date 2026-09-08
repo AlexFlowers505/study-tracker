@@ -528,6 +528,17 @@ details[open] > .fold-body {
 
 .leaving > * {
   min-height: 0;
+  /* **And `min-width`, for the same reason one axis over.** A grid item
+     defaults to `min-width: auto` and refuses to shrink below its content, so
+     one unbreakable string inside any panel — a pasted product URL in a
+     reward's description was the one that found it — widened this item past
+     the page and took `max-w-6xl` with it. Every `truncate` inside then had
+     nothing to truncate against: the text was 759px wide because its
+     container was, all the way up to here. It is the `min-w-0` trap the
+     period bar, the log's heading row and `ChartCard` each hit in flex; this
+     is its fourth face, and the one place that fixes it for every panel at
+     once. */
+  min-width: 0;
 }
 
 .leaving[data-open="false"] {

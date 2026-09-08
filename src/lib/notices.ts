@@ -55,6 +55,7 @@ import {
   clauseBounds,
   clauseTargets,
   coveredDays,
+  dayClauses,
   freezeOffers,
   judgesDay,
   measuredOn,
@@ -62,13 +63,13 @@ import {
   readDay,
   readWeek,
   ruleDayState,
-  ruleWeekState,
   slotBoundsOnWeekday,
   frozenKeys,
   streakContext,
   targetsLabel,
   targetInfo,
   weekBounds,
+  weekClauses,
   violationKey,
   weekLostOn,
   weekSlotBounds,
@@ -725,18 +726,33 @@ function ruleNotices(
   now: Date,
 ): Notice[] {
   const { rule } = status
-  const week = rule.scope === "week"
+  /* **Both halves, since `spec 025`.** A rule may hold conditions judged by
+     the day and conditions judged by the week, and the board is about today
+     — which is a day *and* a point inside a week, so both have something to
+     say about it. `week` used to be one question about the rule; it is now
+     two about its conditions. */
+  const hasDay = dayClauses(rule).length > 0
+  const hasWeek = weekClauses(rule).length > 0
+  const week = !hasDay
   // A rule has nothing to say about a day it does not judge, and nothing at
   // all before it was written. A weekly rule's partial first week is handled
   // inside `weekItems`, which keeps its ceilings and drops its floors.
   if (rule.startedOn > todayKey) return []
-  if (!week && !judgesDay(rule, todayKey)) return []
+  const judgesToday = hasDay && judgesDay(rule, todayKey)
+  if (!hasWeek && !judgesToday) return []
 
-  const state = week
-    ? ruleWeekState(rule, ctx, project.days, startOfWeek(now), todayKey)
-    : ruleDayState(rule, ctx, project.days[todayKey], todayKey, todayKey)
-  // A frozen period is paid for; there is nothing left to say about it.
-  if (state === "frozen") return []
+  /* **A paid period is not a finished one, and the board used to treat it as
+     both.** This returned nothing at all the moment `isFrozenFor` was true —
+     written when a freeze covered a whole rule, so "frozen" and "there is
+     nothing left to happen here" were the same sentence.
+     Since `spec 017` they are not. A freeze is bought against one site at the
+     price it stood at, and the period goes on running: a weekly ceiling
+     bought on Monday leaves five days in which to break it again, and a
+     ceiling at its limit is the loudest thing the board could be saying. What
+     it said instead was nothing — right up until the violation grew past what
+     had been paid, at which point the rule reappeared at `danger`, having
+     never once warned. The `paid` filter below is the whole of what a receipt
+     should buy: silence about **that site**, and about nothing else. */
 
   /* **A violation you have paid for stops speaking.**
    *
@@ -747,15 +763,20 @@ function ruleNotices(
    * bought — the board contradicting the receipt, with the receipt right.
    *
    * A weekly rule's receipts live on its Monday; a daily rule's on the day. */
-  const paid = frozenKeys(
-    project.days[week ? toKey(startOfWeek(now)) : todayKey],
-    rule.id,
-  )
-  const items = (
-    week
-      ? weekItems(rule, ctx, project.days, startOfWeek(now), todayKey)
-      : dayItems(rule, ctx, project.days[todayKey], todayKey, now)
-  ).filter((i) => !i.key || !paid.has(i.key))
+  const dayPaid = frozenKeys(project.days[todayKey], rule.id)
+  const weekPaid = frozenKeys(project.days[toKey(startOfWeek(now))], rule.id)
+  const items = [
+    ...(judgesToday
+      ? dayItems(rule, ctx, project.days[todayKey], todayKey, now).filter(
+          (i) => !i.key || !dayPaid.has(i.key),
+        )
+      : []),
+    ...(hasWeek
+      ? weekItems(rule, ctx, project.days, startOfWeek(now), todayKey).filter(
+          (i) => !i.key || !weekPaid.has(i.key),
+        )
+      : []),
+  ]
 
   /* **Yesterday, while it can still be frozen.**
    *
@@ -771,12 +792,12 @@ function ruleNotices(
    * not say which day it is about is a line about today.
    */
   const yesterdayKey = toKey(addDays(now, -1))
-  const yOffers = week
-    ? []
-    : freezeOffers(rule, project, yesterdayKey, todayKey, status)
+  const yOffers = hasDay
+    ? freezeOffers(rule, project, yesterdayKey, todayKey, status)
+    : []
   const yUnpaid = yOffers.filter((o) => !o.frozen)
   if (
-    !week &&
+    hasDay &&
     judgesDay(rule, yesterdayKey) &&
     ruleDayState(rule, ctx, project.days[yesterdayKey], yesterdayKey, todayKey) ===
       "missed" &&
@@ -954,11 +975,21 @@ function openWeekNotices(statuses: RuleStatus[]): Notice[] {
   for (const s of statuses)
     for (const open of s.open)
       if (open.wouldKeep)
+        /* **Clean and carried are not the same week.** A week held up by a
+           freeze pays out like any other and belongs on this list, but calling
+           it clean is a claim about what happened rather than about what it is
+           worth — and it is the one week on the list where something has
+           already gone wrong and been paid for. */
         lines.push(
-          t("{rule} — clean so far, pays out {date}", {
-            rule: q(s.rule.label),
-            date: fmtDateLong(open.sealsOn),
-          }),
+          open.carried
+            ? t("{rule} — carried by a freeze, pays out {date}", {
+                rule: q(s.rule.label),
+                date: fmtDateLong(open.sealsOn),
+              })
+            : t("{rule} — clean so far, pays out {date}", {
+                rule: q(s.rule.label),
+                date: fmtDateLong(open.sealsOn),
+              }),
         )
   if (!lines.length) return []
   return [

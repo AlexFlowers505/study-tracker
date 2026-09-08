@@ -330,6 +330,17 @@ export default function StudyTrackerApp() {
       return next
     })
 
+  /* **A whole group at once.**
+
+     Isolating one activity out of forty is the ordinary use of this panel and
+     it took thirty-nine clicks: strike everything out, put one back, is two.
+     The button shows whichever half applies — `ToggleChips` decides that from
+     the set it already has, exactly as the chart legends do. */
+  const bulkIn =
+    (setter: Dispatch<SetStateAction<Set<string>>>, ids: () => string[]) =>
+    (showAll: boolean) =>
+      setter(showAll ? new Set() : new Set(ids()))
+
   const canUseCloud = cloudEnabled && cloudClient && session
 
   // What the load actually depends on: *which* account, not which Session
@@ -709,6 +720,12 @@ export default function StudyTrackerApp() {
   )
 
   const kept = useMemo(() => keptDays(soloProject), [soloProject])
+  /* **The run at risk, in the one place you look before you look anywhere.**
+     `atStake` and `facing` disagree only while today or yesterday can still
+     change the answer, which is exactly when the row should say so — see
+     `KeptDays`. Worked out here because both the badge in the bar and the
+     figure under it are drawn from it and must not differ. */
+  const keptRisky = !!kept && kept.atStake > kept.facing && kept.atStake > 0
   const keptWeekly = useMemo(() => keptWeeks(soloProject), [soloProject])
 
   /**
@@ -1546,7 +1563,10 @@ export default function StudyTrackerApp() {
           warningCount={counted.warning}
           noticeOwed={counted.notice}
           allClearCount={counted.allClear}
-          keptDays={kept?.current ?? null}
+          keptDays={
+            kept ? (keptRisky ? kept.atStake : kept.current) : null
+          }
+          keptFacing={keptRisky && kept ? kept.facing : null}
           onToggleKept={(e) => {
             opening(openStreak === KEPT_PANEL, "sec-kept", e)
             setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
@@ -1646,7 +1666,7 @@ export default function StudyTrackerApp() {
           <StreakBar
             statuses={ruleStatuses}
             balance={project.settings.balanceStart ? balance : null}
-            days={kept ?? { current: 0, best: 0 }}
+            days={kept ?? { current: 0, best: 0, atStake: 0, facing: 0 }}
             keptWeeks={keptWeekly}
             rangeStart={range.start}
             rangeEnd={range.end}
@@ -1681,6 +1701,25 @@ export default function StudyTrackerApp() {
             onToggleCounter={toggleIn(setHiddenCounters)}
             onToggleTag={toggleIn(setHiddenTags)}
             onToggleCategory={toggleIn(setHiddenCategories)}
+            onBulk={(kind, showAll) =>
+              ({
+                slots: bulkIn(setHiddenSlots, () =>
+                  project.slots.map((s) => s.id),
+                ),
+                activities: bulkIn(setHiddenActivities, () =>
+                  project.activities.map((a) => a.id),
+                ),
+                counters: bulkIn(setHiddenCounters, () =>
+                  (project.counterUnits || []).map((u) => u.id),
+                ),
+                tags: bulkIn(setHiddenTags, () =>
+                  (project.settings.tags || []).map((x) => x.id),
+                ),
+                categories: bulkIn(setHiddenCategories, () =>
+                  (project.settings.categories || []).map((x) => x.id),
+                ),
+              })[kind](showAll)
+            }
             onReset={() => {
               setHiddenSlots(new Set())
               setHiddenActivities(new Set())
@@ -1882,6 +1921,7 @@ export default function StudyTrackerApp() {
             data={shownProject}
             rangeStart={range.start}
             rangeEnd={range.end}
+            onSettings={() => openSetup("streaks")}
           />
         </section>
       </main>

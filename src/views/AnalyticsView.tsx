@@ -21,7 +21,11 @@ import {
 import type { CounterUnit, Project, Slot, Tag } from '../types/model'
 import { t, useT } from '../lib/i18n'
 import { computeOverviewStats } from '../lib/analytics'
-import { benchmarkMeter } from '../lib/benchmark'
+import {
+  benchmarkDays,
+  benchmarkMeter,
+  benchmarkRule,
+} from '../lib/benchmark'
 import { ClockCharts } from './ClockCharts'
 import type {
   CounterGroupBy,
@@ -56,6 +60,9 @@ import { OverviewStats } from './OverviewStats'
 import { PeriodTotals } from './PeriodTotals'
 import { RemarkableStats } from './RemarkableStats'
 import { TabbedSection } from './TabbedSection'
+import { SettingsButton } from './PanelSection'
+import { Sentence } from '../ui/Sentence'
+import { q } from '../lib/customStreaks'
 
 import { usePalette } from "../ui/useTheme"
 /**
@@ -277,26 +284,84 @@ function SeriesLegend({
   )
 }
 
+/**
+ * **Where these figures come from**, said out loud on both sections.
+ *
+ * Measuring the analytics through the benchmark rule is right and it is also
+ * invisible: the donut simply stops showing sleep, and a figure that quietly
+ * excludes something is indistinguishable from a figure that is wrong. It
+ * names the rule because *which* promise the period is being read against is
+ * the whole of what the reader needs, and it carries the same gear every
+ * panel does, to the tab where that nomination is made.
+ *
+ * With nothing nominated it says so rather than saying nothing: everything
+ * logged is then the only answer there is, and the line is what turns that
+ * from a silent default into a choice somebody can go and make.
+ */
+function MeasuredNote({
+  rule,
+  onSettings,
+}: {
+  rule: { label: string } | null
+  onSettings?: () => void
+}) {
+  const t = useT()
+  return (
+    <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink/40">
+      <span className="min-w-0">
+        <Sentence
+          text={
+            rule
+              ? t("Time measured through the rule {name}", {
+                  name: q(rule.label),
+                })
+              : t("No benchmark rule chosen — everything logged is counted")
+          }
+        />
+      </span>
+      {onSettings && <SettingsButton onClick={onSettings} />}
+    </div>
+  )
+}
+
 export function AnalyticsView({
   data,
   rangeStart,
   rangeEnd,
+  onSettings,
 }: {
   data: Project
   rangeStart: Date
   rangeEnd: Date
+  /** Opens Setup's Streaks tab — where the benchmark is nominated. */
+  onSettings?: () => void
 }) {
   const c = usePalette()
   const t = useT()
   const {
     slots,
     activities,
-    days,
+    days: rawDays,
     settings,
     counterUnits = [],
     weekIgnore = {},
     monthIgnore = {},
   } = data
+
+  /* **Every time figure on this half of the page is measured through the
+     benchmark rule** — `benchmarkDays`.
+
+     `spec 022` made that argument for the headline hours and applied it
+     there and nowhere else, so a period reported `4h 25m` in its header and
+     `17h 5m` in the donut two lines below it. Once a night became an ordinary
+     activity (`spec 024`), three quarters of that donut was sleep, sitting
+     under *what the time went on* as though it were work.
+     One filtered copy of `days` rather than a predicate threaded through two
+     dozen `dayBreakdown` calls, which is what the count filter does one layer
+     up and for the same reason: the donuts, the four charts, the averages and
+     the extremes cannot then disagree about what counts. */
+  const days = useMemo(() => benchmarkDays(data) ?? rawDays, [data, rawDays])
+  const benchmark = useMemo(() => benchmarkRule(data), [data])
   // Memoised because `seriesFor` depends on it: `settings.tags || []` is a
   // fresh array every render, which would rebuild every chart's series on
   // every keystroke anywhere on the page.
@@ -446,15 +511,20 @@ export function AnalyticsView({
   const periodStats = useMemo(() => {
     const today = new Date()
     const cutoffEnd = rangeEnd < today ? rangeEnd : today
+    /* **The raw log, with the benchmark handed in as the measure.** Only the
+       hours go through it: a day you wrote something on is not an empty day
+       whatever the benchmark thinks of what you wrote — `spec 022`. Handing
+       it the filtered days instead would make a day of nothing but sleep an
+       empty one, which is the one thing that decision ruled out. */
     return computeOverviewStats(
       rangedKeys,
-      days,
+      rawDays,
       slots,
       rangeStart,
       cutoffEnd,
       meter ?? undefined,
     )
-  }, [rangedKeys, days, slots, rangeStart, rangeEnd, meter])
+  }, [rangedKeys, rawDays, slots, rangeStart, rangeEnd, meter])
 
   // Best/worst day, week, and month — scoped to the chosen analytics period
   // (same as the charts). Only counts periods with at least some study logged
@@ -774,6 +844,7 @@ export function AnalyticsView({
         activeId={summaryTab}
         onChange={setSummaryTab}
         caption={summaryCaption(summaryTab)}
+        note={<MeasuredNote rule={benchmark} onSettings={onSettings} />}
       >
         {summaryTab === "overview" && (
           <OverviewStats period={periodStats}>
@@ -800,6 +871,7 @@ export function AnalyticsView({
         tabs={trendTabs()}
         activeId={trendTab}
         onChange={setTrendTab}
+        note={<MeasuredNote rule={benchmark} onSettings={onSettings} />}
       >
         {trendTab === "clock" && (
           <ClockCharts

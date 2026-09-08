@@ -107,14 +107,58 @@ export function KeptFigure({
   onOpen,
   open,
 }: {
-  days: { current: number; best: number }
+  days: {
+    current: number
+    best: number
+    atStake?: number
+    facing?: number
+    atRisk?: string[]
+  }
   onOpen: () => void
   open: boolean
 }) {
   const c = usePalette()
   const t = useT()
+  /* **`36 → 0` is the whole feature.**
+
+     The figure could only ever say what the run *is*, and what it is stays
+     `36` until the midnight it becomes `0` — so the one stretch in which
+     something could still be done about it was the one stretch in which
+     nothing said so. The arrow is a *forecast*, not a verdict, which is why
+     the run keeps its own colour and only the figure after the arrow wears
+     the red: what you have is still yours, and what is at the end of the
+     arrow is what happens if you leave it. */
+  const atRisk = days.atRisk ?? []
+  /* **The pair, not the figure and a warning.** `current` is the run as
+     things stand, and as things stand is the one state it cannot describe:
+     it reads `36` until the midnight it reads `0`, and it reads `0` the
+     moment a day you can still write to breaks — indistinguishable from a
+     run that ended in March and is gone. `atStake → facing` says both ends,
+     and appears only while the two disagree, which is exactly while
+     something can still be done about it. */
+  const atStake = days.atStake ?? days.current
+  const facing = days.facing ?? days.current
+  const risky = atStake > facing && atStake > 0
   return (
-    <Tip text={t("What the streak is made of — which rules broke which days")}>
+    <Tip
+      multiline
+      text={
+        risky
+          ? [
+              t("Sealed as it stands, the run goes from {was} to {now}.", {
+                was: atStake,
+                now: facing,
+              }),
+              atRisk.length
+                ? t("Still short: {rules}", { rules: atRisk.join(", ") })
+                : "",
+              t("Today and yesterday can still be written to."),
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : t("What the streak is made of — which rules broke which days")
+      }
+    >
       {/* **It has to look like it opens.** A bare figure with a hover tint is
           no affordance at all: you have to already know some numbers on this
           row do something in order to try one. A resting surface plus the
@@ -139,8 +183,17 @@ export function KeptFigure({
           className="text-[15px] font-mono font-bold tabular-nums leading-none"
           style={{ color: c.project }}
         >
-          {days.current}
+          {risky ? atStake : days.current}
         </span>
+        {risky && (
+          <span
+            className="text-[15px] font-mono font-bold tabular-nums leading-none"
+            style={{ color: c.exam }}
+          >
+            {"→ "}
+            {facing}
+          </span>
+        )}
         <span className="text-[9px] font-mono uppercase tracking-widest text-ink/45">
           {t("unit:days")}
         </span>

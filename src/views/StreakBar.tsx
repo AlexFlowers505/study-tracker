@@ -159,7 +159,7 @@ export function StreakBar({
    */
   balance: Balance | null
   /** The composite's run, and the longest there has ever been. */
-  days: { current: number; best: number }
+  days: { current: number; best: number; atStake?: number; facing?: number; atRisk?: string[] }
   /** Its weeks, for the strip inside the fold. Null before any rule votes. */
   keptWeeks: KeptWeeks | null
   /** The period the page is showing. The week squares follow it. */
