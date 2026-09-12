@@ -133,6 +133,25 @@ export function PopoverMenu({
           <div
             ref={panelRef}
             style={{
+              /* **Out of its trigger, not out of nowhere.** It used to be
+                 simply there on the next frame, which on a card full of chips
+                 leaves the eye to find it rather than follow it. The panel is
+                 right-aligned to the trigger and may be clamped, so the origin
+                 is the trigger's own centre, measured against where the panel
+                 actually landed — and its top or bottom edge, by which side
+                 it opened on. `.pop-in` does the rest. */
+              transformOrigin: `${Math.min(
+                Math.max(
+                  box.left +
+                    box.width / 2 -
+                    Math.max(
+                      Math.min(box.right - width, window.innerWidth - width - 8),
+                      8,
+                    ),
+                  0,
+                ),
+                width,
+              )}px ${placeAbove(box) ? "bottom" : "top"}`,
               position: "fixed",
               // Below by default, above when there isn't room — this menu is
               // used at the foot of a chart card, where "below" is off the
@@ -150,7 +169,7 @@ export function PopoverMenu({
               ),
               width,
             }}
-            className="z-[110] rounded-2xl bg-card shadow-2xl p-1.5 overflow-y-auto"
+            className="pop-in z-[110] rounded-2xl bg-card shadow-2xl p-1.5 overflow-y-auto"
           >
             {typeof children === "function"
               ? children(() => setOpen(false))

@@ -263,11 +263,12 @@ export function TimeRangeField({
                         times — and neither ever needs to say which field it
                         means, because it is standing in it.
 
-                        `now` keeps its word rather than becoming a second
-                        glyph: two icons a centimetre apart in a box this size
-                        are a puzzle, and there is no drawing of *the current
-                        time* that is not just another clock. The cross does
-                        not need one. */}
+                        `now` was a word for a long time, on the argument that
+                        there is no drawing of *the current time* that is not
+                        just another clock. `spec 028` reversed it: a clock is
+                        exactly the drawing, the word was the one piece of
+                        type inside an input otherwise made of figures, and
+                        the tooltip says in full what it does. */}
                     <div className="relative">
                       <input
                         type="text"
@@ -321,15 +322,24 @@ export function TimeRangeField({
                         </Tip>
                       )}
                       <Tip
-                        text={t(`setnow:${field}`)}
+                        text={t(
+                          field === "start"
+                            ? "Set the start to the current time"
+                            : "Set the end to the current time",
+                        )}
                         className="absolute right-[3px] top-1/2 -translate-y-1/2"
                       >
                         <button
                           type="button"
                           onClick={() => setNow(field)}
-                          className={`${btnBase} rounded px-[3px] py-[2px] text-[8px] font-mono uppercase tracking-wide leading-none text-ink/35 hover:text-ink hover:bg-ink/10`}
+                          aria-label={t(
+                            field === "start"
+                              ? "Set the start to the current time"
+                              : "Set the end to the current time",
+                          )}
+                          className={`${btnBase} rounded p-[3px] text-ink/35 hover:text-ink hover:bg-ink/10`}
                         >
-                          {t("btn:now")}
+                          <Clock size={10} strokeWidth={2.5} />
                         </button>
                       </Tip>
                     </div>

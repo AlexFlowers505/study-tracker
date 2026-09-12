@@ -47,11 +47,11 @@ export const RU: Record<string, string> = {
   "Hide the notices": "Скрыть уведомления",
   "Show the notices": "Показать уведомления",
   "{n} gone — no freeze reaches them": "{n} упущено — заморозка не достанет",
-  "{n} lost unless a freeze is spent": "{n} потеряно, если не потратить заморозку",
+  "{n} lost unless a freeze is spent": "{n} сломано — заморозка ещё достанет",
   "{n} running out of room": "{n} на исходе запаса",
   "{n} still owed, with time": "{n} ещё должно, время есть",
   "{n} all clear": "{n} в порядке",
-  "Hide the composite": "Скрыть общий счёт",
+  "Hide the overall streak": "Скрыть общую серию",
   "Days kept in a row": "Дней подряд выполнено",
   "Hide the account": "Скрыть счёт",
   "{n} points, and where they came from": "{n} очков и откуда они",
@@ -99,9 +99,9 @@ export const RU: Record<string, string> = {
   "level:notice": "к сведению",
   "level:all clear": "всё в порядке",
   "Lost, and nothing covers it — no freeze can reach it. Nothing to do.":
-    "Потеряно, и покрыть нечем — ни одна заморозка не достанет. Делать нечего.",
+    "Упущено, и покрыть нечем — ни одна заморозка не достанет. Делать нечего.",
   "Lost unless a freeze is spent on it. A freeze can still reach it.":
-    "Потеряно, если не потратить заморозку. Заморозка ещё достанет.",
+    "Сломано, но заморозка ещё достанет.",
   "Still reachable, and the margin is gone.":
     "Ещё достижимо, но запаса больше нет.",
   "Still owed, and there is room.": "Ещё должно, и время есть.",
@@ -113,13 +113,35 @@ export const RU: Record<string, string> = {
 
   /* ---- the composite ----------------------------------------------- */
   "What the streak is made of — which rules broke which days":
-    "Из чего сложен счёт — какие правила сломали какие дни",
+    "Из чего сложена общая серия — какие правила сломали какие дни",
   "Sealed as it stands, the run goes from {was} to {now}.":
-    "Если запечатать как есть, счёт уйдёт с {was} на {now}.",
+    "Если запечатать как есть, серия уйдёт с {was} на {now}.",
   "Still short: {rules}": "Ещё не выполнено: {rules}",
   "Today and yesterday can still be written to.":
     "Сегодня и вчера ещё можно дописать.",
   "unit:days": "дней",
+
+  /* ---- what a day's colour means — `spec 027` -------------------------
+     The ring's own sentences, printed on the ring, the month cell and the
+     heatmap. `CONTEXT.md` lists them under «Цвета дня»; keep the two in
+     step. */
+  "No rule votes on this day": "В этот день ни одно правило не голосует",
+  "Day not kept: {rules} broke": "День не выполнен: сломано {rules}",
+  "Day not kept": "День не выполнен",
+  "The day is still running: {rules} still short":
+    "День ещё идёт: не хватает {rules}",
+  "The day is still running — everything holds so far":
+    "День ещё идёт, пока всё выполнено",
+  "Week lost: {rules}. The other rules held today. Until the week ends the overall streak does not grow and no points are paid; the streaks of the rules that held still grow.":
+    "Неделя проиграна: {rules}. Остальные правила в этот день выполнены. До конца недели общая серия не растёт и очки не начисляются; серии выполненных правил растут.",
+  "Week lost: {rules}": "Неделя проиграна: {rules}",
+  "Frozen: {frozen}. Kept: {kept}": "Заморожено: {frozen}. Выполнено: {kept}",
+  "Frozen: {frozen}": "Заморожено: {frozen}",
+  "Every rule kept": "Все правила выполнены",
+  "{kept} of {judged} kept": "выполнено {kept} из {judged}",
+  "nothing judged yet": "пока ничего не судится",
+  "The week is lost: this day added nothing to it, so it neither grows the streak nor breaks it.":
+    "Неделя проиграна: этот день ничего к ней не добавил, поэтому серию он не растит и не рвёт.",
 
   /* ---- what a notice actually says ---------------------------------
      Whole templates. `{where}` and `{when}` arrive already translated and
@@ -180,10 +202,10 @@ export const RU: Record<string, string> = {
 
   /* ---- the four fixed sources ---------------------------------------- */
   "{kept} of {judged} rules held — the day is lost":
-    "Выполнено {kept} из {judged} правил — день потерян",
+    "Выполнено {kept} из {judged} правил — день не выполнен",
   "{kept} of {judged} rules holding so far":
     "Пока держится {kept} из {judged} правил",
-  "This week's allowance": "Запас на эту неделю",
+  "This week's allowance": "Заморозки на неделю",
   "{rule} — {left} of {total} left, lost on Sunday":
     "{rule} — осталось {left} из {total}, сгорит в воскресенье",
   "Granted every Monday and lost unused":
@@ -244,12 +266,20 @@ export const RU: Record<string, string> = {
   "No study logged": "Ничего не записано",
   " — tap to add": " — нажмите, чтобы добавить",
   " — sealed": " — запечатан",
+  "Before project start": "До начала проекта",
+  "card:Today": "Сегодня",
+  "Open till tonight": "Открыт до полуночи",
+  "card:Frozen": "Заморожен",
+  "(planned)": "(план)",
+  "({hours} left)": "(осталось {hours})",
+  "Add to {slot}": "Добавить в «{slot}»",
+  "check:Clear": "Снять ответ",
 
   /* ---- adding something to a day ------------------------------------- */
   "kind:Activity": "Занятие",
-  "kind:Tally": "Счёт",
+  "kind:Tally": "Подсчёт",
   "kind:Check": "Отметка",
-  "Add to a tally": "Добавить к счёту",
+  "Add to a tally": "Добавить к подсчёту",
   "Answer a check": "Ответить на отметку",
   "New entry": "Новая запись",
   Slot: "Слот",
@@ -290,7 +320,7 @@ export const RU: Record<string, string> = {
   "Use {cost}": "Потратить {cost}",
 
   /* ---- the pace card -------------------------------------------------- */
-  "pace:lost": "потеряно",
+  "pace:lost": "проиграно",
   "pace:done": "сделано",
   "{days} left": "осталось {days}",
   "at most": "не более",
@@ -338,6 +368,29 @@ export const RU: Record<string, string> = {
   "Taken {n} times · last {date}": "Забирали {n} раз · последний — {date}",
   "{n} to go": "не хватает {n}",
   "You have {n}": "у вас {n}",
+
+  /* ---- taken, and the moment of taking — `spec 028` ------------------ */
+  "shelf:All": "Все",
+  "shelf:Not taken yet": "Не куплены",
+  "shelf:Taken": "Куплены",
+  "shop:Taken": "Куплено",
+  "Take it again": "Взять ещё раз",
+  "Last taken {date}": "Последний раз — {date}",
+  "Nothing taken yet.": "Пока ничего не куплено.",
+  "Everything here has been taken.": "Здесь всё уже куплено.",
+  "Can be taken more than once": "Можно брать повторно",
+  "Once only": "Только один раз",
+  Again: "Повтор",
+  "Yours!": "Теперь это ваше!",
+  "Achievement reached": "Достижение получено!",
+  "Now go and actually have it — the app cannot do that half, and it is the half that makes the rest mean anything.":
+    "Теперь идите и правда получите это: приложение этого сделать не может, а без этой половины остальное ничего не значит.",
+  "It is yours for good — nothing you do afterwards takes it back.":
+    "Оно ваше навсегда — ничто из сделанного потом его не отнимет.",
+  "Spent: {points}": "Потрачено: {points}",
+  "Paid in: +{points}": "На счёт: +{points}",
+  "Hooray!": "Ура!",
+  "{label} · click to change": "{label} · нажмите, чтобы изменить",
   "Nothing written yet. Setup has the tab — put the thing you have been circling for months in it, at a price that would make having it feel earned.":
     "Пока ничего не записано. Вкладка есть в настройках — впишите туда то, вокруг чего вы ходите месяцами, по цене, при которой это будет ощущаться заслуженным.",
 
@@ -366,12 +419,12 @@ export const RU: Record<string, string> = {
   "{days} not counted yet": "{days} ещё не учтено",
   "Earned this period": "Заработано за период",
   "{v} — {kept} kept, {missed} missed":
-    "{v} — выполнено {kept}, пропущено {missed}",
+    "{v} — выполнено {kept}, не выполнено {missed}",
   Points: "Очки",
   "Everything else that moved it": "Всё остальное, что его двигало",
   "To the shop": "В магазин",
   "A finished day pays 10 points; a missed one takes 20. Neither figure is a setting — what matters is the ratio, and at two to one the account grows only above a two-thirds keep rate.\n\nToday and yesterday can still be written, so they are not counted yet. A day's mark is written once when it leaves that window and never revisited: this is the one figure here you can spend, so editing a Tuesday must not move a balance something was already bought against.":
-    "Выполненный день даёт 10 очков, пропущенный отнимает 20. Ни одна из цифр не настройка — важно соотношение: два к одному значит, что счёт растёт только при удержании выше двух третей.\n\nСегодня и вчера ещё можно записать, поэтому они пока не учтены. Отметка дня пишется один раз, когда он выходит из этого окна, и больше не пересматривается: это единственная цифра здесь, которую можно тратить, так что правка вторника не должна двигать баланс, против которого уже что-то куплено.",
+    "Выполненный день даёт 10 очков, невыполненный отнимает 20. Ни одна из цифр не настройка — важно соотношение: два к одному значит, что счёт растёт только при удержании выше двух третей.\n\nСегодня и вчера ещё можно записать, поэтому они пока не учтены. Итог дня записывается один раз, когда он выходит из этого окна, и больше не пересматривается: это единственная цифра здесь, которую можно тратить, так что правка вторника не должна двигать баланс, против которого уже что-то куплено.",
 
   /* ---- the index and the header ----------------------------------------- */
   "Sections on this page": "Разделы на этой странице",
@@ -380,7 +433,7 @@ export const RU: Record<string, string> = {
   ongoing: "продолжается",
 
   /* ---- the composite panel ---------------------------------------------- */
-  Kept: "Выполнено",
+  "Overall streak": "Общая серия",
   "A day is kept when every rule that votes held on it. Freezes count — a day paid for is a day kept.":
     "День считается выполненным, когда устояли все голосующие правила. Заморозки засчитываются: оплаченный день — выполненный день.",
   "{days} running, best {bestDays}": "{days} подряд, рекорд {bestDays}",
@@ -454,9 +507,9 @@ export const RU: Record<string, string> = {
   "By counter": "По счётчику",
   "Whole day": "Весь день",
   "By slot": "По слотам",
-  "Counts per counter": "Счёт по каждому счётчику",
-  "Counts summed per tag": "Счёт, просуммированный по метке",
-  "Counts per tagged counter": "Счёт по каждому помеченному счётчику",
+  "Counts per counter": "Количество по каждому счётчику",
+  "Counts summed per tag": "Количество, просуммированное по метке",
+  "Counts per tagged counter": "Количество по каждому помеченному счётчику",
   "{what}, per {per}": "{what}, за {per}",
   "per:day": "день",
   "per:weekday": "день недели",
@@ -467,9 +520,9 @@ export const RU: Record<string, string> = {
   /* ---- the month grid and the donuts ------------------------------------ */
   "Every day of this week hit its goal": "Каждый день этой недели взял свою цель",
   "A day was missed, but a streak freeze covered it":
-    "День пропущен, но его закрыла заморозка",
+    "День не выполнен, но его закрыла заморозка",
   "A day was missed with no freeze on it":
-    "День пропущен, и заморозки на нём нет",
+    "День не выполнен, и заморозки на нём нет",
   "Streak freeze used": "Потрачена заморозка",
   "Time by slot": "Время по слотам",
   "Time by activity": "Время по занятиям",
@@ -527,7 +580,7 @@ export const RU: Record<string, string> = {
   "new:achievement": "Новое достижение",
   "new:reward": "Новая награда",
   "new:check": "Новая отметка",
-  "new:tally": "Новый счёт",
+  "new:tally": "Новый подсчёт",
 
   "add:slot": "Добавить слот",
   "add:activity": "Добавить занятие",
@@ -537,7 +590,7 @@ export const RU: Record<string, string> = {
   "add:achievement": "Добавить достижение",
   "add:reward": "Добавить награду",
   "add:check": "Добавить отметку",
-  "add:tally": "Добавить счёт",
+  "add:tally": "Добавить подсчёт",
 
   "describe:slot": "Что считается этим слотом? (необязательно)",
   "describe:activity": "Что считается этим занятием? (необязательно)",
@@ -547,7 +600,7 @@ export const RU: Record<string, string> = {
   "describe:achievement": "Что считается этим достижением? (необязательно)",
   "describe:reward": "Что это за награда? (необязательно)",
   "describe:check": "Что считается этой отметкой? (необязательно)",
-  "describe:tally": "Что считается этим счётом? (необязательно)",
+  "describe:tally": "Что считается этим подсчётом? (необязательно)",
 
   "Why it is going": "Почему оно удаляется",
   "Send for approval": "Отправить на согласование",
@@ -566,7 +619,7 @@ export const RU: Record<string, string> = {
   'Remove "{name}"? Counters carrying it keep their counts and simply stop being tagged.':
     "Удалить «{name}»? Счётчики с ней сохранят свои цифры и просто перестанут быть помеченными.",
   "Things you have decided to let yourself have, priced in points — a finished day pays 10, a missed one takes 20. Taking one here is permitting yourself to buy it in life: the app keeps the ledger, you keep the promise. Price them so that having the thing would feel earned rather than allowed.":
-    "То, что вы решили себе позволить, в очках: выполненный день даёт 10, пропущенный отнимает 20. Забрать награду здесь — значит разрешить себе купить её в жизни: приложение ведёт учёт, обещание держите вы. Ставьте такую цену, при которой вещь ощущалась бы заслуженной, а не разрешённой.",
+    "То, что вы решили себе позволить, в очках: выполненный день даёт 10, невыполненный отнимает 20. Забрать награду здесь — значит разрешить себе купить её в жизни: приложение ведёт учёт, обещание держите вы. Ставьте такую цену, при которой вещь ощущалась бы заслуженной, а не разрешённой.",
   'Remove "{name}"? Anything already taken stays in the record — that purchase happened. Only the offer goes.':
     "Удалить «{name}»? Всё уже забранное останется в записи — покупка была. Уходит только предложение.",
   Edit: "Изменить",
@@ -586,8 +639,10 @@ export const RU: Record<string, string> = {
   "Now the end minutes": "Теперь минуты конца",
   "clear:start": "Очистить начало",
   "clear:end": "Очистить конец",
-  "setnow:start": "Поставить началом текущее время",
-  "setnow:end": "Поставить концом текущее время",
+  "Set the start to the current time":
+    "Установить текущее время как время начала записи",
+  "Set the end to the current time":
+    "Установить текущее время как время окончания записи",
   "btn:now": "сейчас",
   Setting: "Задаём",
   "the start": "начало,",
@@ -824,7 +879,7 @@ export const RU: Record<string, string> = {
     "Достигнуто — условия закрыты. Единственный путь назад — удалить, и вместе с ним уйдут запись и очки.",
 
   /* ---- a rule's own panel ------------------------------------------------ */
-  "state:Lost": "Потеряно",
+  "state:lost": "неделя проиграна",
   "Broken — a freeze still reaches it":
     "Сломано — заморозка ещё достанет",
   "At risk": "Под угрозой",
@@ -832,26 +887,33 @@ export const RU: Record<string, string> = {
   Holding: "Держится",
   "state:kept": "выполнено",
   "state:frozen": "заморожено",
-  "state:missed": "пропущено",
+  "state:missed": "не выполнено",
   "still open": "ещё открыт",
   "not judged": "не судится",
   "not yet judged": "ещё не судится",
   "This week began before the rule did — only its ceilings apply.":
-    "Эта неделя началась раньше правила — действуют только его потолки.",
+    "Эта неделя началась раньше правила — действуют только его максимумы.",
   "Over the limit by": "Превышение на",
-  "At most": "Не более",
-  "At least": "Не менее",
+  "At most": "Максимум",
+  "At least": "Минимум",
   "Current streak": "Текущая серия",
   "Best streak": "Рекорд серии",
   "Freezes banked": "Заморозок в банке",
 
+  /* The rule's own history — `spec 026`. The line on the chart is deliberately
+     short: it is a caption on the drawing, not a reading of it. */
+  "terms changed": "условия изменились",
+  "Terms before this": "Прежние условия",
+  "{n} earlier": "{n} до этого",
+  "From {date}": "С {date}",
+
   /* ---- Setup: counters ---------------------------------------------------- */
   "Add a tag": "Добавить метку",
   "kinds:Activities": "Занятия",
-  "kinds:Tallies": "Счёты",
+  "kinds:Tallies": "Подсчёты",
   "kinds:Checks": "Отметки",
   "This unit has a known total": "У этого счётчика известен общий итог",
-  "Make a tally": "Сделать счётом",
+  "Make a tally": "Сделать подсчётом",
   "Make a check": "Сделать отметкой",
 
   /* ---- what a new project starts with -----------------------------------
@@ -875,7 +937,7 @@ export const RU: Record<string, string> = {
   "Only a rule that counts time; this one counts occurrences.":
     "Только правило, считающее время; это считает случаи.",
   "Only floors — a ceiling is not something to aim at.":
-    "Только минимумы — потолок не то, к чему стремятся.",
+    "Только минимумы — к максимуму не стремятся.",
 
   /* ---- notes, entries, counts on a card ---------------------------------- */
   "Note for the day": "Заметка на день",
@@ -947,7 +1009,7 @@ export const RU: Record<string, string> = {
   "Buying something here is permitting yourself to buy it in life. The app is the ledger of a promise you made yourself about spending; nothing else enforces it.":
     "Купить что-то здесь — значит разрешить себе купить это в жизни. Приложение ведёт учёт обещания, которое вы дали себе о тратах; больше его ничто не обеспечивает.",
   "Prices are in points. A finished day pays 10 and a missed one takes 20 — nothing else mints them, and the rate is not a setting, so there is nothing here to game.":
-    "Цены в очках. Выполненный день даёт 10, пропущенный отнимает 20 — больше их ничто не создаёт, а курс не настройка, так что обыгрывать тут нечего.",
+    "Цены в очках. Выполненный день даёт 10, невыполненный отнимает 20 — больше их ничто не создаёт, а курс не настройка, так что обыгрывать тут нечего.",
   "Buying spends points and nothing else. Your streak is a run of days and is never touched by it.":
     "Покупка тратит очки и ничего больше. Ваша серия — это череда дней, и покупка её не касается.",
   "Raising a price lands at once. Lowering one waits a week, like loosening a rule. A purchase is never refunded.":
@@ -965,7 +1027,7 @@ export const RU: Record<string, string> = {
   "The day you write one is yours to get it right on.":
     "День, когда вы его написали, ваш, чтобы всё поправить.",
   "A change lands at once when it can be proved not to make the rule easier — a lower limit, more days judged, fewer freezes, or one more condition.":
-    "Правка вступает в силу сразу, если доказуемо, что она не делает правило легче: ниже потолок, больше судимых дней, меньше заморозок или ещё одно условие.",
+    "Правка вступает в силу сразу, если доказуемо, что она не делает правило легче: ниже максимум, больше судимых дней, меньше заморозок или ещё одно условие.",
   "Anything else waits a week from the last such change, including anything that cannot be compared at all: inverting a test, swapping what is measured, dropping a condition, switching between judging a day and judging a week.":
     "Всё остальное ждёт неделю с последней такой правки — включая то, что вообще нельзя сравнить: разворот условия, подмену измеряемого, удаление условия, переключение между судом по дню и по неделе.",
   "The day you write a rule is yours to get it right on: nothing is locked until the next day, because the rule has judged nothing yet.":
@@ -981,20 +1043,20 @@ export const RU: Record<string, string> = {
   "Change which question this counter answers.":
     "Поменять, на какой вопрос отвечает этот счётчик.",
   "Nothing recorded is thrown away. A tally of one reads as a check that happened; a check that happened reads as a tally of one. A tally carrying larger numbers keeps them, and the check reads every one of those days as yes.":
-    "Ничего записанного не выбрасывается. Счёт «один» читается как случившаяся отметка; случившаяся отметка читается как счёт «один». Счёт с большими числами их сохраняет, а отметка читает каждый такой день как «да».",
+    "Ничего записанного не выбрасывается. Подсчёт «один» читается как случившаяся отметка; случившаяся отметка читается как подсчёт «один». Подсчёт с большими числами их сохраняет, а отметка читает каждый такой день как «да».",
   "Tags for this counter. A unit can carry several — they are not competing answers to one question.":
     "Метки этого счётчика. Их может быть несколько — это не конкурирующие ответы на один вопрос.",
   "Their use today is the filter: hiding a tag hides every counter wearing it, everywhere on the page at once. Define them in the Tags tab.":
     "Сегодня они нужны для фильтра: скрыть метку значит скрыть все счётчики с ней, разом по всей странице. Задаются они на вкладке «Метки».",
   "A finished day pays 10 points; a missed one takes 20. Neither figure is a setting — what matters is the ratio, and at two to one the account grows only above a two-thirds keep rate.":
-    "Выполненный день даёт 10 очков, пропущенный отнимает 20. Ни одна из цифр не настройка — важно соотношение: при два к одному счёт растёт только при удержании выше двух третей.",
+    "Выполненный день даёт 10 очков, невыполненный отнимает 20. Ни одна из цифр не настройка — важно соотношение: при два к одному счёт растёт только при удержании выше двух третей.",
   "Today and yesterday can still be written, so they are not counted yet. A day's mark is written once when it leaves that window and never revisited: this is the one figure here you can spend, so editing a Tuesday must not move a balance something was already bought against.":
-    "Сегодня и вчера ещё можно записать, поэтому они пока не учтены. Отметка дня пишется один раз, когда он выходит из этого окна, и больше не пересматривается: это единственная цифра здесь, которую можно тратить, так что правка вторника не должна двигать баланс, против которого уже что-то куплено.",
+    "Сегодня и вчера ещё можно записать, поэтому они пока не учтены. Итог дня записывается один раз, когда он выходит из этого окна, и больше не пересматривается: это единственная цифра здесь, которую можно тратить, так что правка вторника не должна двигать баланс, против которого уже что-то куплено.",
 
   /* ---- picking what a condition counts ----------------------------------- */
   "pick:All logged time": "Всё учтённое время",
   "pick:Activities": "Занятия",
-  "pick:Tallies": "Счёты",
+  "pick:Tallies": "Подсчёты",
   "pick:Checks": "Отметки",
   "pick:Categories": "Категории",
   "pick:Tags": "Метки",
@@ -1076,7 +1138,7 @@ export const RU: Record<string, string> = {
     "Тот же период, разложенный по времени: часы по дням, сравнение дней недели между собой и итоги по неделям и месяцам. Каждый график можно разбить по слотам или по занятиям.",
 
   "What counts": "Что считается",
-  "The composite": "Общий счёт",
+  "The composite": "Общая серия",
   "Summary & trends": "Сводка и динамика",
   Banked: "В банке",
   "Granted every Monday and lost unused.":

@@ -47,6 +47,7 @@ import type {
   DayKey,
   Slot,
   StudyEntry,
+  TimeEntry,
   TimeOfDay,
 } from "../types/model"
 import { useT } from "../lib/i18n"
@@ -66,6 +67,8 @@ import { fmtHours, minutesSince, nowTime, spanMinutes } from "../lib/time"
 import { BTN_SOFT, CARD, FIELD_SOFT, btnBase } from "../lib/theme"
 import { AutoTextarea, SegmentedControl } from "../ui/controls"
 import { EntryTime } from "../ui/EntryTime"
+import { runningMinutes } from "../lib/entries"
+import { useNow } from "../ui/useNow"
 import { RenderIcon } from "../ui/icons"
 import { Tip } from "../ui/Tip"
 import { TimeRangeField } from "../ui/TimeRangeField"
@@ -157,6 +160,18 @@ export function QuickAddEntryModal({
 
   const timed = !!(start && end)
   const running = !!start && !end
+  /* **How long it has run so far** — `spec 028`. It read `running` and
+     nothing else, including at the one moment you pressed pause precisely to
+     see where you were. A drawing: `minutes` is still what the times say once
+     the end is in. */
+  const now = useNow(running)
+  const liveEntry: TimeEntry = {
+    id: "",
+    minutes: 0,
+    start: start || undefined,
+    paused,
+    pauseFrom: pauseFrom ?? undefined,
+  }
   // A start with no end is a real, useful state — you logged the beginning and
   // will come back for the rest — so it saves as zero minutes rather than
   // being refused. Filling the end in later on the card recomputes it.
@@ -436,8 +451,19 @@ export function QuickAddEntryModal({
                   paused={paused}
                   running={!!pauseFrom}
                 />
+              ) : running ? (
+                <>
+                  {t(pauseFrom ? "on pause" : "running")}
+                  {" · "}
+                  <EntryTime
+                    bare
+                    duration={fmtHours(runningMinutes(liveEntry, now))}
+                    paused={paused}
+                    running={!!pauseFrom}
+                  />
+                </>
               ) : (
-                t(pauseFrom ? "on pause" : start ? "running" : "no time set")
+                t("no time set")
               )}
             </span>
           </div>

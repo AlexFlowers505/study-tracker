@@ -111,11 +111,16 @@ html {
    nothing else in the app starts animating its height by surprise.
 --------------------------------------------------------------- */
 
+/* **`var(--ease-out)`, not the keyword.** `@theme` re-points the curve every
+   Tailwind `ease-out` *utility* reads, but a bare `ease-out` written in this
+   file is the browser's own keyword — the weak built-in curve the theme note
+   says spends its first third barely moving. Every rule here used it until
+   the review in `spec 028`. */
 .grow-open {
   interpolate-size: allow-keywords;
   block-size: 0;
   overflow: hidden;
-  transition: block-size 200ms ease-out;
+  transition: block-size 200ms var(--ease-out);
 }
 
 .grow-open[data-open="true"] {
@@ -169,8 +174,8 @@ html {
 .edge-fade-y,
 .edge-fade-x {
   transition:
-    --edge-start 150ms ease-out,
-    --edge-end 150ms ease-out;
+    --edge-start 150ms var(--ease-out),
+    --edge-end 150ms var(--ease-out);
 }
 
 .edge-fade-y {
@@ -270,7 +275,7 @@ html {
 @media (hover: hover) {
   .hint-near::placeholder {
     color: transparent;
-    transition: color 150ms ease-out;
+    transition: color 150ms var(--ease-out);
   }
 
   .group:hover .hint-near::placeholder,
@@ -331,7 +336,7 @@ The exit was a hard cut for as long as this note said so, and is not one
 }
 
 .wash-in {
-  animation: wash-in 180ms ease-out both;
+  animation: wash-in 180ms var(--ease-out) both;
 }
 
 /* **From the centre, not from the corner.** This was anchored at the top
@@ -363,11 +368,53 @@ The exit was a hard cut for as long as this note said so, and is not one
   transform: scale(0.97);
 }
 
+/* **The celebration** — `ui/Celebration.tsx`, `spec 028`. Slower and from
+   further than a working dialog on purpose: this is the rare tier, the one
+   place the delight budget is spent, and a reward bought or an achievement
+   reached should arrive rather than merely appear. Still from 0.9 and never
+   from nothing, and still the theme's own ease-out. The glow is one pulse of
+   the reward's colour behind its icon, then gone. */
+@keyframes celebrate-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.celebrate-in {
+  animation: celebrate-in 420ms var(--ease-out) backwards;
+}
+
+@keyframes celebrate-glow {
+  from {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+.celebrate-glow {
+  animation: celebrate-glow 900ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celebrate-in {
+    animation-name: wash-in;
+  }
+  .celebrate-glow {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Shorter than the panel's own arrival: this one happens on every tab switch,
    and what is quick enough to be pleasant once an hour is not quick enough to
    be pleasant ten times in a row. */
 .tab-fade {
-  animation: wash-in 140ms ease-out both;
+  animation: wash-in 140ms var(--ease-out) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -475,6 +522,42 @@ details[open] > .fold-body {
 @media (prefers-reduced-motion: reduce) {
   .tip-in {
     animation-name: wash-in;
+  }
+}
+
+/* **A menu arriving** — `PopoverMenu`, from its trigger (the panel sets its
+   own `transform-origin`). A transition from `@starting-style` rather than a
+   keyframe, which is the one difference from the tooltip above and it is on
+   purpose: a menu is opened and shut in quick succession — a check's three
+   answers, the counters switch — and a transition picks up from wherever it
+   is where a keyframe would restart from nothing. 160ms, inside the dropdown
+   band, on the theme's own curve; 96% and never from nothing. Where
+   `@starting-style` is unsupported the menu simply appears, as it always did.
+   Under reduced motion it keeps the fade and drops the scale. */
+.pop-in {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+}
+
+@starting-style {
+  .pop-in {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop-in {
+    transition: opacity 120ms var(--ease-out);
+  }
+
+  @starting-style {
+    .pop-in {
+      transform: none;
+    }
   }
 }
 

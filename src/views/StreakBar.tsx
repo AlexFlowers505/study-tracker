@@ -33,6 +33,7 @@
 import { useState } from "react"
 import { ChevronDown, Flame, Snowflake } from "lucide-react"
 import type { RuleStatus } from "../lib/customStreaks"
+import { runShown } from "../lib/customStreaks"
 import type { Balance } from "../lib/balance"
 import { btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
@@ -54,6 +55,11 @@ interface Entry {
   icon: string | null
   label: string
   days: number
+  /**
+   * What the run is worth if the break is bought back — `spec 027`. Drawn as
+   * `was → days` while a freeze can still reach it; null otherwise.
+   */
+  was: number | null
   weekly: number | null
   banked: number
   tip: string
@@ -69,7 +75,7 @@ function StreakButton({
   onClick: () => void
 }) {
   const c = usePalette()
-  const { tint, icon, label, days, weekly, banked, tip } = entry
+  const { tint, icon, label, days, was, weekly, banked, tip } = entry
   return (
     <Tip text={tip}>
       <button
@@ -99,7 +105,16 @@ function StreakButton({
           style={{ color: tint }}
         >
           <Flame size={9} strokeWidth={3} />
-          {days}
+          {/* The pair the composite already draws, in the same red for the
+              half it is about to become — `spec 027`, part 5. */}
+          {was !== null ? (
+            <>
+              {was}
+              <span style={{ color: c.exam }}>→{days}</span>
+            </>
+          ) : (
+            days
+          )}
         </span>
 
         {/* Bare and dim: this one expires on Sunday night. */}
@@ -124,17 +139,26 @@ function StreakButton({
 }
 
 /** The row's own view of a rule. */
-const entriesFrom = (statuses: RuleStatus[]): Entry[] =>
-  statuses.map((s) => ({
-    id: s.rule.id,
-    tint: s.rule.color,
-    icon: s.rule.iconName,
-    label: s.rule.label,
-    days: s.current,
-    weekly: s.freezes.weeklyLeft,
-    banked: s.freezes.banked,
-    tip: `${plural(s.current, s.rule.scope === "week" ? "week" : "day")} in a row · ${s.freezes.weeklyLeft} of ${s.freezes.weeklyTotal} left this week · ${plural(s.freezes.banked, "freeze")} banked`,
-  }))
+const entriesFrom = (statuses: RuleStatus[], gone: Set<string>): Entry[] =>
+  statuses.map((s) => {
+    const shown = runShown(s, gone.has(s.rule.id))
+    const unit = s.rule.scope === "week" ? "week" : "day"
+    return {
+      id: s.rule.id,
+      tint: s.rule.color,
+      icon: s.rule.iconName,
+      label: s.rule.label,
+      days: shown.now,
+      was: shown.was,
+      weekly: s.freezes.weeklyLeft,
+      banked: s.freezes.banked,
+      tip: `${
+        shown.was !== null
+          ? `${plural(shown.was, unit)} if the break is bought back, ${shown.now} if not`
+          : `${plural(shown.now, unit)} in a row`
+      } · ${s.freezes.weeklyLeft} of ${s.freezes.weeklyTotal} left this week · ${plural(s.freezes.banked, "freeze")} banked`,
+    }
+  })
 
 export function StreakBar({
   statuses,
@@ -146,6 +170,8 @@ export function StreakBar({
   keptOpen,
   onOpenKept,
   troubled,
+  goneRules,
+  showStake,
   active,
   onSelect,
 }: {
@@ -177,6 +203,18 @@ export function StreakBar({
    * a second opinion about what counts as trouble.
    */
   troubled: number
+  /**
+   * The rules no freeze can reach today — `spec 027`, part 5. Their figure
+   * drops the `was → now` pair, since it would offer a way back that is not
+   * there.
+   */
+  goneRules?: Set<string>
+  /**
+   * Whether the composite's `36 → 0` is drawn — `spec 028`. Only while the
+   * board holds a `danger`; decided in `App`, where the badge in the bar is
+   * decided too.
+   */
+  showStake?: boolean
   active: StreakId
   onSelect: (id: StreakId) => void
 }) {
@@ -185,7 +223,7 @@ export function StreakBar({
   // reload, like the counter folds and the entry comments.
   const [open, setOpen] = useState(false)
 
-  const entries = entriesFrom(statuses)
+  const entries = entriesFrom(statuses, goneRules ?? new Set())
   if (!entries.length) return null
 
   const holding = entries.length - troubled
@@ -203,7 +241,12 @@ export function StreakBar({
        is invalid and hiding one of them behind the other costs a click. */
     <div className="rounded-2xl bg-card shadow-sm">
       <div className="flex items-center gap-3 px-3.5 py-2">
-        <KeptFigure days={days} onOpen={onOpenKept} open={keptOpen} />
+        <KeptFigure
+          days={days}
+          onOpen={onOpenKept}
+          open={keptOpen}
+          showStake={showStake}
+        />
 
         {/* **The account, always on screen.** It used to appear only on the
             collapsed line, so it vanished the moment anyone opened the row —

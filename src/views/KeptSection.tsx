@@ -40,7 +40,7 @@ const nDays = (n: number) =>
 const nWeeks = (n: number) =>
   pluralOf(n, ["week", "weeks"], ["неделя", "недели", "недель"])
 import type { KeptWeeks } from "../lib/dayVerdict"
-import { dayReport, keptBreakdown } from "../lib/dayVerdict"
+import { dayReport, keptBreakdown, verdictLines } from "../lib/dayVerdict"
 import { streakContext } from "../lib/customStreaks"
 import { addDays, fromKey, toKey } from "../lib/date"
 import { btnBase } from "../lib/theme"
@@ -65,7 +65,9 @@ const asStrip = (state: string): StripState =>
         ? "missed"
         : state === "pending"
           ? "pending"
-          : "unjudged"
+          : state === "lost"
+            ? "lost"
+            : "unjudged"
 
 export function KeptSection({
   project,
@@ -133,15 +135,11 @@ export function KeptSection({
       cells.push({
         key,
         state: asStrip(report.state),
-        /* The two numbers the ring carries, in words. A day that missed says
-           which rules did it — that is the whole reason to hover a red
-           square, and counting them off the ring is not an answer. */
-        tooltip: [
-          `${report.kept} of ${report.judged} held`,
-          ...report.readings
-            .filter((r) => r.state === "missed")
-            .map((r) => `${r.rule.label} missed`),
-        ].join("\n"),
+        /* The ring's own sentences — `spec 027`. A day that missed says
+           which rules did it, a grey one which week was lost and what that
+           costs; that is the whole reason to hover a square, and counting
+           them off the ring is not an answer. */
+        tooltip: verdictLines(report, key === todayKey).join("\n"),
       })
       rows.push({
         label: key.slice(5),
@@ -166,8 +164,8 @@ export function KeptSection({
     <PanelSection
       tint={c.project}
       icon={Flame}
-      title={t("Kept")}
-      closeLabel={t("Hide the composite")}
+      title={t("Overall streak")}
+      closeLabel={t("Hide the overall streak")}
       onClose={onClose}
       onSettings={onSettings}
       /* `PanelSection` puts this inside a `<p>`, so it may hold no block of

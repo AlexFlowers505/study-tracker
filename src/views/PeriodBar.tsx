@@ -414,6 +414,32 @@ export function PeriodBar({
               overhang, not the first one. The negative margin keeps the row
               the height it was. */}
           <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto p-2 -m-2 [&>*]:shrink-0">
+          {/* **Closing them one at a time is the cost of leaving them open.**
+              A page with six panels on it takes six presses to clear, and this
+              row is the only place that knows how many there are. It counts,
+              so the tooltip can say what it is about to do — a control that
+              undoes six things at once should say six.
+
+              **Absent, not disabled, when nothing is open**: there is nothing
+              behind it, the same rule the sleep toggle follows.
+
+              **First in the row, not last** — `spec 028`. From `sm` up this
+              group is pushed to the right edge, so a button coming and going
+              in the middle of it slid every toggle to its left back and forth
+              with each panel opened or closed. At the left end it appears and
+              goes without moving anything else. */}
+          {openCount > 0 && (
+            <PanelToggle
+              icon={ChevronsDownUp}
+              active={false}
+              onClick={onHideAll}
+              tip={
+                openCount === 1
+                  ? t("Hide the open section")
+                  : t("Hide all {n} open sections", { n: openCount })
+              }
+            />
+          )}
           {/* The dot stays on whether the panel is open or shut: a filter you
               can't see is the one you most need telling about, otherwise every
               figure on the page is quietly short and nothing says why. */}
@@ -523,7 +549,7 @@ export function PeriodBar({
                       }),
                       t("Today and yesterday can still be written to."),
                     ].join(String.fromCharCode(10))
-                  : t(keptOpen ? "Hide the composite" : "Days kept in a row")
+                  : t(keptOpen ? "Hide the overall streak" : "Days kept in a row")
               }
             />
           )}
@@ -602,27 +628,6 @@ export function PeriodBar({
             onClick={onToggleLog}
             tip={t(showLog ? "Hide the change log" : "Show the change log")}
           />
-          {/* **Closing them one at a time is the cost of leaving them open.**
-              A page with six panels on it takes six presses to clear, and this
-              row is the only place that knows how many there are. It counts,
-              so the tooltip can say what it is about to do — a control that
-              undoes six things at once should say six.
-
-              **Absent, not disabled, when nothing is open**: there is nothing
-              behind it, the same rule the sleep toggle follows. */}
-          {openCount > 0 && (
-            <PanelToggle
-              icon={ChevronsDownUp}
-              active={false}
-              onClick={onHideAll}
-              tip={
-                openCount === 1
-                  ? t("Hide the open section")
-                  : t("Hide all {n} open sections", { n: openCount })
-              }
-            />
-          )}
-
           {/* Jumping to "now" is a shortcut, not a step through the timeline —
               it sits outside the back/forward pair and carries no chrome. */}
           <Tip

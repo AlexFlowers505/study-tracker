@@ -53,6 +53,7 @@ import type { Palette } from "./theme"
 import type { RuleStatus, StreakContext } from "./customStreaks"
 import {
   clauseBounds,
+  clauseInForceFrom,
   clauseTargets,
   coveredDays,
   dayClauses,
@@ -64,7 +65,7 @@ import {
   readWeek,
   ruleDayState,
   slotBoundsOnWeekday,
-  frozenKeys,
+  coveredKeys,
   streakContext,
   targetsLabel,
   targetInfo,
@@ -547,15 +548,22 @@ function weekItems(
   todayKey: DayKey,
 ): Item[] {
   const out: Item[] = []
-  // `spec 018`: a week the rule was written inside judges no floor, because
-  // nobody agreed to one over four days. Its ceilings still hold.
-  const partial = toKey(weekStart) < rule.startedOn
+  /* `spec 018`: a week a promise was written inside judges no floor, because
+     nobody agreed to one over four days. Its ceilings still hold.
+
+     **Asked of the condition, not the rule** — `spec 026`. It was
+     `weekStart < rule.startedOn`, which is the same question only while a
+     rule's conditions all arrived with the rule. One added to a rule written
+     in March is a promise made the day it was added, and its own first week
+     is just as partial. */
   const remaining = weekDates(weekStart).filter((d) => toKey(d) >= todayKey).length
   const readings = readWeek(rule, ctx, days, weekStart, todayKey)
 
   for (const reading of readings) {
     if (!reading.applies) continue
     const { clause } = reading
+    const partial =
+      toKey(weekStart) < clauseInForceFrom(rule, clause.id, ctx)
     const targets = clauseTargets(clause)
     const info = targetInfo(targets[0], ctx)
     const named = targetsLabel(targets, ctx)
@@ -762,9 +770,20 @@ function ruleNotices(
    * of them paid for went on shouting `danger` about the one you had just
    * bought — the board contradicting the receipt, with the receipt right.
    *
-   * A weekly rule's receipts live on its Monday; a daily rule's on the day. */
-  const dayPaid = frozenKeys(project.days[todayKey], rule.id)
-  const weekPaid = frozenKeys(project.days[toKey(startOfWeek(now))], rule.id)
+   * A weekly rule's receipts live on its Monday; a daily rule's on the day.
+   *
+   * **Covered, not merely receipted** — `spec 027`. A site that grew past what
+   * was paid is speaking again, and can now be topped up. */
+  const dayPaid = coveredKeys(rule, ctx, project.days[todayKey], todayKey)
+  const mondayKey = toKey(startOfWeek(now))
+  const weekPaid = coveredKeys(
+    rule,
+    ctx,
+    project.days[mondayKey],
+    mondayKey,
+    project.days,
+    todayKey,
+  )
   const items = [
     ...(judgesToday
       ? dayItems(rule, ctx, project.days[todayKey], todayKey, now).filter(
@@ -804,7 +823,12 @@ function ruleNotices(
     yUnpaid.length > 0
   ) {
     // Yesterday's receipts sit on yesterday, not on today.
-    const yPaid = frozenKeys(project.days[yesterdayKey], rule.id)
+    const yPaid = coveredKeys(
+      rule,
+      ctx,
+      project.days[yesterdayKey],
+      yesterdayKey,
+    )
     dayItems(rule, ctx, project.days[yesterdayKey], yesterdayKey, now, true)
       .filter((i) => i.level === "danger" && (!i.key || !yPaid.has(i.key)))
       .forEach((i) => items.unshift({ level: "danger", line: `Yesterday — ${i.line}` }))

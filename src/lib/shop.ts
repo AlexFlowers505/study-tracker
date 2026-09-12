@@ -43,9 +43,19 @@ export const newShopItem = (
   today: Date,
 ): Omit<ShopItem, "id" | "label" | "color" | "iconName"> => ({
   price: 30,
+  // Once, unless you say otherwise — `spec 028`. What you have been circling
+  // for months is usually a thing you buy once.
+  repeatable: false,
   createdOn: toKey(today),
   lockedUntil: toKey(today),
 })
+
+/**
+ * **Whether a reward can be taken again.** Absent is yes: every reward was
+ * repeatable before the setting existed, and a stored shape keeps meaning
+ * what it meant.
+ */
+export const isRepeatable = (item: ShopItem): boolean => item.repeatable !== false
 
 /* ---- What a reward costs, which is no longer only a number --------------- */
 
@@ -93,7 +103,10 @@ export const canBuy = (
   available: number,
   achievements: Achievement[] = [],
   earned: Record<string, EarnedAchievement> = {},
+  /** How many times it has already been taken — `spec 028`. */
+  takenTimes = 0,
 ): boolean =>
+  (isRepeatable(item) || takenTimes === 0) &&
   (item.price > 0 || requiredBy(item).length > 0) &&
   available >= item.price &&
   missingFor(item, achievements, earned).length === 0
@@ -175,11 +188,16 @@ export function shopEdit(
   const changed =
     prev.price !== draft.price ||
     was.length !== now.length ||
-    was.some((id) => !now.includes(id))
+    was.some((id) => !now.includes(id)) ||
+    isRepeatable(prev) !== isRepeatable(draft)
   // Every dimension must be no-easier, exactly as `isNarrowing` insists for a
   // rule: they are not a currency you can trade one against the other.
+  // **Once-only becoming repeatable is a loosening** — `spec 028` — since it
+  // puts a reward you already took back on the shelf; the other way narrows.
   const narrowing =
-    draft.price >= prev.price && was.every((id) => now.includes(id))
+    draft.price >= prev.price &&
+    was.every((id) => now.includes(id)) &&
+    (isRepeatable(prev) || !isRepeatable(draft))
   const settingUp = todayKey === prev.createdOn
   const base = { changed, narrowing, settingUp, needsReason: false }
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }

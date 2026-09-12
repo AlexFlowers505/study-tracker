@@ -79,6 +79,33 @@ export const stopNowPatch = (
 })
 
 /**
+ * **How long a running session has run, as of `now`** — `spec 028`.
+ *
+ * A drawing and nothing else: nothing stores it and no total reads it, since
+ * the figure only becomes a fact when the session ends. It used to read
+ * `0m` for as long as the session ran, which is the one moment you most want
+ * to know. Less every pause, the one still running included, so a held
+ * session's figure holds still.
+ *
+ * A start a few minutes ahead of the clock — `nowTime` snaps to the grid, up
+ * as well as down — is a session that has just begun, not one that began
+ * yesterday, so anything short of half an hour ahead reads as nought rather
+ * than wrapping round midnight.
+ */
+export const runningMinutes = (entry: TimeEntry, now: number): number => {
+  if (!entry.start || entry.end) return 0
+  const [h, m] = entry.start.split(":").map(Number)
+  const d = new Date(now)
+  let span = d.getHours() * 60 + d.getMinutes() - (h * 60 + m)
+  if (span < -30) span += 1440
+  const since = entry.pauseFrom ? Date.parse(entry.pauseFrom) : NaN
+  const holding = Number.isFinite(since)
+    ? Math.max(0, Math.floor((now - since) / 60000))
+    : 0
+  return Math.max(0, span - pausedMinutes(entry) - holding)
+}
+
+/**
  * With both times set, the span is the truth and the stored number follows it,
  * **less whatever the session was paused for**. With one or neither, whatever
  * was typed stands — an untimed entry is a perfectly good entry, and guessing

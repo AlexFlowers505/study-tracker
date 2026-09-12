@@ -50,8 +50,14 @@ import {
   dayClauses,
   ruleClauses,
   weekClauses,
+  ruleHeldOn,
+  ruleHeldOnWeek,
+  revisionMarks,
+  revisionsOf,
   ruleStateOn,
+  ruleWeekDayState,
   ruleWeekShown,
+  runShown,
   weekIsOver,
   streakContext,
   weekBounds,
@@ -77,6 +83,7 @@ import { PaceCard } from "./PaceCard"
 import { StatTile } from "../ui/StatTile"
 import { Tip } from "../ui/Tip"
 import { usePalette } from "../ui/useTheme"
+import { Fold } from "../ui/Fold"
 import { Sentence } from "../ui/Sentence"
 import { NestedPanel, PanelSection } from "./PanelSection"
 import { FALLBACK_ICON, ICON_MAP } from "../ui/iconLibrary"
@@ -104,15 +111,19 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
  * colour, so the two read as one vocabulary rather than two.
  */
 /* Getters rather than tables: a module-level object is built once at import
-   and would stay English for the life of the panel. */
+   and would stay English for the life of the panel.
+
+   **The board's own five words** — `spec 027`. This had five of its own, and
+   in Russian its `warning` was the word the board uses for `danger`: the same
+   «под угрозой» on two different levels a screen apart. */
 const levelWord = (level: NoticeLevel): string =>
   t(
     {
-      gone: "state:Lost",
-      danger: "Broken — a freeze still reaches it",
-      warning: "At risk",
-      notice: "Owed today",
-      allClear: "Holding",
+      gone: "level:gone",
+      danger: "level:danger",
+      warning: "level:warning",
+      notice: "level:notice",
+      allClear: "level:all clear",
     }[level],
   )
 
@@ -125,6 +136,7 @@ const stateWord = (state: RuleState): string =>
       pending: "still open",
       unjudged: "not judged",
       watching: "not yet judged",
+      lost: "state:lost",
     }[state],
   )
 
@@ -192,6 +204,9 @@ export function CustomStreakSection({
      at a time. */
   const byWeek = !dayClauses(rule).length
   const ctx = streakContext(project)
+  /* The figure and what is at stake — `spec 027`, part 5. The same reading
+     the chip in the streak row prints, so the two cannot disagree. */
+  const shown = runShown(status, level === "gone")
   const clauses = ruleClauses(rule)
   // A rule with one condition reports that condition's own number, which is
   // the thing you were counting. A rule with several has no single number —
@@ -213,27 +228,40 @@ export function CustomStreakSection({
 
   const dates = datesInRange(rangeStart, rangeEnd)
 
-  /* **The week's verdict, held back while the week is still running** —
-     `ruleWeekShown`. Every cell of a weekly rule's row wears the week's own
-     state, so a single freeze bought on a Monday painted all seven of them
-     blue and reported a week that is still in play as one already saved. The
-     receipts are still drawn: the corner snowflake, and the popover naming
-     each one. */
+  /* **The terms each drawn period was actually held to** — `spec 026`.
+     Everything on this panel that judges a past day or week goes through it:
+     the strip's colours, the chart's dots, its figures and its limit line. A
+     panel drawing March through September's promise is the picture the
+     history exists to stop being drawn. Today and yesterday come back as the
+     live rule, so the panel follows an edit immediately where an edit still
+     applies. */
+  const held = (key: DayKey) => ruleHeldOn(rule, key, todayKey, ctx)
+  /* A week is history when it **seals**, not when its Monday leaves the
+     writing window — see `ruleHeldOnWeek`. The two scales need two helpers or
+     the week you are living in reads as history from Wednesday morning. */
+  const heldWeek = (w: Date) => ruleHeldOnWeek(rule, w, today, ctx)
+
+  /* **Every rule's strip is drawn day by day** — `spec 027`, part 6.
+
+     A purely weekly rule's cells all wore the week's own state: uncoloured
+     for as long as the week ran, then seven red the Monday after, the day you
+     had paid for among them. What a freeze covered and which day actually
+     broke the week were both invisible on the one drawing that exists to
+     show them. So every cell reads the day, exactly as a mixed rule's always
+     has: a day a site got worse is red or blue, a day after an unpaid one is
+     grey, and every other day is green. The week's own verdict is still the
+     rule's streak, counted in weeks.
+
+     A future day is `unjudged` by the reading itself — the same silence it
+     gets everywhere else in the app. */
   const stateOf = (date: Date, key: string): RuleState =>
-    byWeek
-      ? /* **A day that has not happened is not a reading of the week.**
-           Every cell of a weekly rule's row wears the week's state, which is
-           right for the days that have been lived and a claim about the ones
-           that have not: on a Tuesday, Wednesday to Sunday were drawn
-           carrying the week's running total, so `1 · 7 · 7 · 7 · 7 · 7 · 7`
-           read as *the whole week is already logged*. `unjudged` is the same
-           silence a future day gets everywhere else in the app. */
-        key > todayKey
-        ? "unjudged"
-        : ruleWeekShown(rule, ctx, project.days, startOfWeek(date), todayKey)
-      : /* Both halves — a weekly condition inside a mixed rule loses its week
-           on one day, and that day is red on this strip like any other. */
-        ruleStateOn(rule, ctx, project.days, key, todayKey)
+    ruleStateOn(
+      byWeek ? heldWeek(startOfWeek(date)) : held(key),
+      ctx,
+      project.days,
+      key,
+      todayKey,
+    )
 
   /**
    * Every condition that had something to say, in the form "Youtube 2".
@@ -270,40 +298,58 @@ export function CustomStreakSection({
   const figure = (readings: ClauseReading[]) =>
     compound ? totalDeficit(readings) : (readings[0]?.value ?? 0)
 
-  /* **A weekly rule's receipt belongs on one cell, not on seven.**
+  /* **A week's offers go on the days it broke** — `spec 027`, part 6.
 
      `freezeOffers` is asked per day and answers with the *week's* list, so
-     every day of the week drew the same buyable ring, the same popover and —
-     once anything was bought — the same corner snowflake. One freeze against
-     one week's ceiling therefore read as seven freezes, which is the reading
-     `ruleWeekShown` had just been written to stop the colour making.
+     every day of the week drew the same buyable ring, the same popover and the
+     same corner snowflake — one freeze against one week's ceiling read as
+     seven. `spec 025` moved it onto the Monday, where the record is filed.
+     With the strip read day by day that is the wrong cell: the Thursday that
+     broke the week is red and offers nothing, and the Monday is green and
+     offers everything.
 
-     It goes on the day the record actually goes on (`FreezeOffer.dayKey`, the
-     week's Monday), or on the first day of that week the period happens to
-     show — a range starting on a Wednesday must not lose the offer
-     altogether. */
+     So a week's list goes on the days one of its sites got worse — red or
+     blue — which are the cells anybody reaches for. The week's first cell in
+     range is the fallback only when none of them is in range, so a week whose
+     broken day lies outside the period does not lose its offer altogether. */
+  const weekHalfOn = (date: Date, key: DayKey): RuleState =>
+    weekClauses(rule).length
+      ? ruleWeekDayState(
+          byWeek ? heldWeek(startOfWeek(date)) : held(key),
+          ctx,
+          project.days,
+          key,
+          todayKey,
+        )
+      : "unjudged"
+  const brokeOn = new Set<DayKey>()
+  const weekBroke = new Set<string>()
   const weekAnchor = new Map<string, DayKey>()
-  if (byWeek)
-    dates.forEach((date) => {
-      const week = toKey(startOfWeek(date))
-      if (!weekAnchor.has(week)) weekAnchor.set(week, toKey(date))
-    })
+  dates.forEach((date) => {
+    const key = toKey(date)
+    const week = toKey(startOfWeek(date))
+    if (!weekAnchor.has(week)) weekAnchor.set(week, key)
+    const half = weekHalfOn(date, key)
+    if (half === "missed" || half === "frozen") {
+      brokeOn.add(key)
+      weekBroke.add(week)
+    }
+  })
 
   const cells: StripCell[] = dates.map((date) => {
     const key = toKey(date)
     const state = stateOf(date, key)
-    const anchors =
-      !byWeek || weekAnchor.get(toKey(startOfWeek(date))) === key
-    const offers = anchors
-      ? freezeOffers(
-          rule,
-          project,
-          key,
-          todayKey,
-          status,
-          key === todayKey ? minutesLeftToday(today) : 0,
-        )
-      : []
+    const week = toKey(startOfWeek(date))
+    const carriesWeek =
+      brokeOn.has(key) || (!weekBroke.has(week) && weekAnchor.get(week) === key)
+    const offers = freezeOffers(
+      rule,
+      project,
+      key,
+      todayKey,
+      status,
+      key === todayKey ? minutesLeftToday(today) : 0,
+    ).filter((o) => !o.week || carriesWeek)
     const unpaid = offers.filter((o) => !o.frozen)
     /* **A weekly rule's cell is the running total to that day**, not that
        day's own figure — `spec 018`. This called `readDay` whatever the scope,
@@ -316,8 +362,14 @@ export function CustomStreakSection({
        reads across as the burn-down, in the same figures the ring's pace arc
        draws. Two places that cannot then disagree. */
     const readings = byWeek
-      ? readWeek(rule, ctx, project.days, startOfWeek(date), key)
-      : readDay(rule, ctx, project.days[key], key)
+      ? readWeek(
+          heldWeek(startOfWeek(date)),
+          ctx,
+          project.days,
+          startOfWeek(date),
+          key,
+        )
+      : readDay(held(key), ctx, project.days[key], key)
     /* The cell's **figure** is its own scale's; the tooltip says everything.
        Adding the week's deficit to each of its seven days would report one
        broken week seven times. */
@@ -325,7 +377,13 @@ export function CustomStreakSection({
       ? readings
       : [
           ...readings,
-          ...readWeek(rule, ctx, project.days, startOfWeek(date), key),
+          ...readWeek(
+            heldWeek(startOfWeek(date)),
+            ctx,
+            project.days,
+            startOfWeek(date),
+            key,
+          ),
         ]
     // A cell that offers nothing has two completely different reasons for it,
     // and "you cannot afford this" is the one nobody guesses.
@@ -349,6 +407,13 @@ export function CustomStreakSection({
           ? [
               t(
                 "This week began before the rule did — only its ceilings apply.",
+              ),
+            ]
+          : []),
+        ...(state === "lost"
+          ? [
+              t(
+                "The week is lost: this day added nothing to it, so it neither grows the streak nor breaks it.",
               ),
             ]
           : []),
@@ -409,6 +474,7 @@ export function CustomStreakSection({
               available: o.available,
               ok: o.ok,
               frozen: o.frozen,
+              week: o.week,
               onSpend: () =>
                 onSpendFreeze(
                   o.dayKey,
@@ -442,18 +508,37 @@ export function CustomStreakSection({
      A condition carries two bounds now and may carry both, so *between two and
      four hours* gets a band. Drawing one half of it would be the same lie as
      drawing none, more quietly. */
-  const soleBounds = (keys: DayKey[]): ClauseBounds =>
-    compound || !clauses[0]
+  /* **Read off the terms that were in force**, like everything else here —
+     `spec 026`. The limit line is the promise, and drawing today's line under
+     last spring's figures is the picture this panel must not draw: the area
+     would cross a wall that was not there. */
+  const soleBounds = (keys: DayKey[]): ClauseBounds => {
+    const then = ruleClauses(
+      byWeek ? heldWeek(startOfWeek(fromKey(keys[0]))) : held(keys[0]),
+    )[0]
+    return compound || !then
       ? {}
       : byWeek
-        ? weekBounds(clauses[0], ctx, keys)
-        : clauseBounds(clauses[0], ctx, keys[0])
+        ? weekBounds(then, ctx, keys)
+        : clauseBounds(then, ctx, keys[0])
+  }
+
+  /* **Where the terms changed inside this range** — `spec 026`. Not the
+     rule's beginning: a rule starting is not a rule changing its mind, and a
+     line on `startedOn` would say *before this, something else* about a
+     stretch where there was nothing. */
+  const marks = revisionMarks(rule, ctx, toKey(rangeStart), toKey(rangeEnd))
+
+  /* Every set of terms this rule has held, oldest first — the last of them is
+     the one the subtitle above already prints, so the fold shows the rest. */
+  const history = revisionsOf(rule, ctx)
 
   const rowFor = (
     label: string,
     readings: ClauseReading[],
     state: RuleState,
     keys: DayKey[],
+    revision = false,
   ): StreakChartRow => {
     const b = soleBounds(keys)
     return {
@@ -465,6 +550,7 @@ export function CustomStreakSection({
       limit2: compound ? null : (b.min !== undefined ? (b.max ?? null) : null),
       broken: state === "missed",
       frozen: state === "frozen",
+      revision,
     }
   }
 
@@ -472,28 +558,37 @@ export function CustomStreakSection({
     ? (() => {
         const out: StreakChartRow[] = []
         for (let w = startOfWeek(rangeStart); w <= rangeEnd; w = addDays(w, 7)) {
-          const state = ruleWeekShown(rule, ctx, project.days, w, todayKey)
+          const then = heldWeek(w)
+          const state = ruleWeekShown(then, ctx, project.days, w, todayKey)
           if (state === "unjudged") continue
+          const thenClause = ruleClauses(then)[0]
           out.push(
             rowFor(
               fmtShort(toKey(w)),
-              readWeek(rule, ctx, project.days, w, todayKey),
+              readWeek(then, ctx, project.days, w, todayKey),
               state,
-              clauses[0] ? coveredDays(clauses[0], rule, w) : [],
+              thenClause ? coveredDays(thenClause, then, w) : [],
+              // The week a revision landed in is the first week it judged —
+              // `ruleHeldOnWeek` reads a week's terms off its last day — so
+              // the line goes on that week rather than the one after it.
+              marks.some(
+                (m) => m >= toKey(w) && m <= toKey(addDays(w, 6)),
+              ),
             ),
           )
         }
         return out
       })()
     : dates
-        .filter((d) => judgesDay(rule, toKey(d)) && toKey(d) <= todayKey)
+        .filter((d) => judgesDay(held(toKey(d)), toKey(d)) && toKey(d) <= todayKey)
         .map((d) => {
           const key = toKey(d)
           return rowFor(
             fmtShort(key),
-            readDay(rule, ctx, project.days[key], key),
+            readDay(held(key), ctx, project.days[key], key),
             stateOf(d, key),
             [key],
+            marks.includes(key),
           )
         })
 
@@ -687,11 +782,63 @@ export function CustomStreakSection({
         formatter={timed ? fmtHours : undefined}
       />
 
+      {/* **What this rule used to say** — `spec 026`.
+
+          It sits directly under the chart because the chart is what raises
+          the question: a line through the area says *left of this, a
+          different rule*, and the answer to *which one* belongs beside it
+          rather than three screens up under the title.
+
+          Read back with `clauseSentence` — the same builder the subtitle, the
+          Setup summary and the supervisor's digest use. A history written in
+          different words from the rule is a history that cannot be compared
+          with it, which is the only thing anybody would open it to do.
+
+          Absent with one revision. There is no history to read, and an empty
+          fold saying so is a control that exists to disappoint. */}
+      {history.length > 1 && (
+        <div className="mb-3">
+          <Fold
+            title={t("Terms before this")}
+            summary={t("{n} earlier", { n: history.length - 1 })}
+          >
+            {history
+              .slice(0, -1)
+              .reverse()
+              .map((revision) => (
+                <div key={revision.from} className="space-y-0.5">
+                  <div className="text-[9px] font-mono uppercase tracking-widest text-ink/40">
+                    {t("From {date}", { date: fmtDateLong(revision.from) })}
+                  </div>
+                  {revision.clauses.map((clause) => (
+                    <div
+                      key={clause.id}
+                      className="text-[10px] font-mono text-ink/55"
+                    >
+                      {revision.clauses.length > 1 ? "· " : ""}
+                      <Sentence
+                        text={clauseSentence(
+                          clause,
+                          ctx,
+                          clauseScope(clause, {
+                            ...rule,
+                            scope: revision.scope,
+                          }),
+                        )}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ))}
+          </Fold>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatTile
           label={t("Current streak")}
-          value={status.current}
-          sub={unitWord(status.current)}
+          value={shown.was !== null ? `${shown.was} → ${shown.now}` : shown.now}
+          sub={unitWord(shown.now)}
           icon={Flame}
           inset
         />

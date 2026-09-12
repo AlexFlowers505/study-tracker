@@ -52,6 +52,7 @@ import type {
   Day,
   DayKey,
   Project,
+  RuleRevision,
   RuleVerdict,
   Slot,
   StreakClause,
@@ -1008,6 +1009,13 @@ export function newStreakRule(
  * `dayReport.readings` entirely, so the ring would gain a segment out of
  * nowhere on the day a ceiling broke — which reads as a rendering fault rather
  * than as a slip. Drawn, never tallied.
+ *
+ * **`lost` is a day inside a week a weekly condition can no longer win** —
+ * `spec 027`. Some earlier day that week carries a break nothing has paid
+ * for, and this one added nothing to it. It is not kept, because the week it
+ * belongs to is not; it is not missed, because nothing happened on it. So it
+ * neither grows a run nor breaks one, and a day that *does* add to the excess
+ * is `missed` like any other.
  */
 export type RuleState =
   | "met"
@@ -1016,6 +1024,7 @@ export type RuleState =
   | "pending"
   | "unjudged"
   | "watching"
+  | "lost"
 
 export interface ClauseReading {
   clause: StreakClause
@@ -1340,8 +1349,13 @@ export const frozenKeys = (
  * a purchase is never repriced, and `freezeSpendOn` still reads the stored
  * figure — but a violation that has since grown past what was paid is simply
  * not the violation that was bought.
+ *
+ * **Summed, not maxed — `spec 027`.** A violation that grew can now be topped
+ * up: the second receipt pays the difference, and the site is covered by
+ * everything paid on it. It took the largest receipt while only one could ever
+ * be bought, which is also why the two readings agree on every existing ledger.
  */
-const frozenCosts = (
+export const frozenCosts = (
   day: Day | undefined,
   ruleId: string,
 ): Map<string, number> => {
@@ -1350,9 +1364,44 @@ const frozenCosts = (
     .filter((f): f is RuleFreeze => typeof f !== "string")
     .forEach((f) => {
       const key = violationKey(f)
-      out.set(key, Math.max(out.get(key) ?? 0, f.cost))
+      out.set(key, (out.get(key) ?? 0) + f.cost)
     })
   return out
+}
+
+/**
+ * **The sites that are paid for as they now stand** — `spec 027`.
+ *
+ * `frozenKeys` says a site has a receipt; this says the receipt still covers
+ * it. The board used the first, so a site that grew after being paid for went
+ * on saying nothing — the silence `spec 025` removed for the whole rule,
+ * surviving one level down.
+ */
+export function coveredKeys(
+  rule: StreakRule,
+  ctx: StreakContext,
+  day: Day | undefined,
+  dayKey: DayKey,
+  /** A week's days, when asking about a week's receipts — see `isFrozenFor`. */
+  weekDays?: Record<DayKey, Day>,
+  todayKey?: DayKey,
+): Set<string> {
+  const paid = frozenCosts(day, rule.id)
+  if (!paid.size) return new Set()
+  const owed = weekDays
+    ? weekViolationsOn(
+        rule,
+        ctx,
+        weekDays,
+        startOfWeek(fromKey(dayKey)),
+        todayKey ?? dayKey,
+      )
+    : violationsOn(rule, ctx, day, dayKey)
+  return new Set(
+    owed
+      .filter((v) => (paid.get(violationKey(v)) ?? 0) >= v.cost)
+      .map((v) => violationKey(v)),
+  )
 }
 
 /**
@@ -1572,12 +1621,77 @@ export function readWeek(
       clause,
       applies: covered.length > 0,
       value,
-      // A time condition costs one freeze however many of its parts broke;
-      // a count costs what it actually fell short by. Same rule as the day.
-      deficit: short <= 0 ? 0 : measure === "time" ? 1 : short,
+      /* A count costs what it actually fell short by, the same rule as the
+         day. **Time costs one per day that made it worse** — `spec 027`,
+         part 4: a day of it is one broken promise however far off it was,
+         and a week is seven days, not one. */
+      deficit:
+        short <= 0
+          ? 0
+          : measure === "time"
+            ? timeWeekCost(clause, ctx, days, covered)
+            : short,
       skipped: false,
     }
   })
+}
+
+/**
+ * **A week of a time condition, one day at a time** — `spec 027`, part 4.
+ *
+ * `overDays` are the days that added minutes while a ceiling — the
+ * condition's own, or a slot's — was already crossed, which includes the day
+ * that crossed it. A day that added nothing is not among them: *over by the
+ * Monday and untouched on the Tuesday* is one break, not two.
+ */
+function timeWeekWalk(
+  clause: StreakClause,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  /** The days read, each of them lived — the same list `readWeek` sums. */
+  lived: DayKey[],
+): { overDays: DayKey[]; floorShort: boolean } {
+  const bounds = weekBounds(clause, ctx, lived)
+  const slotRules = weekSlotBounds(clause, lived)
+  let total = 0
+  const inSlot: Record<string, number> = {}
+  const overDays: DayKey[] = []
+  for (const k of lived) {
+    const added = readClauseDay(clause, ctx, days[k], k).value
+    total += added
+    let worse = bounds.max !== undefined && added > 0 && total > bounds.max
+    for (const [slotId, b] of Object.entries(slotRules)) {
+      const a = measuredOn(clause, ctx, days[k], [slotId])
+      inSlot[slotId] = (inSlot[slotId] ?? 0) + a
+      if (b.max !== undefined && a > 0 && inSlot[slotId] > b.max) worse = true
+    }
+    if (worse) overDays.push(k)
+  }
+  const floorShort =
+    (bounds.min !== undefined && total < bounds.min) ||
+    Object.entries(slotRules).some(
+      ([slotId, b]) => b.min !== undefined && (inSlot[slotId] ?? 0) < b.min,
+    )
+  return { overDays, floorShort }
+}
+
+/**
+ * What a week of a time condition costs: one for every day that made a
+ * crossed ceiling worse, and one more if a floor is short.
+ *
+ * One function for `readWeek` and `weekViolationsOn`, because the items the
+ * second prices must add back up to what the first calls the deficit. It is
+ * never nought while anything is short: a crossed ceiling was crossed on a day
+ * that added something, and a short floor adds its own one.
+ */
+const timeWeekCost = (
+  clause: StreakClause,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  lived: DayKey[],
+): number => {
+  const { overDays, floorShort } = timeWeekWalk(clause, ctx, days, lived)
+  return overDays.length + (floorShort ? 1 : 0)
 }
 
 /**
@@ -1593,17 +1707,24 @@ export function ruleWeekState(
   weekStart: Date,
   todayKey: DayKey,
 ): RuleState {
-  if (!weekClauses(rule).length) return "unjudged"
   const lastKey = toKey(addDays(weekStart, 6))
-  // Whole weeks only. "Three trips to the gym a week" judged on the two days
-  // that were left when the rule started is a rule nobody agreed to.
-  if (toKey(weekStart) < rule.startedOn || toKey(weekStart) > todayKey)
-    return "unjudged"
+  /* Whole weeks only. "Three trips to the gym a week" judged on the two days
+     that were left when the rule started is a rule nobody agreed to — and
+     since `spec 026` that is asked of each **condition**, not of the rule:
+     one added on a Wednesday was not agreed to for that Wednesday's week
+     either, and a rule can hold one of each. A week with nothing in force is
+     `unjudged`, exactly as a rule with no weekly conditions is. */
+  const { judged } = weekClausesOn(rule, ctx, weekStart)
+  if (!judged.length || toKey(weekStart) > todayKey) return "unjudged"
   if (
     isFrozenFor(rule, ctx, days[toKey(weekStart)], toKey(weekStart), days, todayKey)
   )
     return "frozen"
-  const deficit = totalDeficit(readWeek(rule, ctx, days, weekStart, todayKey))
+  const deficit = totalDeficit(
+    readWeek(rule, ctx, days, weekStart, todayKey).filter((r) =>
+      judged.some((c) => c.id === r.clause.id),
+    ),
+  )
   if (deficit === 0) return "met"
   return lastKey >= todayKey ? "pending" : "missed"
 }
@@ -1762,9 +1883,16 @@ export function weekLostOn(
   todayKey: DayKey,
   /** `"ceilings"` for a partial first week — see `clauseLostOn`. */
   mode: "all" | "ceilings" = "all",
+  /**
+   * Which of the rule's weekly conditions to ask. Defaults to all of them;
+   * `ruleWeekDayState` passes the two halves of `weekClausesOn` separately,
+   * because a condition written into the middle of this week is drawn under
+   * one mode and the rest under the other.
+   */
+  clauses: StreakClause[] = weekClauses(rule),
 ): DayKey | null {
   let earliest: DayKey | null = null
-  for (const clause of weekClauses(rule)) {
+  for (const clause of clauses) {
     const lost = clauseLostOn(
       clause,
       ctx,
@@ -1779,20 +1907,36 @@ export function weekLostOn(
 }
 
 /**
- * Whether a rule's verdict on this day may be **counted**.
+ * **What a rule's day is worth to the tally**, which is not always what it is
+ * worth to look at — `spec 018`, rewritten by `spec 026`.
  *
- * False for exactly one thing: a weekly rule inside the partial week it was
- * written in. Such a day can still be *drawn* — a broken ceiling goes red, and
- * everything else is `watching` — but it may not move the composite, the
- * streak or the balance, because the week it belongs to was never one you
- * agreed to. `spec 018`.
+ * A condition inside the partial week it was written into may be *drawn* — a
+ * broken ceiling goes red — and may not move the composite, the streak or the
+ * balance, because the week it belongs to was never one anybody agreed to.
+ *
+ * This was `countsOn`, a boolean beside the drawn state, and a boolean can
+ * only say *all of this counts* or *none of it does*. That is true of a rule
+ * whose conditions all arrived together and false of every other kind: a
+ * **mixed** rule was silently exempted by its own daily half —
+ * `dayClauses(rule).length > 0` counted the whole reading, weekly break
+ * included — and a condition added to an old rule this Wednesday had no
+ * partial week at all, because the rule's `startedOn` was months ago.
+ *
+ * So the answer is a second reading rather than a flag on the first. Both
+ * halves are folded the same way; they differ only in whether a condition
+ * that is merely watching gets to speak.
  */
-export const countsOn = (rule: StreakRule, dayKey: DayKey): boolean =>
-  /* A rule with any daily condition always counts: that half is judged on
-     the day itself and owes nothing to which week it landed in. Only a rule
-     that is **purely** weekly can be silent for its partial first week. */
-  dayClauses(rule).length > 0 ||
-  toKey(startOfWeek(fromKey(dayKey))) >= rule.startedOn
+export const countedStateOn = (
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  dayKey: DayKey,
+  todayKey: DayKey,
+): RuleState => ruleStateOn(rule, ctx, days, dayKey, todayKey, "counted")
+
+/** Whether that reading is a verdict at all. */
+export const countsState = (state: RuleState): boolean =>
+  state !== "watching" && state !== "unjudged"
 
 /* ---- Pace ---------------------------------------------------------------- */
 
@@ -1976,13 +2120,211 @@ export function weekFloorPace(
   return worst
 }
 
+/* ---- Where a week's break lands — `spec 027` ------------------------------
+
+   A week has one verdict and seven days, and the day's verdict needs an
+   answer for each of them. It used to be `weekLostOn`: the **first** day any
+   ceiling of the condition was crossed, then asked whether the week *as it now
+   stands* was paid for. So one unpaid site anywhere in the week turned that
+   first day red — a Night slip bought on the Monday went red on the Thursday
+   the weekly total broke, and the Thursday itself stayed green.
+
+   A week is walked instead, site by site, and every day on which a site got
+   worse is a **step**. The sites are exactly the ones `weekViolationsOn`
+   prices and keyed the same way, so a step and a receipt always match. */
+
+/** One day on which one site of a weekly condition got worse. */
+interface WeekStep {
+  key: string
+  day: DayKey
+  /** What the site had come to by the end of that day, in its own units. */
+  upTo: number
+}
+
+function clauseWeekSteps(
+  clause: StreakClause,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  /** Every day of the week this condition judges, the future ones included. */
+  covered: DayKey[],
+  todayKey: DayKey,
+  /** `"ceilings"` for a condition watching its partial first week. */
+  mode: "all" | "ceilings",
+): WeekStep[] {
+  const steps: WeekStep[] = []
+  const lived = covered.filter((k) => k <= todayKey)
+  if (!lived.length) return steps
+  const targets = clauseTargets(clause)
+  const info = targetInfo(targets[0], ctx)
+  const keyOf = (targetId?: string, slotId?: string) =>
+    violationKey({ clauseId: clause.id, targetId, slotId })
+
+  /* A ceiling gets worse on every day its running excess grows. There is no
+     doing less of something already done, so the excess never shrinks. */
+  const ceiling = (
+    key: string,
+    on: (k: DayKey) => number,
+    max: number | undefined,
+  ) => {
+    if (max === undefined) return
+    let run = 0
+    let was = 0
+    for (const k of lived) {
+      run += on(k)
+      const over = Math.max(0, run - max)
+      if (over > was) steps.push({ key, day: k, upTo: over })
+      was = over
+    }
+  }
+
+  /* A floor gets worse once: on the day it stopped being reachable — the
+     same walk `clauseLostOn` makes, for the same reasons — carrying what it is
+     short by as things stand. `perDay` is the most one day can add; time and
+     a slot have no such limit, so theirs is only lost once the week is out of
+     days. */
+  const floor = (
+    key: string,
+    on: (k: DayKey) => number,
+    min: number | undefined,
+    perDay: number,
+  ) => {
+    if (mode === "ceilings" || min === undefined || min <= 0) return
+    const total = lived.reduce((sum, k) => sum + on(k), 0)
+    if (total >= min) return
+    let run = 0
+    for (const k of lived) {
+      run += on(k)
+      const need = min - run
+      if (need <= 0) return
+      const after = covered.filter((x) => x > k).length
+      const room =
+        perDay === Infinity
+          ? after > 0 || k >= todayKey
+            ? Infinity
+            : 0
+          : (after + (k >= todayKey ? 1 : 0)) * perDay
+      if (need > room) {
+        steps.push({ key, day: k, upTo: min - total })
+        return
+      }
+    }
+  }
+
+  if (clause.states) {
+    for (const answer of CHECK_CHOICES) {
+      const bound = clause.states[answer]
+      if (!bound) continue
+      const on = (k: DayKey) =>
+        targets.filter((x) => checkState(days[k], x.id || "") === answer).length
+      ceiling(keyOf(`answer:${answer}`), on, bound.max)
+      floor(keyOf(`answer:${answer}`), on, bound.min, targets.length)
+    }
+    return steps
+  }
+
+  if (clause.allow) {
+    for (const target of targets) {
+      let bad = 0
+      for (const k of lived) {
+        const allowed = clause.allow[fromKey(k).getDay()]
+        if (!allowed) continue
+        const state = checkState(days[k], target.id || "")
+        if (state && allowed.includes(state)) continue
+        // An unanswered check is an errand until its day is over.
+        if (!state && (k >= todayKey || mode === "ceilings")) continue
+        bad += 1
+        steps.push({ key: keyOf(target.id), day: k, upTo: bad })
+      }
+    }
+    return steps
+  }
+
+  if (info.measure === "time") {
+    const { overDays, floorShort } = timeWeekWalk(clause, ctx, days, lived)
+    overDays.forEach((k, i) => steps.push({ key: keyOf(), day: k, upTo: i + 1 }))
+    const last = covered[covered.length - 1]
+    if (mode === "all" && floorShort && last < todayKey)
+      steps.push({ key: keyOf(), day: last, upTo: overDays.length + 1 })
+    return steps
+  }
+
+  /* A count, and a lone check read as one. The ceilings are read against the
+     days lived, as `weekViolationsOn` prices them; a floor against the whole
+     week, as `clauseLostOn` reaches it. */
+  const on = (k: DayKey) => readClauseDay(clause, ctx, days[k], k).value
+  ceiling(keyOf(), on, weekBounds(clause, ctx, lived).max)
+  floor(keyOf(), on, weekBounds(clause, ctx, covered).min, 1)
+  const onSlot = (slotId: string) => (k: DayKey) =>
+    measuredOn(clause, ctx, days[k], [slotId])
+  Object.entries(weekSlotBounds(clause, lived)).forEach(([slotId, b]) =>
+    ceiling(keyOf(undefined, slotId), onSlot(slotId), b.max),
+  )
+  Object.entries(weekSlotBounds(clause, covered)).forEach(([slotId, b]) =>
+    floor(keyOf(undefined, slotId), onSlot(slotId), b.min, Infinity),
+  )
+  return steps
+}
+
+/** Every step of a week, across the conditions asked about. */
+const weekSteps = (
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+  todayKey: DayKey,
+  clauses: StreakClause[],
+  mode: "all" | "ceilings",
+): WeekStep[] =>
+  clauses.flatMap((clause) =>
+    clauseWeekSteps(
+      clause,
+      ctx,
+      days,
+      coveredDays(clause, rule, weekStart),
+      todayKey,
+      mode,
+    ),
+  )
+
+/**
+ * One day of a week, from its steps and the receipts on its Monday.
+ *
+ * A step is **covered** when everything paid on its site reaches what the
+ * site had come to that day, so a receipt covers the days whose growth it
+ * paid for and no later one — decision 1 of `spec 027`, read as arithmetic.
+ * The order is the whole of it: this day's own uncovered step is a miss; an
+ * earlier one makes the week lost; a covered step of its own is a freeze.
+ */
+function weekDayReading(
+  rule: StreakRule,
+  ctx: StreakContext,
+  days: Record<DayKey, Day>,
+  weekStart: Date,
+  dayKey: DayKey,
+  todayKey: DayKey,
+  clauses: StreakClause[],
+): RuleState {
+  const monday = days[toKey(weekStart)]
+  const steps = weekSteps(rule, ctx, days, weekStart, todayKey, clauses, "all")
+  const own = steps.filter((s) => s.day === dayKey)
+  // The old whole-rule receipt covered the whole week, and still does.
+  if (wholeRuleFrozen(monday, rule.id)) return own.length ? "frozen" : "met"
+  const paid = frozenCosts(monday, rule.id)
+  const unpaid = (s: WeekStep) => s.upTo > (paid.get(s.key) ?? 0)
+  if (own.some(unpaid)) return "missed"
+  if (steps.some((s) => s.day < dayKey && unpaid(s))) return "lost"
+  return own.length ? "frozen" : "met"
+}
+
 /**
  * What a weekly rule says about one **day** — which is what lets it vote on
  * the day's verdict alongside the daily rules.
  *
- * Every day of a week it is winning is `met`; the day it was lost on is
- * `missed`, or `frozen` when a freeze covers that week. Days of a week the
- * rule does not judge at all are `unjudged`, as ever.
+ * **Every day that made a site worse carries its own break** — `spec 027`.
+ * It is `frozen` when what was paid on that site reaches it and `missed` when
+ * it does not; a day after an unpaid one that added nothing is `lost`; every
+ * other day is `met`. Days of a week the rule does not judge at all are
+ * `unjudged`, as ever.
  */
 export function ruleWeekDayState(
   rule: StreakRule,
@@ -1990,12 +2332,26 @@ export function ruleWeekDayState(
   days: Record<DayKey, Day>,
   dayKey: DayKey,
   todayKey: DayKey,
+  /**
+   * **What this reading is for** — `spec 026`, part 7.
+   *
+   * `drawn` is the arc, the strip cell and the notice: a ceiling broken in a
+   * week the condition was only written into is real and worth seeing, and
+   * `spec 018` argued that out at length. `counted` is the tally: the same
+   * break may not move the composite, the streak or the balance, because the
+   * week it happened in was not one anybody agreed to.
+   *
+   * They were one answer with a boolean beside it (`countsOn`), which works
+   * only while the whole rule is in or out. A mixed rule is half in.
+   */
+  mode: "drawn" | "counted" = "drawn",
 ): RuleState {
   if (!weekClauses(rule).length) return "unjudged"
   if (dayKey > todayKey || dayKey < rule.startedOn) return "unjudged"
   const weekStart = startOfWeek(fromKey(dayKey))
+  const { judged, watching } = weekClausesOn(rule, ctx, weekStart)
 
-  /* **The partial first week speaks about its ceilings and nothing else** —
+  /* **A partial first week speaks about its ceilings and nothing else** —
      `spec 018`. The whole-weeks gate used to return `unjudged` here, which
      made a weekly rule written on any day but a Monday completely silent for
      up to six days: no arc, no alarm, no explanation. Its argument was sound
@@ -2003,26 +2359,30 @@ export function ruleWeekDayState(
      the four days that were left is a rule nobody wrote. It says nothing
      about a ceiling, which is broken the moment one lands in the wrong slot.
 
-     So the week keeps no verdict of its own (`ruleWeekState` still returns
-     `unjudged`, and `countsOn` keeps this day out of every tally), and a
-     broken ceiling is still drawn and still warned about. */
-  if (toKey(weekStart) < rule.startedOn) {
-    const broke = weekLostOn(rule, ctx, days, weekStart, todayKey, "ceilings")
-    return broke === dayKey ? "missed" : "watching"
-  }
+     So such a week keeps no verdict of its own and is kept out of every
+     tally, and a broken ceiling is still drawn and still warned about.
 
-  const lost = weekLostOn(rule, ctx, days, weekStart, todayKey)
-  if (lost !== dayKey) return "met"
-  return isFrozenFor(
-    rule,
-    ctx,
-    days[toKey(weekStart)],
-    toKey(weekStart),
-    days,
-    todayKey,
-  )
-    ? "frozen"
-    : "missed"
+     **Per condition since `spec 026`.** This was the rule's own
+     `startedOn` against the whole of its weekly half, which got two things
+     wrong at once: a condition added to an old rule this Wednesday was judged
+     over a week already three days spent, and — the reverse — a *mixed* rule
+     never got the grace at all, because `countsOn` let its daily half carry
+     the whole reading into the tally. */
+  if (watching.length && mode === "drawn") {
+    const broke = weekSteps(
+      rule,
+      ctx,
+      days,
+      weekStart,
+      todayKey,
+      watching,
+      "ceilings",
+    )
+    if (broke.some((s) => s.day === dayKey)) return "missed"
+  }
+  if (!judged.length) return "watching"
+
+  return weekDayReading(rule, ctx, days, weekStart, dayKey, todayKey, judged)
 }
 
 /**
@@ -2036,9 +2396,10 @@ export function ruleWeekDayState(
  * had a per-day answer since `spec 010` precisely so a weekly rule could vote
  * in a day's verdict.
  *
- * The fold is the day report's own order — missed beats pending beats frozen
- * — because it is the same question one level down: one half already broken
- * decides the day whatever the other is still doing.
+ * The fold is the day report's own order — missed beats pending beats lost
+ * beats frozen — because it is the same question one level down: one half
+ * already broken decides the day whatever the other is still doing, and a week
+ * already lost is not rescued by a day the daily half happened to keep.
  */
 export function ruleStateOn(
   rule: StreakRule,
@@ -2046,12 +2407,21 @@ export function ruleStateOn(
   days: Record<DayKey, Day>,
   dayKey: DayKey,
   todayKey: DayKey,
+  /** Passed straight to the weekly half — see `ruleWeekDayState`. */
+  mode: "drawn" | "counted" = "drawn",
 ): RuleState {
   const states = [
     ruleDayState(rule, ctx, days[dayKey], dayKey, todayKey),
-    ruleWeekDayState(rule, ctx, days, dayKey, todayKey),
+    ruleWeekDayState(rule, ctx, days, dayKey, todayKey, mode),
   ]
-  for (const want of ["missed", "pending", "frozen", "met", "watching"] as const)
+  for (const want of [
+    "missed",
+    "pending",
+    "lost",
+    "frozen",
+    "met",
+    "watching",
+  ] as const)
     if (states.includes(want)) return want
   return "unjudged"
 }
@@ -2543,7 +2913,8 @@ export function weekViolationsOn(
         0,
       )
 
-    // One violation however many of its parts broke, exactly as the day does.
+    /* One violation however many of its parts broke, exactly as the day
+       does — **priced by the days that made it worse**, `spec 027` part 4. */
     if (info.measure === "time") {
       let short = shortOf(value, bounds)
       Object.entries(slotRules).forEach(([slotId, b]) => {
@@ -2553,7 +2924,7 @@ export function weekViolationsOn(
       const over = bounds.max !== undefined && value > bounds.max
       out.push({
         clauseId: clause.id,
-        cost: 1,
+        cost: timeWeekCost(clause, ctx, days, covered),
         settled: over || weekOver,
         line: over
           ? t("{named} {value} against at most {bound}", {
@@ -2685,6 +3056,19 @@ export interface RuleStatus {
   /** Consecutive judged periods kept, most recent first. */
   current: number
   best: number
+  /**
+   * **The run if every break still inside the window is bought back** —
+   * `spec 027`, part 5, and `KeptDays.atStake` at a rule's scale: yesterday
+   * for a rule counted in days, a week not yet sealed for one counted in weeks.
+   */
+  atStake: number
+  /**
+   * **The run if this day — or this week — seals with the breaks it now
+   * carries.** Only *settled* breaks: a floor still owed is an errand, not a
+   * break, and drawing `36 → 0` every morning a floor is unmet would be a
+   * second alarm for the one thing the board already says.
+   */
+  facing: number
   freezes: RuleFreezes
   /** Verdicts that should exist but do not yet — write these, once. */
   pending: RuleVerdict[]
@@ -2717,6 +3101,21 @@ export function ruleStatus(
   const ctx = streakContext(project)
   const weeks = weekKeysFrom(fromKey(rule.startedOn), today)
 
+  /* **The rule as it read then** — `spec 026`, the cascade at rule scale.
+     A day past the writing window is history and is judged by the terms that
+     were in force on it; today and yesterday are days you can still write to,
+     so they are judged by the promise you have now.
+
+     A week takes its terms from its **Monday**, which is where everything
+     else about a week is already filed — its receipts, its verdict row, its
+     freeze. A revision landing mid-week therefore judges that whole week by
+     the terms it began under, and the week after it by the new ones. The
+     alternative is a week judged half by one promise and half by another,
+     which is not a promise. */
+  const heldOn = (dayKey: DayKey): StreakRule =>
+    ruleHeldOn(rule, dayKey, todayKey, ctx)
+  const heldWeek = (w: Date): StreakRule => ruleHeldOnWeek(rule, w, today, ctx)
+
   /* --- verdicts, sealed and due --- */
   const ledger = project.ruleVerdicts || {}
   const pending: RuleVerdict[] = []
@@ -2728,7 +3127,7 @@ export function ruleStatus(
       pending.push({
         ruleId: rule.id,
         weekKey,
-        kept: weekKept(rule, ctx, days, w, todayKey),
+        kept: weekKept(heldWeek(w), ctx, days, w, todayKey),
         sealedAt: new Date().toISOString(),
       })
       return
@@ -2784,9 +3183,32 @@ export function ruleStatus(
      rule is counted in days — the finer of the two scales, and the one every
      mixed rule has — with the weekly half read through its own per-day
      answer, exactly as the day's verdict has read it since `spec 010`. */
+  /* **The scale is the rule's as it stands now**, not per revision. A streak
+     counted in days for one stretch and in weeks for the next is not one
+     number, and there is no honest way to add them — which is why changing a
+     condition's scale is incomparable and therefore locked (`spec 025`). A
+     scope change costs a loosening and a week of waiting, and the unit of the
+     streak legitimately changes with it. */
+  const byWeek = !dayClauses(rule).length
   const states: RuleState[] =
-    !dayClauses(rule).length
-      ? weeks.map((w) => ruleWeekState(rule, ctx, days, w, todayKey))
+    byWeek
+      ? weeks.map((w) => {
+          const weekKey = toKey(w)
+          const raw = ruleWeekState(heldWeek(w), ctx, days, w, todayKey)
+          /* **Tier 1 at week scale** — `spec 026`. A week with a verdict row
+             has been sealed, and re-judging it is what made adding a
+             condition rewrite a year of Sundays. The row decides whether it
+             held; the reading decides whether that holding was bought.
+
+             A state that never votes is left exactly as read: a partial first
+             week is `watching`, and a verdict cannot promote a week the rule
+             was never in force for into one it kept. */
+          const sealed = ledger[`${rule.id}::${weekKey}`]
+          if (!sealed) return raw
+          if (raw === "watching" || raw === "pending" || raw === "unjudged")
+            return raw
+          return sealed.kept ? (raw === "frozen" ? "frozen" : "met") : "missed"
+        })
       : weeks
           .flatMap(weekDates)
           .map(toKey)
@@ -2800,19 +3222,101 @@ export function ruleStatus(
              honest starting point for a number whose job is to be frightening
              to lose. */
           .filter((k) => k >= rule.startedOn && k < todayKey)
-          .map((k) => ruleStateOn(rule, ctx, days, k, todayKey))
+          /* **The counted reading** — `spec 026`. This is a tally, so a
+             condition merely watching the week it was written into may not
+             break the run, however loudly it is drawn on the strip. */
+          .map((k) => countedStateOn(heldOn(k), ctx, days, k, todayKey))
+
+  /* Which of those periods can still be bought back, in the same order: an
+     unsealed week, or yesterday — today is not in the walk at all. */
+  const stillOpen: boolean[] = byWeek
+    ? weeks.map((w) => !isSealable(w, today))
+    : weeks
+        .flatMap(weekDates)
+        .map(toKey)
+        .filter((k) => k >= rule.startedOn && k < todayKey)
+        .map((k) => isEditableDay(k, todayKey))
 
   let best = 0
   let run = 0
-  states.forEach((s) => {
-    if (s === "unjudged" || s === "pending" || s === "watching") return
-    if (s === "missed") run = 0
-    else run += 1
+  let stake = 0
+  states.forEach((s, i) => {
+    /* A **lost** day is neither — `spec 027`. The week it sits in cannot be
+       won, so it does not grow the run, and nothing happened on it, so it
+       does not break it either. */
+    if (s === "unjudged" || s === "pending" || s === "watching" || s === "lost")
+      return
+    if (s === "missed") {
+      run = 0
+      stake = stillOpen[i] ? stake + 1 : 0
+    } else {
+      run += 1
+      stake += 1
+    }
     if (run > best) best = run
   })
+
+  /* **What the period in play has already spent** — settled and not paid for.
+     A rule counted in days asks today's own conditions and its weekly half's
+     reading of today; one counted in weeks asks this week. */
+  const spentNow = (() => {
+    const unpaid = (owed: Violation[], day: Day | undefined) => {
+      if (wholeRuleFrozen(day, rule.id)) return false
+      const paid = frozenCosts(day, rule.id)
+      return owed.some(
+        (v) => v.settled && (paid.get(violationKey(v)) ?? 0) < v.cost,
+      )
+    }
+    if (todayKey < rule.startedOn) return false
+    if (byWeek) {
+      const monday = startOfWeek(today)
+      return unpaid(
+        weekViolationsOn(rule, ctx, days, monday, todayKey),
+        days[toKey(monday)],
+      )
+    }
+    const minutesLeft = Math.max(
+      0,
+      24 * 60 - (today.getHours() * 60 + today.getMinutes()),
+    )
+    return (
+      unpaid(
+        violationsOn(rule, ctx, days[todayKey], todayKey, minutesLeft),
+        days[todayKey],
+      ) || countedStateOn(rule, ctx, days, todayKey, todayKey) === "missed"
+    )
+  })()
+
   // The tail of the same walk: whatever run was still going at the end.
-  return { rule, current: run, best, freezes, pending, open }
+  return {
+    rule,
+    current: run,
+    best,
+    atStake: stake,
+    facing: spentNow ? 0 : run,
+    freezes,
+    pending,
+    open,
+  }
 }
+
+/**
+ * **What a rule's streak figure says** — `spec 027`, part 5.
+ *
+ * `atStake → facing` while the two disagree and a freeze can still reach the
+ * break, which is the pair the composite already draws; the sealed figure
+ * alone once nothing can (`gone`), because a pair offering a way back that is
+ * not there is the one thing it must never say.
+ */
+export const runShown = (
+  status: RuleStatus,
+  gone: boolean,
+): { now: number; was: number | null } =>
+  gone
+    ? { now: status.facing, was: null }
+    : status.atStake > status.facing
+      ? { now: status.facing, was: status.atStake }
+      : { now: status.current, was: null }
 
 /**
  * **What can be frozen on this period, one violation at a time** — `spec 017`.
@@ -2834,6 +3338,11 @@ export interface FreezeOffer {
   /** Stable across edits that do not rewrite the site — see `violationKey`. */
   key: string
   violation: Violation
+  /**
+   * What buying it costs **now** — what is left once everything already paid
+   * on the site is taken off (`spec 027`). For one already frozen, what was
+   * paid.
+   */
   cost: number
   available: number
   /** Whether it can be afforded **on its own**: you buy them one at a time. */
@@ -2842,6 +3351,12 @@ export interface FreezeOffer {
   frozen: boolean
   /** Where the record goes. A weekly rule's freeze lives on the Monday. */
   dayKey: DayKey
+  /**
+   * A weekly condition's site rather than a day's. The strip puts these only
+   * on the days the week broke (`spec 027`), and `dayKey` cannot say which a
+   * Monday's offer is.
+   */
+  week: boolean
 }
 
 export function freezeOffers(
@@ -2885,7 +3400,7 @@ export function freezeOffers(
 
     const key = week ? toKey(weekStart) : dayKey
     const day = project.days[key]
-    const paid = frozenKeys(day, rule.id)
+    const paid = frozenCosts(day, rule.id)
     // A rule frozen the old way is frozen entirely; nothing to itemise.
     if (freezeSpendOn(rule, ctx, day, key) > 0 && !paid.size) return []
 
@@ -2893,17 +3408,26 @@ export function freezeOffers(
       ? weekViolationsOn(rule, ctx, project.days, weekStart, todayKey)
       : violationsOn(rule, ctx, project.days[dayKey], dayKey, minutesLeft)
 
+    /* **A site that grew after it was paid for is offered at the
+       difference** — `spec 027`, part 3. It used to read as frozen for as long
+       as any receipt sat on it, so the growth could never be bought at all:
+       *at most nought, six freezes, one slip a day* ended on the Tuesday. */
     return owed
-      .filter((v) => v.settled || paid.has(violationKey(v)))
-      .map((v) => ({
-        key: violationKey(v),
-        violation: v,
-        cost: v.cost,
-        available,
-        ok: available >= v.cost,
-        frozen: paid.has(violationKey(v)),
-        dayKey: key,
-      }))
+      .filter((v) => v.settled || (paid.get(violationKey(v)) ?? 0) > 0)
+      .map((v) => {
+        const has = paid.get(violationKey(v)) ?? 0
+        const left = Math.max(0, v.cost - has)
+        return {
+          key: violationKey(v),
+          violation: v,
+          cost: left > 0 ? left : has,
+          available,
+          ok: left > 0 && v.settled && available >= left,
+          frozen: left <= 0,
+          dayKey: key,
+          week,
+        }
+      })
   }
 
   return [...listFor(false), ...listFor(true)]
@@ -3644,9 +4168,12 @@ const covers = <T,>(bigger: Set<T>, smaller: Set<T>): boolean =>
  * the conditions that were reading them, which is what closed the door rather
  * than narrowing it.
  */
-export const termsOf = (rule: StreakRule, ctx: StreakContext) => {
+export const termsSnapshot = (
+  rule: StreakRule,
+  ctx: StreakContext,
+): Omit<RuleRevision, "from"> => {
   const clauses = ruleClauses(rule)
-  return JSON.stringify({
+  return {
     scope: rule.scope,
     clauses: clauses.map((clause) => ({
       ...clause,
@@ -3661,8 +4188,237 @@ export const termsOf = (rule: StreakRule, ctx: StreakContext) => {
     // can create one, and `019` rewrites the ones that exist — but until it
     // has, such a rule's terms really do live partly in `settings`.
     goals: clauses.some((c) => c.useDailyGoal) ? ctx.dailyGoals : null,
-  })
+  }
 }
+
+/**
+ * The terms as one comparable string — what the lock diffs.
+ *
+ * **Built from `termsSnapshot` and nothing else** — `spec 026`. The history
+ * stores that same snapshot, so the two cannot drift: a field added to the
+ * terms is watched by the lock and recorded by the history, or it is in
+ * neither. They were one function before the history existed, and keeping
+ * them one is the whole of what stops a term being protected but not
+ * remembered.
+ */
+export const termsOf = (rule: StreakRule, ctx: StreakContext) =>
+  JSON.stringify(termsSnapshot(rule, ctx))
+
+/* ---- What this rule said, and when — `spec 026` -------------------------
+
+   A rule's terms are mutable and its past was recomputed with whatever they
+   are now, which is two lies in opposite directions: tighten a rule and a
+   history you kept honestly turns red; loosen one and a history you broke
+   turns green. `spec 026` answers the first with a ledger and the second
+   with these — and both halves are needed, because a ledger that freezes the
+   verdict without recording the terms lets the *current* sentence claim
+   every day the old one earned.
+------------------------------------------------------------------------- */
+
+/**
+ * Every set of terms this rule has held, oldest first.
+ *
+ * **The implicit first entry is materialised here**, so a rule that predates
+ * the history reads as one revision beginning at `startedOn` — which is
+ * exactly what such a rule means. That is why there is no migration, and why
+ * the first edit to land writes *two* entries rather than one: appending only
+ * the new set would leave the implicit one resolving to "current", and the
+ * terms it replaced would be gone at the moment they became history.
+ */
+export function revisionsOf(
+  rule: StreakRule,
+  ctx: StreakContext,
+): RuleRevision[] {
+  if (rule.revisions?.length) return rule.revisions
+  return [{ from: rule.startedOn, ...termsSnapshot(rule, ctx) }]
+}
+
+/**
+ * The rule as it read on one day.
+ *
+ * Identity, label, colour and `startedOn` come from the live rule, because
+ * they are not terms — a rule renamed is the same rule, and its history is
+ * not a naming history. Everything the engine judges by comes from the
+ * snapshot.
+ *
+ * A day before the first revision takes the first: it is not judged at all
+ * (`dayKey < startedOn`), and answering with the earliest terms is the only
+ * answer that cannot be mistaken for a promise nobody made.
+ *
+ * **What this does not freeze is the project.** A revision naming a category
+ * is judged against whatever that category holds today, so filing a
+ * thirteenth activity under it changes what an old snapshot counted. Freezing
+ * that would mean snapshotting the whole project on every rule edit, and it
+ * barely matters: a day with a mark never consults the terms at all. It bites
+ * only in the holes — see `dayReport`.
+ */
+export function ruleAsOf(
+  rule: StreakRule,
+  dayKey: DayKey,
+  ctx: StreakContext,
+): StreakRule {
+  const revisions = revisionsOf(rule, ctx)
+  let found = revisions[0]
+  for (const revision of revisions)
+    if (revision.from <= dayKey) found = revision
+  return {
+    ...rule,
+    scope: found.scope,
+    clauses: found.clauses,
+    freezesPerWeek: found.freezesPerWeek,
+    freezeCap: found.freezeCap,
+  }
+}
+
+/**
+ * **The day a condition came into force** — `spec 026`, part 7.
+ *
+ * `rule.startedOn` used to answer this for every condition, because a rule's
+ * conditions all arrived with the rule. They do not: one added on a Wednesday
+ * is a promise made on that Wednesday, and the week it landed in was three
+ * days spent before anybody agreed to it. Judging that week is judging a week
+ * nobody agreed to — the same argument `spec 018` makes about a weekly rule's
+ * partial first week, one scale down, and it has the same answer.
+ *
+ * **The current run, not the first appearance.** A condition dropped and
+ * later written again is a new promise: the removal was a loosening and had
+ * to wait out the clock, and what it left behind is not a history the new one
+ * inherits. So the walk goes backwards from the newest revision and stops at
+ * the first that does not carry it.
+ */
+export function clauseInForceFrom(
+  rule: StreakRule,
+  clauseId: string,
+  ctx: StreakContext,
+): DayKey {
+  const revisions = revisionsOf(rule, ctx)
+  let from = rule.startedOn
+  for (let i = revisions.length - 1; i >= 0; i -= 1) {
+    if (!revisions[i].clauses.some((c) => c.id === clauseId)) break
+    from = revisions[i].from
+  }
+  return from
+}
+
+/**
+ * A week's weekly conditions, split by whether this week is one they judge.
+ *
+ * `watching` is the partial first week of each — drawn, and never tallied.
+ * The split is per **condition** rather than per rule, which is the whole of
+ * the fix to a mixed rule: its daily half goes on voting through a week its
+ * weekly half was only written into.
+ */
+export function weekClausesOn(
+  rule: StreakRule,
+  ctx: StreakContext,
+  weekStart: Date,
+): { judged: StreakClause[]; watching: StreakClause[] } {
+  const key = toKey(weekStart)
+  const judged: StreakClause[] = []
+  const watching: StreakClause[] = []
+  for (const clause of weekClauses(rule))
+    (key >= clauseInForceFrom(rule, clause.id, ctx) ? judged : watching).push(
+      clause,
+    )
+  return { judged, watching }
+}
+
+/**
+ * **The rule that judges this day** — the cascade's tier boundary, in one
+ * place.
+ *
+ * A day past the writing window is history and is judged by the terms that
+ * were in force on it. Today and yesterday are not history — they are days
+ * you can still write to — so they are judged by the promise you have now,
+ * which is what makes a condition added on a Wednesday apply to that
+ * Wednesday and to the week it sits in.
+ *
+ * Every reader goes through this rather than testing the two dates itself.
+ * The alternative is four copies of one boundary, which is how the heatmap
+ * spent a spec and a half disagreeing with the month grid about one Tuesday.
+ */
+export const ruleHeldOn = (
+  rule: StreakRule,
+  dayKey: DayKey,
+  todayKey: DayKey,
+  ctx: StreakContext,
+): StreakRule =>
+  dayKey < todayKey && !isEditableDay(dayKey, todayKey)
+    ? ruleAsOf(rule, dayKey, ctx)
+    : rule
+
+/**
+ * **The rule that judges this week** — the same boundary at the other scale,
+ * and neither half of it is the day rule.
+ *
+ * *When* a week becomes history is **sealing**, not its Monday leaving the
+ * writing window. Asking the day question about the Monday would seal the
+ * week you are living in by Wednesday morning — the Monday is already outside
+ * the window while five days are still to come — so a ceiling added on the
+ * Wednesday would judge next week and never this one. That is the opposite of
+ * what a narrowing is for.
+ *
+ * *Which* terms is read off the week's **last day**, so a revision landing
+ * mid-week governs the whole of the week it landed in. Reading it off the
+ * Monday looks tidier and is wrong in a way that only shows up later: such a
+ * week is judged by the new terms while it is open and by the old ones the
+ * moment it seals, so its verdict flips on the Tuesday after, with nothing
+ * having happened. One week, one promise, and it is the newest one that began
+ * inside it — which is also what *«актуально с текущей недели»* asks for.
+ */
+export const ruleHeldOnWeek = (
+  rule: StreakRule,
+  weekStart: Date,
+  today: Date,
+  ctx: StreakContext,
+): StreakRule =>
+  isSealable(weekStart, today)
+    ? ruleAsOf(rule, toKey(addDays(weekStart, 6)), ctx)
+    : rule
+
+/**
+ * The revision boundaries inside a range, as the chart marks them.
+ *
+ * The first is not one: a rule beginning is not a rule changing, and a line
+ * drawn on `startedOn` would say *before this, something else* about a
+ * stretch where there was nothing.
+ */
+export function revisionMarks(
+  rule: StreakRule,
+  ctx: StreakContext,
+  from: DayKey,
+  to: DayKey,
+): DayKey[] {
+  return revisionsOf(rule, ctx)
+    .slice(1)
+    .map((r) => r.from)
+    .filter((k) => k >= from && k <= to)
+}
+
+/**
+ * The new terms, with today's revision recorded against them.
+ *
+ * **Same-day edits collapse.** A revision's whole job is to say which days it
+ * judged, and two of them dated one day judge nothing between them — so the
+ * fourth adjustment of an afternoon replaces the third rather than adding to
+ * a log nobody could read.
+ *
+ * Never called while a rule is being set up: that day is one sentence being
+ * written, not a rule changing its mind, and the rule has judged nothing that
+ * a record could be about.
+ */
+export const withRevision = (
+  prev: StreakRule,
+  next: StreakRule,
+  ctx: StreakContext,
+  todayKey: DayKey,
+): StreakRule => ({
+  ...next,
+  revisions: [
+    ...revisionsOf(prev, ctx).filter((r) => r.from !== todayKey),
+    { from: todayKey, ...termsSnapshot(next, ctx) },
+  ],
+})
 
 export const termsChanged = (
   a: StreakRule,
@@ -4248,8 +5004,20 @@ export function ruleEdit(
     if (bad) return { ...base, impossible: bad, allowed: false, next: prev }
   }
 
+  /* **The terms that are about to judge, with the day they start judging on**
+     — `spec 026`. Written in the same operation as the terms themselves, for
+     the reason `looseningLog` is: a record kept beside a change rather than
+     inside it is a record that can go missing from a change that happened.
+
+     Nothing while the rule is being set up. That day is the rule's first
+     sentence being written — a dozen clicks, most of them incomparable to the
+     defaults — and it has judged nothing that a history could be about. Its
+     implicit revision follows `startedOn`, which is still moving. */
+  const record = (next: StreakRule): StreakRule =>
+    settingUp ? next : withRevision(prev, next, ctx, todayKey)
+
   if (!changed) return { ...base, narrowing: true, allowed: true, next: draft }
-  if (narrowing) return { ...base, allowed: true, next: draft }
+  if (narrowing) return { ...base, allowed: true, next: record(draft) }
   if (settingUp) return { ...base, allowed: true, next: draft }
   const clockOpen = todayKey >= prev.lockedUntil
   const written = reason.trim()
@@ -4266,13 +5034,13 @@ export function ruleEdit(
   return {
     ...base,
     allowed: true,
-    next: {
+    next: record({
       ...draft,
       lockedUntil: lockFrom(today),
       looseningLog: [
         ...(prev.looseningLog || []),
         { at: todayKey, reason: written },
       ],
-    },
+    }),
   }
 }

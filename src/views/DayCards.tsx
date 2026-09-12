@@ -167,7 +167,7 @@ function FullDayCard({
           })}
         </div>
         <div className="text-[9px] font-mono uppercase tracking-widest text-ink/20">
-          Before project start
+          {t("Before project start")}
         </div>
       </div>
     )
@@ -181,6 +181,17 @@ function FullDayCard({
      `spec 024` moved sleep into the log. */
   const logged = dayBreakdown(entry, slots).total
   const total = measured ?? logged
+  /* **Is anything written here at all** — which minutes cannot answer. A
+     session that is still running has none until it ends, and a tally or a
+     check has none ever, so a day holding a count of lessons, or a session
+     started twenty minutes ago, said *nothing logged — tap to add* directly
+     above the very line that contradicted it. */
+  const recorded =
+    Object.values(entry?.cells || {}).some((list) => list.length > 0) ||
+    Object.values(entry?.counters || {}).some((bySlot) =>
+      Object.values(bySlot).some((n) => n > 0),
+    ) ||
+    Object.keys(entry?.checks || {}).length > 0
   const metGoal = !ignored && goal > 0 && total >= goal
   // One function decides what a day is; this file only paints it.
   const goalOutcome = ignored ? null : asOutcome(verdict.state)
@@ -379,7 +390,7 @@ function FullDayCard({
               className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
               style={{ backgroundColor: c.accent, color: c.onFill }}
             >
-              Today
+              {t("card:Today")}
             </span>
           )}
           {/* **The open day gets the mark, not the ninety-nine closed ones.**
@@ -407,7 +418,7 @@ function FullDayCard({
                 className="text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: `${c.accent}1A`, color: c.accent }}
               >
-                Open till tonight
+                {t("Open till tonight")}
               </span>
             </Tip>
           )}
@@ -421,7 +432,7 @@ function FullDayCard({
                 className="flex items-center gap-1 text-[9px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: c.freeze, color: c.onFill }}
               >
-                <Snowflake size={10} /> Frozen
+                <Snowflake size={10} /> {t("card:Frozen")}
               </span>
             </Tip>
           )}
@@ -553,7 +564,7 @@ function FullDayCard({
           <span
             className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
           >
-            goal {fmtHours(goal)}
+            {t("goal {hours}", { hours: fmtHours(goal) })}
             {/* How far there is left to go, or how far past it you got. The
                 bare goal told you the target and left the subtraction to you,
                 which is the arithmetic this app exists to do.
@@ -565,9 +576,9 @@ function FullDayCard({
                 already behind on. Nothing is owed yet — the number is a plan,
                 and saying so is the difference between the two. */}
             {isFuture ? (
-              <> (planned)</>
+              <> {t("(planned)")}</>
             ) : total < goal ? (
-              <> ({fmtHours(goal - total)} left)</>
+              <> {t("({hours} left)", { hours: fmtHours(goal - total) })}</>
             ) : surplus > 0 ? (
               <span style={{ color: c.goalMet }}>
                 {" "}
@@ -602,8 +613,10 @@ function FullDayCard({
           Those parted company when `spec 024` moved sleep into the log: a day
           holding nothing but a night has a figure of nought against the rule
           and is plainly not an empty day, and telling it to "tap to add" over
-          the top of its own entry is the drawing calling the data missing. */}
-      {logged === 0 && (
+          the top of its own entry is the drawing calling the data missing.
+          `logged === 0` was still the same mistake one step over — see
+          `recorded` above. */}
+      {!recorded && (
         <p
           className={`font-mono text-ink/35 ${big ? "text-xs" : "text-[10px]"}`}
         >
@@ -638,15 +651,21 @@ function FullDayCard({
         commentsOpen={commentsOpen}
         roomy={big}
         editing={editing}
-        slotCounters={
-          onUpdateDay && onOpenCounter && onCloseCounter
+        slotCounters={{
+          // Tallies only: these rows sit under a slot heading, and a check is
+          // a fact about the day rather than about any part of it. A legacy
+          // check carrying slot counts would otherwise turn up here with a
+          // number field it has no use for.
+          units: tallyUnits,
+          counters: entry?.counters || {},
+          /* **Read on every day, edited only on the two you can write to.**
+             The counts used to come with the handlers or not at all, so the
+             day a card sealed its slot counts vanished with its buttons —
+             yesterday's “1 Pinterest” in the morning read as a bare total the
+             next morning. A sealed day still opens and reads; what goes is
+             every way to change it, and that is all that goes here. */
+          ...(onUpdateDay && onOpenCounter && onCloseCounter
             ? {
-                // Tallies only: these rows sit under a slot heading, and a
-                // check is a fact about the day rather than about any part of
-                // it. A legacy check carrying slot counts would otherwise turn
-                // up here with a number field it has no use for.
-                units: tallyUnits,
-                counters: entry?.counters || {},
                 openKey: counterEditing ?? null,
                 onOpen: onOpenCounter,
                 onChange: (counters) => onUpdateDay({ counters }),
@@ -656,8 +675,8 @@ function FullDayCard({
                 onCancel: onCancelCounter ?? onCloseCounter,
                 onClose: onCloseCounter,
               }
-            : undefined
-        }
+            : {}),
+        }}
       />
 
       {/* Read-only fallback for a card with no write path — the note still has

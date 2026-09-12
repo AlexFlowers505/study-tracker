@@ -147,7 +147,9 @@ export function DataTransfer({
         <p className="mt-2 text-[10px] font-mono text-ink/60 leading-relaxed">
           {staged.counts.projects} project
           {staged.counts.projects === 1 ? "" : "s"}, {staged.counts.days} days,{" "}
-          {staged.counts.notes} notes, {staged.counts.verdicts} week verdicts.
+          {staged.counts.notes} notes, {staged.counts.verdicts} week verdicts,{" "}
+          {staged.counts.marks} day marks, {staged.counts.earned} achievements,{" "}
+          {staged.counts.purchases} purchases.
           Anything the file covers is overwritten; anything it doesn't is left
           alone, so days deleted since the export stay behind. Export first if
           this database holds something you want to keep.

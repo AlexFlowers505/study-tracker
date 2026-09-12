@@ -36,6 +36,7 @@ import {
   isMixed,
   lockFrom,
   ruleClauses,
+  withRevision,
 } from "./customStreaks"
 import type { StreakContext } from "./customStreaks"
 import { toKey } from "./date"
@@ -134,16 +135,30 @@ export function proposalFor({
  * The lock starts from the day it lands, and the reason goes on the record
  * with the fact that somebody agreed to it — which is the part worth reading
  * back six weeks later.
+ *
+ * **And so does the revision** — `spec 026`. This is the one path that writes
+ * a rule's terms without going through `ruleEdit`, which is exactly why `ctx`
+ * is a required argument rather than an optional one: a loosening that lands
+ * here and records no revision is a stretch of history with no terms against
+ * it, and the gap would be invisible until somebody went looking for the one
+ * change they most wanted explained.
  */
 export const applyProposal = (
   proposal: Proposal,
   prev: StreakRule,
+  ctx: StreakContext,
   today = new Date(),
-): StreakRule => ({
-  ...(proposal.next as StreakRule),
-  lockedUntil: lockFrom(today),
-  looseningLog: [
-    ...(prev.looseningLog || []),
-    { at: toKey(today), reason: `${proposal.reason} — allowed` },
-  ],
-})
+): StreakRule =>
+  withRevision(
+    prev,
+    {
+      ...(proposal.next as StreakRule),
+      lockedUntil: lockFrom(today),
+      looseningLog: [
+        ...(prev.looseningLog || []),
+        { at: toKey(today), reason: `${proposal.reason} — allowed` },
+      ],
+    },
+    ctx,
+    toKey(today),
+  )

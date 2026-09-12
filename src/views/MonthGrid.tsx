@@ -24,7 +24,7 @@ import {
 } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import type { DayReport, DayVerdict } from "../lib/dayVerdict"
-import { asOutcome, foldVerdicts } from "../lib/dayVerdict"
+import { asOutcome, foldVerdicts, verdictLines } from "../lib/dayVerdict"
 import {
   buildTooltip,
   dayBreakdown,
@@ -59,18 +59,20 @@ const weekdayHeads = () =>
 
 const stateColor = (
   c: Palette,
-): Record<"met" | "frozen" | "missed", string> => ({
+): Record<"met" | "frozen" | "missed" | "lost", string> => ({
   met: c.goalMet,
   frozen: c.freeze,
   missed: c.exam,
+  lost: c.gone,
 })
 
-const weekDotTip = (state: "met" | "frozen" | "missed"): string =>
+const weekDotTip = (state: "met" | "frozen" | "missed" | "lost"): string =>
   t(
     {
       met: "Every day of this week hit its goal",
       frozen: "A day was missed, but a streak freeze covered it",
       missed: "A day was missed with no freeze on it",
+      lost: "A day was missed with no freeze on it",
     }[state],
   )
 
@@ -204,9 +206,14 @@ function CompactDayCell({
      The headline figure is the benchmark's, for the reason `DayCard` gives. */
   const { bySlot, total: logged } = dayBreakdown(entry, slots)
   const total = measured ?? logged
+  /* What the colour means comes first — `spec 027` — in the ring's own
+     sentences, since a month cell is too small for a ring to be hovered. */
+  const said = verdict.readings.length
+    ? `${verdictLines(verdict, isToday).join("\n")}\n\n`
+    : ""
   const tooltip = ignored
     ? `${buildTooltip(entry, slots, activities, counterUnits)}\n\nIgnored in statistics`
-    : buildTooltip(entry, slots, activities, counterUnits)
+    : `${said}${buildTooltip(entry, slots, activities, counterUnits)}`
   const metGoal = !ignored && goal > 0 && total >= goal
   const goalOutcome = ignored ? null : asOutcome(verdict.state)
   const touched = counterUnits.filter(

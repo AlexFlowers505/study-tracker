@@ -387,7 +387,7 @@ export function LogView({
           two segmented pills is a control the width of the page, permanently,
           for a question most mornings do not ask. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
-        <h3 className={`${SECTION_HEADING} min-w-0`}>Days</h3>
+        <h3 className={`${SECTION_HEADING} min-w-0`}>{t("Days")}</h3>
         {counterGroups.length > 0 && (
           <CounterMenu
             className="ml-auto"
@@ -419,7 +419,7 @@ export function LogView({
       {counterGroups.length > 0 && !allHidden && (
         <div className="rounded-2xl bg-ink/[0.04] px-3 py-3 sm:px-4 mb-3">
           <h4 className="text-[9px] font-mono uppercase tracking-widest text-ink/40 mb-2">
-            Counters total
+            {t("Counters total")}
           </h4>
           <CounterGroupList
             groups={counterGroups.filter((g) => !hidden.has(g.id))}

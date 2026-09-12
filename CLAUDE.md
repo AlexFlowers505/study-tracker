@@ -9,6 +9,174 @@ would leak into every other project on the machine.
 
 ## Work in progress
 
+**`specs/028-seven-things-from-use.md` is built** — seven small reports after
+`027` shipped. **No migration:** `ShopItem.repeatable` rides in
+`settings.shop`, absent meaning repeatable, which is what every reward was.
+
+- **A purchase and an achievement are celebrated** — `ui/Celebration.tsx`, a
+  queue in `App` (`celebrate`, keyed so a doubled effect cannot queue twice).
+  Confetti is WAAPI on spans, transform and opacity only; none under reduced
+  motion. The rare tier, so it may take 420ms where a dialog takes 220ms.
+- **`ShopItem.repeatable`** — a setting per reward; new ones are once-only.
+  `canBuy` takes the times taken; `shopEdit` treats once-only becoming
+  repeatable as a loosening. A taken reward's row is tinted with a `Куплено`
+  badge, and the shelf splits All / Not taken / Taken.
+- **The composite's `36 → 0` is drawn only while the board has a `danger`**
+  (`keptRisky` in `App`, `showStake` on `KeptFigure`). It was on screen from
+  every morning's first minute.
+- A changeable **check** lifts on hover and says so; **hide-all** is first in
+  the toggle row, so it no longer shifts the others; the time dial's **`now`
+  is a clock glyph**; a **running session shows its live duration**
+  (`runningMinutes`, `useNow`), drawn only.
+- **Import JSON carries every ledger.** `normalizeProject` rebuilt a project
+  from a fixed list of fields and dropped all five ledgers, and
+  `importIntoTables` never wrote three of them — so a dev copy refreshed from
+  production had none of production's verdicts, day marks, achievements or
+  purchases. It keeps them now and writes `day_ledger`, `achievements` and
+  `purchases` beside the two verdict tables.
+
+**`specs/027-a-lost-week.md` is built.** Read it before touching anything a
+weekly condition says about a single day, or anything about buying a freeze.
+**No migration:** a second receipt on one site rides in the same
+`days.rule_freezes` list, and a grey day simply gets no mark.
+
+- **A weekly break lands on the day it happened.** `ruleWeekDayState` filed a
+  whole week on `weekLostOn` — the first day *any* ceiling of the condition
+  broke — and asked `isFrozenFor` about the week as it now stood. So a night
+  slip bought on the Monday went red on the Thursday the weekly total broke,
+  and the Thursday itself stayed green. `clauseWeekSteps` walks each site day
+  by day instead: a day that made a site worse is `missed` or `frozen` by what
+  was paid **on that site**, a day after an unpaid one that added nothing is
+  `lost`, every other day `met`. `ruleWeekState` — the week's own verdict —
+  and `weekLostOn` (pace) are untouched.
+- **`lost`, the grey day, is new in `RuleState` and `DayVerdict`.** It neither
+  grows a run nor breaks one (`keptDays`, `ruleStatus`), gets no mark and so
+  pays nothing (`dueMarks`), outranks `frozen` in both folds, and wears
+  `c.gone` — both mean *nothing left to do here*. Bought back inside the
+  window, the red day turns blue and the grey days after it green.
+- **A paid site that grew is topped up at the difference.** `frozenCosts`
+  sums; `freezeOffers` prices `cost − paid`; `spendRuleFreeze` stopped
+  refusing a second receipt for one key; the board silences only
+  `coveredKeys`. It was unbuyable: *at most nought, six freezes, one slip a
+  day* ended on the Tuesday.
+- **A weekly time ceiling costs one per day that made it worse**
+  (`timeWeekCost`, shared by `readWeek` and `weekViolationsOn` so the items
+  still add up to the deficit). It cost one however far it went.
+- **A rule's streak shows `atStake → facing`** (`RuleStatus`, `runShown`)
+  while a *settled* break can still be bought back, and the sealed figure
+  alone once the rule is `gone`. A floor still owed is an errand, not a break.
+- **Every rule's strip is drawn day by day.** A week's offers ride on the
+  days it broke, and its receipts are drawn by the colour of the days they
+  covered, never by a cell's corner.
+- **`verdictLines`** says what a day's colour means, on the ring, the month
+  cell and the heatmap. The ring's old tooltip was English in either language.
+- **`CONTEXT.md` is the glossary** and **The words** below maps each word to
+  the code. Eight Russian renames where one word meant two things: «Подсчёт»,
+  «Общая серия», «не выполнено», «итог дня», «Заморозки на неделю»,
+  «минимум / максимум», «упущено», and a rule's panel speaking the board's
+  five level words.
+- **Marks written before this are not rewritten** — the ledger is the fact —
+  **with one exception, `migrations/024`, which has run on both.** The
+  reading behind it was done on the dev copy's own day marks — Import JSON did
+  not carry the ledgers until `spec 028` — so production's are to be read
+  again after a fresh import. Of eight marks that
+  disagree with the fixed engine, only 7 September disagrees *because of the
+  fix*; the other seven were sealed under terms later loosened, and
+  production has no revisions to prove it, so they stay as written.
+
+**`specs/026-a-rule-remembers-what-it-said.md` is built.** Read it before
+touching anything that judges a past day or week — and Part 7 before touching
+`countsOn`'s replacement or anything about a partial week. **No migration:**
+`revisions` rides inside `settings.streakRules`, and absent means what the
+data always meant — these terms have been these terms since `startedOn`.
+
+- **A rule's past stopped being recomputed.** Adding a condition re-judged
+  every day since the rule began and reported the answer as though it had
+  always been true: thirty-six days became thirteen. Points and earned freezes
+  were already safe — `dayLedger` and `ruleVerdicts` are append-only ledgers —
+  and the composite streak was the last number in the app still recomputing
+  its own history, which is the worst place for the omission to have landed.
+  **The cascade** answers *what was this day?* in strict priority: the day's
+  **mark** if it has one; else, if it is past and outside the writing window,
+  the **terms in force on it**; else the rule's **current** terms. It lives in
+  `dayReport` and nowhere else, so `verdictOf`, `keptDays`, `keptWeeks`,
+  `keptBreakdown` and `dueMarks` all follow untouched.
+- **It cuts both ways.** A loosening no longer turns last month's red days
+  green either. That half arrives as good news and nobody reports it, and it
+  is the same fault: the lock used to *delay* buying back a broken past by
+  seven days and then permit it.
+- **The mark decides whether the day held; the reading decides which kind of
+  holding it was.** A `DayMark` is one boolean and two of the five verdicts
+  hold up, so read alone the ledger turns every freeze you ever bought plain
+  green. The two can disagree only after an engine fix changes how a sealed
+  day reads — then the day draws `kept` with arcs that do not add up to it,
+  which is the right way round: the ledger is the fact, the arcs are the
+  explanation.
+- **`StreakRule.revisions` is the other half, and not an addition to it.** A
+  ledger says *these thirty-six were kept*; without the terms it does not say
+  what they were kept **against**, so a rule written easy in March and made
+  hard in September reads as though the hard version had been kept all along.
+  Recomputation was dishonest about the past; a bare ledger is dishonest about
+  the present. **Snapshots, never diffs** — replaying a diff across a
+  condition schema four specs have rewritten eventually reconstructs a rule
+  nobody wrote, silently. `revisionsOf` materialises the implicit first entry,
+  which is why the first edit to land writes *two*.
+- **`termsSnapshot` and `termsOf` are one function**, so a term the lock
+  protects is a term the history records. A history recording less than the
+  lock watches has its hole in exactly the fields somebody bothered to
+  protect. One `terms:` case in the sweep fails the day the two part company.
+- **A week has its own tier boundary** (`ruleHeldOnWeek`), and neither half of
+  it is the day rule. A week becomes history when it **seals**, not when its
+  Monday leaves the writing window — otherwise the week you are living in
+  reads as history from Wednesday morning. And its terms are read off its
+  **last** day: off the Monday, a week holding a mid-week revision is judged
+  by the new terms while open and the old ones once sealed, so its verdict
+  flips on the Tuesday after with nothing having happened.
+- **Nothing is written while a rule is being set up**, and same-day edits
+  collapse. A revision says which days it judged, and two dated one day judge
+  nothing between them. **No reason is required** for a narrowing:
+  `looseningLog` goes on demanding prose for a loosening, and charging prose
+  for tightening would tax the one direction the lock already makes free.
+- **An ignored day no longer breaks the composite run.** `dueMarks` has always
+  skipped days marked *ignore in statistics*, so such a day never gets a mark
+  and the run was being broken by the one day the project was told to look
+  away from. The skip is in `keptDays` / `keptWeeks` / `keptBreakdown` —
+  aggregates, which is what *excluded everywhere* is a claim about — and
+  **not** in `dayReport`, so the strip goes on saying what that Tuesday came
+  to. **This can move a live number upward on deploy**, and it is the only
+  such movement here.
+- **Solo is handed `dayLedger: {}`.** A mark is a fact about every rule that
+  voted, and inherited by a projection built to show one it made solo a no-op
+  over every sealed day. It keeps the terms history: *how did this one rule
+  really do* still has to be asked of the promise that was in force.
+- **A condition is in force from the week it was written into, not from the
+  rule's `startedOn`** (`clauseInForceFrom`, `weekClausesOn`). The first build
+  read *«актуально с текущей недели»* literally, so a ten-hour ceiling written
+  into a week that had already spent thirty broke that week on the spot and
+  the run collapsed to one. **The week you write a narrowing in is a week you
+  have already spent** — and `spec 018` had already settled that case for a
+  weekly rule's partial first week: *drawn, never tallied*. A condition added
+  on a Wednesday is a promise made that Wednesday and gets the same grace; the
+  first **whole** week under it is judged like any other. Dropped and written
+  again is a new promise, so the walk takes the current run of revisions
+  carrying it rather than its first appearance.
+- **`countsOn` is gone, replaced by a second reading.** It was a boolean
+  beside the drawn state, and a boolean can only say *all of this counts* or
+  *none of it does* — true of a rule whose conditions arrived together, false
+  of every other kind. Its first line was `dayClauses(rule).length > 0 ||`, so
+  a **mixed** rule's weekly half was carried into the tally by the daily half
+  beside it: the partial-week protection applied to purely weekly rules and to
+  nothing else, silently. `ruleWeekDayState` and `ruleStateOn` now take
+  `"drawn" | "counted"`, `RuleReading` carries both (`state` for the ring, the
+  strip and the notices; `counted` for the verdict, the streak, the balance
+  and the breakdown), and `counts` is just *is the counted one a verdict*. A
+  ring drawing what the ledger does not conclude is `spec 010`, Decision 1.
+- **The chart marks where the promise changed** — a `ReferenceLine` per
+  revision, because the complaint is about what a chart *looks like* and a
+  note elsewhere has to be gone to and opened. `Terms before this` folds
+  under it, read back through the same `clauseSentence` everything else uses.
+  `Fold` moved to `ui/Fold.tsx`; it existed twice already, byte for byte.
+
 **`specs/025-eight-things-from-use.md` is built** — eight reports from a week
 of ordinary use, two of them engine bugs wearing the face of a decision. **No
 migration:** every new field rides in existing jsonb and means, when absent,
@@ -149,7 +317,8 @@ rule was added to a day-shaped app and never finished:
 - **`RuleState` gains `watching`** and `RuleReading` gains `counts` and `pace`.
   A rule present on a period it can neither win nor lose is **drawn and never
   tallied**: `dayReport.readings` carries it, `kept`, `judged` and the verdict
-  see only what votes (`countsOn`). The ring is divided by `readings.length`,
+  see only what votes — `countsOn` then, and since `spec 026` the second
+  `counted` reading beside it. The ring is divided by `readings.length`,
   not by `judged` — dividing by `judged` made a watching-only day draw no ring
   at all.
 - **`clauseWeekReadoutParts`** is the week-scope sibling of
@@ -588,8 +757,8 @@ There are no tests, with one deliberate exception. Lint and typecheck are the
 automated checks and **both are clean — expect zero from each and leave them at
 zero.**
 
-`npm run sweep` is the exception: `scripts/streak-sweep.ts`, some two hundred
-and seventy cases over the streak engine — every rule shape against a period that should
+`npm run sweep` is the exception: `scripts/streak-sweep.ts`, some three hundred
+and twenty cases over the streak engine — every rule shape against a period that should
 hold and one that should break it, the risk levels at both ends of the day,
 what today still asks, what a day is reported as, the lock, the conditions that
 must be refused rather than judged, and what an achievement reaches and what
@@ -814,9 +983,11 @@ which are Node config and get their own lint block.
     the dial drives: one rule rather than two, and the accent moving to the
     half you pressed is what confirms you hit the one you meant. The cross is
     absent with nothing to clear but its padding is not, so the figure never
-    shuffles sideways; `now` keeps its **word** rather than becoming a second
-    glyph, since there is no drawing of *the current time* that is not just
-    another clock. The panel is `260px`, which is `DATE_PANEL_MAX_WIDTH` —
+    shuffles sideways; `now` is a **clock glyph** since `spec 028`, with the
+    whole sentence in its tooltip — it was a word for a long time, on the
+    argument that no drawing of *the current time* is not just another clock,
+    and in use the word was the one piece of type inside an input otherwise
+    made of figures. The panel is `260px`, which is `DATE_PANEL_MAX_WIDTH` —
     the figure the popover's viewport clamp was already written against.
   - `datePopover.ts` — `useDatePopover` plus the react-day-picker styling,
     which has to sit on the calendar's own root to win.
@@ -854,6 +1025,14 @@ which are Node config and get their own lint block.
     (`SwitchToggle`, `MenuToggle`), `EditableList.tsx`, `StatTile.tsx`,
     `ChartCard.tsx`, `ToggleChips.tsx`, `Brand.tsx`, and the hooks
     `useSeriesToggle.ts` / `useRevealOnScrollUp.ts` / `useScrollEdges.ts`.
+  - `Fold.tsx` — **a refinement, folded with its current value on the lid.**
+    Native `<details>`, so it is keyboard- and screen-reader-correct with no
+    ARIA of ours and find-in-page reveals a closed fold containing the match.
+    `summary` is not optional and that is the whole argument: a closed fold
+    saying nothing hides state, one saying `Mon, Wed, Fri` or `2 earlier` is a
+    sentence you can check without opening it, so you open only the one that
+    is wrong. It lived twice, identically, in the rule form and the
+    achievements form until `spec 026` wanted a third.
   - `useScrollEdges.ts` — whether a scroll container has more content past
     each end, plus the two custom properties `.edge-fade-x` / `.edge-fade-y`
     read. **A soft edge while there is more, a hard one once there is not**:
@@ -1636,32 +1815,49 @@ to answer it is a streak rule's job.
 
 ## The words
 
-Four things, and they are not interchangeable. Use these names in the code,
-in the interface and when talking about it, because the feature is now large
-enough that a loose word costs a conversation.
+**The definitions live in `CONTEXT.md`** — the glossary, in the interface's
+Russian with the English beside it, and nothing else (`spec 027`). This table
+is the other half: which word is which thing in the code. Use these names in
+the code, in the interface and when talking about it; the feature is large
+enough that a loose word costs a conversation — even the app's own author
+lost track of them once.
 
-| word | what it is | where |
+| word | in the interface (ru) | where |
 | --- | --- | --- |
-| **rule** | one promise you wrote — *no youtube in the evening* | `StreakRule`, Setup's Streaks tab |
-| **condition** | one clause of a rule; all of them must hold | `StreakClause` |
-| **a rule's streak** | that one promise's own run of days or weeks | `ruleStatus`, the chips in `StreakBar` |
-| **the composite** | the run of days on which *every voting rule* held | `keptDays`, `KeptCard` |
-| **points** | the account a day pays into, and the only figure you can spend | `lib/balance.ts`, the shop |
-| **watching** | a rule in force on a period it can neither win nor lose — a weekly rule's partial first week. Drawn, never tallied | `RuleState`, `RuleReading.counts` |
-| **pace** | how much of a weekly **floor** is done as of one day. A drawing; the verdict still waits for Sunday | `weekFloorPace`, the ring's partial arc |
-| **a pause** | minutes an entry was held for, all of them as one figure, subtracted from its duration. Measured between two clicks, never read off the clock | `TimeEntry.paused`, `pausePatch`, `EntryTime` |
-| **logged** | the word for what the app records, in every user-facing string. Not "studied" — this is one user's case, not the app's — and not "tracked", which would be a second word for a thing that already has one | `Hours logged`, `All logged time`, `spec 022` |
-| **headroom** | what is left of a **ceiling**. Never drawn as pace — not having spent it is not having done it | why `weekFloorPace` returns null for a ceiling |
-| **spent** | a deficit nothing can undo before midnight — a breached ceiling, a check answered outside its accepted set | `danger` in `lib/notices.ts` |
-| **owed** | a deficit the rest of the day can still clear — a floor short of its figure, a check with no answer | `notice` / `warning` in `lib/notices.ts` |
-| **a notice** | one thing worth saying about today, at one of four levels. Never two per rule per level | `Notice`, `notices()` |
-| **the board** | where every notice is read. Not a panel that opens below the streak row; the page's own block above it | `NoticeBoard` |
-| **solo** | viewing the page as though one rule were the only one that votes. A drawing, never a verdict | `soloProject` in `App`, `SoloBanner` |
-| **a window** | when a condition's work had to begin or end. Two walls on one moment, read against the day's **earliest start** and **latest end**. Says when, never whether. A finishing pair may sit on the **next morning** (`nextDay`), which is what makes *get up between 04:00 and 05:00* writable | `TimeWindow`, `edgesOn`, `windowWalls` |
-| **a violation** | one named site of a rule that broke on one period — a check, a bound, a slot rider. What a freeze is bought against | `Violation`, `violationsOn`, `weekViolationsOn` |
-| **a freeze** | a purchase against one violation, at a price stamped when it was made. Never automatic, never refunded, never repriced | `RuleFreeze`, `freezeOffers` |
-| **settled** | a violation nothing can undo before midnight, and therefore the only kind that may be frozen | `Violation.settled` |
-| **fully frozen** | every violation of a rule on a period covered, at no less than what it now costs. The only state that turns a colour; a partly paid period keeps its own and wears a corner snowflake | `isFrozenFor` |
+| **rule** | правило | `StreakRule`, Setup's Streaks tab |
+| **condition** | условие | `StreakClause` |
+| **floor / ceiling** | минимум / максимум | `min` / `max`, `clauseBounds`, `weekBounds` |
+| **slot rider** | цифра слота | `clause.slots`, `slotBoundsOnWeekday` |
+| **tally / check / activity** | подсчёт / отметка / занятие | `CounterUnit.kind`, `lib/checks.ts`, `Activity` |
+| **the benchmark rule** | эталонное правило | `settings.benchmarkRuleId`, `lib/benchmark.ts` |
+| **a rule's streak** | серия правила | `ruleStatus`, the chips in `StreakBar` |
+| **the composite** | общая серия | `keptDays`, `KeptCard`, `KeptSection` |
+| **at stake** | на кону, `36 → 0` | `KeptDays.atStake` / `.facing`, `RuleStatus.atStake` / `.facing`, `runShown` |
+| **points** | очки | `lib/balance.ts`, the shop |
+| **a mark** | итог дня | `DayMark`, `dayLedger`, `dueMarks` |
+| **watching** | первая неполная неделя | `RuleState`, `RuleReading.counted` |
+| **a lost week / a grey day** | проигранная неделя / серый день | `"lost"` in `RuleState` and `DayVerdict`, `weekDayReading` |
+| **a step** | — | `WeekStep`, `clauseWeekSteps`: one day one site of a weekly condition got worse |
+| **pace** | темп | `weekFloorPace`, the ring's partial arc |
+| **headroom** | запас | why `weekFloorPace` returns null for a ceiling |
+| **a pause** | пауза | `TimeEntry.paused`, `pausePatch`, `EntryTime` |
+| **logged** | учтено | `Hours logged`, `All logged time`, `spec 022` |
+| **spent / owed** | сломано / ещё должно | `danger` / `notice` and `warning` in `lib/notices.ts` |
+| **a notice / the board** | уведомление / уведомления | `Notice`, `notices()`, `NoticeBoard` |
+| **the five levels** | упущено · под угрозой · на исходе · к сведению · всё в порядке | `NoticeLevel`, the `level:*` keys |
+| **the colours of a day** | цвета дня | `verdictLines`, `asOutcome`, `dayStateSurface` |
+| **solo** | соло | `soloProject` in `App`, `SoloBanner` |
+| **a window** | часы | `TimeWindow`, `edgesOn`, `windowWalls` |
+| **a revision** | прежние условия | `RuleRevision`, `revisionsOf` |
+| **the cascade** | — | `dayReport`, `ruleHeldOn`, `ruleHeldOnWeek` |
+| **terms** | условия | `termsOf`, `termsSnapshot` |
+| **in force** | — | `clauseInForceFrom`, `weekClausesOn` |
+| **drawn / counted** | — | `RuleReading.state` / `.counted` |
+| **a violation** | нарушение | `Violation`, `violationsOn`, `weekViolationsOn` |
+| **a freeze** | заморозка | `RuleFreeze`, `freezeOffers`, `frozenCosts` |
+| **a top-up** | доплата | `freezeOffers` pricing at `cost − paid` |
+| **settled** | — | `Violation.settled` |
+| **fully frozen** | заморожено | `isFrozenFor`, `coveredKeys` |
 
 **An achievement is not earned on the day it is written, and once earned its
 terms stop moving.** Both halves are one bug reported from ordinary use:
@@ -2583,9 +2779,12 @@ Match the existing file:
   reads as wobble.
 - **The easing keywords are re-pointed, not avoided.** `--ease-out` and
   `--ease-in-out` in `@theme` override Tailwind's own, so every `ease-out`
-  already written across the app got the strong curve without being touched.
-  The built-ins spend their first third barely moving, which is the third the
-  eye is watching hardest.
+  *utility* already written across the app got the strong curve without being
+  touched. The built-ins spend their first third barely moving, which is the
+  third the eye is watching hardest. **A bare `ease-out` in `App.css` is not a
+  utility** — it is the browser's own keyword, the weak curve — so CSS written
+  by hand says `var(--ease-out)`. Every rule there used the keyword until the
+  `spec 028` review of the week view.
 - **`.grow-open` and `::details-content` both work, and a note here once
   said they did not.** `block-size: 0 → auto` under `interpolate-size`
   interpolates in both directions — measured on the streaks row, 0 → 59 → 95

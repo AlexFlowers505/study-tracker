@@ -53,7 +53,9 @@
 
 import type { RuleState } from "../lib/customStreaks"
 import type { DayReport } from "../lib/dayVerdict"
-import { ruleWeight } from "../lib/dayVerdict"
+import { ruleWeight, verdictLines } from "../lib/dayVerdict"
+import { btnBase } from "../lib/theme"
+import { t } from "../lib/i18n"
 import { PopoverMenu } from "../ui/PopoverMenu"
 import { RenderIcon } from "../ui/icons"
 import { usePalette } from "../ui/useTheme"
@@ -165,7 +167,9 @@ export function VerdictRing({
         ? c.freeze
         : state === "missed"
           ? c.exam
-          : `${c.ink}1F`
+          : state === "lost"
+            ? c.gone
+            : `${c.ink}1F`
 
   // The centre figure carries the verdict, not the count of what held: a day
   // at four of five is a missed day, and printing "4" in the kept colour would
@@ -176,29 +180,18 @@ export function VerdictRing({
       ? c.exam
       : report.state === "frozen"
         ? c.freeze
-        : report.state === "kept" && !provisional
-          ? c.goalMet
-          : `${c.ink}55`
+        : report.state === "lost"
+          ? c.gone
+          : report.state === "kept" && !provisional
+            ? c.goalMet
+            : `${c.ink}55`
 
-  const missed = report.readings.filter((x) => x.state === "missed")
-  const frozen = report.readings.filter((x) => x.state === "frozen")
-  // Said in words as well as drawn, since a screen reader gets the label and
-  // not the opacity.
-  const sofar = provisional ? " so far — the day is not over" : ""
-  const tip =
-    report.state === "kept"
-      ? `All ${report.judged} kept${sofar}`
-      : [
-          missed.length
-            ? `Missed: ${missed.map((x) => x.rule.label).join(", ")}`
-            : "",
-          frozen.length
-            ? `Frozen: ${frozen.map((x) => x.rule.label).join(", ")}`
-            : "",
-          `${report.kept} of ${report.judged} kept${sofar}`,
-        ]
-          .filter(Boolean)
-          .join(String.fromCharCode(10))
+  /* **What the colour means, in words** — `spec 027`. Said as well as drawn,
+     since a screen reader gets the label and not the colour, and because a
+     grey day is the one colour here nobody can be expected to decode unaided.
+     This used to be `Missed: … · 2 of 3 kept`, in English whatever the
+     interface was set to. */
+  const tip = verdictLines(report, provisional).join(String.fromCharCode(10))
 
   const svg = (
     <>
@@ -319,7 +312,11 @@ export function VerdictRing({
       width={230}
       label={tip}
       wrapClassName="shrink-0 flex items-center"
-      triggerClassName="flex items-center rounded-full"
+      /* **It opens, so it has to feel like it.** It was a bare `<button>` with
+         no hover and no press — the one control on the card that answered
+         nothing until its panel appeared. The same press every other button
+         here gives, and a faint wash on hover. */
+      triggerClassName={`${btnBase} flex items-center rounded-full cursor-pointer hover:bg-ink/[0.07]`}
       trigger={svg}
     >
       {() => <VerdictDetail report={report} />}
@@ -337,24 +334,33 @@ function VerdictDetail({ report }: { report: DayReport }) {
         ? c.freeze
         : state === "missed"
           ? c.exam
-          : `${c.ink}55`
+          : state === "lost"
+            ? c.gone
+            : `${c.ink}55`
   const word = (state: RuleState) =>
-    state === "met"
-      ? "kept"
-      : state === "frozen"
-        ? "frozen"
-        : state === "missed"
-          ? "missed"
-          : state === "watching"
-            ? "not yet judged"
-            : "not yet"
+    t(
+      state === "met"
+        ? "state:kept"
+        : state === "frozen"
+          ? "state:frozen"
+          : state === "missed"
+            ? "state:missed"
+            : state === "lost"
+              ? "state:lost"
+              : state === "watching"
+                ? "not yet judged"
+                : "still open",
+    )
 
   return (
     <div className="p-1">
       <p className="px-2 pt-1 pb-2 text-[9px] font-mono uppercase tracking-widest text-ink/40">
         {report.judged
-          ? `${report.kept} of ${report.judged} kept`
-          : "nothing judged yet"}
+          ? t("{kept} of {judged} kept", {
+              kept: report.kept,
+              judged: report.judged,
+            })
+          : t("nothing judged yet")}
       </p>
       {report.readings.map(({ rule, state }) => (
         <div
@@ -404,7 +410,9 @@ export function VerdictBar({ report }: { report: DayReport }) {
         ? c.freeze
         : state === "missed"
           ? c.exam
-          : `${c.ink}26`
+          : state === "lost"
+            ? c.gone
+            : `${c.ink}26`
 
   return (
     <span className="flex gap-[1.5px] w-full h-[3px]" aria-hidden>

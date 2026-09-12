@@ -13,7 +13,8 @@ import { useState } from "react"
 import { Lock, Pencil, ShieldCheck, TriangleAlert } from "lucide-react"
 import type { Achievement, Settings, ShopItem } from "../types/model"
 import { t, useT } from "../lib/i18n"
-import { newShopItem, requiredBy, shopEdit } from "../lib/shop"
+import { isRepeatable, newShopItem, requiredBy, shopEdit } from "../lib/shop"
+import { SwitchToggle } from "../ui/toggles"
 import { LOCK_DAYS, lockFrom } from "../lib/customStreaks"
 import { fmtDateLong, toKey } from "../lib/date"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase } from "../lib/theme"
@@ -61,6 +62,10 @@ function Form({
       <div className="space-y-1.5 pl-1 pt-1">
         <p className="text-[11px] font-mono text-ink/70">
           {item.price} {t(item.price === 1 ? "unit:point" : "unit:points")}
+          <span className="text-ink/40">
+            {" · "}
+            {t(isRepeatable(item) ? "Can be taken more than once" : "Once only")}
+          </span>
         </p>
         {/* What it asks for beyond the account, read back in the same place
             the price is — the two halves of one cost. */}
@@ -120,6 +125,23 @@ function Form({
           className={NUM}
         />
         <span className="text-[11px] font-mono text-ink/55">points</span>
+      </div>
+
+      {/* **Once, or again and again** — `spec 028`. Beside the price because it
+          is part of what the reward costs: a thing you may buy once is a
+          different promise from a thing you may keep buying. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className="w-16 shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/40">
+          {t("Again")}
+        </span>
+        <SwitchToggle
+          checked={isRepeatable(draft)}
+          onChange={(repeatable) => setDraft({ ...draft, repeatable })}
+          label={t("Can be taken more than once")}
+        />
+        <span className="text-[11px] font-mono text-ink/55">
+          {t(isRepeatable(draft) ? "Can be taken more than once" : "Once only")}
+        </span>
       </div>
 
       {/* **What you must already have been**, beside what it costs.

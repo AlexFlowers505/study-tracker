@@ -106,6 +106,7 @@ export function KeptFigure({
   days,
   onOpen,
   open,
+  showStake,
 }: {
   days: {
     current: number
@@ -116,6 +117,12 @@ export function KeptFigure({
   }
   onOpen: () => void
   open: boolean
+  /**
+   * Whether the pair may be drawn at all — `spec 028`. The caller passes
+   * *the board has a `danger`*; absent keeps the old reading, the pair
+   * whenever the two figures disagree.
+   */
+  showStake?: boolean
 }) {
   const c = usePalette()
   const t = useT()
@@ -135,10 +142,14 @@ export function KeptFigure({
      moment a day you can still write to breaks — indistinguishable from a
      run that ended in March and is gone. `atStake → facing` says both ends,
      and appears only while the two disagree, which is exactly while
-     something can still be done about it. */
+     something can still be done about it.
+
+     **And only while the board says the run is in danger** — `spec 028`.
+     With a floor owed the two disagree from the first minute of every
+     morning, so the pair was on screen nearly all day and read as noise. */
   const atStake = days.atStake ?? days.current
   const facing = days.facing ?? days.current
-  const risky = atStake > facing && atStake > 0
+  const risky = (showStake ?? true) && atStake > facing && atStake > 0
   return (
     <Tip
       multiline

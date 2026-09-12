@@ -32,7 +32,15 @@ import { t, pluralOf, useT } from "../lib/i18n"
 const nPoints = (n: number) =>
   pluralOf(n, ["point", "points"], ["очко", "очка", "очков"])
 import type { Balance } from "../lib/balance"
-import { boughtOn, canBuy, missingFor, requiredBy, purchaseHistory } from "../lib/shop"
+import {
+  boughtOn,
+  canBuy,
+  isRepeatable,
+  missingFor,
+  requiredBy,
+  purchaseHistory,
+} from "../lib/shop"
+import { SegmentedControl } from "../ui/controls"
 import { fmtDateLong } from "../lib/date"
 import { CARD, PANEL_INSET, btnBase } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
@@ -78,6 +86,13 @@ export function ShopSection({
   const earned = project.earned || {}
   const history = purchaseHistory(project)
   const available = balance?.total ?? 0
+  /** Which half of the shelf is showing — `spec 028`. A look, not a setting. */
+  const [shelf, setShelf] = useState<"all" | "open" | "taken">("all")
+  const timesOf = (id: string) => history.filter((h) => h.itemId === id).length
+  const takenN = items.filter((i) => timesOf(i.id) > 0).length
+  const shown = items.filter(
+    (i) => shelf === "all" || (shelf === "taken") === timesOf(i.id) > 0,
+  )
 
   return (
     <PanelSection
@@ -136,16 +151,58 @@ export function ShopSection({
 
       {items.length > 0 ? (
         <div className="space-y-2">
-          {items.map((item) => {
-            const afford = canBuy(item, available, achievements, earned)
+          {/* **Taken and not yet, one tap apart** — `spec 028`. A shelf mixing
+              the two read as a list of things you could not buy, because a
+              reward you already had looked exactly like one you could not
+              afford. Absent until something has been taken: with nothing taken
+              the three views are the same view. */}
+          {takenN > 0 && (
+            <div className="mb-1">
+              <SegmentedControl
+                items={[
+                  { id: "all", label: `${t("shelf:All")} ${items.length}` },
+                  {
+                    id: "open",
+                    label: `${t("shelf:Not taken yet")} ${items.length - takenN}`,
+                  },
+                  { id: "taken", label: `${t("shelf:Taken")} ${takenN}` },
+                ]}
+                activeId={shelf}
+                onChange={(id) => setShelf(id as "all" | "open" | "taken")}
+              />
+            </div>
+          )}
+          {shown.length === 0 && (
+            <p className="px-1 py-2 text-[11px] font-mono text-ink/40">
+              {t(
+                shelf === "taken"
+                  ? "Nothing taken yet."
+                  : "Everything here has been taken.",
+              )}
+            </p>
+          )}
+          {shown.map((item) => {
+            const times = timesOf(item.id)
+            const taken = times > 0
+            const again = isRepeatable(item)
+            const afford = canBuy(item, available, achievements, earned, times)
             const missing = missingFor(item, achievements, earned)
-            // A reward can be taken more than once, so this is a note on the
-            // row rather than a reason to remove it.
             const last = history.find((h) => h.itemId === item.id)
             return (
               <div
                 key={item.id}
                 className={`${PANEL_INSET} flex items-center gap-3 px-3.5 py-3`}
+                /* **Taken looks taken**: the reward's own colour, faintly, with
+                   an edge of it. It was the same row as ever with a greyed-out
+                   button, which is exactly what *cannot afford* looks like. */
+                style={
+                  taken
+                    ? {
+                        backgroundColor: `${item.color}12`,
+                        boxShadow: `inset 0 0 0 1px ${item.color}40`,
+                      }
+                    : undefined
+                }
               >
                 {/* **The name and its icon open it; the row does not.** A
                     reward has two acts on it — look at it properly, and take
@@ -166,15 +223,28 @@ export function ShopSection({
                     <p className="text-[12px] font-mono font-bold truncate flex items-center gap-1.5">
                       {item.label}
                       <Maximize2 size={10} className="shrink-0 text-ink/30" />
+                      {taken && (
+                        <span
+                          className="flex items-center gap-0.5 shrink-0 text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full"
+                          style={{
+                            color: c.goalMet,
+                            backgroundColor: `${c.goalMet}1F`,
+                          }}
+                        >
+                          <Check size={9} strokeWidth={3} />
+                          {t("shop:Taken")}
+                          {times > 1 ? ` ×${times}` : ""}
+                        </span>
+                      )}
                     </p>
                     {item.description && (
                       <p className="text-[10px] font-mono text-ink/40 truncate">
                         {item.description}
                       </p>
                     )}
-                    {available < item.price && (
+                    {(!taken || again) && available < item.price && (
                       <p className="text-[10px] font-mono text-ink/40">
-                        {item.price - available} more to go
+                        {t("{n} to go", { n: item.price - available })}
                       </p>
                     )}
                     {/* Named, not counted. *Which* thing you have still to do
@@ -188,7 +258,9 @@ export function ShopSection({
                     )}
                     {last && (
                       <p className="text-[10px] font-mono text-ink/30 truncate">
-                        last taken {fmtDateLong(boughtOn(last.boughtAt))}
+                        {t("Last taken {date}", {
+                          date: fmtDateLong(boughtOn(last.boughtAt)),
+                        })}
                       </p>
                     )}
                   </div>
@@ -204,15 +276,33 @@ export function ShopSection({
                     {t(item.price === 1 ? "unit:point" : "unit:points")}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={!afford}
-                  onClick={() => setAsking(item)}
-                  className={`${btnBase} shrink-0 px-3 py-2 rounded-full text-[10px] font-mono uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed`}
-                  style={{ backgroundColor: c.goalMet, color: c.onFill }}
-                >
-                  {t("Take it")}
-                </button>
+                {/* Filled while it is still a thing to want; outlined and
+                    quieter once you have it and may have it again; and gone
+                    for a reward that is once only — its badge says the rest. */}
+                {!taken ? (
+                  <button
+                    type="button"
+                    disabled={!afford}
+                    onClick={() => setAsking(item)}
+                    className={`${btnBase} shrink-0 px-3 py-2 rounded-full text-[10px] font-mono uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed`}
+                    style={{ backgroundColor: c.goalMet, color: c.onFill }}
+                  >
+                    {t("Take it")}
+                  </button>
+                ) : again ? (
+                  <button
+                    type="button"
+                    disabled={!afford}
+                    onClick={() => setAsking(item)}
+                    className={`${btnBase} shrink-0 px-3 py-2 rounded-full text-[10px] font-mono uppercase tracking-widest hover:bg-ink/5 disabled:opacity-40 disabled:cursor-not-allowed`}
+                    style={{
+                      color: c.goalMet,
+                      boxShadow: `inset 0 0 0 1px ${c.goalMet}66`,
+                    }}
+                  >
+                    {t("Take it again")}
+                  </button>
+                ) : null}
               </div>
             )
           })}
@@ -253,11 +343,18 @@ export function ShopSection({
           available={available}
           achievements={achievements}
           missing={missingFor(showing, achievements, earned)}
-          takenTimes={history.filter((h) => h.itemId === showing.id).length}
+          takenTimes={timesOf(showing.id)}
+          once={!isRepeatable(showing)}
           lastTaken={
             history.find((h) => h.itemId === showing.id)?.boughtAt ?? null
           }
-          canTake={canBuy(showing, available, achievements, earned)}
+          canTake={canBuy(
+            showing,
+            available,
+            achievements,
+            earned,
+            timesOf(showing.id),
+          )}
           onClose={() => setShowing(null)}
           onTake={() => {
             setAsking(showing)
@@ -304,6 +401,7 @@ function ItemDetail({
   missing,
   achievements,
   takenTimes,
+  once,
   lastTaken,
   canTake,
   onClose,
@@ -315,6 +413,8 @@ function ItemDetail({
   missing: Achievement[]
   achievements: Achievement[]
   takenTimes: number
+  /** Not repeatable — `spec 028`. Taken once, it is taken for good. */
+  once: boolean
   lastTaken: string | null
   canTake: boolean
   onClose: () => void
@@ -435,14 +535,24 @@ function ItemDetail({
           >
             {t("Close")}
           </button>
-          <button
-            onClick={onTake}
-            disabled={!canTake}
-            className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
-            style={{ backgroundColor: c.goalMet, color: c.onFill }}
-          >
-            {t("Take it")}
-          </button>
+          {takenTimes > 0 && once ? (
+            <span
+              className="flex items-center gap-1 px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide"
+              style={{ color: c.goalMet, backgroundColor: `${c.goalMet}1F` }}
+            >
+              <Check size={12} strokeWidth={3} />
+              {t("shop:Taken")}
+            </span>
+          ) : (
+            <button
+              onClick={onTake}
+              disabled={!canTake}
+              className={`${btnBase} px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed`}
+              style={{ backgroundColor: c.goalMet, color: c.onFill }}
+            >
+              {t(takenTimes > 0 ? "Take it again" : "Take it")}
+            </button>
+          )}
         </div>
       </div>
     </div>

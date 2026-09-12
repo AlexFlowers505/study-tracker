@@ -30,7 +30,9 @@ import {
   Area,
   CartesianGrid,
   ComposedChart,
+  Label,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -57,6 +59,16 @@ export interface StreakChartRow {
   broken: boolean
   /** Frozen rows are neither kept nor broken — they were paid for. */
   frozen?: boolean
+  /**
+   * **The rule's terms changed here** — `spec 026`.
+   *
+   * The complaint this answers is about what a chart *looks like*: thirty-six
+   * green periods under one sentence, claimed entire by whatever the rule was
+   * last edited to say. A note elsewhere on the panel does not answer it —
+   * that has to be gone to and opened, and the impression has been formed by
+   * then. The line stands inside the claim and divides it.
+   */
+  revision?: boolean
 }
 
 /** A period's verdict as a colour — the same three the strip and the cards use. */
@@ -241,6 +253,31 @@ export function StreakChart({
                 connectNulls
               />
             )}
+            {/* **Where the promise changed.** Drawn last so it sits over the
+                area rather than under it, and quiet — this is a caption on
+                the history, not a reading of it. A `ReferenceLine` is static
+                and takes no `isAnimationActive`; the dasharray fight the two
+                limit lines document is a property of `Line`, which draws
+                itself in. */}
+            {rows
+              .filter((r) => r.revision)
+              .map((r) => (
+                <ReferenceLine
+                  key={`revision-${r.label}`}
+                  x={r.label}
+                  stroke={`${c.ink}55`}
+                  strokeDasharray="2 3"
+                  strokeWidth={1}
+                >
+                  <Label
+                    value={t("terms changed")}
+                    position="insideTopLeft"
+                    fontSize={8}
+                    fontFamily="monospace"
+                    fill={`${c.ink}66`}
+                  />
+                </ReferenceLine>
+              ))}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

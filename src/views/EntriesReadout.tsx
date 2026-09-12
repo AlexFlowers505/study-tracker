@@ -35,8 +35,11 @@ import {
   pausePatch,
   pausedMinutes,
   resumePatch,
+  runningMinutes,
   stopNowPatch,
 } from "../lib/entries"
+import { useNow } from "../ui/useNow"
+import { edgeFade, useScrollEdges } from "../ui/useScrollEdges"
 /** The three controls on a running session, all the same shape. */
 const runBtn = (roomy?: boolean) =>
   `${btnBase} shrink-0 flex items-center justify-center p-1 rounded-full ${cardTiny(roomy)}`
@@ -57,12 +60,20 @@ const runBtn = (roomy?: boolean) =>
  */
 function EntryTimeLabel({
   e,
+  live = false,
   className,
 }: {
   e: StudyEntry
+  /**
+   * A session running on a day you can still write to — `spec 028`. Its
+   * duration is counted from the start to now and kept up to date, instead
+   * of reading `0m` until it ends.
+   */
+  live?: boolean
   className?: string
 }) {
   const timed = !!(e.start && e.end)
+  const now = useNow(live && !!e.start && !e.end)
   const shared = {
     paused: pausedMinutes(e),
     running: isPaused(e),
@@ -74,7 +85,13 @@ function EntryTimeLabel({
   return (
     <EntryTime
       range={`${prefix}${e.start ?? "…"}–${e.end ?? "…"}`}
-      duration={timed ? fmtHours(e.minutes) : `${e.minutes}m`}
+      duration={
+        timed
+          ? fmtHours(e.minutes)
+          : live && e.start
+            ? fmtHours(runningMinutes(e, now))
+            : `${e.minutes}m`
+      }
       {...shared}
     />
   )
@@ -169,12 +186,23 @@ function ReadoutEntry({
         className={`pl-3 border-l-2 pt-1 ${showComment ? "" : "pb-1.5"} ${
           sticky ? "sticky top-6 z-[1]" : ""
         } ${
-          onEdit ? "cursor-pointer hover:bg-ink/[0.05] rounded-r" : ""
+          // The wash eases in rather than snapping — `transition-colors`,
+          // since nothing else about the row moves.
+          onEdit
+            ? "cursor-pointer hover:bg-ink/[0.05] rounded-r transition-colors duration-150"
+            : ""
         }`}
         style={{ ...rail, ...(sticky ? surface : {}) }}
       >
         <div className={`flex items-center gap-1.5 ${cardSmall(roomy)} font-mono text-ink/70`}>
-          <EntryTimeLabel e={entry} className="text-ink/45 shrink-0" />
+          <EntryTimeLabel
+            e={entry}
+            // `onEndNow` is handed down exactly for a running session on a
+            // day that can still be written, which is when a live figure
+            // means anything.
+            live={!!onEndNow}
+            className="text-ink/45 shrink-0"
+          />
           {/* **Glyphs, not words, and a tooltip each.** There are three of
               them now — pause, resume, stop — and three little pills of
               uppercase type is a sentence to read on a line that already
@@ -289,16 +317,22 @@ export interface EntrySnapshot {
  * eight props because it is all-or-nothing: the day dialog's own readout is
  * strictly read-only and hands none of it down.
  */
-/** Counters recorded against a slot, shown under its heading. */
+/**
+ * Counters recorded against a slot, shown under its heading.
+ *
+ * The handlers are absent on a day that can no longer be written — the rows
+ * are still drawn, as plain pills, because a sealed day reads and only stops
+ * changing.
+ */
 export interface ReadoutCounters {
   units: CounterUnit[]
   counters: DayCounters
   /** `slotId:unitId` of the row open as a form, if any. */
-  openKey: string | null
-  onOpen: (slotId: string, unitId: string, original: number) => void
-  onChange: (next: DayCounters) => void
-  onCancel: () => void
-  onClose: () => void
+  openKey?: string | null
+  onOpen?: (slotId: string, unitId: string, original: number) => void
+  onChange?: (next: DayCounters) => void
+  onCancel?: () => void
+  onClose?: () => void
 }
 
 export interface ReadoutEditing {
@@ -346,6 +380,9 @@ export function EntriesReadout({
   /** Full-width card — see `cardTiny` / `cardSmall`. */
   roomy?: boolean
 }) {
+  const t = useT()
+  // Above the early return, as every hook must be.
+  const { attach: attachList, end: moreBelow } = useScrollEdges()
   const hasAny = slots.some((s) => (cells[s.id] || []).length > 0)
   // A slot can hold counters and no sessions — three lessons logged in the
   // morning without a timed entry. The list has to appear for those too, or
@@ -364,11 +401,29 @@ export function EntriesReadout({
   const stickyStyle = capped ? surface : undefined
   return (
     <div
+      ref={attachList}
+      /* **A soft foot while there is more below**, the one thing a capped
+         week card never said. Four cards in a row cut off mid-entry look
+         exactly like four cards that end there; the hairline scrollbar was
+         the only difference. The same `.edge-fade-y` Setup's body wears.
+
+         **The foot only, never the head**: the slot and entry headers are
+         sticky, so the top of this box is always the header of whatever is
+         scrolling under it — which already says there is more above — and a
+         mask there would fade the very row that stays put to say so. */
+      className={capped ? "max-h-64 overflow-y-auto pr-1 edge-fade-y" : ""}
+      style={capped ? edgeFade(false, moreBelow) : undefined}
+    >
+    <div
       // Always stacked, never columns. The slots are a sequence — morning
       // then daytime then evening — and side by side that order stops being
       // readable, which is why the wide layout the Day view and the dialog
       // used to get was dropped rather than made responsive.
-      className={`space-y-2.5 ${capped ? "max-h-64 overflow-y-auto pr-1" : ""}`}
+      //
+      // Its own box inside the scroller, so `useScrollEdges` observes the
+      // whole list: an entry added to the last slot grows this, and never
+      // the first slot it would otherwise be watching.
+      className="space-y-2.5"
     >
       {slots.map((slot) => {
         const entries = cells[slot.id] || []
@@ -417,7 +472,7 @@ export function EntriesReadout({
                   card's own "+" and then correcting the slot in the dialog. */}
               {onSlotAdd && (
                 <span className="ml-auto flex items-center">
-                  <Tip text={`Add to ${slot.label}`}>
+                  <Tip text={t("Add to {slot}", { slot: slot.label })}>
                     <button
                       onClick={(ev) => {
                         ev.stopPropagation()
@@ -444,8 +499,11 @@ export function EntriesReadout({
                     ? slotCounters.openKey.slice(slot.id.length + 1)
                     : null
                 }
-                onOpen={(unitId, original) =>
-                  slotCounters.onOpen(slot.id, unitId, original)
+                onOpen={
+                  slotCounters.onOpen
+                    ? (unitId, original) =>
+                        slotCounters.onOpen?.(slot.id, unitId, original)
+                    : undefined
                 }
                 onChange={slotCounters.onChange}
                 onCancel={slotCounters.onCancel}
@@ -542,6 +600,7 @@ export function EntriesReadout({
           </div>
         )
       })}
+    </div>
     </div>
   )
 }

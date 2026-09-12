@@ -49,7 +49,6 @@
 import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
 import {
-  ChevronRight,
   Copy,
   Gauge,
   Hourglass,
@@ -128,6 +127,7 @@ import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { segBtn, segBtnStyle } from "../ui/buttonStyles"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
+import { Fold } from "../ui/Fold"
 import { Pills } from "../ui/Pills"
 import { ruleText } from "../lib/supervisor"
 import { Sentence } from "../ui/Sentence"
@@ -161,59 +161,6 @@ const conditionHelp = () =>
  * tall, and the eye has to pair them back up on every row. Above is where the
  * question goes, and the answer under it.
  */
-/**
- * A refinement, folded away with its current value on the lid.
- *
- * The rule form grew from four fields to about twenty, and the answer to that
- * is not smaller type — it is that **most of them are refinements of an answer
- * you have already given**. Judged by the day, at least two hours: that is a
- * rule. Which slots, which weekdays, what it costs to slip and when it starts
- * are all *and also*, and a form that asks all of them at once reads as twenty
- * equal questions.
- *
- * **The summary is what makes folding safe.** A closed fold that says nothing
- * hides state; one that says `Mon, Wed, Fri` or `the whole day` is a sentence
- * you can check without opening anything, and you open only the one that is
- * wrong.
- *
- * Native `<details>`, not a `useState` toggle. It is Baseline widely
- * available, it is keyboard- and screen-reader-correct with no ARIA of our
- * own, and — the part that matters in a twenty-field form — the browser's own
- * find-in-page reveals a closed fold that contains the match.
- */
-const Fold = ({
-  title,
-  summary,
-  defaultOpen = false,
-  children,
-}: {
-  title: string
-  /** What it currently says, read without opening it. */
-  summary: ReactNode
-  defaultOpen?: boolean
-  children: ReactNode
-}) => (
-  <details
-    open={defaultOpen}
-    className="group rounded-xl bg-ink/[0.03] open:bg-ink/[0.05]"
-  >
-    <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden rounded-xl hover:bg-ink/[0.04]">
-      <ChevronRight
-        size={11}
-        className="shrink-0 text-ink/35 transition-transform duration-150 group-open:rotate-90"
-      />
-      <span className="shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/50">
-        {title}
-      </span>
-      <span className="ml-auto min-w-0 truncate text-[10px] font-mono text-ink/40 group-open:opacity-0 transition-opacity">
-        {summary}
-      </span>
-    </summary>
-    {/* `fold-body` is what arrives — see App.css, and the note there on why
-        this is the content moving rather than the box. */}
-    <div className="fold-body px-3 pb-3 pt-1 space-y-2">{children}</div>
-  </details>
-)
 
 /**
  * **Two named modes, each saying what it is for.**

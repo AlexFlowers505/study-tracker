@@ -245,6 +245,8 @@ export const dayStateSurface = (
   if (goalOutcome === "met") return cellSurface(`${c.goalMet}${a}`, c.page)
   if (goalOutcome === "frozen") return cellSurface(`${c.freeze}${a}`, c.page)
   if (goalOutcome === "missed") return cellSurface(`${c.exam}${a}`, c.page)
+  // A grey day wears `gone`: both mean *nothing left to do here*.
+  if (goalOutcome === "lost") return cellSurface(`${c.gone}${a}`, c.page)
   return cellSurface(null, c.card)
 }
 

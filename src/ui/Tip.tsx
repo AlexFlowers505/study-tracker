@@ -26,14 +26,27 @@ const TIP_FLIP_THRESHOLD = 44
 
 export type TipSide = "top" | "bottom" | "left"
 
+/**
+ * **The moment the last bubble went away.** Module-level because it is about
+ * the pointer, not about any one tooltip: moving along a row of badges on a
+ * day card closes one bubble and opens the next within a few milliseconds,
+ * and replaying the 125ms arrival on each of them makes the row feel slower
+ * than it is. Once one bubble has been shown, its neighbours appear at once —
+ * the first still arrives, the rest are simply there.
+ */
+let lastHiddenAt = 0
+const INSTANT_WITHIN_MS = 300
+
 interface TipBubbleProps {
   box: DOMRect
   text: ReactNode
   multiline: boolean
   side: TipSide
+  /** Shown straight after another bubble — no arrival. See `lastHiddenAt`. */
+  instant: boolean
 }
 
-function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
+function TipBubble({ box, text, multiline, side, instant }: TipBubbleProps) {
   /* A tall bubble anchored above its trigger runs off the top of the window,
      and the flip threshold above cannot see that coming: it knows where the
      trigger is, not how many lines the text will take. The long "how this
@@ -142,7 +155,7 @@ function TipBubble({ box, text, multiline, side }: TipBubbleProps) {
     >
       <span
         style={{ transformOrigin: origin }}
-        className={`tip-in block rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
+        className={`${instant ? "" : "tip-in "}block rounded-lg bg-ink text-page text-[10px] font-mono leading-snug px-2 py-1.5 shadow-lg ${
           multiline
             ? "whitespace-pre-line max-w-[220px] text-left"
             : "whitespace-nowrap"
@@ -182,6 +195,7 @@ export function Tip({
 }: TipProps) {
   const triggerRef = useRef<HTMLSpanElement>(null)
   const [box, setBox] = useState<DOMRect | null>(null)
+  const [instant, setInstant] = useState(false)
   const timer = useRef<number | undefined>(undefined)
 
   // A pending bubble outlives its trigger otherwise — the picker closes, the
@@ -222,7 +236,9 @@ export function Tip({
     )
 
   const show = () => {
-    if (triggerRef.current) setBox(triggerRef.current.getBoundingClientRect())
+    if (!triggerRef.current) return
+    setInstant(Date.now() - lastHiddenAt < INSTANT_WITHIN_MS)
+    setBox(triggerRef.current.getBoundingClientRect())
   }
   const showAfterDwell = () => {
     if (!delay) return show()
@@ -231,6 +247,7 @@ export function Tip({
   }
   const hide = () => {
     window.clearTimeout(timer.current)
+    if (box) lastHiddenAt = Date.now()
     setBox(null)
   }
 
@@ -246,7 +263,13 @@ export function Tip({
       {children}
       {box &&
         createPortal(
-          <TipBubble box={box} text={text} multiline={multiline} side={side} />,
+          <TipBubble
+            box={box}
+            text={text}
+            multiline={multiline}
+            side={side}
+            instant={instant}
+          />,
           document.body,
         )}
     </span>

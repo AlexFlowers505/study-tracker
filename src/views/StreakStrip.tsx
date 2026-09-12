@@ -29,7 +29,9 @@ import { Sentence } from "../ui/Sentence"
 /** The six things a day can be to a streak. `unjudged` covers both "the rule
  *  does not apply" and "outside the period"; `watching` is a rule in force on
  *  a period it can neither win nor lose — a weekly rule's partial first week,
- *  `spec 018` — and wears no tint for the same reason `pending` does not. */
+ *  `spec 018` — and wears no tint for the same reason `pending` does not.
+ *  `lost` is a day inside a week that can no longer be won — `spec 027` —
+ *  and wears `gone`, because both mean *nothing left to do here*. */
 export type StripState =
   | "met"
   | "frozen"
@@ -37,6 +39,7 @@ export type StripState =
   | "pending"
   | "unjudged"
   | "watching"
+  | "lost"
 
 export interface StripCell {
   key: DayKey
@@ -64,6 +67,13 @@ export interface StripCell {
       /** Affordable **on its own**: they are bought one at a time. */
       ok: boolean
       frozen: boolean
+      /**
+       * A weekly condition's site — `spec 027`. Its receipt is drawn by the
+       * colour of the days it covered, never by this cell's corner: the
+       * week's list rides on every day the week broke, and a Monday purchase
+       * listed on the Thursday did not buy anything for the Thursday.
+       */
+      week?: boolean
       onSpend: () => void
     }[]
   }
@@ -122,7 +132,9 @@ export function StreakStrip({
         ? c.freeze
         : state === "missed"
           ? c.exam
-          : null
+          : state === "lost"
+            ? c.gone
+            : null
 
   return (
     <div className="mb-3">
@@ -163,7 +175,8 @@ export function StreakStrip({
              colour still answers *is this saved*, and a small snowflake in the
              corner answers *is anything here bought* — two different questions
              that were sharing one signal, with the second one silent. */
-          const paid = cell.freeze?.items.filter((i) => i.frozen).length ?? 0
+          const paid =
+            cell.freeze?.items.filter((i) => i.frozen && !i.week).length ?? 0
           const part = paid > 0 && cell.state !== "frozen"
           /* **A freezable day says so at rest.**
 

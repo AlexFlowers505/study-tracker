@@ -234,8 +234,11 @@ export function runProgress(
         continue
       }
       const { state } = dayReport(project, key, todayKey, ctx)
+      // A grey day is neither held nor broken — `spec 027`.
       marks.push(
-        state === "unjudged" || state === "pending" ? null : heldUp(state),
+        state === "unjudged" || state === "pending" || state === "lost"
+          ? null
+          : heldUp(state),
       )
     }
   }

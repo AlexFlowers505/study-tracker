@@ -56,7 +56,6 @@ import { setCheck } from "./lib/checks"
 import {
   lockFrom,
   ruleStatus,
-  violationKey,
   streakContext,
 } from "./lib/customStreaks"
 import { dayReport, keptDays, keptWeeks } from "./lib/dayVerdict"
@@ -69,6 +68,8 @@ import { makeIsIgnored } from "./lib/stats"
 import { balanceOf, dueMarks } from "./lib/balance"
 import { dueAchievements } from "./lib/achievements"
 import { purchaseOf, takenItemIds } from "./lib/shop"
+import { Celebration } from "./ui/Celebration"
+import type { CelebrationMoment } from "./ui/Celebration"
 import {
   applyProposal,
   hasSupervisor,
@@ -668,7 +669,20 @@ export default function StudyTrackerApp() {
       .filter((r) => r.id === soloRule)
       .map((r) => ({ ...r, inDayVerdict: true }))
     if (!only.length) return project
-    return { ...project, settings: { ...project.settings, streakRules: only } }
+    /* **And it must not read the day ledger either** — `spec 026`. The
+       cascade answers a sealed day from its mark, which is a fact about
+       *every* rule that voted; handed to solo it would drown the projection,
+       so every sealed day came back wearing the composite's verdict and the
+       whole view became a no-op on the only stretch worth looking at.
+       Withholding it is the same rule this projection already lives by:
+       history is not a drawing, and a drawing may not read it. What solo does
+       keep is the terms history — asking *how did this one rule really do*
+       still has to be asked of the promise that was actually in force. */
+    return {
+      ...project,
+      dayLedger: {},
+      settings: { ...project.settings, streakRules: only },
+    }
   }, [project, soloRule, streakRules])
 
   const verdictCtx = useMemo(() => streakContext(soloProject), [soloProject])
@@ -720,12 +734,6 @@ export default function StudyTrackerApp() {
   )
 
   const kept = useMemo(() => keptDays(soloProject), [soloProject])
-  /* **The run at risk, in the one place you look before you look anywhere.**
-     `atStake` and `facing` disagree only while today or yesterday can still
-     change the answer, which is exactly when the row should say so — see
-     `KeptDays`. Worked out here because both the badge in the bar and the
-     figure under it are drawn from it and must not differ. */
-  const keptRisky = !!kept && kept.atStake > kept.facing && kept.atStake > 0
   const keptWeekly = useMemo(() => keptWeeks(soloProject), [soloProject])
 
   /**
@@ -765,6 +773,32 @@ export default function StudyTrackerApp() {
      have something wrong. Counted by rule, not by notice — a rule with a
      danger and a warning is one rule in trouble. */
   const counted = useMemo(() => countByLevel(noticeList), [noticeList])
+  /* **The run at risk, in the one place you look before you look anywhere.**
+     `atStake` and `facing` disagree whenever today or yesterday could still
+     change the answer — which, with a floor owed, is from the first minute of
+     every morning, so the pair was drawn nearly all the time and stopped
+     meaning anything. It is drawn now only **while the board has a `danger`**
+     (`spec 028`): the same moment the board itself says the run is in trouble,
+     read off the same notices, so the two can never disagree about it. Worked
+     out here because both the badge in the bar and the figure under it are
+     drawn from it and must not differ. */
+  const keptRisky =
+    !!kept &&
+    counted.danger > 0 &&
+    kept.atStake > kept.facing &&
+    kept.atStake > 0
+  /* **The rules nothing can save today** — `spec 027`, part 5. A rule's own
+     figure draws `36 → 0` only while a freeze can still buy the break back;
+     for these it is the sealed figure alone. */
+  const goneRules = useMemo(
+    () =>
+      new Set(
+        noticeList
+          .filter((n) => n.level === "gone" && n.ruleId)
+          .map((n) => n.ruleId as string),
+      ),
+    [noticeList],
+  )
 
   /**
    * **Everything the toggle row can open, and how to shut it.**
@@ -835,7 +869,7 @@ export default function StudyTrackerApp() {
       if (openStreak !== null)
         out.push({
           id: "sec-kept",
-          label: expanded ? expanded.rule.label : t("The composite"),
+          label: expanded ? expanded.rule.label : t("Overall streak"),
           tint: expanded ? expanded.rule.color : c.project,
           iconName: expanded ? expanded.rule.iconName : undefined,
           icon: expanded ? undefined : Flame,
@@ -910,18 +944,17 @@ export default function StudyTrackerApp() {
   /**
    * Spend a freeze for one rule on one day.
    *
-   * Append-only, like `day.frozen`: a rule already frozen on that day is left
-   * alone rather than added twice, and nothing here ever takes one back.
+   * Append-only, like `day.frozen`: nothing here ever takes one back.
+   *
+   * **A second receipt on one site is a top-up, not a duplicate** —
+   * `spec 027`, part 3. This refused one, which is half of why a violation
+   * that grew after it was paid for could never be paid for again. What
+   * stops paying twice now is the offer itself: it is priced at what is left,
+   * and a site with nothing left is not offered.
    */
   const spendRuleFreeze = (ask: FreezeAsk) => {
+    if (ask.cost <= 0) return
     const existing = project.days[ask.dayKey]?.ruleFreezes || []
-    const already = existing.some(
-      (f) =>
-        typeof f !== "string" &&
-        f.ruleId === ask.ruleId &&
-        violationKey(f) === ask.violationKey,
-    )
-    if (already) return
     const [clauseId = "", targetId = "", slotId = ""] = ask.violationKey.split("|")
     /* **The price is stamped here and never recomputed.** That one field is
        the whole of `spec 017`: a purchase is a thing that happened, and it
@@ -968,6 +1001,24 @@ export default function StudyTrackerApp() {
     )
   }, [loaded, loadFailed, marksDue, project, patchProject])
 
+  /* **What is being celebrated, in order** — `spec 028`. A queue rather than
+     one slot, because a day that seals can reach two achievements at once and
+     each deserves its own moment. Keyed, so an effect running twice (as React
+     runs them in development) cannot queue the same moment twice. */
+  const [celebrations, setCelebrations] = useState<CelebrationMoment[]>([])
+  const celebrate = useCallback(
+    (moments: CelebrationMoment[]) =>
+      setCelebrations((q) => [
+        ...q,
+        ...moments.filter((m) => !q.some((x) => x.key === m.key)),
+      ]),
+    [],
+  )
+  const doneCelebrating = useCallback(
+    () => setCelebrations((q) => q.slice(1)),
+    [],
+  )
+
   // Seal whatever achievements have been reached. Written once and never
   // recomputed: what was reached was reached, and the ignore-on-conflict
   // upsert makes a replay harmless.
@@ -975,12 +1026,33 @@ export default function StudyTrackerApp() {
     if (!loaded || loadFailed || !badgesDue.length) return
     const earned = { ...(project.earned || {}) }
     badgesDue.forEach((b) => (earned[b.achievementId] = b))
+    /* **And say so** — `spec 028`. This is the moment the achievement is
+       reached, and it used to pass in silence: sealed here, visible only in a
+       panel you had to think to open. */
+    const defs = project.settings.achievements || []
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    celebrate(
+      badgesDue.flatMap((b) => {
+        const a = defs.find((x) => x.id === b.achievementId)
+        return a
+          ? [
+              {
+                key: `earned:${b.achievementId}`,
+                kind: "achievement" as const,
+                title: a.label,
+                iconName: a.iconName,
+                color: a.color,
+                points: b.reward,
+              },
+            ]
+          : []
+      }),
+    )
     patchProject(
       { earned },
       badgesDue.map((b) => opEarned(project.id, b.achievementId)),
     )
-  }, [loaded, loadFailed, badgesDue, project, patchProject])
+  }, [loaded, loadFailed, badgesDue, project, patchProject, celebrate])
 
   /* ---- The second person, `spec 010` part 7 ---------------------------- */
 
@@ -1097,6 +1169,18 @@ export default function StudyTrackerApp() {
       { purchases: { ...(project.purchases || {}), [bought.id]: bought } },
       [opPurchase(project.id, bought.id)],
     )
+    // The ceremony's last step — `spec 028`. It asked, it said what it would
+    // leave you with, and now it says congratulations.
+    celebrate([
+      {
+        key: `bought:${bought.id}`,
+        kind: "reward",
+        title: item.label,
+        iconName: item.iconName,
+        color: item.color,
+        points: item.price,
+      },
+    ])
   }
 
   // An invite link opened. Handled once and then scrubbed from the address
@@ -1162,7 +1246,7 @@ export default function StudyTrackerApp() {
           if (!allowed) rules[i] = refuse(rules[i])
           else if (p.action === "remove")
             rules = rules.filter((r) => r.id !== p.subjectId)
-          else rules[i] = applyProposal(p, rules[i])
+          else rules[i] = applyProposal(p, rules[i], streakContext(project))
         }
       }
       proposals[p.id] = { ...p, state: "closed" }
@@ -1675,6 +1759,8 @@ export default function StudyTrackerApp() {
               setOpenStreak(openStreak === KEPT_PANEL ? null : KEPT_PANEL)
             }
             troubled={troubledCount}
+            goneRules={goneRules}
+            showStake={keptRisky}
             active={openStreak}
             onSelect={setOpenStreak}
           />
@@ -1958,6 +2044,14 @@ export default function StudyTrackerApp() {
             </button>
           </div>
         </div>
+      )}
+
+      {celebrations[0] && (
+        <Celebration
+          key={celebrations[0].key}
+          moment={celebrations[0]}
+          onDone={doneCelebrating}
+        />
       )}
 
       {freezeAsk && (

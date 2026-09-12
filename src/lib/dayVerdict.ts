@@ -26,16 +26,33 @@
 import type { DayKey, GoalOutcome, Project, StreakRule } from "../types/model"
 import type { RuleState, StreakContext } from "./customStreaks"
 import {
-  countsOn,
+  countedStateOn,
+  countsState,
+  q,
+  ruleHeldOn,
   ruleStateOn,
   streakContext,
   weekFloorPace,
 } from "./customStreaks"
 import { addDays, fromKey, startOfWeek, toKey } from "./date"
 import { isEditableDay } from "./freezes"
+import { t } from "./i18n"
+import { makeIsIgnored } from "./stats"
 
-/** The day's own standing, drawn wherever a day is drawn. */
-export type DayVerdict = "kept" | "missed" | "frozen" | "pending" | "unjudged"
+/**
+ * The day's own standing, drawn wherever a day is drawn.
+ *
+ * **`lost` is the grey day** — `spec 027`. A voting rule's week is already
+ * lost and nothing else broke: the day does not grow the run, does not break
+ * it, and pays nothing.
+ */
+export type DayVerdict =
+  | "kept"
+  | "missed"
+  | "frozen"
+  | "pending"
+  | "lost"
+  | "unjudged"
 
 export interface RuleReading {
   rule: StreakRule
@@ -55,6 +72,15 @@ export interface RuleReading {
    * true. What it must never be is a cost.
    */
   counts: boolean
+  /**
+   * **The same day as the tally sees it** — `spec 026`, part 7.
+   *
+   * A condition inside the partial week it was written into is drawn and
+   * never counted, so `state` can be `missed` here while this is `watching`.
+   * The ring reads `state`; the verdict, the streak and the balance read
+   * this. `counts` is simply whether this one is a verdict at all.
+   */
+  counted: RuleState
   /**
    * **How much of a weekly floor is done, as of this day** — `spec 018`.
    *
@@ -131,31 +157,82 @@ export function dayReport(
   todayKey: DayKey,
   ctx: StreakContext = streakContext(project),
 ): DayReport {
+  const live = readDay(project, dayKey, todayKey, ctx)
+
+  /* **Tier 1 of the cascade** — `spec 026`. A day that was marked when it left
+     the writing window has an answer, and it is that one. Nothing about a rule
+     edited since — a condition added, a figure moved, a vote withdrawn — may
+     reach back and change what a finished day came to, because that day has
+     already paid into an account somebody has spent from.
+
+     **The mark decides whether it held; the reading decides which kind of
+     holding it was.** A `DayMark` carries one boolean and `DayVerdict` carries
+     five states, two of which hold up — so read alone, the ledger would turn
+     every frozen day in your history plain green, and a freeze you paid for
+     and can no longer see is worse than no record at all. `day.ruleFreezes` is
+     itself append-only with a stamped price, so the reading reconstructs that
+     half exactly.
+
+     The two can disagree by one route only: an engine fix that changes how a
+     sealed day reads — `migrations/023` happening again. Then the day draws
+     `kept` with arcs that do not add up to it, which is the right way round.
+     The ledger is the fact; the arcs are the explanation, and a stale
+     explanation costs less than a fact that moves. */
+  const mark = project.dayLedger?.[dayKey]
+  if (!mark) return live
+  return {
+    ...live,
+    state: mark.kept ? (live.state === "frozen" ? "frozen" : "kept") : "missed",
+  }
+}
+
+/**
+ * The day judged from the rules — tiers 2 and 3 of the cascade.
+ *
+ * **Which terms** is the whole of the difference between them. A day that is
+ * past and outside the writing window is history, and history is judged by
+ * the terms that were in force on it (`ruleAsOf`). Today and yesterday are
+ * not history — they are days you can still write to — so they are judged by
+ * the promise you have now, which is what makes a condition added on a
+ * Wednesday apply to that Wednesday and to the week it sits in.
+ */
+function readDay(
+  project: Project,
+  dayKey: DayKey,
+  todayKey: DayKey,
+  ctx: StreakContext,
+): DayReport {
   const rules = votersFor(project.settings.streakRules || [], dayKey)
   if (!rules.length) return NOTHING
 
   const readings: RuleReading[] = rules
     .map((rule) => {
+      // The terms this day was actually held to. The live rule is still what
+      // is handed back: a label, a colour and a weight are not terms, and the
+      // drawing wants the rule as it is named today.
+      const held = ruleHeldOn(rule, dayKey, todayKey, ctx)
       /* **Both halves of the rule, folded** — `spec 025`. A rule can hold
          conditions judged by the day and conditions judged by the week, and
          the arc has to be one arc: `ruleStateOn` reads each half through the
          function that has always read it and takes the worse. */
-      const state = ruleStateOn(rule, ctx, project.days, dayKey, todayKey)
+      const state = ruleStateOn(held, ctx, project.days, dayKey, todayKey)
+      /* **Read twice, because they are two questions** — `spec 026`. What is
+         worth drawing about this day and what this day is worth part company
+         for exactly one thing, and a mixed rule made it reachable: a weekly
+         condition written into the middle of a week breaks it visibly and
+         must not break the tally, while the rule's daily half goes on voting
+         through the same day. */
+      const counted = countedStateOn(held, ctx, project.days, dayKey, todayKey)
       /* Paced only where the arc would otherwise be a claim: a weekly floor
          that is still winnable. A miss keeps its full length — drawn as
          partial fill it would merge *broken* with *in progress*, which are
          the two states the pace arc exists to separate. */
       const pace =
         state === "met"
-          ? (weekFloorPace(rule, ctx, project.days, dayKey, todayKey) ??
+          ? (weekFloorPace(held, ctx, project.days, dayKey, todayKey) ??
             undefined)
           : undefined
-      return {
-        rule,
-        state,
-        counts: state !== "watching" && countsOn(rule, dayKey),
-        pace,
-      }
+      return { rule, state, counted, counts: countsState(counted), pace }
     })
     .filter((r) => r.state !== "unjudged")
 
@@ -172,7 +249,7 @@ export function dayReport(
      `judged` and the verdict below see only the ones that count. */
   const voting = readings.filter((r) => r.counts)
   const kept = voting.filter(
-    (r) => r.state === "met" || r.state === "frozen",
+    (r) => r.counted === "met" || r.counted === "frozen",
   ).length
   const base = { readings, kept, judged: voting.length }
 
@@ -183,9 +260,17 @@ export function dayReport(
   // Missed beats pending: one rule already broken decides the day whatever the
   // others are still doing. Frozen is a kept day wearing the freeze colour, so
   // it is worked out after the verdict rather than as one of its outcomes.
-  if (voting.some((r) => r.state === "missed")) return { ...base, state: "missed" }
-  if (voting.some((r) => r.state === "pending")) return { ...base, state: "pending" }
-  if (voting.some((r) => r.state === "frozen")) return { ...base, state: "frozen" }
+  if (voting.some((r) => r.counted === "missed"))
+    return { ...base, state: "missed" }
+  if (voting.some((r) => r.counted === "pending"))
+    return { ...base, state: "pending" }
+  /* **A lost week outranks a freeze** — `spec 027`. The run cannot grow
+     through a week one of its rules can no longer win, however the others
+     were held up. */
+  if (voting.some((r) => r.counted === "lost"))
+    return { ...base, state: "lost" }
+  if (voting.some((r) => r.counted === "frozen"))
+    return { ...base, state: "frozen" }
   return { ...base, state: "kept" }
 }
 
@@ -204,11 +289,81 @@ export const asOutcome = (state: DayVerdict): GoalOutcome =>
       ? "frozen"
       : state === "missed"
         ? "missed"
-        : null
+        : state === "lost"
+          ? "lost"
+          : null
 
 /** Kept and frozen both count; a frozen day was paid for, not failed. */
 export const heldUp = (state: DayVerdict): boolean =>
   state === "kept" || state === "frozen"
+
+/**
+ * **What a day's colour means, in words** — `spec 027`, part 6.
+ *
+ * One sentence for the state the day is drawn in, then one line each for a
+ * freeze or a lost week that the colour does not show. The ring, the month
+ * cell and the heatmap all print these; `CONTEXT.md` lists them under
+ * *Цвета дня*, and the two must say the same thing.
+ */
+export function verdictLines(report: DayReport, provisional = false): string[] {
+  const voting = report.readings.filter((r) => r.counts)
+  const names = (want: RuleState) =>
+    voting
+      .filter((r) => r.counted === want)
+      .map((r) => q(r.rule.label))
+      .join(", ")
+  const missed = names("missed")
+  const lost = names("lost")
+  const frozen = names("frozen")
+  const kept = names("met")
+
+  const lines: string[] = []
+  switch (report.state) {
+    case "unjudged":
+      return [t("No rule votes on this day")]
+    case "missed":
+      lines.push(
+        missed
+          ? t("Day not kept: {rules} broke", { rules: missed })
+          : t("Day not kept"),
+      )
+      break
+    case "pending":
+      lines.push(
+        t("The day is still running: {rules} still short", {
+          rules: names("pending"),
+        }),
+      )
+      break
+    case "lost":
+      lines.push(
+        t(
+          "Week lost: {rules}. The other rules held today. Until the week ends the overall streak does not grow and no points are paid; the streaks of the rules that held still grow.",
+          { rules: lost },
+        ),
+      )
+      break
+    case "frozen":
+      lines.push(
+        kept
+          ? t("Frozen: {frozen}. Kept: {kept}", { frozen, kept })
+          : t("Frozen: {frozen}", { frozen }),
+      )
+      break
+    case "kept":
+      lines.push(
+        provisional
+          ? t("The day is still running — everything holds so far")
+          : t("Every rule kept"),
+      )
+      break
+  }
+  if (report.state !== "frozen" && frozen)
+    lines.push(t("Frozen: {frozen}", { frozen }))
+  if (report.state !== "lost" && lost)
+    lines.push(t("Week lost: {rules}", { rules: lost }))
+  return lines
+}
 
 /**
  * The first day any rule had a vote — where a walk over the composite has to
@@ -293,11 +448,23 @@ export function keptDays(project: Project, today = new Date()): KeptDays | null 
   let facing = 0
   const atRisk: string[] = []
 
+  const isIgnored = makeIsIgnored(project.weekIgnore, project.monthIgnore)
+
   for (let d = fromKey(from); toKey(d) <= todayKey; d = addDays(d, 1)) {
     const key = toKey(d)
+    // **A day excluded from the statistics is excluded here too** —
+    // `spec 026`, part 3. `dueMarks` has always skipped these, so such a day
+    // never gets a mark and the run was being broken by the one day the
+    // project was told to look away from. This walk was the last reader of
+    // `makeIsIgnored` that never asked it.
+    if (isIgnored(key, project.days[key])) continue
     const report = dayReport(project, key, todayKey, ctx)
     const state = report.state
-    if (state === "unjudged") continue
+    /* A grey day is neither — `spec 027`. Not a day kept, since a week one
+       of the rules can no longer win is not one the run may grow through, and
+       not a day missed, since nothing happened on it. Skipped by all three
+       readings alike. */
+    if (state === "unjudged" || state === "lost") continue
     const holds = heldUp(state)
     // Today and yesterday: the window in which a verdict is not yet a fact.
     const editable = isEditableDay(key, todayKey)
@@ -332,7 +499,8 @@ export function keptDays(project: Project, today = new Date()): KeptDays | null 
     if (editable && !holds)
       report.readings
         .filter(
-          (r) => r.counts && (r.state === "pending" || r.state === "missed"),
+          (r) =>
+            r.counts && (r.counted === "pending" || r.counted === "missed"),
         )
         .forEach((r) => {
           if (!atRisk.includes(r.rule.label)) atRisk.push(r.rule.label)
@@ -381,6 +549,8 @@ export function keptWeeks(project: Project, today = new Date()): KeptWeeks | nul
   const todayKey = toKey(today)
   if (from > todayKey) return { current: 0, best: 0, weeks: [] }
 
+  const isIgnored = makeIsIgnored(project.weekIgnore, project.monthIgnore)
+
   const weeks: WeekMark[] = []
   for (
     let monday = startOfWeek(fromKey(from));
@@ -393,6 +563,10 @@ export function keptWeeks(project: Project, today = new Date()): KeptWeeks | nul
       // Days before the first rule started, and days that have not happened,
       // are not this week's business either way.
       if (key < from || key > todayKey) continue
+      // Nor is a day the project was told to look away from — `spec 026`,
+      // part 3. An ignored week is every day of it, so such a week folds to
+      // `unjudged` and drops out of the run rather than breaking it.
+      if (isIgnored(key, project.days[key])) continue
       states.push(dayReport(project, key, todayKey, ctx).state)
     }
     weeks.push({ start: toKey(monday), state: foldVerdicts(states) })
@@ -452,11 +626,18 @@ export function keptBreakdown(
   const todayKey = toKey(today)
   const rows = new Map<string, KeptBreakdownRow>()
 
+  const isIgnored = makeIsIgnored(project.weekIgnore, project.monthIgnore)
+
   for (let d = fromKey(from); toKey(d) <= to; d = addDays(d, 1)) {
     const key = toKey(d)
     if (key > todayKey) break
+    // The breakdown explains the streak, so it counts the days the streak
+    // counts — `spec 026`, part 3. Blaming a rule for a day the composite
+    // never held against it is the panel disagreeing with the card it opens
+    // from.
+    if (isIgnored(key, project.days[key])) continue
     const { readings } = dayReport(project, key, todayKey, ctx)
-    const missing = readings.filter((r) => r.counts && r.state === "missed")
+    const missing = readings.filter((r) => r.counts && r.counted === "missed")
     // A reading that does not vote is drawn and never blamed — see
     // `RuleReading.counts`.
     for (const reading of readings.filter((r) => r.counts)) {
@@ -509,7 +690,9 @@ export function foldVerdicts(states: DayVerdict[]): DayVerdict {
   for (const state of states) {
     if (state === "unjudged") continue
     judged = true
-    if (state === "missed") return "missed"
+    // A week holding a grey day is not a week kept — `spec 027`. It always
+    // sits beside the red day that lost it, so this only says so twice.
+    if (state === "missed" || state === "lost") return "missed"
     if (state === "frozen") frozen = true
     if (state === "pending") pending = true
   }

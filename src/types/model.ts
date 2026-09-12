@@ -787,6 +787,31 @@ export interface StreakRule extends Labeled {
   looseningLog?: Loosening[]
 
   /**
+   * **Every set of terms this rule has held, and the day each began** —
+   * `spec 026`.
+   *
+   * A ledger freezes what a day came to; this is what it came to *against*.
+   * Without it the rule's current sentence — the panel's subtitle, sitting
+   * directly above thirty-six green cells — silently claims every one of
+   * them, so a rule written easy in March and made hard in September reads as
+   * though the hard version had been kept all along. Recomputation was
+   * dishonest about the past; a bare ledger is dishonest about the present.
+   *
+   * Append-only, and **snapshots rather than diffs**: the question anybody
+   * has is *what was I holding myself to in March*, and a diff log can only
+   * answer it by replaying from the beginning, across a condition schema four
+   * specs have rewritten and a third of whose fields are read through
+   * `@deprecated` fallbacks. A replay across that eventually reconstructs a
+   * rule nobody wrote, silently. A snapshot cannot.
+   *
+   * Absent means what the data meant before it existed: these terms have been
+   * these terms since `startedOn`. `revisionsOf()` is the only reader and
+   * materialises that implicit first entry, which is why there is no
+   * migration.
+   */
+  revisions?: RuleRevision[]
+
+  /**
    * The single condition a rule used to be, before it could carry several.
    * Read only through `ruleClauses()`, and left in the data so nothing anybody
    * wrote is thrown away by an upgrade.
@@ -837,6 +862,15 @@ export interface ShopItem extends Labeled {
    * can see, name or reach is worse than one that quietly lifts.
    */
   requires?: string[]
+  /**
+   * **Whether it can be taken more than once** — `spec 028`.
+   *
+   * Absent means yes, which is what every reward meant before the setting
+   * existed; a new one is written with `false`. One taken and not repeatable
+   * reads *taken* for good, and making it repeatable again is a loosening —
+   * it waits like a discount does.
+   */
+  repeatable?: boolean
   /** The day it was written. Its own grace day, like a rule's `startedOn`. */
   createdOn: DayKey
   /** No **lowering** of the price before this date. */
@@ -1138,6 +1172,33 @@ export interface Loosening {
   reason: string
 }
 
+/**
+ * One set of terms, and the first day it judged — `spec 026`.
+ *
+ * **Co-extensive with `termsOf`**, deliberately and by construction: both are
+ * built from one `termsSnapshot()`, so a term the lock protects is a term the
+ * history records. A history recording less than the lock watches would have
+ * its hole in exactly the fields somebody bothered to protect.
+ *
+ * Label, colour, icon and note are not terms and are not here. A rule renamed
+ * is the same rule, and this is not a naming history.
+ */
+export interface RuleRevision {
+  /** The first day these terms judged. */
+  from: DayKey
+  scope: StreakScope
+  clauses: StreakClause[]
+  freezesPerWeek: number
+  freezeCap: number
+  /**
+   * The project's daily goals, folded in only while a condition can still
+   * point at them. Nothing can create such a condition and `migrations/019`
+   * rewrote the ones that existed — but until it has run everywhere, such a
+   * rule's terms really do live partly in `settings`.
+   */
+  goals?: Record<number, number> | null
+}
+
 export interface RuleVerdict {
   ruleId: string
   /** The Monday of the week. */
@@ -1292,8 +1353,11 @@ export interface AppData {
  */
 export type IsIgnored = (key: DayKey, entry?: Day) => boolean
 
-/** `"frozen"` is a miss a streak freeze was spent on. See `lib/freezes.ts`. */
-export type GoalOutcome = "met" | "frozen" | "missed" | null
+/**
+ * `"frozen"` is a miss a streak freeze was spent on. See `lib/freezes.ts`.
+ * `"lost"` is a grey day — a voting rule's week already lost — `spec 027`.
+ */
+export type GoalOutcome = "met" | "frozen" | "missed" | "lost" | null
 
 export interface DayTotals {
   bySlot: Record<string, number>

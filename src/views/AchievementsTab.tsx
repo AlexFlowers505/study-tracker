@@ -19,7 +19,6 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
 import {
-  ChevronRight,
   Lock,
   Pencil,
   ShieldCheck,
@@ -52,6 +51,7 @@ import { WEEKDAY_LABELS, WEEKDAY_ORDER, fmtDateLong, toKey } from "../lib/date"
 import { BTN_SOFT, FIELD_SOFT_INLINE, btnBase, cellSurface } from "../lib/theme"
 import { AutoTextarea } from "../ui/controls"
 import { EditableList } from "../ui/EditableList"
+import { Fold } from "../ui/Fold"
 import { Pills } from "../ui/Pills"
 import { Sentence } from "../ui/Sentence"
 import { Tip } from "../ui/Tip"
@@ -109,40 +109,6 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   </div>
 )
 
-/**
- * A refinement, folded with its current value on the lid.
- *
- * The same shape and the same argument as the rule form's: a closed fold that
- * says nothing hides state, one that says `every day` or `Ever, in all` is a
- * sentence you can check without opening it. Native `<details>`, so it is
- * keyboard- and screen-reader-correct with no ARIA of ours and find-in-page
- * reveals what is inside it.
- */
-const Fold = ({
-  title,
-  summary,
-  children,
-}: {
-  title: string
-  summary: ReactNode
-  children: ReactNode
-}) => (
-  <details className="group rounded-xl bg-ink/[0.03] open:bg-ink/[0.05]">
-    <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden rounded-xl hover:bg-ink/[0.04]">
-      <ChevronRight
-        size={11}
-        className="shrink-0 text-ink/35 transition-transform duration-150 group-open:rotate-90"
-      />
-      <span className="shrink-0 text-[9px] font-mono uppercase tracking-widest text-ink/50">
-        {title}
-      </span>
-      <span className="ml-auto min-w-0 truncate text-[10px] font-mono text-ink/40 group-open:opacity-0 transition-opacity">
-        {summary}
-      </span>
-    </summary>
-    <div className="fold-body px-3 pb-3 pt-1 space-y-2">{children}</div>
-  </details>
-)
 
 /**
  * Hours and minutes, never a box of raw minutes.

@@ -27,7 +27,7 @@ import {
   dueAchievements,
   progressOf,
 } from "../src/lib/achievements"
-import { KEPT_VALUE, MISSED_COST } from "../src/lib/balance"
+import { KEPT_VALUE, MISSED_COST, dueMarks } from "../src/lib/balance"
 import { removalGate } from "../src/lib/customStreaks"
 import { notices, worstLevel } from "../src/lib/notices"
 import type { Notice, NoticeLevel } from "../src/lib/notices"
@@ -38,8 +38,16 @@ import {
   clauseSentence,
   clauseWeekReadoutParts,
   coveredDays,
+  clauseInForceFrom,
   isNarrowing,
   judgesDay,
+  ruleAsOf,
+  ruleClauses,
+  ruleEdit,
+  ruleHeldOnWeek,
+  revisionsOf,
+  termsOf,
+  termsSnapshot,
   ruleStateOn,
   readDay,
   readWeek,
@@ -55,9 +63,10 @@ import {
   weekViolationsOn,
   freezeOffers,
   freezeSpendOn,
+  runShown,
 } from "../src/lib/customStreaks"
 import { dayReport, keptDays } from "../src/lib/dayVerdict"
-import { addDays, fromKey, toKey, weekDates } from "../src/lib/date"
+import { addDays, fromKey, startOfWeek, toKey, weekDates } from "../src/lib/date"
 import { benchmarkMeter, benchmarkMinutes } from "../src/lib/benchmark"
 import { canBuy } from "../src/lib/shop"
 import { benchmarkBar } from "../src/lib/benchmark"
@@ -70,6 +79,7 @@ import type {
   Day,
   DayKey,
   Project,
+  RuleRevision,
   Slot,
   StreakClause,
   StreakRule,
@@ -2873,9 +2883,24 @@ const MIXED: { name: string; got: () => unknown; want: unknown }[] = [
     want: "missed",
   },
   {
-    name: "and leaves the days it did not break on alone",
+    /* **Reversed by `spec 027`, on purpose.** This wanted `met`: the week
+       the weekly half lost on Monday was over for it, and every other day
+       read as kept — so the run restarted in the middle of a week that could
+       no longer be won, and every further slip that week was free. A day that
+       added nothing to it is grey now: neither kept nor broken. */
+    name: "and leaves the days it did not break on grey",
     got: () => mixedOn({ [MON]: both(90, 3), [WED]: both(90, 0) }, WED),
-    want: "met",
+    want: "lost",
+  },
+  {
+    name: "a day that adds to a lost week's excess is red again",
+    got: () => mixedOn({ [MON]: both(90, 3), [WED]: both(90, 1) }, WED),
+    want: "missed",
+  },
+  {
+    name: "and a daily half broken on a grey day still decides it",
+    got: () => mixedOn({ [MON]: both(90, 3), [WED]: both(30, 0) }, WED),
+    want: "missed",
   },
   {
     name: "a weekly condition judges no single day of its own",
@@ -3062,6 +3087,324 @@ const REWARDS: { name: string; got: () => unknown; want: unknown }[] = [
   },
 ]
 
+
+/* ---- what a sealed day is worth, and what it was worth then — `spec 026` --
+
+   Two lies in opposite directions, and the same cause: a rule's terms are
+   mutable and its past was judged with whatever they are now. Tighten a rule
+   and a history you kept honestly turns red; loosen one and a history you
+   broke turns green. The ledger answers the first, the revisions answer the
+   second, and the cascade is the order they are asked in.
+
+   The cases that matter are the boundaries — what counts as history — because
+   an engine that gets the *rule* right and the *boundary* wrong applies a
+   promise made on Wednesday to next week and never to this one.
+-------------------------------------------------------------------------- */
+
+const V_TODAY: DayKey = "2026-09-07" // a Monday
+const V_YEST: DayKey = "2026-09-06" // still inside the writing window
+const V_OLD: DayKey = "2026-08-24" // a Monday, long sealed
+const V_CHANGED: DayKey = "2026-08-26" // the Wednesday of that week
+
+const easyClause = () =>
+  ({ id: "c", ...target("activity", "a-les"), min: 60 }) as unknown as StreakClause
+const hardClause = () =>
+  ({ id: "c", ...target("activity", "a-les"), min: 180 }) as unknown as StreakClause
+
+const revisionAt = (from: DayKey, clause: StreakClause): RuleRevision => ({
+  from,
+  scope: "day",
+  clauses: [clause],
+  freezesPerWeek: 0,
+  freezeCap: 0,
+})
+
+/** The rule as it stands now: three hours. It asked for one until `from`. */
+const tightened = (from: DayKey, scope: "day" | "week" = "day"): StreakRule => ({
+  ...ruleOf(hardClause(), scope),
+  startedOn: V_OLD,
+  inDayVerdict: true,
+  revisions: [
+    { ...revisionAt(V_OLD, easyClause()), scope },
+    { ...revisionAt(from, hardClause()), scope },
+  ],
+})
+
+/** The same rule with no history recorded — how it read before `spec 026`. */
+const noHistory = (rule: StreakRule): StreakRule => {
+  const copy = { ...rule }
+  delete copy.revisions
+  return copy
+}
+
+const marked = (p: Project, marks: Record<DayKey, boolean>): Project =>
+  ({
+    ...p,
+    dayLedger: Object.fromEntries(
+      Object.entries(marks).map(([date, kept]) => [
+        date,
+        { date, kept, sealedAt: "x" },
+      ]),
+    ),
+  }) as unknown as Project
+
+const stateOnOld = (
+  rule: StreakRule,
+  day: Day,
+  marks?: Record<DayKey, boolean>,
+) => {
+  const base = project(rule, { [V_OLD]: day })
+  const p = marks ? marked(base, marks) : base
+  return dayReport(p, V_OLD, V_TODAY).state
+}
+
+/** The fixture's own context — the same lists every case here reads. */
+const V_CTX = streakContext(project(ruleOf(easyClause(), "day"), {}))
+
+/** The mirror of `tightened`: three hours until today, one from today on. */
+const loosened = (): StreakRule => ({
+  ...ruleOf(easyClause(), "day"),
+  startedOn: V_OLD,
+  inDayVerdict: true,
+  revisions: [
+    revisionAt(V_OLD, hardClause()),
+    revisionAt(V_TODAY, easyClause()),
+  ],
+})
+
+const SEALED: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "a marked day keeps its verdict when the terms are tightened",
+    got: () => stateOnOld(tightened(V_TODAY), studied(120), { [V_OLD]: true }),
+    want: "kept",
+  },
+  {
+    // The half nobody reports, because it arrives as good news.
+    name: "and when they are loosened — a broken past is not bought back",
+    got: () => stateOnOld(loosened(), studied(120), { [V_OLD]: false }),
+    want: "missed",
+  },
+  {
+    /* The ledger holds one boolean; two of the five states hold up. Read
+       alone it would turn every freeze you ever bought plain green.
+
+       The day has to be **broken under the terms it was held to** for there
+       to be a freeze to see, so this is the loosened rule: three hours then,
+       one now, and two hours logged. */
+    name: "a frozen day keeps its colour rather than turning plain kept",
+    got: () =>
+      stateOnOld(
+        loosened(),
+        { ...studied(120), ruleFreezes: ["r"] } as unknown as Day,
+        { [V_OLD]: true },
+      ),
+    want: "frozen",
+  },
+  {
+    name: "an unmarked past day is judged by the terms in force on it",
+    got: () => stateOnOld(tightened(V_TODAY), studied(120)),
+    want: "kept",
+  },
+  {
+    // The same day and the same figures with the history taken away: this is
+    // what the report was, and what every drawing in the app agreed with.
+    name: "and by today's terms when there is no history to read",
+    got: () => stateOnOld(noHistory(tightened(V_TODAY)), studied(120)),
+    want: "missed",
+  },
+  {
+    // Tier 3. Yesterday is not history — it is a day you can still write to,
+    // so the promise that applies to it is the one you have now.
+    name: "yesterday takes the terms as they are, not as they were",
+    got: () =>
+      dayReport(
+        project(tightened(V_TODAY), { [V_YEST]: studied(120) }),
+        V_YEST,
+        V_TODAY,
+      ).state,
+    want: "missed",
+  },
+  {
+    /* A week's terms are read off its **last** day. Off its Monday, a
+       revision landing on the Wednesday would judge the week after this one
+       and never this one — and worse, such a week would be judged by the new
+       terms while it was open and by the old ones the moment it sealed, so
+       its verdict would flip on the Tuesday after with nothing having
+       happened. */
+    name: "a sealed week takes the terms that arrived inside it",
+    got: () =>
+      ruleClauses(
+        ruleHeldOnWeek(
+          tightened(V_CHANGED, "week"),
+          startOfWeek(fromKey(V_OLD)),
+          new Date(`${V_TODAY}T12:00:00`),
+          V_CTX,
+        ),
+      )[0]?.min,
+    want: 180,
+  },
+  {
+    name: "and the week you are living in takes the terms you have now",
+    got: () =>
+      ruleClauses(
+        ruleHeldOnWeek(
+          tightened(V_TODAY, "week"),
+          startOfWeek(fromKey(V_TODAY)),
+          new Date(`${V_TODAY}T12:00:00`),
+          V_CTX,
+        ),
+      )[0]?.min,
+    want: 180,
+  },
+]
+
+/* ---- the record itself — `spec 026`, part 2 ----------------------------- */
+
+const E_TODAY = new Date("2026-09-07T12:00:00")
+const E_PREV: StreakRule = {
+  ...ruleOf(easyClause(), "day"),
+  startedOn: V_OLD,
+  lockedUntil: V_OLD,
+  inDayVerdict: true,
+}
+const edited = (draft: StreakRule, prev = E_PREV) =>
+  ruleEdit(prev, draft, V_CTX, E_TODAY)
+
+const REVISIONS: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    /* Two entries, not one: appending only the new set would leave the
+       implicit first resolving to "current", and the terms it replaced would
+       be gone at the moment they became history. */
+    name: "an edit records the new terms and the ones they replaced",
+    got: () =>
+      (edited({ ...E_PREV, clauses: [hardClause()] }).next.revisions || [])
+        .map((r) => `${r.from}:${r.clauses[0].min}`)
+        .join(" | "),
+    want: `${V_OLD}:60 | 2026-09-07:180`,
+  },
+  {
+    // A revision says which days it judged. Two dated one day judge nothing
+    // between them, so the fourth adjustment of an afternoon replaces the
+    // third rather than growing a log nobody can read.
+    name: "a second edit the same day replaces rather than appends",
+    got: () => {
+      const once = edited({ ...E_PREV, clauses: [hardClause()] }).next
+      const twice = edited(
+        {
+          ...once,
+          clauses: [{ ...hardClause(), min: 240 } as unknown as StreakClause],
+        },
+        once,
+      ).next
+      return (twice.revisions || [])
+        .map((r) => `${r.from}:${r.clauses[0].min}`)
+        .join(" | ")
+    },
+    want: `${V_OLD}:60 | 2026-09-07:240`,
+  },
+  {
+    name: "a rename is not an edit to the terms and records nothing",
+    got: () => edited({ ...E_PREV, label: "Renamed" }).next.revisions,
+    want: undefined,
+  },
+  {
+    // The day a rule is written is one sentence being written, not a rule
+    // changing its mind — and it has judged nothing a history could be about.
+    name: "the day a rule is written records nothing",
+    got: () =>
+      edited(
+        { ...E_PREV, startedOn: V_TODAY, clauses: [hardClause()] },
+        { ...E_PREV, startedOn: V_TODAY },
+      ).next.revisions,
+    want: undefined,
+  },
+  {
+    // A loosening inside the lock is refused outright, and a refusal hands
+    // back the rule untouched — so there is nothing to record.
+    name: "a refused loosening records nothing",
+    got: () => {
+      const locked: StreakRule = { ...E_PREV, lockedUntil: "2026-12-31" }
+      const out = edited(
+        {
+          ...locked,
+          clauses: [{ ...easyClause(), min: 10 } as unknown as StreakClause],
+        },
+        locked,
+      )
+      return `${out.allowed}, ${JSON.stringify(out.next.revisions)}`
+    },
+    want: "false, undefined",
+  },
+  {
+    name: "the day a revision begins is judged by it, not by the one before",
+    got: () =>
+      ruleClauses(ruleAsOf(tightened(V_CHANGED), V_CHANGED, V_CTX))[0]?.min,
+    want: 180,
+  },
+  {
+    name: "and the day before it is not",
+    got: () =>
+      ruleClauses(ruleAsOf(tightened(V_CHANGED), "2026-08-25", V_CTX))[0]?.min,
+    want: 60,
+  },
+  {
+    // The one case that fails the day somebody adds a field to the lock and
+    // forgets the history. They are one function for exactly this reason.
+    name: "the snapshot and the lock's string name the same fields",
+    got: () =>
+      JSON.stringify(termsSnapshot(E_PREV, V_CTX)) === termsOf(E_PREV, V_CTX),
+    want: true,
+  },
+  {
+    name: "a rule with no history reads as one revision, from its beginning",
+    got: () => revisionsOf(E_PREV, V_CTX).map((r) => r.from).join(),
+    want: V_OLD,
+  },
+]
+
+/* ---- a day the project was told to look away from — `spec 026`, part 3 --
+
+   `dueMarks` has always skipped these, so such a day never gets a mark and
+   the composite run was being broken by the one day the project was told to
+   ignore. This walk was the last reader of `makeIsIgnored` that never asked
+   it. Deliberately a change of behaviour, and the number it reports can move
+   upward on the day it ships.
+-------------------------------------------------------------------------- */
+
+const I_START: DayKey = "2026-08-24"
+const I_TODAY: DayKey = "2026-08-27"
+
+const ignoredRun = (ignore: boolean): number => {
+  const rule: StreakRule = {
+    ...ruleOf(easyClause(), "day"),
+    startedOn: I_START,
+    inDayVerdict: true,
+  }
+  const days: Record<DayKey, Day> = {
+    [I_START]: studied(120),
+    "2026-08-25": {
+      ...studied(0),
+      ...(ignore ? { ignore: true } : {}),
+    } as unknown as Day,
+    "2026-08-26": studied(120),
+  }
+  const k = keptDays(project(rule, days), new Date(`${I_TODAY}T14:00:00`))
+  return k ? k.current : -1
+}
+
+const IGNORED: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "an ignored broken day no longer breaks the run",
+    got: () => ignoredRun(true),
+    want: 2,
+  },
+  {
+    name: "and one nobody ignored still does",
+    got: () => ignoredRun(false),
+    want: 1,
+  },
+]
+
 console.log("")
 for (const test of RUNNING) {
   const got = test.got()
@@ -3123,11 +3466,437 @@ for (const test of BENCHMARKS) {
   }
 }
 
+
+/* ---- the week a condition was written into — `spec 026`, part 7 ---------
+
+   The first build took *«актуально с текущей недели»* literally and broke the
+   current week on the spot: a ceiling written into a week already three days
+   spent is a promise nobody was in a position to keep, and the run that ends
+   at today collapsed to one whatever the thirty behind it said.
+
+   `spec 018` had already argued this out for a weekly rule's partial first
+   week and answered it — drawn, never tallied. What it could not reach was a
+   condition added to an **old** rule, whose `startedOn` is months ago, and a
+   **mixed** rule, which was exempted by its own daily half: `countsOn` was a
+   boolean beside the drawn state, and a boolean can only say *all of this
+   counts* or *none of it does*.
+-------------------------------------------------------------------------- */
+
+const F_TODAY: DayKey = "2026-09-09" // a Wednesday
+const F_START: DayKey = "2026-07-27" // a Monday, weeks earlier
+
+const F_DAILY = () =>
+  ({ id: "f1", ...target("activity", "a-les"), min: 60 }) as unknown as StreakClause
+/** At most ten hours a week of the other activity. */
+const F_WEEKLY = () =>
+  ({
+    id: "f2",
+    scope: "week",
+    ...target("activity", "a-idle"),
+    max: 600,
+  }) as unknown as StreakClause
+
+/** Every day: an hour and a half promised, four hours of the other thing. */
+const F_DAYS: Record<DayKey, Day> = (() => {
+  const out: Record<DayKey, Day> = {}
+  for (
+    let d = fromKey(F_START);
+    toKey(d) <= "2026-09-20";
+    d = addDays(d, 1)
+  )
+    out[toKey(d)] = {
+      cells: {
+        "s-am": [
+          { id: "e1", activity: "a-les", minutes: 90 },
+          { id: "e2", activity: "a-idle", minutes: 240 },
+        ],
+      },
+    } as unknown as Day
+  return out
+})()
+
+const F_RULE = (clauses: StreakClause[], startedOn = F_START): StreakRule =>
+  ({
+    ...ruleOf(clauses[0], "day"),
+    clauses,
+    startedOn,
+    lockedUntil: startedOn,
+    inDayVerdict: true,
+  }) as StreakRule
+
+const fProject = (rule: StreakRule): Project => {
+  const base = project(rule, F_DAYS)
+  return {
+    ...base,
+    activities: [
+      ...ACTIVITIES,
+      { id: "a-idle", label: "Did nothing", color: "#888", iconName: "Circle" },
+    ],
+  } as unknown as Project
+}
+
+/** The rule after a weekly ceiling is added to it today. */
+const F_ADDED = (): StreakRule => {
+  const prev = F_RULE([F_DAILY()])
+  return ruleEdit(
+    prev,
+    { ...prev, clauses: [F_DAILY(), F_WEEKLY()] },
+    streakContext(fProject(prev)),
+    new Date(`${F_TODAY}T12:00:00`),
+  ).next
+}
+
+const fRead = (rule: StreakRule, on: DayKey) =>
+  dayReport(fProject(rule), on, on).readings[0]
+
+const IN_FORCE: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    // The report, exactly: thirty-odd days, a ceiling written into a week
+    // already over it, and the run must not notice.
+    name: "the week it was written into does not break the run",
+    got: () =>
+      keptDays(fProject(F_ADDED()), new Date(`${F_TODAY}T12:00:00`))?.current,
+    want: 45,
+  },
+  {
+    /* And it is still **drawn**. `spec 018` argued that out: a ceiling is
+       broken the moment something lands in the wrong slot, and hiding it
+       would be a rule that says nothing on the day you most want it to. */
+    name: "but it is still drawn as broken on the day it was crossed",
+    got: () => {
+      const r = fRead(F_ADDED(), F_TODAY)
+      return `${r?.state} / ${r?.counted}`
+    },
+    want: "missed / met",
+  },
+  {
+    name: "the first whole week under it is judged like any other",
+    got: () => {
+      const r = fRead(F_ADDED(), "2026-09-16")
+      return `${r?.state} / ${r?.counted}`
+    },
+    want: "missed / missed",
+  },
+  {
+    // The hole a mixed rule fell through: `countsOn` said "a rule with any
+    // daily condition always counts", so the weekly half's partial week was
+    // carried into the tally by the daily half standing beside it.
+    name: "a mixed rule's daily half votes through its weekly half's first week",
+    got: () => {
+      // Written on a Wednesday, so its first week is three days long; the
+      // ceiling is crossed on the Friday.
+      const r = fRead(F_RULE([F_DAILY(), F_WEEKLY()], "2026-09-02"), "2026-09-04")
+      return `${r?.state} / ${r?.counted}`
+    },
+    want: "missed / met",
+  },
+  {
+    // And the case that was already right stays right: nothing left to vote,
+    // so the same break is drawn and the day has no verdict at all.
+    name: "a purely weekly rule's partial first week is unchanged",
+    got: () => {
+      const r = fRead(F_RULE([F_WEEKLY()], "2026-09-02"), "2026-09-04")
+      return `${r?.state} / ${r?.counted}`
+    },
+    want: "missed / watching",
+  },
+  {
+    name: "a condition present from the start has no partial week of its own",
+    got: () =>
+      clauseInForceFrom(F_RULE([F_DAILY()]), "f1", V_CTX),
+    want: F_START,
+  },
+  {
+    name: "and one added today came into force today",
+    got: () => clauseInForceFrom(F_ADDED(), "f2", V_CTX),
+    want: F_TODAY,
+  },
+  {
+    /* Dropped and written again is a **new** promise: the removal was a
+       loosening and had to wait out the clock, and what it left behind is not
+       a history the new one inherits. So the walk takes the current run of
+       revisions carrying it, not its first appearance. */
+    name: "a condition dropped and written again gets its grace back",
+    got: () => {
+      const rule = {
+        ...F_RULE([F_DAILY(), F_WEEKLY()]),
+        revisions: [
+          { from: F_START, scope: "day", clauses: [F_DAILY(), F_WEEKLY()], freezesPerWeek: 0, freezeCap: 0 },
+          { from: "2026-08-10", scope: "day", clauses: [F_DAILY()], freezesPerWeek: 0, freezeCap: 0 },
+          { from: F_TODAY, scope: "day", clauses: [F_DAILY(), F_WEEKLY()], freezesPerWeek: 0, freezeCap: 0 },
+        ],
+      } as unknown as StreakRule
+      return clauseInForceFrom(rule, "f2", V_CTX)
+    },
+    want: F_TODAY,
+  },
+]
+
+/* ---- a lost week — `spec 027` -------------------------------------------
+
+   The report, exactly: *at most 3 Pinterest a week, of which none at night*.
+   A night slip on the Monday, paid for; the fourth on the Thursday, with
+   nothing left to pay. The app drew the **Monday** red — `weekLostOn` filed
+   the whole week on the first day any ceiling broke, then asked whether the
+   week *as it now stands* was paid for — and the Thursday green, and counted
+   the run from the day after the Monday.
+
+   Every day that made a site worse now carries its own break, covered by what
+   was paid on that site; a day after an unpaid one that added nothing is
+   grey. Two of the first three cases fail against the old code. */
+
+const FRI = KEYS[4]
+const SAT = KEYS[5]
+const SUN = KEYS[6]
+
+/** One slip in a slot. */
+const slip = (slotId = "s-am", n = 1): Day => counted("u-yt", slotId, n)
+
+/** A day carrying receipts against rule `r`. */
+const paidOn = (
+  day: Day,
+  ...receipts: { clauseId: string; slotId?: string; cost: number }[]
+): Day =>
+  ({
+    ...day,
+    ruleFreezes: receipts.map((r) => ({ ruleId: "r", boughtAt: "x", ...r })),
+  }) as unknown as Day
+
+/** What each day of the fixture week reads, Monday first. */
+const weekRow = (rule: StreakRule, days: Record<DayKey, Day>): string => {
+  const ctx = streakContext(project(rule, days))
+  return KEYS.map((k) => ruleWeekDayState(rule, ctx, days, k, TODAY)).join(" ")
+}
+
+const PIN_RULE = ruleOf(
+  {
+    id: "c",
+    ...target("unit", "u-yt"),
+    max: 3,
+    slots: { "s-pm": { max: 0 } },
+  } as unknown as StreakClause,
+  "week",
+)
+const PIN_DAYS: Record<DayKey, Day> = {
+  [MON]: paidOn(slip("s-pm"), { clauseId: "c", slotId: "s-pm", cost: 1 }),
+  [TUE]: slip(),
+  [WED]: slip(),
+  [THU]: slip(),
+  [SAT]: slip(),
+}
+
+const ZERO = { id: "c", ...target("unit", "u-yt"), max: 0 } as unknown as StreakClause
+const ZERO_WEEK = { ...ruleOf(ZERO, "week"), freezesPerWeek: 1 } as StreakRule
+
+const TIME_WEEK = ruleOf(
+  { id: "c", ...target("activity", "a-les"), max: 120 } as unknown as StreakClause,
+  "week",
+)
+const TIME_DAYS: Record<DayKey, Day> = {
+  [MON]: paidOn(studied(150), { clauseId: "c", cost: 1 }),
+  [WED]: studied(30),
+}
+
+/** A rule's own figure on a Monday afternoon, four days in. */
+const ruleRun = (clause: object, days: Record<DayKey, Day>): string => {
+  const rule = {
+    ...ruleOf(clause as StreakClause, "day"),
+    startedOn: S_START,
+    lockedUntil: S_START,
+    freezesPerWeek: 1,
+  } as StreakRule
+  const s = ruleStatus(rule, project(rule, days), new Date(`${S_TODAY}T14:00:00`))
+  return `${s.atStake}→${s.facing} (${s.current})`
+}
+
+const LOST: { name: string; got: () => unknown; want: unknown }[] = [
+  {
+    name: "the report's week, day by day — the bought night stays blue",
+    got: () => weekRow(PIN_RULE, PIN_DAYS),
+    want: "frozen met met missed lost missed lost",
+  },
+  {
+    name: "six freezes, a slip a day: six blue days and the seventh red",
+    got: () =>
+      weekRow(ZERO_WEEK, {
+        [MON]: paidOn(
+          slip(),
+          ...Array.from({ length: 6 }, () => ({ clauseId: "c", cost: 1 })),
+        ),
+        [TUE]: slip(),
+        [WED]: slip(),
+        [THU]: slip(),
+        [FRI]: slip(),
+        [SAT]: slip(),
+        [SUN]: slip(),
+      }),
+    want: "frozen frozen frozen frozen frozen frozen missed",
+  },
+  {
+    // It was listed as `already frozen` and could not be bought at all.
+    name: "a paid site that grew is offered at the difference",
+    got: () => {
+      // Two a week: the first receipt spends one, and the top-up needs the other.
+      const rule = { ...ZERO_WEEK, freezesPerWeek: 2 } as StreakRule
+      const days = { [MON]: paidOn(slip(), { clauseId: "c", cost: 1 }), [TUE]: slip() }
+      const proj = project(rule, days)
+      const now = new Date(`${SUN}T12:00:00`)
+      const status = ruleStatus(rule, proj, now)
+      return freezeOffers(rule, proj, MON, SUN, status)
+        .map((o) => `${o.cost}/${o.frozen}/${o.ok}`)
+        .join(" ")
+    },
+    want: "1/false/true",
+  },
+  {
+    name: "a weekly time ceiling costs one per day that made it worse",
+    got: () =>
+      weekViolationsOn(
+        TIME_WEEK,
+        streakContext(project(TIME_WEEK, TIME_DAYS)),
+        TIME_DAYS,
+        WEEK,
+        TODAY,
+      )[0]?.cost,
+    want: 2,
+  },
+  {
+    name: "and the day that added nothing costs nothing",
+    got: () => weekRow(TIME_WEEK, TIME_DAYS).split(" ").slice(0, 3).join(" "),
+    want: "frozen met missed",
+  },
+  {
+    name: "a weekly floor breaks on the day it stopped being reachable",
+    got: () =>
+      weekRow(
+        ruleOf(
+          { id: "c", ...target("unit", "u-gym"), min: 3 } as unknown as StreakClause,
+          "week",
+        ),
+        {},
+      ),
+    want: "met met met met missed lost lost",
+  },
+  {
+    name: "grey days neither grow the composite nor break it",
+    got: () =>
+      keptDays(project(ZERO_WEEK, { [TUE]: slip() }), new Date(`${TODAY}T12:00:00`))
+        ?.current,
+    want: 8,
+  },
+  {
+    name: "a grey day gets no mark, so it pays nothing",
+    got: () => {
+      const base = project(ZERO_WEEK, { [TUE]: slip() })
+      const proj = {
+        ...base,
+        settings: { ...base.settings, balanceStart: MON },
+      } as unknown as Project
+      return dueMarks(proj, new Date(`${TODAY}T12:00:00`))
+        .filter((m) => m.date <= SUN)
+        .map((m) => `${m.date === MON ? "MON" : m.date === TUE ? "TUE" : m.date}:${m.kept}`)
+        .join(" ")
+    },
+    want: "MON:true TUE:false",
+  },
+  {
+    name: "a rule's own streak says what a spent break has at stake",
+    got: () => ruleRun(ZERO, { [S_TODAY]: slip() }),
+    want: "4→0 (4)",
+  },
+  {
+    name: "and drops the pair once nothing can buy it back",
+    got: () => {
+      const rule = {
+        ...ruleOf(ZERO, "day"),
+        startedOn: S_START,
+        lockedUntil: S_START,
+      } as StreakRule
+      const days = { [S_TODAY]: slip() }
+      const s = ruleStatus(rule, project(rule, days), new Date(`${S_TODAY}T14:00:00`))
+      return JSON.stringify([runShown(s, false), runShown(s, true)])
+    },
+    want: '[{"now":0,"was":4},{"now":0,"was":null}]',
+  },
+  {
+    // Only a settled break draws the pair; a floor still owed is an errand.
+    name: "a floor still owed this afternoon is not a break",
+    got: () =>
+      ruleRun(
+        { id: "c", ...target("activity", "a-les"), min: 60 },
+        Object.fromEntries(
+          [0, 1, 2, 3].map((i) => [toKey(addDays(fromKey(S_START), i)), studied(90)]),
+        ),
+      ),
+    want: "4→4 (4)",
+  },
+]
+
+console.log("")
+for (const test of SEALED) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  sealed: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  sealed: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of REVISIONS) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  revision: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  revision: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of IGNORED) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  ignored: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  ignored: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of IN_FORCE) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  in force: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  in force: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
+console.log("")
+for (const test of LOST) {
+  const got = test.got()
+  if (got === test.want) {
+    console.log(`${GREEN}  ok${OFF}  lost week: ${test.name}`)
+  } else {
+    failed += 1
+    console.log(`${RED}FAIL${OFF}  lost week: ${test.name}`)
+    console.log(`      got ${JSON.stringify(got)}, want ${JSON.stringify(test.want)}`)
+  }
+}
+
 console.log("")
 if (failed) {
   console.log(`${RED}${failed} failing${OFF}${deferred ? `, ${deferred} deferred` : ""}`)
   process.exit(1)
 }
 console.log(
-  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length + BENCHMARKS.length + ACCEPTED.length + SENTENCES.length + FOLDS.length + RUNNING.length + REWARDS.length + MIXED.length + STREAKS.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
+  `${GREEN}all ${REMOVALS.length + BALANCES.length + CASES.length + RISKS.length + MASKS.length + DUES.length + READS.length + LOCKS.length + PROGRESS.length + A_LOCKS.length + SEALS.length + FROZEN.length + REFUSED.length + IMPOSSIBLE.length + POSSIBLE.length + PARTIALS.length + WEEK_READS.length + FRESH.length + SPLITS.length + WEEK_SPLITS.length + PAID.length + OFFERS.length + LEDGERS.length + ADDITIONS.length + BENCHMARKS.length + ACCEPTED.length + SENTENCES.length + FOLDS.length + RUNNING.length + REWARDS.length + MIXED.length + STREAKS.length + SEALED.length + REVISIONS.length + IGNORED.length + IN_FORCE.length + LOST.length} pass${OFF}${deferred ? `, ${deferred} deferred` : ""}`,
 )

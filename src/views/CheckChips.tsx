@@ -41,6 +41,7 @@ import {
   CHECK_CHOICES,
   checkState,
 } from "../lib/checks"
+import { t } from "../lib/i18n"
 import { btnBase, cardTiny } from "../lib/theme"
 import { RenderIcon } from "../ui/icons"
 import { PopoverMenu } from "../ui/PopoverMenu"
@@ -120,12 +121,25 @@ export function CheckChips({
             </Tip>
           )
 
+        /* **A check that can be changed has to look like it** — `spec 028`.
+           It sits in one row with the tally badges and is drawn almost
+           exactly like them, and a tally does nothing when pressed; so after
+           one dead click on a badge there was no reason to expect the chip
+           beside it to open. On hover it lifts and takes an edge in its own
+           colour, and its tooltip says it can be changed. Tailwind's `hover:`
+           only fires where there is a real pointer, so a touch screen keeps
+           the plain chip. */
         return (
           <PopoverMenu
             key={unit.id}
             width={180}
-            label={label}
-            triggerClassName={chipClass}
+            label={t("{label} · click to change", { label })}
+            /* Its own transition list rather than `btnBase`'s: the hover is an
+               edge and a brightening — `box-shadow` and `filter` — and a list
+               that names neither made both of them snap. */
+            triggerClassName={`press transition-[color,background-color,box-shadow,filter,transform] duration-150 ease-out flex items-center gap-1 ${cardTiny(
+              roomy,
+            )} uppercase tracking-wide font-mono px-1.5 py-0.5 rounded-full ${className} cursor-pointer hover:ring-1 hover:ring-current hover:brightness-110`}
             trigger={body}
           >
             {(close) => (
@@ -177,7 +191,7 @@ export function CheckChips({
                   }}
                   className={`${btnBase} w-full text-left px-2.5 py-2 rounded-xl text-[11px] font-mono text-ink/45 hover:bg-ink/5 hover:text-ink`}
                 >
-                  Clear
+                  {t("check:Clear")}
                 </button>
               </div>
             )}

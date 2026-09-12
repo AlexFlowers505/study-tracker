@@ -26,7 +26,8 @@ import type {
   CounterUnit,
 } from "../types/model"
 import type { DayReport } from "../lib/dayVerdict"
-import { asOutcome } from "../lib/dayVerdict"
+import { asOutcome, verdictLines } from "../lib/dayVerdict"
+import { weekClauses } from "../lib/customStreaks"
 import { addDays, fromKey, startOfWeek, toKey } from "../lib/date"
 import { fmtHours } from "../lib/time"
 import { NEVER_IGNORED, buildTooltip, dayBreakdown } from "../lib/stats"
@@ -130,6 +131,9 @@ export function Heatmap({
   const judging = (settings?.streakRules || []).some(
     (r) => r.inDayVerdict === true,
   )
+  const weekly = (settings?.streakRules || []).some(
+    (r) => r.inDayVerdict === true && weekClauses(r).length > 0,
+  )
 
   const weekTags = useMemo(
     () => buildMonthTags(weeks, showMonths),
@@ -170,9 +174,8 @@ export function Heatmap({
                 const { total } = dayBreakdown(entry, slots)
                 const isToday = key === todayKey
                 const ignored = isIgnored(key, entry)
-                const goalOutcome = ignored
-                  ? null
-                  : asOutcome(verdictOf(key).state)
+                const report = verdictOf(key)
+                const goalOutcome = ignored ? null : asOutcome(report.state)
                 const cellColor = ignored
                   ? ignoredCell(c)
                   : goalOutcome === "met"
@@ -181,8 +184,15 @@ export function Heatmap({
                       ? `${c.freeze}30`
                       : goalOutcome === "missed"
                         ? `${c.exam}30`
-                        : neutralCell(c)
-                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${buildTooltip(entry, slots, activities, counterUnits)}`
+                        : goalOutcome === "lost"
+                          ? `${c.gone}30`
+                          : neutralCell(c)
+                // The ring's sentences first — `spec 027` — then the day.
+                const said =
+                  !ignored && report.readings.length
+                    ? `\n${verdictLines(report, isToday).join("\n")}\n`
+                    : ""
+                const baseTip = `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${said}${buildTooltip(entry, slots, activities, counterUnits)}`
                 return (
                   <Tip
                     key={di}
@@ -255,6 +265,18 @@ export function Heatmap({
               />
               Missed
             </span>
+            {/* Only where it can happen — a lost week needs a weekly
+                condition that votes, and a key to a state the project can
+                never reach misleads as much as no key. */}
+            {weekly && (
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="w-3 h-3 rounded-[3px]"
+                  style={{ backgroundColor: `${c.gone}30` }}
+                />
+                Week lost
+              </span>
+            )}
             <span className="flex items-center gap-1.5">
               <span
                 className="w-3 h-3 rounded-[3px]"

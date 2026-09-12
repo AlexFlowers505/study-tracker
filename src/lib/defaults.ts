@@ -166,6 +166,17 @@ export function normalizeProject(p: Partial<Project>): Project {
     weekIgnore: p.weekIgnore || {},
     monthIgnore: p.monthIgnore || {},
     changeLog: p.changeLog || [],
+    /* **The ledgers travel too** — `spec 028`. This rebuilt a project out of
+       a fixed list of fields and dropped every one of them, so Import JSON
+       brought a logbook across without a single thing it had sealed: no week
+       verdicts, no rule verdicts, no day marks, no achievements, no
+       purchases. Kept exactly as the file has them, and absent when it has
+       none — a local fallback never had them either. */
+    ...(p.weekVerdicts ? { weekVerdicts: p.weekVerdicts } : {}),
+    ...(p.ruleVerdicts ? { ruleVerdicts: p.ruleVerdicts } : {}),
+    ...(p.dayLedger ? { dayLedger: p.dayLedger } : {}),
+    ...(p.earned ? { earned: p.earned } : {}),
+    ...(p.purchases ? { purchases: p.purchases } : {}),
   }
 }
 

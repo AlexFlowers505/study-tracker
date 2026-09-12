@@ -131,7 +131,8 @@ export function balanceOf(project: Project, today = new Date()): Balance {
     const key = toKey(addDays(today, -i))
     if (ledger[key]) continue
     const { state } = dayReport(project, key, todayKey, ctx)
-    if (state === "unjudged" || state === "pending") continue
+    if (state === "unjudged" || state === "pending" || state === "lost")
+      continue
     if (heldUp(state)) pendingKept += 1
     else pendingMissed += 1
   }
@@ -174,7 +175,11 @@ export function dueMarks(project: Project, today = new Date()): DayMark[] {
     if (ledger[key]) continue
     if (isIgnored(key, project.days[key])) continue
     const { state } = dayReport(project, key, todayKey, ctx)
-    if (state === "unjudged" || state === "pending") continue
+    /* **A grey day gets no mark, so it pays nothing** — `spec 027`. And if
+       the red day that lost its week is bought back while the week can still
+       be frozen, it reads kept by the next load and is marked then. */
+    if (state === "unjudged" || state === "pending" || state === "lost")
+      continue
     out.push({ date: key, kept: heldUp(state), sealedAt })
   }
   return out
